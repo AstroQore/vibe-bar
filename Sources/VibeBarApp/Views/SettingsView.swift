@@ -22,21 +22,21 @@ enum SettingsSectionID: String {
 
     var title: String {
         switch self {
-        case .menuBar: "Menu Bar"
-        case .menuBarHealth: "Menu Bar Health"
-        case .miniWindow: "Mini Window"
-        case .layout: "Layout"
+        case .menuBar: L10n.Settings.sectionMenuBar
+        case .menuBarHealth: L10n.Settings.sectionMenuBarHealth
+        case .miniWindow: L10n.Settings.sectionMiniWindows
+        case .layout: L10n.Settings.sectionLayout
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
         case .googleAI: "Google AI"
         case .xAI: "SpaceXAI"
-        case .miscProviders: "Misc Providers"
-        case .system: "System"
-        case .costData: "Cost Data"
-        case .pricing: "Model Pricing"
-        case .privacy: "Privacy"
-        case .remote: "Remote Probes"
-        case .mcp: "MCP Server"
+        case .miscProviders: L10n.Popover.tabMisc
+        case .system: L10n.Settings.sectionSystem
+        case .costData: L10n.Settings.sectionCostData
+        case .pricing: L10n.Onboarding.stepPricingTitle
+        case .privacy: L10n.Settings.sectionPrivacy
+        case .remote: L10n.Settings.sectionRemoteProbes
+        case .mcp: L10n.Settings.mcpTitle
         }
     }
 
@@ -142,7 +142,7 @@ struct SettingsView: View {
                 Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
                     .foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Another Vibe Bar replaced your change")
+                    Text(L10n.Settings.externalChangeTitle)
                         .font(.callout.weight(.medium))
                     Text(change.summary)
                         .font(.caption2)
@@ -150,7 +150,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12)
-                Button("Dismiss") { settingsStore.acknowledgeExternalChange() }
+                Button(L10n.Common.dismiss) { settingsStore.acknowledgeExternalChange() }
                     .buttonStyle(.vibeBar)
             }
             .padding(.horizontal, 12)
@@ -179,8 +179,8 @@ struct SettingsView: View {
                     externalChangeBanner
                     if selectedSection == .system {
                     LanguageSettingsSection(density: density)
-                    settingsSection("System") {
-                        Toggle("Launch at login", isOn: launchAtLoginBinding())
+                    settingsSection(L10n.Settings.sectionSystem) {
+                        Toggle(L10n.Platform.macosLaunchAtLoginTitle, isOn: launchAtLoginBinding())
                         Text(launchAtLoginStatusText)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -194,68 +194,68 @@ struct SettingsView: View {
                         Button {
                             environment.showOnboarding()
                         } label: {
-                            Label("Show setup assistant", systemImage: "wand.and.stars")
+                            Label(L10n.Settings.showAssistant, systemImage: "wand.and.stars")
                         }
-                        Text("Walk through subscriptions, browser cookies, API keys, model pricing and login items again. Nothing is reset.")
+                        Text(L10n.Settings.showAssistantDetail)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                     .id(SettingsSectionID.system.rawValue)
 
-                    settingsSection("Refreshing") {
-                        Picker("Percent shows", selection: $settingsStore.settings.displayMode) {
+                    settingsSection(L10n.Settings.sectionRefreshing) {
+                        Picker(L10n.Settings.percentShows, selection: $settingsStore.settings.displayMode) {
                             ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
                         }
                         .pickerStyle(.segmented)
-                        Picker("Refresh every", selection: $settingsStore.settings.refreshIntervalSeconds) {
+                        Picker(L10n.Settings.refreshEvery, selection: $settingsStore.settings.refreshIntervalSeconds) {
                             ForEach(intervalOptions, id: \.self) { secs in
                                 Text(intervalLabel(secs)).tag(secs)
                             }
                         }
                         Toggle(
-                            "Refresh when the popover opens",
+                            L10n.Settings.refreshOnPopoverOpen,
                             isOn: $settingsStore.settings.refreshOnPopoverOpen
                         )
                         if settingsStore.settings.refreshOnPopoverOpen {
                             Picker(
-                                "Minimum open-refresh cooldown",
+                                L10n.Settings.openRefreshCooldown,
                                 selection: $settingsStore.settings.popoverOpenRefreshCooldownSeconds
                             ) {
                                 ForEach(popoverRefreshCooldownOptions, id: \.self) { secs in
                                     Text(intervalLabel(secs)).tag(secs)
                                 }
                             }
-                            Text("Opening the popover refreshes all visible providers at most once per cooldown period.")
+                            Text(L10n.Settings.openRefreshDetail)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                     }
                     .id("refreshing")
 
-                    settingsSection("Updates") {
+                    settingsSection(L10n.Settings.sectionUpdates) {
                         UpdateSettingsRow(updateController: environment.updateController)
                     }
                     .id("updates")
 
-                    settingsSection("Components") {
+                    settingsSection(L10n.Settings.sectionComponents) {
                         AgentSessionKitComponentRow()
                     }
                     .id("components")
                     }
 
                     if selectedSection == .menuBar {
-                    settingsSection("Overview") {
+                    settingsSection(L10n.Settings.sectionOverview) {
                         menuBarOverviewEditor()
                     }
                     .id(SettingsSectionID.menuBar.rawValue)
                     }
 
                     if selectedSection == .menuBarHealth {
-                    settingsSection("Menu Bar Health") {
+                    settingsSection(L10n.Settings.sectionMenuBarHealth) {
                         if let watchdog = environment.menuBarWatchdog {
                             MenuBarHealthSettingsSection(watchdog: watchdog)
                         } else {
-                            Text("The menu bar health monitor is not attached in this process.")
+                            Text(L10n.Settings.menuBarHealthUnavailable)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -264,14 +264,14 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .miniWindow {
-                    settingsSection("Mini Windows") {
+                    settingsSection(L10n.Settings.sectionMiniWindows) {
                         MiniWindowsSettingsSection()
                     }
                     .id(SettingsSectionID.miniWindow.rawValue)
                     }
 
                     if selectedSection == .layout {
-                    settingsSection("Layout") {
+                    settingsSection(L10n.Settings.sectionLayout) {
                         LayoutEditorView()
                     }
                     .id(SettingsSectionID.layout.rawValue)
@@ -286,7 +286,7 @@ struct SettingsView: View {
                         coreProviderPlanBadgeRows(for: [.codex])
                         Divider()
                             .padding(.vertical, 2)
-                        Picker("Usage source", selection: $settingsStore.settings.codexUsageMode) {
+                        Picker(L10n.Settings.usageSource, selection: $settingsStore.settings.codexUsageMode) {
                             ForEach(CodexUsageMode.allCases) { mode in
                                 Text(mode.label).tag(mode)
                             }
@@ -298,23 +298,23 @@ struct SettingsView: View {
                             Button {
                                 environment.importOpenAIBrowserCookies()
                             } label: {
-                                Label("Import from browser", systemImage: "safari")
+                                Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
                             }
                             .disabled(environment.isImportingOpenAIBrowserCookies)
                             Button {
                                 environment.openOpenAIWebLogin()
                             } label: {
-                                Label("Open WebView login", systemImage: "person.crop.circle.badge.key")
+                                Label(L10n.Onboarding.cookiesOpenWebViewLogin, systemImage: "person.crop.circle.badge.key")
                             }
                             Button(role: .destructive) {
                                 openAICookieDeleteFailed = !environment.deleteOpenAIWebCookies()
                             } label: {
-                                Label("Delete cookies", systemImage: "trash")
+                                Label(L10n.Settings.deleteCookies, systemImage: "trash")
                             }
                             .disabled(!environment.hasOpenAIWebCookies)
                         }
                         if environment.hasOpenAIWebCookies {
-                            Text("Cookies saved.")
+                            Text(L10n.Onboarding.cookiesSaved)
                                 .font(.caption2).foregroundStyle(.green)
                         }
                         if let status = environment.openAIBrowserCookieImportStatus {
@@ -323,7 +323,7 @@ struct SettingsView: View {
                                 .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
                         }
                         if openAICookieDeleteFailed {
-                            Text("Could not delete saved cookies.")
+                            Text(L10n.Settings.couldNotDeleteCookies)
                                 .font(.caption2).foregroundStyle(.orange)
                         }
                         Divider()
@@ -332,7 +332,7 @@ struct SettingsView: View {
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .codex)
                         } label: {
-                            Label("Check OpenAI connections", systemImage: "checkmark.circle")
+                            Label(L10n.Settings.checkConnections(company: "OpenAI"), systemImage: "checkmark.circle")
                         }
                     }
                     .id(SettingsSectionID.openAI.id)
@@ -347,7 +347,7 @@ struct SettingsView: View {
                         coreProviderPlanBadgeRows(for: [.claude])
                         Divider()
                             .padding(.vertical, 2)
-                        Picker("Usage source", selection: $settingsStore.settings.claudeUsageMode) {
+                        Picker(L10n.Settings.usageSource, selection: $settingsStore.settings.claudeUsageMode) {
                             ForEach(ClaudeUsageMode.allCases) { mode in
                                 Text(mode.label).tag(mode)
                             }
@@ -359,23 +359,23 @@ struct SettingsView: View {
                             Button {
                                 environment.importClaudeBrowserCookies()
                             } label: {
-                                Label("Import from browser", systemImage: "safari")
+                                Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
                             }
                             .disabled(environment.isImportingClaudeBrowserCookies)
                             Button {
                                 environment.openClaudeWebLogin()
                             } label: {
-                                Label("Open WebView login", systemImage: "person.crop.circle.badge.key")
+                                Label(L10n.Onboarding.cookiesOpenWebViewLogin, systemImage: "person.crop.circle.badge.key")
                             }
                             Button(role: .destructive) {
                                 claudeCookieDeleteFailed = !environment.deleteClaudeWebCookies()
                             } label: {
-                                Label("Delete cookies", systemImage: "trash")
+                                Label(L10n.Settings.deleteCookies, systemImage: "trash")
                             }
                             .disabled(!environment.hasClaudeWebCookies)
                         }
                         if environment.hasClaudeWebCookies {
-                            Text("Cookies saved.")
+                            Text(L10n.Onboarding.cookiesSaved)
                                 .font(.caption2).foregroundStyle(.green)
                         }
                         if let status = environment.claudeBrowserCookieImportStatus {
@@ -384,7 +384,7 @@ struct SettingsView: View {
                                 .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
                         }
                         if claudeCookieDeleteFailed {
-                            Text("Could not delete saved cookies.")
+                            Text(L10n.Settings.couldNotDeleteCookies)
                                 .font(.caption2).foregroundStyle(.orange)
                         }
                         Divider()
@@ -393,7 +393,7 @@ struct SettingsView: View {
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .claude)
                         } label: {
-                            Label("Check Anthropic connections", systemImage: "checkmark.circle")
+                            Label(L10n.Settings.checkConnections(company: "Anthropic"), systemImage: "checkmark.circle")
                         }
                     }
                     .id(SettingsSectionID.anthropic.id)
@@ -408,11 +408,11 @@ struct SettingsView: View {
                         coreProviderPlanBadgeRows(for: [.gemini, .antigravity])
                         Divider()
                             .padding(.vertical, 2)
-                        Text("Gemini and Antigravity share the same Google AI subscription quota. Cookie import is the only supported web path — there is no WebView login.")
+                        Text(L10n.Settings.geminiShared)
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        sourceSummary(label: "Gemini source", value: "Web quota")
+                        sourceSummary(label: L10n.Settings.geminiSource, value: L10n.Settings.webQuota)
                         Text(GeminiUsageMode.webOnly.detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -420,18 +420,18 @@ struct SettingsView: View {
                             Button {
                                 environment.importGeminiBrowserCookies()
                             } label: {
-                                Label("Import Gemini cookies from browser", systemImage: "safari")
+                                Label(L10n.Onboarding.cookiesImportGemini, systemImage: "safari")
                             }
                             .disabled(environment.isImportingGeminiBrowserCookies)
                             Button(role: .destructive) {
                                 geminiCookieDeleteFailed = !environment.deleteGeminiWebCookies()
                             } label: {
-                                Label("Delete Gemini cookies", systemImage: "trash")
+                                Label(L10n.Settings.deleteGeminiCookies, systemImage: "trash")
                             }
                             .disabled(!environment.hasGeminiWebCookies)
                         }
                         if environment.hasGeminiWebCookies {
-                            Text("Gemini cookies saved.")
+                            Text(L10n.Settings.geminiCookiesSaved)
                                 .font(.caption2).foregroundStyle(.green)
                         }
                         if let status = environment.geminiBrowserCookieImportStatus {
@@ -440,7 +440,7 @@ struct SettingsView: View {
                                 .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
                         }
                         if geminiCookieDeleteFailed {
-                            Text("Could not delete saved Gemini cookies.")
+                            Text(L10n.Settings.couldNotDeleteGeminiCookies)
                                 .font(.caption2).foregroundStyle(.orange)
                         }
                         Divider()
@@ -450,7 +450,7 @@ struct SettingsView: View {
                         Divider()
                             .padding(.vertical, 2)
 
-                        Picker("Antigravity source", selection: $settingsStore.settings.antigravityUsageMode) {
+                        Picker(L10n.Settings.antigravitySource, selection: $settingsStore.settings.antigravityUsageMode) {
                             ForEach(AntigravityUsageMode.allCases) { mode in
                                 Text(mode.label).tag(mode)
                             }
@@ -463,11 +463,11 @@ struct SettingsView: View {
                         // flag off, only the local LSP probe runs and the
                         // cookie controls would be dead UI.
                         if AntigravitySourcePlanner.antigravityWebSourceAvailable {
-                            Text("Antigravity cookie import is enabled — sign in at antigravity.google first.")
+                            Text(L10n.Settings.antigravityCookieEnabled)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("Antigravity reads the locally running language server. Cookie import is deferred until the Antigravity Cloud endpoint ships.")
+                            Text(L10n.Settings.antigravityLocalOnly)
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
@@ -478,7 +478,7 @@ struct SettingsView: View {
                             environment.recheckPrimaryRouteHealth(provider: .gemini)
                             environment.recheckPrimaryRouteHealth(provider: .antigravity)
                         } label: {
-                            Label("Check Google AI connections", systemImage: "checkmark.circle")
+                            Label(L10n.Settings.checkConnections(company: "Google AI"), systemImage: "checkmark.circle")
                         }
                     }
                     .id(SettingsSectionID.googleAI.id)
@@ -493,18 +493,18 @@ struct SettingsView: View {
                         coreProviderPlanBadgeRows(for: [.grok, .cursor])
                         Divider()
                             .padding(.vertical, 2)
-                        Text("The SpaceXAI page combines Grok with Cursor. Grok reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota, plus read-only sessions from its local cache — its cloud runs still add no token/cost rows.")
+                        Text(L10n.Settings.spaceXAIIntro)
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        sourceSummary(label: "Usage source", value: "Auto")
+                        sourceSummary(label: L10n.Settings.usageSource, value: L10n.Common.auto)
 
                         if GrokCredentialsStore.hasCredentials() {
-                            Label("~/.grok/auth.json detected", systemImage: "checkmark.circle")
+                            Label(L10n.Settings.grokAuthDetected, systemImage: "checkmark.circle")
                                 .font(.caption2)
                                 .foregroundStyle(.green)
                         } else {
-                            Label("No ~/.grok/auth.json yet — run `grok login` to authenticate, or import cookies below.",
+                            Label(L10n.Onboarding.subscriptionsGrokMissing,
                                   systemImage: "exclamationmark.circle")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -514,18 +514,18 @@ struct SettingsView: View {
                             Button {
                                 environment.importGrokBrowserCookies()
                             } label: {
-                                Label("Import Grok cookies from browser", systemImage: "safari")
+                                Label(L10n.Onboarding.cookiesImportGrok, systemImage: "safari")
                             }
                             .disabled(environment.isImportingGrokBrowserCookies)
                             Button(role: .destructive) {
                                 grokCookieDeleteFailed = !environment.deleteGrokWebCookies()
                             } label: {
-                                Label("Delete Grok cookies", systemImage: "trash")
+                                Label(L10n.Settings.deleteGrokCookies, systemImage: "trash")
                             }
                             .disabled(!environment.hasGrokWebCookies)
                         }
                         if environment.hasGrokWebCookies {
-                            Text("Grok cookies saved.")
+                            Text(L10n.Settings.grokCookiesSaved)
                                 .font(.caption2).foregroundStyle(.green)
                         }
                         if let status = environment.grokBrowserCookieImportStatus {
@@ -534,20 +534,20 @@ struct SettingsView: View {
                                 .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
                         }
                         if grokCookieDeleteFailed {
-                            Text("Could not delete saved Grok cookies.")
+                            Text(L10n.Settings.couldNotDeleteGrokCookies)
                                 .font(.caption2).foregroundStyle(.orange)
                         }
 
                         Divider()
                             .padding(.vertical, 2)
 
-                        sourceSummary(label: "Cursor source", value: "Cursor.app → Web")
+                        sourceSummary(label: L10n.Settings.cursorSource, value: L10n.Settings.cursorSourceValue)
                         if environment.account(for: .cursor)?.source == .cliDetected {
-                            Label("Cursor.app signed-in session detected", systemImage: "checkmark.circle")
+                            Label(L10n.Settings.cursorSessionDetected, systemImage: "checkmark.circle")
                                 .font(.caption2)
                                 .foregroundStyle(.green)
                         } else {
-                            Label("No usable Cursor.app session — import cursor.com cookies below.",
+                            Label(L10n.Settings.cursorNoSession,
                                   systemImage: "exclamationmark.circle")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -564,10 +564,10 @@ struct SettingsView: View {
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .grok)
                         } label: {
-                            Label("Check SpaceXAI connections", systemImage: "checkmark.circle")
+                            Label(L10n.Settings.checkConnections(company: "SpaceXAI"), systemImage: "checkmark.circle")
                         }
 
-                        Link("Open SpaceXAI status page",
+                        Link(L10n.Settings.openStatusPage(company: "SpaceXAI"),
                              destination: ToolType.grok.statusPageURL)
                             .font(.caption2)
                     }
@@ -581,43 +581,43 @@ struct SettingsView: View {
                             MiscProviderSettingsSection(instance: instance)
                         }
                     } else {
-                        settingsSection("Browser Cookies") {
+                        settingsSection(L10n.Onboarding.doneBrowserCookies) {
                             MiscProviderLandingView()
                         }
                     }
                     }
 
                     if selectedSection == .costData {
-                    settingsSection("Cost Data") {
-                        Text("Cost is computed from local CLI session JSONL logs at ~/.codex/sessions and ~/.claude/projects. Web/desktop usage is not tracked.")
+                    settingsSection(L10n.Settings.sectionCostData) {
+                        Text(L10n.Settings.costDataIntro)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Picker("Keep history", selection: $settingsStore.settings.costData.retentionDays) {
+                        Picker(L10n.Settings.keepHistory, selection: $settingsStore.settings.costData.retentionDays) {
                             ForEach(costRetentionOptions, id: \.self) { days in
                                 Text(costRetentionLabel(days)).tag(days)
                             }
                         }
-                        Text("Applies to cost history and subscription fill history.")
+                        Text(L10n.Settings.keepHistoryDetail)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Toggle("Privacy mode", isOn: $settingsStore.settings.costData.privacyModeEnabled)
+                        Toggle(L10n.Settings.privacyMode, isOn: $settingsStore.settings.costData.privacyModeEnabled)
                         HStack {
                             Button {
                                 environment.refreshCostUsage()
                                 costDataClearStatus = nil
                             } label: {
-                                Label("Rescan cost logs", systemImage: "arrow.triangle.2.circlepath")
+                                Label(L10n.Settings.rescanCostLogs, systemImage: "arrow.triangle.2.circlepath")
                             }
                             .disabled(settingsStore.settings.costData.privacyModeEnabled)
                             Button(role: .destructive) {
                                 environment.clearCostData()
                                 costDataClearStatus = "Cost data cleared."
                             } label: {
-                                Label("Clear cost data", systemImage: "trash")
+                                Label(L10n.Settings.clearCostData, systemImage: "trash")
                             }
                         }
                         if settingsStore.settings.costData.privacyModeEnabled {
-                            Text("Privacy mode keeps cost data off disk and clears local cost history, snapshots, and scan cache.")
+                            Text(L10n.Settings.privacyModeDetail)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -626,7 +626,7 @@ struct SettingsView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.green)
                         }
-                        Text("Pricing data: \(CostUsagePricing.pricingDataUpdatedAt)")
+                        Text(L10n.Settings.pricingDataDate(date: CostUsagePricing.pricingDataUpdatedAt))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
@@ -649,8 +649,8 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .privacy {
-                    settingsSection("Privacy") {
-                        Text("Tokens are read from local CLI credentials. Saved OpenAI and Claude Web cookies are stored in macOS Keychain, split by browser and WebView source. Legacy plaintext cookie files under ~/.vibebar/cookies are migrated once and deleted. Settings, quota cache, and cost summaries stay under ~/.vibebar.")
+                    settingsSection(L10n.Settings.sectionPrivacy) {
+                        Text(L10n.Settings.privacyDetail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -682,7 +682,7 @@ struct SettingsView: View {
 
     private func connectionHealthRows(provider: ToolType) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Connection health")
+            Text(L10n.Settings.connectionHealth)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(PrimaryProviderRoute.routes(for: provider)) { route in
@@ -690,7 +690,7 @@ struct SettingsView: View {
                     ?? PrimaryProviderRouteHealth(
                         route: route,
                         status: .missing,
-                        detail: "Not checked"
+                        detail: L10n.Settings.notChecked
                     )
                 HStack(spacing: 8) {
                     Circle()
@@ -735,13 +735,13 @@ struct SettingsView: View {
                     Circle()
                         .fill(ready ? Color.green : Color.red)
                         .frame(width: 7, height: 7)
-                    Text(ready ? "Ready" : "Needs setup")
+                    Text(ready ? L10n.Settings.ready : L10n.Settings.needsSetup)
                         .font(.caption2)
                         .foregroundStyle(ready ? Color.green : Color.red)
                 }
             }
             Spacer(minLength: 12)
-            Toggle("Show in Overview", isOn: coreProviderVisibilityBinding(representative))
+            Toggle(L10n.Onboarding.subscriptionsShowInOverview, isOn: coreProviderVisibilityBinding(representative))
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.caption)
@@ -750,13 +750,13 @@ struct SettingsView: View {
 
     private func coreProviderPlanBadgeRows(for tools: [ToolType]) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Plan badge")
+            Text(L10n.Settings.planBadge)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(tools, id: \.self) { tool in
                 providerBadgeRow(tool)
             }
-            Text("Leave blank to use the detected account plan.")
+            Text(L10n.Settings.planBadgeDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -790,26 +790,26 @@ struct SettingsView: View {
     private func menuBarOverviewEditor() -> some View {
         let kind = MenuBarItemKind.compact
         return VStack(alignment: .leading, spacing: 10) {
-            Toggle("Show in menu bar", isOn: menuItemVisibleBinding(kind))
-            Toggle("Show title text", isOn: menuItemTitleBinding(kind))
-            Picker("Layout", selection: menuItemLayoutBinding(kind)) {
+            Toggle(L10n.Platform.macosMenuBarShowInMenuBar, isOn: menuItemVisibleBinding(kind))
+            Toggle(L10n.Platform.macosMenuBarShowTitleText, isOn: menuItemTitleBinding(kind))
+            Picker(L10n.Platform.macosMenuBarLayout, selection: menuItemLayoutBinding(kind)) {
                 ForEach(MenuBarLayout.allCases) { layout in
                     Text(layout.label).tag(layout)
                 }
             }
             .pickerStyle(.segmented)
-            Toggle("Combine a group's windows", isOn: menuItemMergeGroupWindowsBinding(kind))
-            Text("Shows 5 Hours and Weekly as 5%/100% instead of two entries.")
+            Toggle(L10n.Platform.macosMenuBarMergeGroupWindows, isOn: menuItemMergeGroupWindowsBinding(kind))
+            Text(L10n.Platform.macosMenuBarMergeGroupWindowsDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            Picker("Display density", selection: popoverDensityBinding()) {
+            Picker(L10n.Platform.macosMenuBarDisplayDensity, selection: popoverDensityBinding()) {
                 ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             Text(settingsStore.settings.popoverDensity.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            Picker("Percent color", selection: menuBarColorBasisBinding()) {
+            Picker(L10n.Platform.macosMenuBarPercentColor, selection: menuBarColorBasisBinding()) {
                 ForEach(MenuBarColorBasis.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
@@ -817,7 +817,7 @@ struct SettingsView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
-                Text("Fields")
+                Text(L10n.Platform.macosMenuBarFields)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 2)
@@ -897,7 +897,7 @@ struct SettingsView: View {
             }
             Spacer(minLength: 8)
             DebouncedSettingsTextField(
-                prompt: "Auto",
+                prompt: L10n.Common.auto,
                 value: providerPlanLabelBinding(tool)
             )
             .frame(width: 130)
@@ -923,7 +923,7 @@ struct SettingsView: View {
     private func fieldToggle(isOn: Binding<Bool>, field: MenuBarFieldOption) -> some View {
         Toggle(isOn: isOn) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(field.title)
+                Text(field.displayTitle)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
             }
@@ -935,7 +935,7 @@ struct SettingsView: View {
     /// `DebouncedSettingsTextField`: a settings mutation fans out to every
     /// open surface, and this page alone shows two dozen of these fields.
     private func fieldLabelTextField(field: MenuBarFieldOption, label: Binding<String>) -> some View {
-        DebouncedSettingsTextField(prompt: field.defaultLabel, value: label)
+        DebouncedSettingsTextField(prompt: field.displayDefaultLabel, value: label)
             .frame(width: 110)
     }
 
@@ -1109,20 +1109,20 @@ private struct AgentSessionKitComponentRow: View {
                 Button {
                     check()
                 } label: {
-                    Label("Check for kit updates", systemImage: "arrow.triangle.2.circlepath")
+                    Label(L10n.Settings.checkKitUpdates, systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(isChecking)
             }
 
-            Text("Session discovery, harness naming, and the MCP transport. A separate repository, pinned to an exact tag and compiled into this build.")
+            Text(L10n.Settings.kitDetail)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
             statusLine
 
             HStack(spacing: 12) {
-                Link("Release notes", destination: AgentSessionKitInfo.bundledReleaseNotesURL)
-                Link("Repository", destination: AgentSessionKitInfo.repositoryURL)
+                Link(L10n.Settings.releaseNotes, destination: AgentSessionKitInfo.bundledReleaseNotesURL)
+                Link(L10n.Settings.repository, destination: AgentSessionKitInfo.repositoryURL)
             }
             .font(.caption2)
         }
@@ -1134,7 +1134,7 @@ private struct AgentSessionKitComponentRow: View {
     }
 
     private var bundledBadge: some View {
-        Text("bundled")
+        Text(L10n.Settings.bundled)
             .font(.system(size: 9, weight: .semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 7)
@@ -1147,7 +1147,7 @@ private struct AgentSessionKitComponentRow: View {
         if isChecking {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("Checking github.com for the newest release…")
+                Text(L10n.Settings.checkingGitHub)
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
@@ -1157,12 +1157,12 @@ private struct AgentSessionKitComponentRow: View {
                     .font(.caption2)
                     .foregroundStyle(statusColor(status))
                 if let url = status.releaseNotesURL {
-                    Link("What changed in \(url.lastPathComponent)", destination: url)
+                    Link(L10n.Settings.whatChangedIn(version: url.lastPathComponent), destination: url)
                         .font(.caption2)
                 }
             }
         } else {
-            Text("Not checked. Nothing is fetched until you ask.")
+            Text(L10n.Settings.notCheckedYet)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -1203,9 +1203,9 @@ private struct UpdateSettingsRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Vibe Bar \(updateController.currentVersionDescription)")
+                    Text(L10n.Settings.appVersion(version: updateController.currentVersionDescription))
                         .font(.callout)
-                    Text("Checks the selected channel once a day and asks before installing.")
+                    Text(L10n.Settings.updateCheckDetail)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -1213,12 +1213,12 @@ private struct UpdateSettingsRow: View {
                 Button {
                     updateController.checkForUpdates()
                 } label: {
-                    Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+                    Label(L10n.Settings.checkForUpdates, systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(!updateController.canCheckForUpdates)
             }
 
-            Picker("Update channel", selection: $settingsStore.settings.updateChannel) {
+            Picker(L10n.Settings.updateChannel, selection: $settingsStore.settings.updateChannel) {
                 ForEach(UpdateChannel.allCases) { channel in
                     Text(channel.label).tag(channel)
                 }

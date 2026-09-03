@@ -1290,17 +1290,17 @@ public enum MiniStripDensity: String, Codable, CaseIterable, Identifiable, Senda
 
     public var label: String {
         switch self {
-        case .roomy:   return "Roomy"
-        case .twoLine: return "Two Lines"
-        case .narrow:  return "Narrow"
+        case .roomy:   return L10n.Settings.miniWindowDensityRoomy
+        case .twoLine: return L10n.Settings.miniWindowDensityTwoLines
+        case .narrow:  return L10n.Settings.miniWindowDensityNarrow
         }
     }
 
     public var detail: String {
         switch self {
-        case .roomy:   return "The menu bar's single-line style: every bucket, full label beside its number."
-        case .twoLine: return "Menu-bar style: buckets pair into stacked columns, label beside each number."
-        case .narrow:  return "The menu bar's compact style: the same cells at the small size."
+        case .roomy:   return L10n.Settings.miniWindowDensityRoomyDetail
+        case .twoLine: return L10n.Settings.miniWindowDensityTwoLinesDetail
+        case .narrow:  return L10n.Settings.miniWindowDensityNarrowDetail
         }
     }
 }
@@ -1518,25 +1518,25 @@ public enum MiniWindowDisplayMode: String, Codable, CaseIterable, Identifiable, 
 
     public var label: String {
         switch self {
-        case .regular: return "Regular"
-        case .compact: return "Compact"
-        case .ledger:  return "Ledger"
-        case .strip:   return "Strip"
-        case .tile:    return "Tiles"
-        case .focus:   return "Focus"
-        case .rail:    return "Rail"
+        case .regular: return L10n.Settings.miniWindowModeRegular
+        case .compact: return L10n.Settings.miniWindowModeCompact
+        case .ledger:  return L10n.Settings.miniWindowModeLedger
+        case .strip:   return L10n.Settings.miniWindowModeStrip
+        case .tile:    return L10n.Settings.miniWindowModeTiles
+        case .focus:   return L10n.Settings.miniWindowModeFocus
+        case .rail:    return L10n.Settings.miniWindowModeRail
         }
     }
 
     public var detail: String {
         switch self {
-        case .regular: return "Ring gauges grouped company → SubProvider → quota group."
-        case .compact: return "The same three tiers as vertical bars, sized for a corner."
-        case .ledger:  return "One row per quota bucket — fixed width, grows downward."
-        case .strip:   return "A slim line mirroring the menu bar's styles — one cell per bucket."
-        case .tile:    return "A grid of tiles with a big number and a severity stripe."
-        case .focus:   return "One selected bucket at a time, large — click to cycle in your order."
-        case .rail:    return "The next seven days as a refill lane with the coming resets listed."
+        case .regular: return L10n.Settings.miniWindowModeRegularDetail
+        case .compact: return L10n.Settings.miniWindowModeCompactDetail
+        case .ledger:  return L10n.Settings.miniWindowModeLedgerDetail
+        case .strip:   return L10n.Settings.miniWindowModeStripDetail
+        case .tile:    return L10n.Settings.miniWindowModeTilesDetail
+        case .focus:   return L10n.Settings.miniWindowModeFocusDetail
+        case .rail:    return L10n.Settings.miniWindowModeRailDetail
         }
     }
 
@@ -1557,17 +1557,17 @@ public enum PopoverDensity: String, Codable, CaseIterable, Identifiable, Sendabl
 
     public var label: String {
         switch self {
-        case .compact:  return "Compact"
-        case .regular:  return "Regular"
-        case .spacious: return "Spacious"
+        case .compact:  return L10n.Settings.popoverDensityCompact
+        case .regular:  return L10n.Settings.popoverDensityRegular
+        case .spacious: return L10n.Settings.popoverDensitySpacious
         }
     }
 
     public var detail: String {
         switch self {
-        case .compact:  return "Tightest spacing, narrowest popover."
-        case .regular:  return "Balanced spacing — default."
-        case .spacious: return "Roomy spacing for big displays."
+        case .compact:  return L10n.Settings.popoverDensityCompactDetail
+        case .regular:  return L10n.Settings.popoverDensityRegularDetail
+        case .spacious: return L10n.Settings.popoverDensitySpaciousDetail
         }
     }
 }
@@ -1585,25 +1585,25 @@ public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var label: String {
         switch self {
-        case .auto: return "Auto"
-        case .oauthThenCliThenWeb: return "OAuth, then Claude Code, then Web"
-        case .cliThenWeb: return "Claude Code, then Web"
-        case .webThenCli: return "Claude Web, then Claude Code"
-        case .oauthOnly: return "OAuth only"
-        case .cliOnly: return "Claude Code only"
-        case .webOnly: return "Claude Web only"
+        case .auto: return L10n.Settings.usageModeAuto
+        case .oauthThenCliThenWeb: return L10n.Settings.usageModeClaudeOauthCodeWeb
+        case .cliThenWeb: return L10n.Settings.usageModeClaudeCodeThenWeb
+        case .webThenCli: return L10n.Settings.usageModeClaudeWebThenCode
+        case .oauthOnly: return L10n.Settings.usageModeClaudeOauthOnly
+        case .cliOnly: return L10n.Settings.usageModeClaudeCodeOnly
+        case .webOnly: return L10n.Settings.usageModeClaudeWebOnly
         }
     }
 
     public var detail: String {
         switch self {
-        case .auto: return "Use saved claude.ai cookies first; fall back to Claude OAuth and Claude Code."
-        case .oauthThenCliThenWeb: return "Use Claude OAuth first; fall back to Claude Code and saved claude.ai cookies."
-        case .cliThenWeb: return "Use Claude Code first; fall back to saved claude.ai cookies."
-        case .webThenCli: return "Use saved claude.ai cookies first; fall back to Claude Code and OAuth."
-        case .oauthOnly: return "Use only Claude OAuth credentials."
-        case .cliOnly: return "Use only local Claude Code OAuth credentials."
-        case .webOnly: return "Use only saved claude.ai cookies."
+        case .auto: return L10n.Settings.usageModeClaudeAutoDetail
+        case .oauthThenCliThenWeb: return L10n.Settings.usageModeClaudeOauthFirstDetail
+        case .cliThenWeb: return L10n.Settings.usageModeClaudeCodeFirstDetail
+        case .webThenCli: return L10n.Settings.usageModeClaudeWebFirstDetail
+        case .oauthOnly: return L10n.Settings.usageModeClaudeOauthOnlyDetail
+        case .cliOnly: return L10n.Settings.usageModeClaudeCodeOnlyDetail
+        case .webOnly: return L10n.Settings.usageModeClaudeWebOnlyDetail
         }
     }
 }
@@ -1619,13 +1619,13 @@ public enum GeminiUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var label: String {
         switch self {
-        case .webOnly: return "Gemini Web only"
+        case .webOnly: return L10n.Settings.usageModeGeminiWebOnly
         }
     }
 
     public var detail: String {
         switch self {
-        case .webOnly: return "Only fetch imported gemini.google.com cookies."
+        case .webOnly: return L10n.Settings.usageModeGeminiWebOnlyDetail
         }
     }
 }
@@ -1641,21 +1641,21 @@ public enum AntigravityUsageMode: String, Codable, CaseIterable, Identifiable, S
 
     public var label: String {
         switch self {
-        case .auto: return "Auto"
-        case .localThenWeb: return "Local sources, then Web"
-        case .webThenLocal: return "Web, then Local sources"
-        case .localOnly: return "Local sources only"
-        case .webOnly: return "Web only"
+        case .auto: return L10n.Settings.usageModeAuto
+        case .localThenWeb: return L10n.Settings.usageModeAntigravityLocalThenWeb
+        case .webThenLocal: return L10n.Settings.usageModeAntigravityWebThenLocal
+        case .localOnly: return L10n.Settings.usageModeAntigravityLocalOnly
+        case .webOnly: return L10n.Settings.usageModeAntigravityWebOnly
         }
     }
 
     public var detail: String {
         switch self {
-        case .auto: return "Use the Antigravity app first, then the installed agy CLI; fall back to imported cookies when the web source is available."
-        case .localThenWeb: return "Use the Antigravity app or agy CLI first; fall back to imported cookies."
-        case .webThenLocal: return "Use imported cookies first; fall back to the Antigravity app or agy CLI."
-        case .localOnly: return "Only use the Antigravity app or installed agy CLI."
-        case .webOnly: return "Only use imported cookies. Falls back to the local probe until the Antigravity Cloud endpoint ships."
+        case .auto: return L10n.Settings.usageModeAntigravityAutoDetail
+        case .localThenWeb: return L10n.Settings.usageModeAntigravityLocalFirstDetail
+        case .webThenLocal: return L10n.Settings.usageModeAntigravityWebFirstDetail
+        case .localOnly: return L10n.Settings.usageModeAntigravityLocalOnlyDetail
+        case .webOnly: return L10n.Settings.usageModeAntigravityWebOnlyDetail
         }
     }
 }

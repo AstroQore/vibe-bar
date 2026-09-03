@@ -40,13 +40,13 @@ struct PricingSettingsSection: View {
     var body: some View {
         let modelPrices = cachedModelPrices()
         return VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-            settingsSection("Model Pricing") {
-                Text("Catalogs refresh in the background. Higher entries win when the same provider and model name appears more than once.")
+            settingsSection(L10n.Onboarding.doneModelPricing) {
+                Text(L10n.Settings.pricingIntro)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 Picker(
-                    "Refresh every",
+                    L10n.Settings.refreshEvery,
                     selection: $settingsStore.settings.pricingRefreshIntervalSeconds
                 ) {
                     ForEach(AppSettings.pricingRefreshIntervalOptions, id: \.self) { seconds in
@@ -57,19 +57,21 @@ struct PricingSettingsSection: View {
                 HStack {
                     Button(action: environment.refreshPricingNow) {
                         Label(
-                            environment.isRefreshingPricing ? "Refreshing…" : "Refresh now",
+                            environment.isRefreshingPricing ? L10n.Settings.pricingRefreshing : L10n.Settings.pricingRefreshNow,
                             systemImage: "arrow.triangle.2.circlepath"
                         )
                     }
                     .disabled(environment.isRefreshingPricing)
 
                     if let date = environment.pricingRefreshStatus.mergedAt {
-                        Text("Merged \(AppLocale.string(date, dateStyle: .medium, timeStyle: .short))")
+                        Text(L10n.Onboarding.donePricingMerged(
+                            when: AppLocale.string(date, dateStyle: .medium, timeStyle: .short)
+                        ))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text("\(modelPrices.count) models")
+                    Text(L10n.Onboarding.pricingSourceModels(count: modelPrices.count))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -77,25 +79,25 @@ struct PricingSettingsSection: View {
 
             EffectivePricingCatalogView(allRows: modelPrices)
 
-            settingsSection("Priority and source health") {
-                priorityRow(number: 1, name: "Local overrides", detail: "Always wins")
+            settingsSection(L10n.Settings.pricingPriorityHealth) {
+                priorityRow(number: 1, name: L10n.Settings.pricingLocalOverridesName, detail: L10n.Settings.pricingAlwaysWins)
                 ForEach(Array(PricingSourceID.allCases.enumerated()), id: \.element) { index, source in
                     sourceRow(number: index + 2, source: source)
                 }
                 priorityRow(
                     number: PricingSourceID.allCases.count + 2,
-                    name: "Bundled fallback",
-                    detail: "Offline floor"
+                    name: L10n.Settings.pricingBundledFallback,
+                    detail: L10n.Settings.pricingOfflineFloor
                 )
             }
 
-            settingsSection("Local overrides") {
-                Text("Prices are USD per one million tokens. Leave cache fields empty when the provider does not publish them.")
+            settingsSection(L10n.Settings.pricingLocalOverrides) {
+                Text(L10n.Settings.pricingOverridesIntro)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 if settingsStore.settings.modelPricingOverrides.isEmpty {
-                    Text("No local overrides.")
+                    Text(L10n.Settings.pricingNoOverrides)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -112,7 +114,7 @@ struct PricingSettingsSection: View {
                 Button {
                     settingsStore.settings.modelPricingOverrides.append(ModelPricingOverride())
                 } label: {
-                    Label("Add model override", systemImage: "plus")
+                    Label(L10n.Settings.pricingAddOverride, systemImage: "plus")
                 }
             }
         }
@@ -121,7 +123,7 @@ struct PricingSettingsSection: View {
     private func sourceRow(number: Int, source: PricingSourceID) -> some View {
         let status = environment.pricingRefreshStatus.sources.first { $0.source == source }
         return HStack(spacing: 10) {
-            Text("\(number)")
+            Text(L10n.Settings.pricingNumber(number: number))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.tertiary)
                 .frame(width: 18, alignment: .trailing)
@@ -138,7 +140,7 @@ struct PricingSettingsSection: View {
 
     private func priorityRow(number: Int, name: String, detail: String) -> some View {
         HStack(spacing: 10) {
-            Text("\(number)")
+            Text(L10n.Settings.pricingNumber(number: number))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.tertiary)
                 .frame(width: 18, alignment: .trailing)
@@ -214,12 +216,12 @@ private struct PricingOverrideEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Picker("Provider", selection: $draft.provider) {
+                Picker(L10n.Common.provider, selection: $draft.provider) {
                     ForEach(PricingProviderFamily.allCases) { provider in
                         Text(provider.label).tag(provider)
                     }
                 }
-                TextField("Exact model name", text: $draft.model)
+                TextField(L10n.Settings.pricingExactModelName, text: $draft.model)
                     .textFieldStyle(.roundedBorder)
                 Button(role: .destructive) {
                     commitTask?.cancel()
@@ -230,27 +232,27 @@ private struct PricingOverrideEditor: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
-                .help("Delete override")
+                .help(L10n.Settings.pricingDeleteOverride)
             }
 
             HStack {
-                rateField("Input", value: $draft.inputPerMillion)
-                rateField("Output", value: $draft.outputPerMillion)
-                optionalRateField("Cache read", keyPath: \.cacheReadPerMillion)
-                optionalRateField("Cache write", keyPath: \.cacheWritePerMillion)
+                rateField(L10n.Settings.pricingRateInput, value: $draft.inputPerMillion)
+                rateField(L10n.Settings.pricingRateOutput, value: $draft.outputPerMillion)
+                optionalRateField(L10n.Usage.tokensCacheRead, keyPath: \.cacheReadPerMillion)
+                optionalRateField(L10n.Usage.tokensCacheWrite, keyPath: \.cacheWritePerMillion)
             }
 
-            DisclosureGroup("Advanced tiers") {
+            DisclosureGroup(L10n.Settings.pricingAdvancedTiers) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        optionalIntegerField("Threshold tokens", keyPath: \.thresholdTokens)
-                        optionalRateField("Input above", keyPath: \.inputAboveThresholdPerMillion)
-                        optionalRateField("Output above", keyPath: \.outputAboveThresholdPerMillion)
+                        optionalIntegerField(L10n.Settings.pricingThresholdTokens, keyPath: \.thresholdTokens)
+                        optionalRateField(L10n.Settings.pricingInputAbove, keyPath: \.inputAboveThresholdPerMillion)
+                        optionalRateField(L10n.Settings.pricingOutputAbove, keyPath: \.outputAboveThresholdPerMillion)
                     }
                     HStack {
-                        optionalRateField("Cache read above", keyPath: \.cacheReadAboveThresholdPerMillion)
-                        optionalRateField("Cache write above", keyPath: \.cacheWriteAboveThresholdPerMillion)
-                        optionalRateField("Fast multiplier", keyPath: \.fastMultiplier)
+                        optionalRateField(L10n.Settings.pricingCacheReadAbove, keyPath: \.cacheReadAboveThresholdPerMillion)
+                        optionalRateField(L10n.Settings.pricingCacheWriteAbove, keyPath: \.cacheWriteAboveThresholdPerMillion)
+                        optionalRateField(L10n.Settings.pricingFastMultiplier, keyPath: \.fastMultiplier)
                     }
                 }
                 .padding(.top, 6)

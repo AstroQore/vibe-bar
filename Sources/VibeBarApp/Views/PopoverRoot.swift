@@ -2164,7 +2164,7 @@ struct ProviderQuotaCard: View {
                         .opacity(0.18)
                         .padding(.vertical, 1)
                     VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
-                        Text(group.title)
+                        Text(QuotaGroupLabelLocalizer.display(group.title))
                             .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
                             .foregroundStyle(.tertiary)
                             .textCase(.uppercase)
@@ -2303,7 +2303,7 @@ private struct ProviderBucketRow: View {
         let isExpired = resetStatus?.isExpired ?? false
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text(bucket.title)
+                Text(QuotaGroupLabelLocalizer.display(bucket.title))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 if let resetStatus {
                     // Same size and scale floor as the primary bucket rows —

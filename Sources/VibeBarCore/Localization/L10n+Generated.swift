@@ -12,9 +12,17 @@ import Foundation
 
 extension L10n {
     public enum Common {
+        /// `common.add` — Add
+        public static var add: String {
+            L10n.string("common.add")
+        }
         /// `common.all` — All
         public static var all: String {
             L10n.string("common.all")
+        }
+        /// `common.auto` — Auto
+        public static var auto: String {
+            L10n.string("common.auto")
         }
         /// `common.cancel` — Cancel
         public static var cancel: String {
@@ -23,6 +31,10 @@ extension L10n {
         /// `common.clear` — Clear
         public static var clear: String {
             L10n.string("common.clear")
+        }
+        /// `common.copied` — Copied
+        public static var copied: String {
+            L10n.string("common.copied")
         }
         /// `common.copy` — Copy
         public static var copy: String {
@@ -96,6 +108,10 @@ extension L10n {
         public static var done: String {
             L10n.string("common.done")
         }
+        /// `common.dragToReorder` — Drag to reorder
+        public static var dragToReorder: String {
+            L10n.string("common.dragToReorder")
+        }
         /// `common.duration.days` — {days}d
         public static func durationDays(days: Int) -> String {
             L10n.string("common.duration.days", days)
@@ -124,6 +140,10 @@ extension L10n {
         public static var durationNow: String {
             L10n.string("common.duration.now")
         }
+        /// `common.name` — Name
+        public static var name: String {
+            L10n.string("common.name")
+        }
         /// `common.off` — Off
         public static var off: String {
             L10n.string("common.off")
@@ -144,6 +164,10 @@ extension L10n {
         public static func percent(value: Int) -> String {
             L10n.string("common.percent", value)
         }
+        /// `common.provider` — Provider
+        public static var provider: String {
+            L10n.string("common.provider")
+        }
         /// `common.refresh` — Refresh
         public static var refresh: String {
             L10n.string("common.refresh")
@@ -152,9 +176,21 @@ extension L10n {
         public static var refreshSection: String {
             L10n.string("common.refreshSection")
         }
+        /// `common.remove` — Remove
+        public static var remove: String {
+            L10n.string("common.remove")
+        }
         /// `common.retry` — Retry
         public static var retry: String {
             L10n.string("common.retry")
+        }
+        /// `common.retryNow` — Retry now
+        public static var retryNow: String {
+            L10n.string("common.retryNow")
+        }
+        /// `common.save` — Save
+        public static var save: String {
+            L10n.string("common.save")
         }
         /// `common.updated.daysAgo` — Updated {days, plural, one {1 day} other {# days}} ago
         public static func updatedDaysAgo(days: Int) -> String {
@@ -776,6 +812,98 @@ extension L10n {
         public static var macosLaunchAtLoginToggle: String {
             L10n.string("platform.macos.launchAtLogin.toggle")
         }
+        /// `platform.macos.menuBar.color.actual` — Actual
+        public static var macosMenuBarColorActual: String {
+            L10n.string("platform.macos.menuBar.color.actual")
+        }
+        /// `platform.macos.menuBar.color.actualDetail` — Colored by the displayed percentage alone, ignoring the forecast.
+        public static var macosMenuBarColorActualDetail: String {
+            L10n.string("platform.macos.menuBar.color.actualDetail")
+        }
+        /// `platform.macos.menuBar.color.forecast` — Forecast
+        public static var macosMenuBarColorForecast: String {
+            L10n.string("platform.macos.menuBar.color.forecast")
+        }
+        /// `platform.macos.menuBar.color.forecastDetail` — Green projected to last · blue a chunk will likely go unused · orange may run short · red projected to run out. Falls back to the percentage while a quota has too little history to forecast.
+        public static var macosMenuBarColorForecastDetail: String {
+            L10n.string("platform.macos.menuBar.color.forecastDetail")
+        }
+        /// `platform.macos.menuBar.displayDensity` — Display density
+        public static var macosMenuBarDisplayDensity: String {
+            L10n.string("platform.macos.menuBar.displayDensity")
+        }
+        /// `platform.macos.menuBar.fieldStyle.label` — Label
+        public static var macosMenuBarFieldStyleLabel: String {
+            L10n.string("platform.macos.menuBar.fieldStyle.label")
+        }
+        /// `platform.macos.menuBar.fieldStyle.labelDetail` — The field's name beside its percent.
+        public static var macosMenuBarFieldStyleLabelDetail: String {
+            L10n.string("platform.macos.menuBar.fieldStyle.labelDetail")
+        }
+        /// `platform.macos.menuBar.fieldStyle.logo` — Logo
+        public static var macosMenuBarFieldStyleLogo: String {
+            L10n.string("platform.macos.menuBar.fieldStyle.logo")
+        }
+        /// `platform.macos.menuBar.fieldStyle.logoAndLabel` — Logo and label
+        public static var macosMenuBarFieldStyleLogoAndLabel: String {
+            L10n.string("platform.macos.menuBar.fieldStyle.logoAndLabel")
+        }
+        /// `platform.macos.menuBar.fieldStyle.logoAndLabelDetail` — Logo, name, and percent.
+        public static var macosMenuBarFieldStyleLogoAndLabelDetail: String {
+            L10n.string("platform.macos.menuBar.fieldStyle.logoAndLabelDetail")
+        }
+        /// `platform.macos.menuBar.fieldStyle.logoDetail` — The provider's logo beside the percent — no text.
+        public static var macosMenuBarFieldStyleLogoDetail: String {
+            L10n.string("platform.macos.menuBar.fieldStyle.logoDetail")
+        }
+        /// `platform.macos.menuBar.fields` — Fields
+        public static var macosMenuBarFields: String {
+            L10n.string("platform.macos.menuBar.fields")
+        }
+        /// `platform.macos.menuBar.layout` — Layout
+        public static var macosMenuBarLayout: String {
+            L10n.string("platform.macos.menuBar.layout")
+        }
+        /// `platform.macos.menuBar.layout.compact` — Compact
+        public static var macosMenuBarLayoutCompact: String {
+            L10n.string("platform.macos.menuBar.layout.compact")
+        }
+        /// `platform.macos.menuBar.layout.iconOnly` — Icon Only
+        public static var macosMenuBarLayoutIconOnly: String {
+            L10n.string("platform.macos.menuBar.layout.iconOnly")
+        }
+        /// `platform.macos.menuBar.layout.singleLine` — Single line
+        public static var macosMenuBarLayoutSingleLine: String {
+            L10n.string("platform.macos.menuBar.layout.singleLine")
+        }
+        /// `platform.macos.menuBar.layout.twoRows` — Two rows
+        public static var macosMenuBarLayoutTwoRows: String {
+            L10n.string("platform.macos.menuBar.layout.twoRows")
+        }
+        /// `platform.macos.menuBar.mergeGroupWindows` — Combine a group's windows
+        public static var macosMenuBarMergeGroupWindows: String {
+            L10n.string("platform.macos.menuBar.mergeGroupWindows")
+        }
+        /// `platform.macos.menuBar.mergeGroupWindowsDetail` — Shows 5 Hours and Weekly as 5%/100% instead of two entries.
+        public static var macosMenuBarMergeGroupWindowsDetail: String {
+            L10n.string("platform.macos.menuBar.mergeGroupWindowsDetail")
+        }
+        /// `platform.macos.menuBar.overview` — Overview
+        public static var macosMenuBarOverview: String {
+            L10n.string("platform.macos.menuBar.overview")
+        }
+        /// `platform.macos.menuBar.percentColor` — Percent color
+        public static var macosMenuBarPercentColor: String {
+            L10n.string("platform.macos.menuBar.percentColor")
+        }
+        /// `platform.macos.menuBar.showInMenuBar` — Show in menu bar
+        public static var macosMenuBarShowInMenuBar: String {
+            L10n.string("platform.macos.menuBar.showInMenuBar")
+        }
+        /// `platform.macos.menuBar.showTitleText` — Show title text
+        public static var macosMenuBarShowTitleText: String {
+            L10n.string("platform.macos.menuBar.showTitleText")
+        }
     }
 
     public enum Popover {
@@ -790,6 +918,46 @@ extension L10n {
         /// `popover.header.overviewSubtitle` — All providers · quota & cost
         public static var headerOverviewSubtitle: String {
             L10n.string("popover.header.overviewSubtitle")
+        }
+        /// `popover.machines.checking` — Checking the Relay…
+        public static var machinesChecking: String {
+            L10n.string("popover.machines.checking")
+        }
+        /// `popover.machines.includeInTotals` — Include in totals
+        public static var machinesIncludeInTotals: String {
+            L10n.string("popover.machines.includeInTotals")
+        }
+        /// `popover.machines.includeInTotalsHelp` — Add this machine's decrypted usage to Overview and provider cost pages on this Core
+        public static var machinesIncludeInTotalsHelp: String {
+            L10n.string("popover.machines.includeInTotalsHelp")
+        }
+        /// `popover.machines.labelWithStatus` — {label} · {status}
+        public static func machinesLabelWithStatus(label: String, status: String) -> String {
+            L10n.string("popover.machines.labelWithStatus", label, status)
+        }
+        /// `popover.machines.noData` — No remote machine data yet
+        public static var machinesNoData: String {
+            L10n.string("popover.machines.noData")
+        }
+        /// `popover.machines.noDataDetail` — The Relay is connected. A Probe will appear after its first encrypted batch is decrypted and imported.
+        public static var machinesNoDataDetail: String {
+            L10n.string("popover.machines.noDataDetail")
+        }
+        /// `popover.machines.notConfigured` — Remote Core is not configured
+        public static var machinesNotConfigured: String {
+            L10n.string("popover.machines.notConfigured")
+        }
+        /// `popover.machines.notConfiguredDetail` — Create a Core descriptor, provision a workspace-scoped Relay credential, then import the signed provisioning file. No inbound port is required on this Mac.
+        public static var machinesNotConfiguredDetail: String {
+            L10n.string("popover.machines.notConfiguredDetail")
+        }
+        /// `popover.machines.sequence` — seq {value}
+        public static func machinesSequence(value: String) -> String {
+            L10n.string("popover.machines.sequence", value)
+        }
+        /// `popover.machines.thirtyDayCost` — 30-day cost
+        public static var machinesThirtyDayCost: String {
+            L10n.string("popover.machines.thirtyDayCost")
         }
         /// `popover.refreshGoogleAI` — Refresh Gemini Web + AntiGravity
         public static var refreshGoogleAI: String {
@@ -1357,6 +1525,158 @@ extension L10n {
     }
 
     public enum Settings {
+        /// `settings.antigravityCookieEnabled` — Antigravity cookie import is enabled — sign in at antigravity.google first.
+        public static var antigravityCookieEnabled: String {
+            L10n.string("settings.antigravityCookieEnabled")
+        }
+        /// `settings.antigravityLocalOnly` — Antigravity reads the locally running language server. Cookie import is deferred until the Antigravity Cloud endpoint ships.
+        public static var antigravityLocalOnly: String {
+            L10n.string("settings.antigravityLocalOnly")
+        }
+        /// `settings.antigravitySource` — Antigravity source
+        public static var antigravitySource: String {
+            L10n.string("settings.antigravitySource")
+        }
+        /// `settings.appVersion` — Vibe Bar {version}
+        public static func appVersion(version: String) -> String {
+            L10n.string("settings.appVersion", version)
+        }
+        /// `settings.bundled` — bundled
+        public static var bundled: String {
+            L10n.string("settings.bundled")
+        }
+        /// `settings.checkConnections` — Check {company} connections
+        public static func checkConnections(company: String) -> String {
+            L10n.string("settings.checkConnections", company)
+        }
+        /// `settings.checkForUpdates` — Check for Updates…
+        public static var checkForUpdates: String {
+            L10n.string("settings.checkForUpdates")
+        }
+        /// `settings.checkKitUpdates` — Check for kit updates
+        public static var checkKitUpdates: String {
+            L10n.string("settings.checkKitUpdates")
+        }
+        /// `settings.checkingGitHub` — Checking github.com for the newest release…
+        public static var checkingGitHub: String {
+            L10n.string("settings.checkingGitHub")
+        }
+        /// `settings.clearCostData` — Clear cost data
+        public static var clearCostData: String {
+            L10n.string("settings.clearCostData")
+        }
+        /// `settings.connectionHealth` — Connection health
+        public static var connectionHealth: String {
+            L10n.string("settings.connectionHealth")
+        }
+        /// `settings.costDataIntro` — Cost is computed from local CLI session JSONL logs at ~/.codex/sessions and ~/.claude/projects. Web/desktop usage is not tracked.
+        public static var costDataIntro: String {
+            L10n.string("settings.costDataIntro")
+        }
+        /// `settings.couldNotDeleteCookies` — Could not delete saved cookies.
+        public static var couldNotDeleteCookies: String {
+            L10n.string("settings.couldNotDeleteCookies")
+        }
+        /// `settings.couldNotDeleteGeminiCookies` — Could not delete saved Gemini cookies.
+        public static var couldNotDeleteGeminiCookies: String {
+            L10n.string("settings.couldNotDeleteGeminiCookies")
+        }
+        /// `settings.couldNotDeleteGrokCookies` — Could not delete saved Grok cookies.
+        public static var couldNotDeleteGrokCookies: String {
+            L10n.string("settings.couldNotDeleteGrokCookies")
+        }
+        /// `settings.credentialSource.apiOnly` — API / OAuth only
+        public static var credentialSourceApiOnly: String {
+            L10n.string("settings.credentialSource.apiOnly")
+        }
+        /// `settings.credentialSource.auto` — Auto
+        public static var credentialSourceAuto: String {
+            L10n.string("settings.credentialSource.auto")
+        }
+        /// `settings.credentialSource.browserOnly` — Browser only
+        public static var credentialSourceBrowserOnly: String {
+            L10n.string("settings.credentialSource.browserOnly")
+        }
+        /// `settings.credentialSource.manualOnly` — Manual only
+        public static var credentialSourceManualOnly: String {
+            L10n.string("settings.credentialSource.manualOnly")
+        }
+        /// `settings.credentialSource.off` — Off
+        public static var credentialSourceOff: String {
+            L10n.string("settings.credentialSource.off")
+        }
+        /// `settings.cursorNoSession` — No usable Cursor.app session — import cursor.com cookies below.
+        public static var cursorNoSession: String {
+            L10n.string("settings.cursorNoSession")
+        }
+        /// `settings.cursorSessionDetected` — Cursor.app signed-in session detected
+        public static var cursorSessionDetected: String {
+            L10n.string("settings.cursorSessionDetected")
+        }
+        /// `settings.cursorSource` — Cursor source
+        public static var cursorSource: String {
+            L10n.string("settings.cursorSource")
+        }
+        /// `settings.cursorSourceValue` — Cursor.app → Web
+        public static var cursorSourceValue: String {
+            L10n.string("settings.cursorSourceValue")
+        }
+        /// `settings.deleteCookies` — Delete cookies
+        public static var deleteCookies: String {
+            L10n.string("settings.deleteCookies")
+        }
+        /// `settings.deleteGeminiCookies` — Delete Gemini cookies
+        public static var deleteGeminiCookies: String {
+            L10n.string("settings.deleteGeminiCookies")
+        }
+        /// `settings.deleteGrokCookies` — Delete Grok cookies
+        public static var deleteGrokCookies: String {
+            L10n.string("settings.deleteGrokCookies")
+        }
+        /// `settings.displayMode.remaining` — Remaining
+        public static var displayModeRemaining: String {
+            L10n.string("settings.displayMode.remaining")
+        }
+        /// `settings.displayMode.used` — Used
+        public static var displayModeUsed: String {
+            L10n.string("settings.displayMode.used")
+        }
+        /// `settings.externalChange.title` — Another Vibe Bar replaced your change
+        public static var externalChangeTitle: String {
+            L10n.string("settings.externalChange.title")
+        }
+        /// `settings.geminiCookiesSaved` — Gemini cookies saved.
+        public static var geminiCookiesSaved: String {
+            L10n.string("settings.geminiCookiesSaved")
+        }
+        /// `settings.geminiShared` — Gemini and Antigravity share the same Google AI subscription quota. Cookie import is the only supported web path — there is no WebView login.
+        public static var geminiShared: String {
+            L10n.string("settings.geminiShared")
+        }
+        /// `settings.geminiSource` — Gemini source
+        public static var geminiSource: String {
+            L10n.string("settings.geminiSource")
+        }
+        /// `settings.grokAuthDetected` — ~/.grok/auth.json detected
+        public static var grokAuthDetected: String {
+            L10n.string("settings.grokAuthDetected")
+        }
+        /// `settings.grokCookiesSaved` — Grok cookies saved.
+        public static var grokCookiesSaved: String {
+            L10n.string("settings.grokCookiesSaved")
+        }
+        /// `settings.keepHistory` — Keep history
+        public static var keepHistory: String {
+            L10n.string("settings.keepHistory")
+        }
+        /// `settings.keepHistoryDetail` — Applies to cost history and subscription fill history.
+        public static var keepHistoryDetail: String {
+            L10n.string("settings.keepHistoryDetail")
+        }
+        /// `settings.kitDetail` — Session discovery, harness naming, and the MCP transport. A separate repository, pinned to an exact tag and compiled into this build.
+        public static var kitDetail: String {
+            L10n.string("settings.kitDetail")
+        }
         /// `settings.language.caption` — Vibe Bar follows the macOS language unless you pick one here. Provider, model and harness names stay as their owners spell them.
         public static var languageCaption: String {
             L10n.string("settings.language.caption")
@@ -1368,6 +1688,1210 @@ extension L10n {
         /// `settings.language.title` — Language
         public static var languageTitle: String {
             L10n.string("settings.language.title")
+        }
+        /// `settings.mcp.allowRefresh` — Allow agents to refresh quota
+        public static var mcpAllowRefresh: String {
+            L10n.string("settings.mcp.allowRefresh")
+        }
+        /// `settings.mcp.allowRefreshDetail` — With this on, an agent can ask Vibe Bar to re-fetch quota from your providers. Forced refreshes are rate-limited to one every {seconds} seconds. With it off the read-only tools keep working and quota.refresh reports that refreshing is disabled.
+        public static func mcpAllowRefreshDetail(seconds: Int) -> String {
+            L10n.string("settings.mcp.allowRefreshDetail", seconds)
+        }
+        /// `settings.mcp.allowSkills` — Allow agents to install skills
+        public static var mcpAllowSkills: String {
+            L10n.string("settings.mcp.allowSkills")
+        }
+        /// `settings.mcp.allowSkillsDetail` — With this on, an agent can call skills.install to add a skill from a GitHub repository or a local folder. It goes through the same Skills manager as Workbench → Skills, so it writes only to ~/.agents/skills and the agent skills directories Vibe Bar manages — never over a folder a different skill already holds. With it off the tool reports that installing is disabled.
+        public static var mcpAllowSkillsDetail: String {
+            L10n.string("settings.mcp.allowSkillsDetail")
+        }
+        /// `settings.mcp.appendCodexConfig` — Append to ~/.codex/config.toml.
+        public static var mcpAppendCodexConfig: String {
+            L10n.string("settings.mcp.appendCodexConfig")
+        }
+        /// `settings.mcp.connectAgent` — Connect an agent
+        public static var mcpConnectAgent: String {
+            L10n.string("settings.mcp.connectAgent")
+        }
+        /// `settings.mcp.connectedClients` — Connected clients
+        public static var mcpConnectedClients: String {
+            L10n.string("settings.mcp.connectedClients")
+        }
+        /// `settings.mcp.enable` — Enable the local MCP server
+        public static var mcpEnable: String {
+            L10n.string("settings.mcp.enable")
+        }
+        /// `settings.mcp.intro` — Vibe Bar can expose this Mac's quota, usage, cost and local agent sessions to your coding agents over MCP. The server listens on a Unix domain socket in your home directory — no network port is opened, and no token is created: the socket's file permissions are the access control.
+        public static var mcpIntro: String {
+            L10n.string("settings.mcp.intro")
+        }
+        /// `settings.mcp.lastActivity` — Last client activity
+        public static var mcpLastActivity: String {
+            L10n.string("settings.mcp.lastActivity")
+        }
+        /// `settings.mcp.listening` — Listening
+        public static var mcpListening: String {
+            L10n.string("settings.mcp.listening")
+        }
+        /// `settings.mcp.manualIntro` — Or configure a client by hand. Every client runs the same command — Vibe Bar's own binary with {flag}, which bridges stdin/stdout to the socket above.
+        public static func mcpManualIntro(flag: String) -> String {
+            L10n.string("settings.mcp.manualIntro", flag)
+        }
+        /// `settings.mcp.mergeCursorConfig` — Merge into ~/.cursor/mcp.json.
+        public static var mcpMergeCursorConfig: String {
+            L10n.string("settings.mcp.mergeCursorConfig")
+        }
+        /// `settings.mcp.movePrompt` — Vibe Bar is running from {path}. Move it to /Applications before saving a client config, or the config breaks the next time you rebuild.
+        public static func mcpMovePrompt(path: String) -> String {
+            L10n.string("settings.mcp.movePrompt", path)
+        }
+        /// `settings.mcp.notListening` — Not listening
+        public static var mcpNotListening: String {
+            L10n.string("settings.mcp.notListening")
+        }
+        /// `settings.mcp.otherStdioClient` — Any other stdio client
+        public static var mcpOtherStdioClient: String {
+            L10n.string("settings.mcp.otherStdioClient")
+        }
+        /// `settings.mcp.otherStdioDetail` — One entry for the client's own mcpServers map.
+        public static var mcpOtherStdioDetail: String {
+            L10n.string("settings.mcp.otherStdioDetail")
+        }
+        /// `settings.mcp.quickestPath` — The quickest path: paste this into any agent and let it configure itself, install the companion skill, and verify the connection.
+        public static var mcpQuickestPath: String {
+            L10n.string("settings.mcp.quickestPath")
+        }
+        /// `settings.mcp.readOnlyDetail` — Everything else agents can reach is read-only: quota, token usage, cost, provider status, effective model prices, and the local session index (titles, projects, and — when session body indexing is on — message excerpts). Credentials, cookies and organization ids are never exposed, and email addresses are masked.
+        public static var mcpReadOnlyDetail: String {
+            L10n.string("settings.mcp.readOnlyDetail")
+        }
+        /// `settings.mcp.runInTerminal` — Run in a terminal.
+        public static var mcpRunInTerminal: String {
+            L10n.string("settings.mcp.runInTerminal")
+        }
+        /// `settings.mcp.setupPrompt` — Agent setup prompt
+        public static var mcpSetupPrompt: String {
+            L10n.string("settings.mcp.setupPrompt")
+        }
+        /// `settings.mcp.setupPromptDetail` — One line, works in any agent that can fetch a URL.
+        public static var mcpSetupPromptDetail: String {
+            L10n.string("settings.mcp.setupPromptDetail")
+        }
+        /// `settings.mcp.socket` — Socket
+        public static var mcpSocket: String {
+            L10n.string("settings.mcp.socket")
+        }
+        /// `settings.mcp.socketLifetime` — The socket exists only while Vibe Bar is running. Agents configured below report “Vibe Bar is not running” when it is quit, which is the intended behaviour.
+        public static var mcpSocketLifetime: String {
+            L10n.string("settings.mcp.socketLifetime")
+        }
+        /// `settings.mcp.status` — Status
+        public static var mcpStatus: String {
+            L10n.string("settings.mcp.status")
+        }
+        /// `settings.mcp.title` — MCP Server
+        public static var mcpTitle: String {
+            L10n.string("settings.mcp.title")
+        }
+        /// `settings.mcp.whatAgentsMayDo` — What agents may do
+        public static var mcpWhatAgentsMayDo: String {
+            L10n.string("settings.mcp.whatAgentsMayDo")
+        }
+        /// `settings.menuBarHealthUnavailable` — The menu bar health monitor is not attached in this process.
+        public static var menuBarHealthUnavailable: String {
+            L10n.string("settings.menuBarHealthUnavailable")
+        }
+        /// `settings.miniWindow.add` — Add a mini window
+        public static var miniWindowAdd: String {
+            L10n.string("settings.miniWindow.add")
+        }
+        /// `settings.miniWindow.allBucketsIncluded` — Every known bucket is already in this window.
+        public static var miniWindowAllBucketsIncluded: String {
+            L10n.string("settings.miniWindow.allBucketsIncluded")
+        }
+        /// `settings.miniWindow.density.narrow` — Narrow
+        public static var miniWindowDensityNarrow: String {
+            L10n.string("settings.miniWindow.density.narrow")
+        }
+        /// `settings.miniWindow.density.narrowDetail` — The menu bar's compact style: the same cells at the small size.
+        public static var miniWindowDensityNarrowDetail: String {
+            L10n.string("settings.miniWindow.density.narrowDetail")
+        }
+        /// `settings.miniWindow.density.roomy` — Roomy
+        public static var miniWindowDensityRoomy: String {
+            L10n.string("settings.miniWindow.density.roomy")
+        }
+        /// `settings.miniWindow.density.roomyDetail` — The menu bar's single-line style: every bucket, full label beside its number.
+        public static var miniWindowDensityRoomyDetail: String {
+            L10n.string("settings.miniWindow.density.roomyDetail")
+        }
+        /// `settings.miniWindow.density.twoLines` — Two Lines
+        public static var miniWindowDensityTwoLines: String {
+            L10n.string("settings.miniWindow.density.twoLines")
+        }
+        /// `settings.miniWindow.density.twoLinesDetail` — Menu-bar style: buckets pair into stacked columns, label beside each number.
+        public static var miniWindowDensityTwoLinesDetail: String {
+            L10n.string("settings.miniWindow.density.twoLinesDetail")
+        }
+        /// `settings.miniWindow.dismissBuiltIn` — Dismiss this built-in bucket while the provider is not returning it. It comes back the moment the provider does.
+        public static var miniWindowDismissBuiltIn: String {
+            L10n.string("settings.miniWindow.dismissBuiltIn")
+        }
+        /// `settings.miniWindow.forgetDiscovered` — Forget this discovered bucket — drops it from the list and from every window that selected it.
+        public static var miniWindowForgetDiscovered: String {
+            L10n.string("settings.miniWindow.forgetDiscovered")
+        }
+        /// `settings.miniWindow.includeStyle` — Include {mode} in the double-click cycle
+        public static func miniWindowIncludeStyle(mode: String) -> String {
+            L10n.string("settings.miniWindow.includeStyle", mode)
+        }
+        /// `settings.miniWindow.lastCannotBeRemoved` — The last mini window cannot be removed.
+        public static var miniWindowLastCannotBeRemoved: String {
+            L10n.string("settings.miniWindow.lastCannotBeRemoved")
+        }
+        /// `settings.miniWindow.mode.compact` — Compact
+        public static var miniWindowModeCompact: String {
+            L10n.string("settings.miniWindow.mode.compact")
+        }
+        /// `settings.miniWindow.mode.compactDetail` — The same three tiers as vertical bars, sized for a corner.
+        public static var miniWindowModeCompactDetail: String {
+            L10n.string("settings.miniWindow.mode.compactDetail")
+        }
+        /// `settings.miniWindow.mode.focus` — Focus
+        public static var miniWindowModeFocus: String {
+            L10n.string("settings.miniWindow.mode.focus")
+        }
+        /// `settings.miniWindow.mode.focusDetail` — One selected bucket at a time, large — click to cycle in your order.
+        public static var miniWindowModeFocusDetail: String {
+            L10n.string("settings.miniWindow.mode.focusDetail")
+        }
+        /// `settings.miniWindow.mode.ledger` — Ledger
+        public static var miniWindowModeLedger: String {
+            L10n.string("settings.miniWindow.mode.ledger")
+        }
+        /// `settings.miniWindow.mode.ledgerDetail` — One row per quota bucket — fixed width, grows downward.
+        public static var miniWindowModeLedgerDetail: String {
+            L10n.string("settings.miniWindow.mode.ledgerDetail")
+        }
+        /// `settings.miniWindow.mode.rail` — Rail
+        public static var miniWindowModeRail: String {
+            L10n.string("settings.miniWindow.mode.rail")
+        }
+        /// `settings.miniWindow.mode.railDetail` — The next seven days as a refill lane with the coming resets listed.
+        public static var miniWindowModeRailDetail: String {
+            L10n.string("settings.miniWindow.mode.railDetail")
+        }
+        /// `settings.miniWindow.mode.regular` — Regular
+        public static var miniWindowModeRegular: String {
+            L10n.string("settings.miniWindow.mode.regular")
+        }
+        /// `settings.miniWindow.mode.regularDetail` — Ring gauges grouped company → SubProvider → quota group.
+        public static var miniWindowModeRegularDetail: String {
+            L10n.string("settings.miniWindow.mode.regularDetail")
+        }
+        /// `settings.miniWindow.mode.strip` — Strip
+        public static var miniWindowModeStrip: String {
+            L10n.string("settings.miniWindow.mode.strip")
+        }
+        /// `settings.miniWindow.mode.stripDetail` — A slim line mirroring the menu bar's styles — one cell per bucket.
+        public static var miniWindowModeStripDetail: String {
+            L10n.string("settings.miniWindow.mode.stripDetail")
+        }
+        /// `settings.miniWindow.mode.tiles` — Tiles
+        public static var miniWindowModeTiles: String {
+            L10n.string("settings.miniWindow.mode.tiles")
+        }
+        /// `settings.miniWindow.mode.tilesDetail` — A grid of tiles with a big number and a severity stripe.
+        public static var miniWindowModeTilesDetail: String {
+            L10n.string("settings.miniWindow.mode.tilesDetail")
+        }
+        /// `settings.miniWindow.namesAllWindows` — Names: all windows
+        public static var miniWindowNamesAllWindows: String {
+            L10n.string("settings.miniWindow.namesAllWindows")
+        }
+        /// `settings.miniWindow.namesThisStyle` — Only {mode} here
+        public static func miniWindowNamesThisStyle(mode: String) -> String {
+            L10n.string("settings.miniWindow.namesThisStyle", mode)
+        }
+        /// `settings.miniWindow.namesThisWindow` — Only “{name}”
+        public static func miniWindowNamesThisWindow(name: String) -> String {
+            L10n.string("settings.miniWindow.namesThisWindow", name)
+        }
+        /// `settings.miniWindow.noFieldsSelected` — No fields selected — tick some above.
+        public static var miniWindowNoFieldsSelected: String {
+            L10n.string("settings.miniWindow.noFieldsSelected")
+        }
+        /// `settings.miniWindow.notInWindow` — Not in “{name}” — tick a bucket to add it. Buckets the adapters discover at runtime appear here automatically; a dimmed row is remembered but not in the account's current response, and ✕ dismisses it until the provider returns it.
+        public static func miniWindowNotInWindow(name: String) -> String {
+            L10n.string("settings.miniWindow.notInWindow", name)
+        }
+        /// `settings.miniWindow.offline` — offline
+        public static var miniWindowOffline: String {
+            L10n.string("settings.miniWindow.offline")
+        }
+        /// `settings.miniWindow.openClose` — Open / Close
+        public static var miniWindowOpenClose: String {
+            L10n.string("settings.miniWindow.openClose")
+        }
+        /// `settings.miniWindow.overridesStyle` — Overrides for the {mode} style of this window only. An empty field inherits the window name, then the shared one — shown as the placeholder.
+        public static func miniWindowOverridesStyle(mode: String) -> String {
+            L10n.string("settings.miniWindow.overridesStyle", mode)
+        }
+        /// `settings.miniWindow.overridesWindow` — Name overrides for this window only. An empty field inherits the shared name — shown as the placeholder.
+        public static var miniWindowOverridesWindow: String {
+            L10n.string("settings.miniWindow.overridesWindow")
+        }
+        /// `settings.miniWindow.position` — {position}
+        public static func miniWindowPosition(position: Int) -> String {
+            L10n.string("settings.miniWindow.position", position)
+        }
+        /// `settings.miniWindow.removeFromWindow` — Remove from this window
+        public static var miniWindowRemoveFromWindow: String {
+            L10n.string("settings.miniWindow.removeFromWindow")
+        }
+        /// `settings.miniWindow.removeHelp` — Remove this mini window
+        public static var miniWindowRemoveHelp: String {
+            L10n.string("settings.miniWindow.removeHelp")
+        }
+        /// `settings.miniWindow.stripDensity` — Strip density
+        public static var miniWindowStripDensity: String {
+            L10n.string("settings.miniWindow.stripDensity")
+        }
+        /// `settings.miniWindow.styleCycle` — Double-click on the window cycles its style. Tap a style to include it — the badge is its turn in the cycle. Nothing selected means every style, in this order.
+        public static var miniWindowStyleCycle: String {
+            L10n.string("settings.miniWindow.styleCycle")
+        }
+        /// `settings.miniWindow.toggleHelp` — Toggle this mini window on screen
+        public static var miniWindowToggleHelp: String {
+            L10n.string("settings.miniWindow.toggleHelp")
+        }
+        /// `settings.miniWindow.treeDetail` — One tree for the window — grouped exactly as it folds them (company → SubProvider → quota group → bucket). Drag a row to reorder, ✕ to remove, and rename any level in place. First field renders leftmost (or topmost).
+        public static var miniWindowTreeDetail: String {
+            L10n.string("settings.miniWindow.treeDetail")
+        }
+        /// `settings.misc.accessKeyId` — Access Key ID (AKLT…)
+        public static var miscAccessKeyId: String {
+            L10n.string("settings.misc.accessKeyId")
+        }
+        /// `settings.misc.akSkSaved` — AK/SK saved in Keychain.
+        public static var miscAkSkSaved: String {
+            L10n.string("settings.misc.akSkSaved")
+        }
+        /// `settings.misc.apiKeySaved` — API key saved in Keychain.
+        public static var miscApiKeySaved: String {
+            L10n.string("settings.misc.apiKeySaved")
+        }
+        /// `settings.misc.clearWorkspace` — Clear saved workspace
+        public static var miscClearWorkspace: String {
+            L10n.string("settings.misc.clearWorkspace")
+        }
+        /// `settings.misc.clone` — Clone {provider}
+        public static func miscClone(provider: String) -> String {
+            L10n.string("settings.misc.clone", provider)
+        }
+        /// `settings.misc.consoleLink` — {title} →
+        public static func miscConsoleLink(title: String) -> String {
+            L10n.string("settings.misc.consoleLink", title)
+        }
+        /// `settings.misc.edition` — Edition
+        public static var miscEdition: String {
+            L10n.string("settings.misc.edition")
+        }
+        /// `settings.misc.githubSignInHint` — Sign in with GitHub device flow.
+        public static var miscGithubSignInHint: String {
+            L10n.string("settings.misc.githubSignInHint")
+        }
+        /// `settings.misc.githubTokenSaved` — GitHub device token saved in Keychain.
+        public static var miscGithubTokenSaved: String {
+            L10n.string("settings.misc.githubTokenSaved")
+        }
+        /// `settings.misc.importDetail` — Adds or refreshes the first signed-in browser profile found; profiles already imported stay stacked, and this provider's quota is the average across every slot listed above. macOS may ask for your login-keychain password once per Chromium-family browser.
+        public static var miscImportDetail: String {
+            L10n.string("settings.misc.importDetail")
+        }
+        /// `settings.misc.kiroHint` — Run `kiro-cli login`, then Vibe Bar probes `kiro-cli chat --no-interactive /usage`.
+        public static var miscKiroHint: String {
+            L10n.string("settings.misc.kiroHint")
+        }
+        /// `settings.misc.noCookieSpec` — No cookie spec is registered for {provider}.
+        public static func miscNoCookieSpec(provider: String) -> String {
+            L10n.string("settings.misc.noCookieSpec", provider)
+        }
+        /// `settings.misc.noCookiesYet` — No cookies imported yet — import from your browser or paste below.
+        public static var miscNoCookiesYet: String {
+            L10n.string("settings.misc.noCookiesYet")
+        }
+        /// `settings.misc.probe` — Probe
+        public static var miscProbe: String {
+            L10n.string("settings.misc.probe")
+        }
+        /// `settings.misc.prompt.copilotHost` — GitHub Enterprise host (optional, e.g. github.example.com)
+        public static var miscPromptCopilotHost: String {
+            L10n.string("settings.misc.prompt.copilotHost")
+        }
+        /// `settings.misc.prompt.dashscope` — Paste DashScope API key (sk-...) — optional
+        public static var miscPromptDashscope: String {
+            L10n.string("settings.misc.prompt.dashscope")
+        }
+        /// `settings.misc.prompt.kilo` — Paste Kilo API key (optional)
+        public static var miscPromptKilo: String {
+            L10n.string("settings.misc.prompt.kilo")
+        }
+        /// `settings.misc.prompt.minimax` — Paste MiniMax Token Plan API key (sk-cp-... or MINIMAX_CODING_API_KEY)
+        public static var miscPromptMinimax: String {
+            L10n.string("settings.misc.prompt.minimax")
+        }
+        /// `settings.misc.prompt.openRouter` — Paste OpenRouter API key (sk-or-v1-...)
+        public static var miscPromptOpenRouter: String {
+            L10n.string("settings.misc.prompt.openRouter")
+        }
+        /// `settings.misc.prompt.openRouterHost` — OpenRouter API URL (optional, defaults to https://openrouter.ai/api/v1)
+        public static var miscPromptOpenRouterHost: String {
+            L10n.string("settings.misc.prompt.openRouterHost")
+        }
+        /// `settings.misc.prompt.warp` — Paste Warp API key (wk-...)
+        public static var miscPromptWarp: String {
+            L10n.string("settings.misc.prompt.warp")
+        }
+        /// `settings.misc.prompt.workspace` — Workspace ID or URL (optional, wrk_... or /workspace/wrk_.../go)
+        public static var miscPromptWorkspace: String {
+            L10n.string("settings.misc.prompt.workspace")
+        }
+        /// `settings.misc.prompt.zai` — Paste Z.ai API key (zai-...)
+        public static var miscPromptZai: String {
+            L10n.string("settings.misc.prompt.zai")
+        }
+        /// `settings.misc.region` — Region
+        public static var miscRegion: String {
+            L10n.string("settings.misc.region")
+        }
+        /// `settings.misc.region.auto` — Auto (try both)
+        public static var miscRegionAuto: String {
+            L10n.string("settings.misc.region.auto")
+        }
+        /// `settings.misc.region.chinaMainland` — China mainland (cn-beijing)
+        public static var miscRegionChinaMainland: String {
+            L10n.string("settings.misc.region.chinaMainland")
+        }
+        /// `settings.misc.region.international` — International (ap-southeast-1)
+        public static var miscRegionInternational: String {
+            L10n.string("settings.misc.region.international")
+        }
+        /// `settings.misc.region.minimaxChina` — China mainland (minimaxi.com)
+        public static var miscRegionMinimaxChina: String {
+            L10n.string("settings.misc.region.minimaxChina")
+        }
+        /// `settings.misc.region.minimaxGlobal` — Global (minimax.io)
+        public static var miscRegionMinimaxGlobal: String {
+            L10n.string("settings.misc.region.minimaxGlobal")
+        }
+        /// `settings.misc.region.zaiChina` — China mainland (open.bigmodel.cn)
+        public static var miscRegionZaiChina: String {
+            L10n.string("settings.misc.region.zaiChina")
+        }
+        /// `settings.misc.region.zaiGlobal` — Global (api.z.ai)
+        public static var miscRegionZaiGlobal: String {
+            L10n.string("settings.misc.region.zaiGlobal")
+        }
+        /// `settings.misc.removeAkSk` — Remove stored {provider} AK/SK
+        public static func miscRemoveAkSk(provider: String) -> String {
+            L10n.string("settings.misc.removeAkSk", provider)
+        }
+        /// `settings.misc.removeApiKey` — Remove stored {provider} API key
+        public static func miscRemoveApiKey(provider: String) -> String {
+            L10n.string("settings.misc.removeApiKey", provider)
+        }
+        /// `settings.misc.removeCookieSlot` — Remove this cookie slot
+        public static var miscRemoveCookieSlot: String {
+            L10n.string("settings.misc.removeCookieSlot")
+        }
+        /// `settings.misc.removeCopy` — Remove this {provider} copy
+        public static func miscRemoveCopy(provider: String) -> String {
+            L10n.string("settings.misc.removeCopy", provider)
+        }
+        /// `settings.misc.removeCopyButton` — Remove Copy
+        public static var miscRemoveCopyButton: String {
+            L10n.string("settings.misc.removeCopyButton")
+        }
+        /// `settings.misc.removeCopyDetail` — Its saved credentials are deleted from your Keychain — the API key or AK/SK and every imported cookie slot. This cannot be undone.
+        public static var miscRemoveCopyDetail: String {
+            L10n.string("settings.misc.removeCopyDetail")
+        }
+        /// `settings.misc.removeCopyTitle` — Remove this {provider} copy?
+        public static func miscRemoveCopyTitle(provider: String) -> String {
+            L10n.string("settings.misc.removeCopyTitle", provider)
+        }
+        /// `settings.misc.removeGithubToken` — Remove stored GitHub device token
+        public static var miscRemoveGithubToken: String {
+            L10n.string("settings.misc.removeGithubToken")
+        }
+        /// `settings.misc.rename` — Rename this copy
+        public static var miscRename: String {
+            L10n.string("settings.misc.rename")
+        }
+        /// `settings.misc.secretAccessKey` — Secret Access Key
+        public static var miscSecretAccessKey: String {
+            L10n.string("settings.misc.secretAccessKey")
+        }
+        /// `settings.misc.signIn` — Sign in
+        public static var miscSignIn: String {
+            L10n.string("settings.misc.signIn")
+        }
+        /// `settings.misc.signInViaWeb` — Sign in via Web
+        public static var miscSignInViaWeb: String {
+            L10n.string("settings.misc.signInViaWeb")
+        }
+        /// `settings.misc.tencentTokenPlanNote` — Personal Token Plan is currently available only in China mainland (cn-beijing). Clone this row to track Team and Personal together.
+        public static var miscTencentTokenPlanNote: String {
+            L10n.string("settings.misc.tencentTokenPlanNote")
+        }
+        /// `settings.misc.variant` — Variant
+        public static var miscVariant: String {
+            L10n.string("settings.misc.variant")
+        }
+        /// `settings.misc.waiting` — Waiting...
+        public static var miscWaiting: String {
+            L10n.string("settings.misc.waiting")
+        }
+        /// `settings.misc.workspaceNote` — Only needed when the account owns more than one workspace — otherwise Vibe Bar uses the first one it finds.
+        public static var miscWorkspaceNote: String {
+            L10n.string("settings.misc.workspaceNote")
+        }
+        /// `settings.needsSetup` — Needs setup
+        public static var needsSetup: String {
+            L10n.string("settings.needsSetup")
+        }
+        /// `settings.notChecked` — Not checked
+        public static var notChecked: String {
+            L10n.string("settings.notChecked")
+        }
+        /// `settings.notCheckedYet` — Not checked. Nothing is fetched until you ask.
+        public static var notCheckedYet: String {
+            L10n.string("settings.notCheckedYet")
+        }
+        /// `settings.openRefreshCooldown` — Minimum open-refresh cooldown
+        public static var openRefreshCooldown: String {
+            L10n.string("settings.openRefreshCooldown")
+        }
+        /// `settings.openRefreshDetail` — Opening the popover refreshes all visible providers at most once per cooldown period.
+        public static var openRefreshDetail: String {
+            L10n.string("settings.openRefreshDetail")
+        }
+        /// `settings.openStatusPage` — Open {company} status page
+        public static func openStatusPage(company: String) -> String {
+            L10n.string("settings.openStatusPage", company)
+        }
+        /// `settings.percentShows` — Percent shows
+        public static var percentShows: String {
+            L10n.string("settings.percentShows")
+        }
+        /// `settings.planBadge` — Plan badge
+        public static var planBadge: String {
+            L10n.string("settings.planBadge")
+        }
+        /// `settings.planBadgeDetail` — Leave blank to use the detected account plan.
+        public static var planBadgeDetail: String {
+            L10n.string("settings.planBadgeDetail")
+        }
+        /// `settings.popoverDensity.compact` — Compact
+        public static var popoverDensityCompact: String {
+            L10n.string("settings.popoverDensity.compact")
+        }
+        /// `settings.popoverDensity.compactDetail` — Tightest spacing, narrowest popover.
+        public static var popoverDensityCompactDetail: String {
+            L10n.string("settings.popoverDensity.compactDetail")
+        }
+        /// `settings.popoverDensity.regular` — Regular
+        public static var popoverDensityRegular: String {
+            L10n.string("settings.popoverDensity.regular")
+        }
+        /// `settings.popoverDensity.regularDetail` — Balanced spacing — default.
+        public static var popoverDensityRegularDetail: String {
+            L10n.string("settings.popoverDensity.regularDetail")
+        }
+        /// `settings.popoverDensity.spacious` — Spacious
+        public static var popoverDensitySpacious: String {
+            L10n.string("settings.popoverDensity.spacious")
+        }
+        /// `settings.popoverDensity.spaciousDetail` — Roomy spacing for big displays.
+        public static var popoverDensitySpaciousDetail: String {
+            L10n.string("settings.popoverDensity.spaciousDetail")
+        }
+        /// `settings.pricing.addOverride` — Add model override
+        public static var pricingAddOverride: String {
+            L10n.string("settings.pricing.addOverride")
+        }
+        /// `settings.pricing.advancedTiers` — Advanced tiers
+        public static var pricingAdvancedTiers: String {
+            L10n.string("settings.pricing.advancedTiers")
+        }
+        /// `settings.pricing.alwaysWins` — Always wins
+        public static var pricingAlwaysWins: String {
+            L10n.string("settings.pricing.alwaysWins")
+        }
+        /// `settings.pricing.bundledFallback` — Bundled fallback
+        public static var pricingBundledFallback: String {
+            L10n.string("settings.pricing.bundledFallback")
+        }
+        /// `settings.pricing.cacheReadAbove` — Cache read above
+        public static var pricingCacheReadAbove: String {
+            L10n.string("settings.pricing.cacheReadAbove")
+        }
+        /// `settings.pricing.cacheWriteAbove` — Cache write above
+        public static var pricingCacheWriteAbove: String {
+            L10n.string("settings.pricing.cacheWriteAbove")
+        }
+        /// `settings.pricing.deleteOverride` — Delete override
+        public static var pricingDeleteOverride: String {
+            L10n.string("settings.pricing.deleteOverride")
+        }
+        /// `settings.pricing.exactModelName` — Exact model name
+        public static var pricingExactModelName: String {
+            L10n.string("settings.pricing.exactModelName")
+        }
+        /// `settings.pricing.fastMultiplier` — Fast multiplier
+        public static var pricingFastMultiplier: String {
+            L10n.string("settings.pricing.fastMultiplier")
+        }
+        /// `settings.pricing.inputAbove` — Input above
+        public static var pricingInputAbove: String {
+            L10n.string("settings.pricing.inputAbove")
+        }
+        /// `settings.pricing.intro` — Catalogs refresh in the background. Higher entries win when the same provider and model name appears more than once.
+        public static var pricingIntro: String {
+            L10n.string("settings.pricing.intro")
+        }
+        /// `settings.pricing.localOverrides` — Local overrides
+        public static var pricingLocalOverrides: String {
+            L10n.string("settings.pricing.localOverrides")
+        }
+        /// `settings.pricing.localOverridesName` — Local overrides
+        public static var pricingLocalOverridesName: String {
+            L10n.string("settings.pricing.localOverridesName")
+        }
+        /// `settings.pricing.noOverrides` — No local overrides.
+        public static var pricingNoOverrides: String {
+            L10n.string("settings.pricing.noOverrides")
+        }
+        /// `settings.pricing.number` — {number}
+        public static func pricingNumber(number: Int) -> String {
+            L10n.string("settings.pricing.number", number)
+        }
+        /// `settings.pricing.offlineFloor` — Offline floor
+        public static var pricingOfflineFloor: String {
+            L10n.string("settings.pricing.offlineFloor")
+        }
+        /// `settings.pricing.outputAbove` — Output above
+        public static var pricingOutputAbove: String {
+            L10n.string("settings.pricing.outputAbove")
+        }
+        /// `settings.pricing.overridesIntro` — Prices are USD per one million tokens. Leave cache fields empty when the provider does not publish them.
+        public static var pricingOverridesIntro: String {
+            L10n.string("settings.pricing.overridesIntro")
+        }
+        /// `settings.pricing.priorityHealth` — Priority and source health
+        public static var pricingPriorityHealth: String {
+            L10n.string("settings.pricing.priorityHealth")
+        }
+        /// `settings.pricing.rateInput` — Input
+        public static var pricingRateInput: String {
+            L10n.string("settings.pricing.rateInput")
+        }
+        /// `settings.pricing.rateOutput` — Output
+        public static var pricingRateOutput: String {
+            L10n.string("settings.pricing.rateOutput")
+        }
+        /// `settings.pricing.refreshNow` — Refresh now
+        public static var pricingRefreshNow: String {
+            L10n.string("settings.pricing.refreshNow")
+        }
+        /// `settings.pricing.refreshing` — Refreshing…
+        public static var pricingRefreshing: String {
+            L10n.string("settings.pricing.refreshing")
+        }
+        /// `settings.pricing.thresholdTokens` — Threshold tokens
+        public static var pricingThresholdTokens: String {
+            L10n.string("settings.pricing.thresholdTokens")
+        }
+        /// `settings.pricingDataDate` — Pricing data: {date}
+        public static func pricingDataDate(date: String) -> String {
+            L10n.string("settings.pricingDataDate", date)
+        }
+        /// `settings.privacyDetail` — Tokens are read from local CLI credentials. Saved OpenAI and Claude Web cookies are stored in macOS Keychain, split by browser and WebView source. Legacy plaintext cookie files under ~/.vibebar/cookies are migrated once and deleted. Settings, quota cache, and cost summaries stay under ~/.vibebar.
+        public static var privacyDetail: String {
+            L10n.string("settings.privacyDetail")
+        }
+        /// `settings.privacyMode` — Privacy mode
+        public static var privacyMode: String {
+            L10n.string("settings.privacyMode")
+        }
+        /// `settings.privacyModeDetail` — Privacy mode keeps cost data off disk and clears local cost history, snapshots, and scan cache.
+        public static var privacyModeDetail: String {
+            L10n.string("settings.privacyModeDetail")
+        }
+        /// `settings.ready` — Ready
+        public static var ready: String {
+            L10n.string("settings.ready")
+        }
+        /// `settings.refreshEvery` — Refresh every
+        public static var refreshEvery: String {
+            L10n.string("settings.refreshEvery")
+        }
+        /// `settings.refreshOnPopoverOpen` — Refresh when the popover opens
+        public static var refreshOnPopoverOpen: String {
+            L10n.string("settings.refreshOnPopoverOpen")
+        }
+        /// `settings.releaseNotes` — Release notes
+        public static var releaseNotes: String {
+            L10n.string("settings.releaseNotes")
+        }
+        /// `settings.remote.core` — Remote Core
+        public static var remoteCore: String {
+            L10n.string("settings.remote.core")
+        }
+        /// `settings.remote.costAggregation` — Cost aggregation
+        public static var remoteCostAggregation: String {
+            L10n.string("settings.remote.costAggregation")
+        }
+        /// `settings.remote.costAggregationIntro` — Choose which remote machines join this Mac's local cost and token totals. Selection and aggregation stay on this Core; the Relay never sees plaintext usage.
+        public static var remoteCostAggregationIntro: String {
+            L10n.string("settings.remote.costAggregationIntro")
+        }
+        /// `settings.remote.differentControlCenter` — Use a different control center
+        public static var remoteDifferentControlCenter: String {
+            L10n.string("settings.remote.differentControlCenter")
+        }
+        /// `settings.remote.discard` — Discard
+        public static var remoteDiscard: String {
+            L10n.string("settings.remote.discard")
+        }
+        /// `settings.remote.discardPendingDetail` — Its pairing code is already spent, and the workspace still counts this Mac as its Core. To join again, revoke this Mac in the web control center, then create a fresh code.
+        public static var remoteDiscardPendingDetail: String {
+            L10n.string("settings.remote.discardPendingDetail")
+        }
+        /// `settings.remote.discardPendingTitle` — Discard this pending join?
+        public static var remoteDiscardPendingTitle: String {
+            L10n.string("settings.remote.discardPendingTitle")
+        }
+        /// `settings.remote.disconnect` — Disconnect
+        public static var remoteDisconnect: String {
+            L10n.string("settings.remote.disconnect")
+        }
+        /// `settings.remote.disconnectButton` — Disconnect from Workspace…
+        public static var remoteDisconnectButton: String {
+            L10n.string("settings.remote.disconnectButton")
+        }
+        /// `settings.remote.disconnectDetail` — Reconnecting later requires a new pairing code or provisioning file.
+        public static var remoteDisconnectDetail: String {
+            L10n.string("settings.remote.disconnectDetail")
+        }
+        /// `settings.remote.disconnectIntro` — Disconnecting removes this Mac's Relay credential from the Keychain and its workspace binding. Probes keep uploading to the Relay until they are revoked there. Usage already decrypted stays in the local ledger.
+        public static var remoteDisconnectIntro: String {
+            L10n.string("settings.remote.disconnectIntro")
+        }
+        /// `settings.remote.disconnectTitle` — Disconnect from this workspace?
+        public static var remoteDisconnectTitle: String {
+            L10n.string("settings.remote.disconnectTitle")
+        }
+        /// `settings.remote.exportIdentity` — Export Core Identity…
+        public static var remoteExportIdentity: String {
+            L10n.string("settings.remote.exportIdentity")
+        }
+        /// `settings.remote.importProvisioning` — Import Provisioning File…
+        public static var remoteImportProvisioning: String {
+            L10n.string("settings.remote.importProvisioning")
+        }
+        /// `settings.remote.join` — Join
+        public static var remoteJoin: String {
+            L10n.string("settings.remote.join")
+        }
+        /// `settings.remote.joinIntro` — Create a Core code in the Vibe Bar control center, then paste it here. This Mac joins as “{device}”.
+        public static func remoteJoinIntro(device: String) -> String {
+            L10n.string("settings.remote.joinIntro", device)
+        }
+        /// `settings.remote.joinWithCode` — Join with a code
+        public static var remoteJoinWithCode: String {
+            L10n.string("settings.remote.joinWithCode")
+        }
+        /// `settings.remote.lastSync` — Last sync
+        public static var remoteLastSync: String {
+            L10n.string("settings.remote.lastSync")
+        }
+        /// `settings.remote.machineDetail` — {platform} · Probe {version}
+        public static func remoteMachineDetail(platform: String, version: String) -> String {
+            L10n.string("settings.remote.machineDetail", platform, version)
+        }
+        /// `settings.remote.machinesAppearAfterImport` — Machines appear here after their first encrypted batch is imported.
+        public static var remoteMachinesAppearAfterImport: String {
+            L10n.string("settings.remote.machinesAppearAfterImport")
+        }
+        /// `settings.remote.machinesSynced` — Machines synced
+        public static var remoteMachinesSynced: String {
+            L10n.string("settings.remote.machinesSynced")
+        }
+        /// `settings.remote.manualPairingIntro` — Pairing runs in three steps: export this Mac's Core identity, register it with your Relay to produce a provisioning file, then import that file here. Importing moves the Relay credential into the macOS Keychain — but the provisioning file itself still contains that credential, so delete the file once the import succeeds.
+        public static var remoteManualPairingIntro: String {
+            L10n.string("settings.remote.manualPairingIntro")
+        }
+        /// `settings.remote.notConnected` — This Mac is not connected to a workspace. Remote probes collect normalized usage on your other machines, encrypt it to this Mac's Core keys, and drop it at a Relay — no inbound port is ever opened here.
+        public static var remoteNotConnected: String {
+            L10n.string("settings.remote.notConnected")
+        }
+        /// `settings.remote.orPairManually` — Or pair manually.
+        public static var remoteOrPairManually: String {
+            L10n.string("settings.remote.orPairManually")
+        }
+        /// `settings.remote.pendingIntro` — A previous join was accepted by the control center but never finished saving on this Mac. Its pairing code is already spent, so resume the save instead of requesting a new code.
+        public static var remotePendingIntro: String {
+            L10n.string("settings.remote.pendingIntro")
+        }
+        /// `settings.remote.provisioning` — Provisioning
+        public static var remoteProvisioning: String {
+            L10n.string("settings.remote.provisioning")
+        }
+        /// `settings.remote.registeredProbes` — Registered probes
+        public static var remoteRegisteredProbes: String {
+            L10n.string("settings.remote.registeredProbes")
+        }
+        /// `settings.remote.relay` — Relay
+        public static var remoteRelay: String {
+            L10n.string("settings.remote.relay")
+        }
+        /// `settings.remote.resumeSaving` — Resume saving
+        public static var remoteResumeSaving: String {
+            L10n.string("settings.remote.resumeSaving")
+        }
+        /// `settings.remote.retrySaving` — Retry saving
+        public static var remoteRetrySaving: String {
+            L10n.string("settings.remote.retrySaving")
+        }
+        /// `settings.remote.statusWithCode` — {title} · {code}
+        public static func remoteStatusWithCode(title: String, code: String) -> String {
+            L10n.string("settings.remote.statusWithCode", title, code)
+        }
+        /// `settings.remote.sync.busy` — Relay is temporarily busy
+        public static var remoteSyncBusy: String {
+            L10n.string("settings.remote.sync.busy")
+        }
+        /// `settings.remote.sync.connectionFailed` — Relay connection was interrupted
+        public static var remoteSyncConnectionFailed: String {
+            L10n.string("settings.remote.sync.connectionFailed")
+        }
+        /// `settings.remote.sync.hostLookupFailed` — Relay host could not be resolved
+        public static var remoteSyncHostLookupFailed: String {
+            L10n.string("settings.remote.sync.hostLookupFailed")
+        }
+        /// `settings.remote.sync.invalidResponse` — Relay returned an unexpected response
+        public static var remoteSyncInvalidResponse: String {
+            L10n.string("settings.remote.sync.invalidResponse")
+        }
+        /// `settings.remote.sync.networkDetail` — Check this Mac's network or proxy path; existing machine data is still available.
+        public static var remoteSyncNetworkDetail: String {
+            L10n.string("settings.remote.sync.networkDetail")
+        }
+        /// `settings.remote.sync.offline` — This Mac is offline
+        public static var remoteSyncOffline: String {
+            L10n.string("settings.remote.sync.offline")
+        }
+        /// `settings.remote.sync.rejected` — Relay access was rejected
+        public static var remoteSyncRejected: String {
+            L10n.string("settings.remote.sync.rejected")
+        }
+        /// `settings.remote.sync.rejectedDetail` — The workspace credential may have been revoked. Reconnect this Core in Settings.
+        public static var remoteSyncRejectedDetail: String {
+            L10n.string("settings.remote.sync.rejectedDetail")
+        }
+        /// `settings.remote.sync.retryDetail` — Existing machine data is still available. Vibe Bar will retry automatically.
+        public static var remoteSyncRetryDetail: String {
+            L10n.string("settings.remote.sync.retryDetail")
+        }
+        /// `settings.remote.sync.secureConnectionFailed` — Secure Relay connection failed
+        public static var remoteSyncSecureConnectionFailed: String {
+            L10n.string("settings.remote.sync.secureConnectionFailed")
+        }
+        /// `settings.remote.sync.sequenceGap` — Probe history has a sequence gap
+        public static var remoteSyncSequenceGap: String {
+            L10n.string("settings.remote.sync.sequenceGap")
+        }
+        /// `settings.remote.sync.sequenceGapDetail` — A Probe batch is missing from the Relay stream, so later batches were not imported.
+        public static var remoteSyncSequenceGapDetail: String {
+            L10n.string("settings.remote.sync.sequenceGapDetail")
+        }
+        /// `settings.remote.sync.timeout` — Relay connection timed out
+        public static var remoteSyncTimeout: String {
+            L10n.string("settings.remote.sync.timeout")
+        }
+        /// `settings.remote.sync.transportFailed` — Relay transport failed
+        public static var remoteSyncTransportFailed: String {
+            L10n.string("settings.remote.sync.transportFailed")
+        }
+        /// `settings.remote.sync.unknown` — Remote sync needs attention
+        public static var remoteSyncUnknown: String {
+            L10n.string("settings.remote.sync.unknown")
+        }
+        /// `settings.remote.sync.unknownDetail` — No local usage was deleted. Retry now or inspect Remote Core settings for the error code.
+        public static var remoteSyncUnknownDetail: String {
+            L10n.string("settings.remote.sync.unknownDetail")
+        }
+        /// `settings.remote.sync.unverifiedProbe` — A Probe could not be verified
+        public static var remoteSyncUnverifiedProbe: String {
+            L10n.string("settings.remote.sync.unverifiedProbe")
+        }
+        /// `settings.remote.sync.unverifiedProbeDetail` — The current workspace roster does not authorize one of the received batches.
+        public static var remoteSyncUnverifiedProbeDetail: String {
+            L10n.string("settings.remote.sync.unverifiedProbeDetail")
+        }
+        /// `settings.remote.syncNow` — Sync now
+        public static var remoteSyncNow: String {
+            L10n.string("settings.remote.syncNow")
+        }
+        /// `settings.remote.workspace` — Workspace
+        public static var remoteWorkspace: String {
+            L10n.string("settings.remote.workspace")
+        }
+        /// `settings.repository` — Repository
+        public static var repository: String {
+            L10n.string("settings.repository")
+        }
+        /// `settings.rescanCostLogs` — Rescan cost logs
+        public static var rescanCostLogs: String {
+            L10n.string("settings.rescanCostLogs")
+        }
+        /// `settings.route.antigravityLocal` — Local Antigravity / agy
+        public static var routeAntigravityLocal: String {
+            L10n.string("settings.route.antigravityLocal")
+        }
+        /// `settings.route.browserCookies` — Chrome/Safari cookies
+        public static var routeBrowserCookies: String {
+            L10n.string("settings.route.browserCookies")
+        }
+        /// `settings.route.cli` — CLI
+        public static var routeCli: String {
+            L10n.string("settings.route.cli")
+        }
+        /// `settings.route.grokAuthFile` — ~/.grok/auth.json
+        public static var routeGrokAuthFile: String {
+            L10n.string("settings.route.grokAuthFile")
+        }
+        /// `settings.route.oauth` — OAuth
+        public static var routeOauth: String {
+            L10n.string("settings.route.oauth")
+        }
+        /// `settings.route.webViewCookies` — WebView cookies
+        public static var routeWebViewCookies: String {
+            L10n.string("settings.route.webViewCookies")
+        }
+        /// `settings.routeHealth.agyAvailable` — agy CLI available
+        public static var routeHealthAgyAvailable: String {
+            L10n.string("settings.routeHealth.agyAvailable")
+        }
+        /// `settings.routeHealth.authFileExpired` — auth.json expired
+        public static var routeHealthAuthFileExpired: String {
+            L10n.string("settings.routeHealth.authFileExpired")
+        }
+        /// `settings.routeHealth.authFileUnreadable` — Could not read auth.json
+        public static var routeHealthAuthFileUnreadable: String {
+            L10n.string("settings.routeHealth.authFileUnreadable")
+        }
+        /// `settings.routeHealth.cachedOnly` — Cached data only; live quota unavailable
+        public static var routeHealthCachedOnly: String {
+            L10n.string("settings.routeHealth.cachedOnly")
+        }
+        /// `settings.routeHealth.credentialUnreadable` — Could not read credential
+        public static var routeHealthCredentialUnreadable: String {
+            L10n.string("settings.routeHealth.credentialUnreadable")
+        }
+        /// `settings.routeHealth.credentialsAvailable` — Credentials available
+        public static var routeHealthCredentialsAvailable: String {
+            L10n.string("settings.routeHealth.credentialsAvailable")
+        }
+        /// `settings.routeHealth.invalidCookie` — Invalid cookie data
+        public static var routeHealthInvalidCookie: String {
+            L10n.string("settings.routeHealth.invalidCookie")
+        }
+        /// `settings.routeHealth.keychainLocked` — Keychain locked
+        public static var routeHealthKeychainLocked: String {
+            L10n.string("settings.routeHealth.keychainLocked")
+        }
+        /// `settings.routeHealth.lspRunning` — Local LSP running
+        public static var routeHealthLspRunning: String {
+            L10n.string("settings.routeHealth.lspRunning")
+        }
+        /// `settings.routeHealth.noAntigravityData` — No local Antigravity data
+        public static var routeHealthNoAntigravityData: String {
+            L10n.string("settings.routeHealth.noAntigravityData")
+        }
+        /// `settings.routeHealth.noAuthFile` — No auth.json
+        public static var routeHealthNoAuthFile: String {
+            L10n.string("settings.routeHealth.noAuthFile")
+        }
+        /// `settings.routeHealth.noCredential` — No credential found
+        public static var routeHealthNoCredential: String {
+            L10n.string("settings.routeHealth.noCredential")
+        }
+        /// `settings.routeHealth.noSavedCookie` — No saved cookie
+        public static var routeHealthNoSavedCookie: String {
+            L10n.string("settings.routeHealth.noSavedCookie")
+        }
+        /// `settings.routeHealth.savedInKeychain` — Saved in Keychain
+        public static var routeHealthSavedInKeychain: String {
+            L10n.string("settings.routeHealth.savedInKeychain")
+        }
+        /// `settings.search` — Search settings
+        public static var search: String {
+            L10n.string("settings.search")
+        }
+        /// `settings.section.components` — Components
+        public static var sectionComponents: String {
+            L10n.string("settings.section.components")
+        }
+        /// `settings.section.costData` — Cost Data
+        public static var sectionCostData: String {
+            L10n.string("settings.section.costData")
+        }
+        /// `settings.section.layout` — Layout
+        public static var sectionLayout: String {
+            L10n.string("settings.section.layout")
+        }
+        /// `settings.section.menuBar` — Menu Bar
+        public static var sectionMenuBar: String {
+            L10n.string("settings.section.menuBar")
+        }
+        /// `settings.section.menuBarHealth` — Menu Bar Health
+        public static var sectionMenuBarHealth: String {
+            L10n.string("settings.section.menuBarHealth")
+        }
+        /// `settings.section.miniWindows` — Mini Windows
+        public static var sectionMiniWindows: String {
+            L10n.string("settings.section.miniWindows")
+        }
+        /// `settings.section.overview` — Overview
+        public static var sectionOverview: String {
+            L10n.string("settings.section.overview")
+        }
+        /// `settings.section.privacy` — Privacy
+        public static var sectionPrivacy: String {
+            L10n.string("settings.section.privacy")
+        }
+        /// `settings.section.refreshing` — Refreshing
+        public static var sectionRefreshing: String {
+            L10n.string("settings.section.refreshing")
+        }
+        /// `settings.section.remoteProbes` — Remote Probes
+        public static var sectionRemoteProbes: String {
+            L10n.string("settings.section.remoteProbes")
+        }
+        /// `settings.section.system` — System
+        public static var sectionSystem: String {
+            L10n.string("settings.section.system")
+        }
+        /// `settings.section.updates` — Updates
+        public static var sectionUpdates: String {
+            L10n.string("settings.section.updates")
+        }
+        /// `settings.showAssistant` — Show setup assistant
+        public static var showAssistant: String {
+            L10n.string("settings.showAssistant")
+        }
+        /// `settings.showAssistantDetail` — Walk through subscriptions, browser cookies, API keys, model pricing and login items again. Nothing is reset.
+        public static var showAssistantDetail: String {
+            L10n.string("settings.showAssistantDetail")
+        }
+        /// `settings.sidebar.coreProviders` — Core Providers
+        public static var sidebarCoreProviders: String {
+            L10n.string("settings.sidebar.coreProviders")
+        }
+        /// `settings.sidebar.disableProvider` — Disable Provider
+        public static var sidebarDisableProvider: String {
+            L10n.string("settings.sidebar.disableProvider")
+        }
+        /// `settings.sidebar.enableProvider` — Enable Provider
+        public static var sidebarEnableProvider: String {
+            L10n.string("settings.sidebar.enableProvider")
+        }
+        /// `settings.sidebar.hideFromOverview` — Hide from Overview
+        public static var sidebarHideFromOverview: String {
+            L10n.string("settings.sidebar.hideFromOverview")
+        }
+        /// `settings.sidebar.settings` — Settings
+        public static var sidebarSettings: String {
+            L10n.string("settings.sidebar.settings")
+        }
+        /// `settings.spaceXAIIntro` — The SpaceXAI page combines Grok with Cursor. Grok reads `~/.grok/auth.json` or grok.com cookies; Cursor reads Cursor.app first, then cursor.com cookie slots. Grok Bot contributes quota, plus read-only sessions from its local cache — its cloud runs still add no token/cost rows.
+        public static var spaceXAIIntro: String {
+            L10n.string("settings.spaceXAIIntro")
+        }
+        /// `settings.terminal.copyOnly` — Copy to clipboard
+        public static var terminalCopyOnly: String {
+            L10n.string("settings.terminal.copyOnly")
+        }
+        /// `settings.updateChannel` — Update channel
+        public static var updateChannel: String {
+            L10n.string("settings.updateChannel")
+        }
+        /// `settings.updateChannel.dev` — Dev
+        public static var updateChannelDev: String {
+            L10n.string("settings.updateChannel.dev")
+        }
+        /// `settings.updateChannel.devDetail` — Preview releases plus all Main releases.
+        public static var updateChannelDevDetail: String {
+            L10n.string("settings.updateChannel.devDetail")
+        }
+        /// `settings.updateChannel.main` — Main
+        public static var updateChannelMain: String {
+            L10n.string("settings.updateChannel.main")
+        }
+        /// `settings.updateChannel.mainDetail` — Stable releases only.
+        public static var updateChannelMainDetail: String {
+            L10n.string("settings.updateChannel.mainDetail")
+        }
+        /// `settings.updateCheckDetail` — Checks the selected channel once a day and asks before installing.
+        public static var updateCheckDetail: String {
+            L10n.string("settings.updateCheckDetail")
+        }
+        /// `settings.usageMode.antigravity.autoDetail` — Use the Antigravity app first, then the installed agy CLI; fall back to imported cookies when the web source is available.
+        public static var usageModeAntigravityAutoDetail: String {
+            L10n.string("settings.usageMode.antigravity.autoDetail")
+        }
+        /// `settings.usageMode.antigravity.localFirstDetail` — Use the Antigravity app or agy CLI first; fall back to imported cookies.
+        public static var usageModeAntigravityLocalFirstDetail: String {
+            L10n.string("settings.usageMode.antigravity.localFirstDetail")
+        }
+        /// `settings.usageMode.antigravity.localOnly` — Local sources only
+        public static var usageModeAntigravityLocalOnly: String {
+            L10n.string("settings.usageMode.antigravity.localOnly")
+        }
+        /// `settings.usageMode.antigravity.localOnlyDetail` — Only use the Antigravity app or installed agy CLI.
+        public static var usageModeAntigravityLocalOnlyDetail: String {
+            L10n.string("settings.usageMode.antigravity.localOnlyDetail")
+        }
+        /// `settings.usageMode.antigravity.localThenWeb` — Local sources, then Web
+        public static var usageModeAntigravityLocalThenWeb: String {
+            L10n.string("settings.usageMode.antigravity.localThenWeb")
+        }
+        /// `settings.usageMode.antigravity.webFirstDetail` — Use imported cookies first; fall back to the Antigravity app or agy CLI.
+        public static var usageModeAntigravityWebFirstDetail: String {
+            L10n.string("settings.usageMode.antigravity.webFirstDetail")
+        }
+        /// `settings.usageMode.antigravity.webOnly` — Web only
+        public static var usageModeAntigravityWebOnly: String {
+            L10n.string("settings.usageMode.antigravity.webOnly")
+        }
+        /// `settings.usageMode.antigravity.webOnlyDetail` — Only use imported cookies. Falls back to the local probe until the Antigravity Cloud endpoint ships.
+        public static var usageModeAntigravityWebOnlyDetail: String {
+            L10n.string("settings.usageMode.antigravity.webOnlyDetail")
+        }
+        /// `settings.usageMode.antigravity.webThenLocal` — Web, then Local sources
+        public static var usageModeAntigravityWebThenLocal: String {
+            L10n.string("settings.usageMode.antigravity.webThenLocal")
+        }
+        /// `settings.usageMode.auto` — Auto
+        public static var usageModeAuto: String {
+            L10n.string("settings.usageMode.auto")
+        }
+        /// `settings.usageMode.claude.autoDetail` — Use saved claude.ai cookies first; fall back to Claude OAuth and Claude Code.
+        public static var usageModeClaudeAutoDetail: String {
+            L10n.string("settings.usageMode.claude.autoDetail")
+        }
+        /// `settings.usageMode.claude.codeFirstDetail` — Use Claude Code first; fall back to saved claude.ai cookies.
+        public static var usageModeClaudeCodeFirstDetail: String {
+            L10n.string("settings.usageMode.claude.codeFirstDetail")
+        }
+        /// `settings.usageMode.claude.codeOnly` — Claude Code only
+        public static var usageModeClaudeCodeOnly: String {
+            L10n.string("settings.usageMode.claude.codeOnly")
+        }
+        /// `settings.usageMode.claude.codeOnlyDetail` — Use only local Claude Code OAuth credentials.
+        public static var usageModeClaudeCodeOnlyDetail: String {
+            L10n.string("settings.usageMode.claude.codeOnlyDetail")
+        }
+        /// `settings.usageMode.claude.codeThenWeb` — Claude Code, then Web
+        public static var usageModeClaudeCodeThenWeb: String {
+            L10n.string("settings.usageMode.claude.codeThenWeb")
+        }
+        /// `settings.usageMode.claude.oauthCodeWeb` — OAuth, then Claude Code, then Web
+        public static var usageModeClaudeOauthCodeWeb: String {
+            L10n.string("settings.usageMode.claude.oauthCodeWeb")
+        }
+        /// `settings.usageMode.claude.oauthFirstDetail` — Use Claude OAuth first; fall back to Claude Code and saved claude.ai cookies.
+        public static var usageModeClaudeOauthFirstDetail: String {
+            L10n.string("settings.usageMode.claude.oauthFirstDetail")
+        }
+        /// `settings.usageMode.claude.oauthOnly` — OAuth only
+        public static var usageModeClaudeOauthOnly: String {
+            L10n.string("settings.usageMode.claude.oauthOnly")
+        }
+        /// `settings.usageMode.claude.oauthOnlyDetail` — Use only Claude OAuth credentials.
+        public static var usageModeClaudeOauthOnlyDetail: String {
+            L10n.string("settings.usageMode.claude.oauthOnlyDetail")
+        }
+        /// `settings.usageMode.claude.webFirstDetail` — Use saved claude.ai cookies first; fall back to Claude Code and OAuth.
+        public static var usageModeClaudeWebFirstDetail: String {
+            L10n.string("settings.usageMode.claude.webFirstDetail")
+        }
+        /// `settings.usageMode.claude.webOnly` — Claude Web only
+        public static var usageModeClaudeWebOnly: String {
+            L10n.string("settings.usageMode.claude.webOnly")
+        }
+        /// `settings.usageMode.claude.webOnlyDetail` — Use only saved claude.ai cookies.
+        public static var usageModeClaudeWebOnlyDetail: String {
+            L10n.string("settings.usageMode.claude.webOnlyDetail")
+        }
+        /// `settings.usageMode.claude.webThenCode` — Claude Web, then Claude Code
+        public static var usageModeClaudeWebThenCode: String {
+            L10n.string("settings.usageMode.claude.webThenCode")
+        }
+        /// `settings.usageMode.codex.autoDetail` — Use local Codex CLI credentials first; fall back to Codex OAuth and saved OpenAI web cookies.
+        public static var usageModeCodexAutoDetail: String {
+            L10n.string("settings.usageMode.codex.autoDetail")
+        }
+        /// `settings.usageMode.codex.cliOnly` — CLI only
+        public static var usageModeCodexCliOnly: String {
+            L10n.string("settings.usageMode.codex.cliOnly")
+        }
+        /// `settings.usageMode.codex.cliOnlyDetail` — Use only local Codex CLI credentials.
+        public static var usageModeCodexCliOnlyDetail: String {
+            L10n.string("settings.usageMode.codex.cliOnlyDetail")
+        }
+        /// `settings.usageMode.codex.cliThenOauth` — CLI, then OAuth
+        public static var usageModeCodexCliThenOauth: String {
+            L10n.string("settings.usageMode.codex.cliThenOauth")
+        }
+        /// `settings.usageMode.codex.oauthFirstDetail` — Use Codex OAuth first; fall back to local Codex CLI credentials and saved OpenAI web cookies.
+        public static var usageModeCodexOauthFirstDetail: String {
+            L10n.string("settings.usageMode.codex.oauthFirstDetail")
+        }
+        /// `settings.usageMode.codex.oauthOnly` — OAuth only
+        public static var usageModeCodexOauthOnly: String {
+            L10n.string("settings.usageMode.codex.oauthOnly")
+        }
+        /// `settings.usageMode.codex.oauthOnlyDetail` — Use only Codex OAuth credentials from auth.json.
+        public static var usageModeCodexOauthOnlyDetail: String {
+            L10n.string("settings.usageMode.codex.oauthOnlyDetail")
+        }
+        /// `settings.usageMode.codex.oauthThenCli` — OAuth, then CLI
+        public static var usageModeCodexOauthThenCli: String {
+            L10n.string("settings.usageMode.codex.oauthThenCli")
+        }
+        /// `settings.usageMode.gemini.webOnly` — Gemini Web only
+        public static var usageModeGeminiWebOnly: String {
+            L10n.string("settings.usageMode.gemini.webOnly")
+        }
+        /// `settings.usageMode.gemini.webOnlyDetail` — Only fetch imported gemini.google.com cookies.
+        public static var usageModeGeminiWebOnlyDetail: String {
+            L10n.string("settings.usageMode.gemini.webOnlyDetail")
+        }
+        /// `settings.usageSource` — Usage source
+        public static var usageSource: String {
+            L10n.string("settings.usageSource")
+        }
+        /// `settings.webQuota` — Web quota
+        public static var webQuota: String {
+            L10n.string("settings.webQuota")
+        }
+        /// `settings.whatChangedIn` — What changed in {version}
+        public static func whatChangedIn(version: String) -> String {
+            L10n.string("settings.whatChangedIn", version)
         }
     }
 
@@ -3469,9 +4993,12 @@ extension L10n {
     /// Every key the catalog defines, for the tests that assert the
     /// shipped `.strings` resolve and that no key is unreachable.
     static let allKeys: [String] = [
+        "common.add",
         "common.all",
+        "common.auto",
         "common.cancel",
         "common.clear",
+        "common.copied",
         "common.copy",
         "common.date.month.1",
         "common.date.month.10",
@@ -3490,6 +5017,7 @@ extension L10n {
         "common.delete",
         "common.dismiss",
         "common.done",
+        "common.dragToReorder",
         "common.duration.days",
         "common.duration.daysHours",
         "common.duration.hours",
@@ -3497,14 +5025,19 @@ extension L10n {
         "common.duration.lessThanMinute",
         "common.duration.minutes",
         "common.duration.now",
+        "common.name",
         "common.off",
         "common.on",
         "common.open",
         "common.openSettings",
         "common.percent",
+        "common.provider",
         "common.refresh",
         "common.refreshSection",
+        "common.remove",
         "common.retry",
+        "common.retryNow",
+        "common.save",
         "common.updated.daysAgo",
         "common.updated.hoursAgo",
         "common.updated.justNow",
@@ -3657,9 +5190,42 @@ extension L10n {
         "platform.macos.launchAtLogin.subtitle",
         "platform.macos.launchAtLogin.title",
         "platform.macos.launchAtLogin.toggle",
+        "platform.macos.menuBar.color.actual",
+        "platform.macos.menuBar.color.actualDetail",
+        "platform.macos.menuBar.color.forecast",
+        "platform.macos.menuBar.color.forecastDetail",
+        "platform.macos.menuBar.displayDensity",
+        "platform.macos.menuBar.fieldStyle.label",
+        "platform.macos.menuBar.fieldStyle.labelDetail",
+        "platform.macos.menuBar.fieldStyle.logo",
+        "platform.macos.menuBar.fieldStyle.logoAndLabel",
+        "platform.macos.menuBar.fieldStyle.logoAndLabelDetail",
+        "platform.macos.menuBar.fieldStyle.logoDetail",
+        "platform.macos.menuBar.fields",
+        "platform.macos.menuBar.layout",
+        "platform.macos.menuBar.layout.compact",
+        "platform.macos.menuBar.layout.iconOnly",
+        "platform.macos.menuBar.layout.singleLine",
+        "platform.macos.menuBar.layout.twoRows",
+        "platform.macos.menuBar.mergeGroupWindows",
+        "platform.macos.menuBar.mergeGroupWindowsDetail",
+        "platform.macos.menuBar.overview",
+        "platform.macos.menuBar.percentColor",
+        "platform.macos.menuBar.showInMenuBar",
+        "platform.macos.menuBar.showTitleText",
         "popover.header.machinesSubtitle",
         "popover.header.miscSubtitle",
         "popover.header.overviewSubtitle",
+        "popover.machines.checking",
+        "popover.machines.includeInTotals",
+        "popover.machines.includeInTotalsHelp",
+        "popover.machines.labelWithStatus",
+        "popover.machines.noData",
+        "popover.machines.noDataDetail",
+        "popover.machines.notConfigured",
+        "popover.machines.notConfiguredDetail",
+        "popover.machines.sequence",
+        "popover.machines.thirtyDayCost",
         "popover.refreshGoogleAI",
         "popover.refreshSpaceXAI",
         "popover.showPage",
@@ -3800,9 +5366,348 @@ extension L10n {
         "quota.upcoming.resetsAt",
         "quota.upcoming.title",
         "quota.update.failed",
+        "settings.antigravityCookieEnabled",
+        "settings.antigravityLocalOnly",
+        "settings.antigravitySource",
+        "settings.appVersion",
+        "settings.bundled",
+        "settings.checkConnections",
+        "settings.checkForUpdates",
+        "settings.checkKitUpdates",
+        "settings.checkingGitHub",
+        "settings.clearCostData",
+        "settings.connectionHealth",
+        "settings.costDataIntro",
+        "settings.couldNotDeleteCookies",
+        "settings.couldNotDeleteGeminiCookies",
+        "settings.couldNotDeleteGrokCookies",
+        "settings.credentialSource.apiOnly",
+        "settings.credentialSource.auto",
+        "settings.credentialSource.browserOnly",
+        "settings.credentialSource.manualOnly",
+        "settings.credentialSource.off",
+        "settings.cursorNoSession",
+        "settings.cursorSessionDetected",
+        "settings.cursorSource",
+        "settings.cursorSourceValue",
+        "settings.deleteCookies",
+        "settings.deleteGeminiCookies",
+        "settings.deleteGrokCookies",
+        "settings.displayMode.remaining",
+        "settings.displayMode.used",
+        "settings.externalChange.title",
+        "settings.geminiCookiesSaved",
+        "settings.geminiShared",
+        "settings.geminiSource",
+        "settings.grokAuthDetected",
+        "settings.grokCookiesSaved",
+        "settings.keepHistory",
+        "settings.keepHistoryDetail",
+        "settings.kitDetail",
         "settings.language.caption",
         "settings.language.system",
         "settings.language.title",
+        "settings.mcp.allowRefresh",
+        "settings.mcp.allowRefreshDetail",
+        "settings.mcp.allowSkills",
+        "settings.mcp.allowSkillsDetail",
+        "settings.mcp.appendCodexConfig",
+        "settings.mcp.connectAgent",
+        "settings.mcp.connectedClients",
+        "settings.mcp.enable",
+        "settings.mcp.intro",
+        "settings.mcp.lastActivity",
+        "settings.mcp.listening",
+        "settings.mcp.manualIntro",
+        "settings.mcp.mergeCursorConfig",
+        "settings.mcp.movePrompt",
+        "settings.mcp.notListening",
+        "settings.mcp.otherStdioClient",
+        "settings.mcp.otherStdioDetail",
+        "settings.mcp.quickestPath",
+        "settings.mcp.readOnlyDetail",
+        "settings.mcp.runInTerminal",
+        "settings.mcp.setupPrompt",
+        "settings.mcp.setupPromptDetail",
+        "settings.mcp.socket",
+        "settings.mcp.socketLifetime",
+        "settings.mcp.status",
+        "settings.mcp.title",
+        "settings.mcp.whatAgentsMayDo",
+        "settings.menuBarHealthUnavailable",
+        "settings.miniWindow.add",
+        "settings.miniWindow.allBucketsIncluded",
+        "settings.miniWindow.density.narrow",
+        "settings.miniWindow.density.narrowDetail",
+        "settings.miniWindow.density.roomy",
+        "settings.miniWindow.density.roomyDetail",
+        "settings.miniWindow.density.twoLines",
+        "settings.miniWindow.density.twoLinesDetail",
+        "settings.miniWindow.dismissBuiltIn",
+        "settings.miniWindow.forgetDiscovered",
+        "settings.miniWindow.includeStyle",
+        "settings.miniWindow.lastCannotBeRemoved",
+        "settings.miniWindow.mode.compact",
+        "settings.miniWindow.mode.compactDetail",
+        "settings.miniWindow.mode.focus",
+        "settings.miniWindow.mode.focusDetail",
+        "settings.miniWindow.mode.ledger",
+        "settings.miniWindow.mode.ledgerDetail",
+        "settings.miniWindow.mode.rail",
+        "settings.miniWindow.mode.railDetail",
+        "settings.miniWindow.mode.regular",
+        "settings.miniWindow.mode.regularDetail",
+        "settings.miniWindow.mode.strip",
+        "settings.miniWindow.mode.stripDetail",
+        "settings.miniWindow.mode.tiles",
+        "settings.miniWindow.mode.tilesDetail",
+        "settings.miniWindow.namesAllWindows",
+        "settings.miniWindow.namesThisStyle",
+        "settings.miniWindow.namesThisWindow",
+        "settings.miniWindow.noFieldsSelected",
+        "settings.miniWindow.notInWindow",
+        "settings.miniWindow.offline",
+        "settings.miniWindow.openClose",
+        "settings.miniWindow.overridesStyle",
+        "settings.miniWindow.overridesWindow",
+        "settings.miniWindow.position",
+        "settings.miniWindow.removeFromWindow",
+        "settings.miniWindow.removeHelp",
+        "settings.miniWindow.stripDensity",
+        "settings.miniWindow.styleCycle",
+        "settings.miniWindow.toggleHelp",
+        "settings.miniWindow.treeDetail",
+        "settings.misc.accessKeyId",
+        "settings.misc.akSkSaved",
+        "settings.misc.apiKeySaved",
+        "settings.misc.clearWorkspace",
+        "settings.misc.clone",
+        "settings.misc.consoleLink",
+        "settings.misc.edition",
+        "settings.misc.githubSignInHint",
+        "settings.misc.githubTokenSaved",
+        "settings.misc.importDetail",
+        "settings.misc.kiroHint",
+        "settings.misc.noCookieSpec",
+        "settings.misc.noCookiesYet",
+        "settings.misc.probe",
+        "settings.misc.prompt.copilotHost",
+        "settings.misc.prompt.dashscope",
+        "settings.misc.prompt.kilo",
+        "settings.misc.prompt.minimax",
+        "settings.misc.prompt.openRouter",
+        "settings.misc.prompt.openRouterHost",
+        "settings.misc.prompt.warp",
+        "settings.misc.prompt.workspace",
+        "settings.misc.prompt.zai",
+        "settings.misc.region",
+        "settings.misc.region.auto",
+        "settings.misc.region.chinaMainland",
+        "settings.misc.region.international",
+        "settings.misc.region.minimaxChina",
+        "settings.misc.region.minimaxGlobal",
+        "settings.misc.region.zaiChina",
+        "settings.misc.region.zaiGlobal",
+        "settings.misc.removeAkSk",
+        "settings.misc.removeApiKey",
+        "settings.misc.removeCookieSlot",
+        "settings.misc.removeCopy",
+        "settings.misc.removeCopyButton",
+        "settings.misc.removeCopyDetail",
+        "settings.misc.removeCopyTitle",
+        "settings.misc.removeGithubToken",
+        "settings.misc.rename",
+        "settings.misc.secretAccessKey",
+        "settings.misc.signIn",
+        "settings.misc.signInViaWeb",
+        "settings.misc.tencentTokenPlanNote",
+        "settings.misc.variant",
+        "settings.misc.waiting",
+        "settings.misc.workspaceNote",
+        "settings.needsSetup",
+        "settings.notChecked",
+        "settings.notCheckedYet",
+        "settings.openRefreshCooldown",
+        "settings.openRefreshDetail",
+        "settings.openStatusPage",
+        "settings.percentShows",
+        "settings.planBadge",
+        "settings.planBadgeDetail",
+        "settings.popoverDensity.compact",
+        "settings.popoverDensity.compactDetail",
+        "settings.popoverDensity.regular",
+        "settings.popoverDensity.regularDetail",
+        "settings.popoverDensity.spacious",
+        "settings.popoverDensity.spaciousDetail",
+        "settings.pricing.addOverride",
+        "settings.pricing.advancedTiers",
+        "settings.pricing.alwaysWins",
+        "settings.pricing.bundledFallback",
+        "settings.pricing.cacheReadAbove",
+        "settings.pricing.cacheWriteAbove",
+        "settings.pricing.deleteOverride",
+        "settings.pricing.exactModelName",
+        "settings.pricing.fastMultiplier",
+        "settings.pricing.inputAbove",
+        "settings.pricing.intro",
+        "settings.pricing.localOverrides",
+        "settings.pricing.localOverridesName",
+        "settings.pricing.noOverrides",
+        "settings.pricing.number",
+        "settings.pricing.offlineFloor",
+        "settings.pricing.outputAbove",
+        "settings.pricing.overridesIntro",
+        "settings.pricing.priorityHealth",
+        "settings.pricing.rateInput",
+        "settings.pricing.rateOutput",
+        "settings.pricing.refreshNow",
+        "settings.pricing.refreshing",
+        "settings.pricing.thresholdTokens",
+        "settings.pricingDataDate",
+        "settings.privacyDetail",
+        "settings.privacyMode",
+        "settings.privacyModeDetail",
+        "settings.ready",
+        "settings.refreshEvery",
+        "settings.refreshOnPopoverOpen",
+        "settings.releaseNotes",
+        "settings.remote.core",
+        "settings.remote.costAggregation",
+        "settings.remote.costAggregationIntro",
+        "settings.remote.differentControlCenter",
+        "settings.remote.discard",
+        "settings.remote.discardPendingDetail",
+        "settings.remote.discardPendingTitle",
+        "settings.remote.disconnect",
+        "settings.remote.disconnectButton",
+        "settings.remote.disconnectDetail",
+        "settings.remote.disconnectIntro",
+        "settings.remote.disconnectTitle",
+        "settings.remote.exportIdentity",
+        "settings.remote.importProvisioning",
+        "settings.remote.join",
+        "settings.remote.joinIntro",
+        "settings.remote.joinWithCode",
+        "settings.remote.lastSync",
+        "settings.remote.machineDetail",
+        "settings.remote.machinesAppearAfterImport",
+        "settings.remote.machinesSynced",
+        "settings.remote.manualPairingIntro",
+        "settings.remote.notConnected",
+        "settings.remote.orPairManually",
+        "settings.remote.pendingIntro",
+        "settings.remote.provisioning",
+        "settings.remote.registeredProbes",
+        "settings.remote.relay",
+        "settings.remote.resumeSaving",
+        "settings.remote.retrySaving",
+        "settings.remote.statusWithCode",
+        "settings.remote.sync.busy",
+        "settings.remote.sync.connectionFailed",
+        "settings.remote.sync.hostLookupFailed",
+        "settings.remote.sync.invalidResponse",
+        "settings.remote.sync.networkDetail",
+        "settings.remote.sync.offline",
+        "settings.remote.sync.rejected",
+        "settings.remote.sync.rejectedDetail",
+        "settings.remote.sync.retryDetail",
+        "settings.remote.sync.secureConnectionFailed",
+        "settings.remote.sync.sequenceGap",
+        "settings.remote.sync.sequenceGapDetail",
+        "settings.remote.sync.timeout",
+        "settings.remote.sync.transportFailed",
+        "settings.remote.sync.unknown",
+        "settings.remote.sync.unknownDetail",
+        "settings.remote.sync.unverifiedProbe",
+        "settings.remote.sync.unverifiedProbeDetail",
+        "settings.remote.syncNow",
+        "settings.remote.workspace",
+        "settings.repository",
+        "settings.rescanCostLogs",
+        "settings.route.antigravityLocal",
+        "settings.route.browserCookies",
+        "settings.route.cli",
+        "settings.route.grokAuthFile",
+        "settings.route.oauth",
+        "settings.route.webViewCookies",
+        "settings.routeHealth.agyAvailable",
+        "settings.routeHealth.authFileExpired",
+        "settings.routeHealth.authFileUnreadable",
+        "settings.routeHealth.cachedOnly",
+        "settings.routeHealth.credentialUnreadable",
+        "settings.routeHealth.credentialsAvailable",
+        "settings.routeHealth.invalidCookie",
+        "settings.routeHealth.keychainLocked",
+        "settings.routeHealth.lspRunning",
+        "settings.routeHealth.noAntigravityData",
+        "settings.routeHealth.noAuthFile",
+        "settings.routeHealth.noCredential",
+        "settings.routeHealth.noSavedCookie",
+        "settings.routeHealth.savedInKeychain",
+        "settings.search",
+        "settings.section.components",
+        "settings.section.costData",
+        "settings.section.layout",
+        "settings.section.menuBar",
+        "settings.section.menuBarHealth",
+        "settings.section.miniWindows",
+        "settings.section.overview",
+        "settings.section.privacy",
+        "settings.section.refreshing",
+        "settings.section.remoteProbes",
+        "settings.section.system",
+        "settings.section.updates",
+        "settings.showAssistant",
+        "settings.showAssistantDetail",
+        "settings.sidebar.coreProviders",
+        "settings.sidebar.disableProvider",
+        "settings.sidebar.enableProvider",
+        "settings.sidebar.hideFromOverview",
+        "settings.sidebar.settings",
+        "settings.spaceXAIIntro",
+        "settings.terminal.copyOnly",
+        "settings.updateChannel",
+        "settings.updateChannel.dev",
+        "settings.updateChannel.devDetail",
+        "settings.updateChannel.main",
+        "settings.updateChannel.mainDetail",
+        "settings.updateCheckDetail",
+        "settings.usageMode.antigravity.autoDetail",
+        "settings.usageMode.antigravity.localFirstDetail",
+        "settings.usageMode.antigravity.localOnly",
+        "settings.usageMode.antigravity.localOnlyDetail",
+        "settings.usageMode.antigravity.localThenWeb",
+        "settings.usageMode.antigravity.webFirstDetail",
+        "settings.usageMode.antigravity.webOnly",
+        "settings.usageMode.antigravity.webOnlyDetail",
+        "settings.usageMode.antigravity.webThenLocal",
+        "settings.usageMode.auto",
+        "settings.usageMode.claude.autoDetail",
+        "settings.usageMode.claude.codeFirstDetail",
+        "settings.usageMode.claude.codeOnly",
+        "settings.usageMode.claude.codeOnlyDetail",
+        "settings.usageMode.claude.codeThenWeb",
+        "settings.usageMode.claude.oauthCodeWeb",
+        "settings.usageMode.claude.oauthFirstDetail",
+        "settings.usageMode.claude.oauthOnly",
+        "settings.usageMode.claude.oauthOnlyDetail",
+        "settings.usageMode.claude.webFirstDetail",
+        "settings.usageMode.claude.webOnly",
+        "settings.usageMode.claude.webOnlyDetail",
+        "settings.usageMode.claude.webThenCode",
+        "settings.usageMode.codex.autoDetail",
+        "settings.usageMode.codex.cliOnly",
+        "settings.usageMode.codex.cliOnlyDetail",
+        "settings.usageMode.codex.cliThenOauth",
+        "settings.usageMode.codex.oauthFirstDetail",
+        "settings.usageMode.codex.oauthOnly",
+        "settings.usageMode.codex.oauthOnlyDetail",
+        "settings.usageMode.codex.oauthThenCli",
+        "settings.usageMode.gemini.webOnly",
+        "settings.usageMode.gemini.webOnlyDetail",
+        "settings.usageSource",
+        "settings.webQuota",
+        "settings.whatChangedIn",
         "status.card.componentCount",
         "status.card.components",
         "status.card.noIncidents",

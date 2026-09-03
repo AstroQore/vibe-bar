@@ -10,7 +10,7 @@ struct QuotaBucketView: View {
         let percent = bucket.displayPercent(mode)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(bucket.title)
+                Text(QuotaGroupLabelLocalizer.display(bucket.title))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                 Spacer(minLength: 8)

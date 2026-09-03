@@ -1,12 +1,21 @@
 {
+  "common.add": {
+    "value": "添加"
+  },
   "common.all": {
     "value": "全部"
+  },
+  "common.auto": {
+    "value": "自动"
   },
   "common.cancel": {
     "value": "取消"
   },
   "common.clear": {
     "value": "清除"
+  },
+  "common.copied": {
+    "value": "已复制"
   },
   "common.copy": {
     "value": "复制"
@@ -62,6 +71,9 @@
   "common.done": {
     "value": "完成"
   },
+  "common.dragToReorder": {
+    "value": "拖动可重新排序"
+  },
   "common.duration.days": {
     "value": "{days} 天"
   },
@@ -83,6 +95,9 @@
   "common.duration.now": {
     "value": "现在"
   },
+  "common.name": {
+    "value": "名称"
+  },
   "common.off": {
     "value": "已关闭"
   },
@@ -98,14 +113,26 @@
   "common.percent": {
     "value": "{value}%"
   },
+  "common.provider": {
+    "value": "厂商"
+  },
   "common.refresh": {
     "value": "刷新"
   },
   "common.refreshSection": {
     "value": "刷新此区块"
   },
+  "common.remove": {
+    "value": "移除"
+  },
   "common.retry": {
     "value": "重试"
+  },
+  "common.retryNow": {
+    "value": "立即重试"
+  },
+  "common.save": {
+    "value": "保存"
   },
   "common.updated.daysAgo": {
     "value": "{days, plural, other {# 天}}前更新"
@@ -150,7 +177,7 @@
     "value": "{title} — 完整图表"
   },
   "cost.gemini.emptyDetail": {
-    "value": "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源都刷新不了时，缓存值会标记为已过期。"
+    "value": "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源均无法刷新时，缓存值将标记为已过期。"
   },
   "cost.gemini.emptyTitle": {
     "value": "暂未发现 Gemini 或 AntiGravity 的用量。"
@@ -183,10 +210,10 @@
     "value": "近 30 天 token"
   },
   "cost.metric.today": {
-    "value": "今天"
+    "value": "今日"
   },
   "cost.metric.todayTokens": {
-    "value": "今天 token"
+    "value": "今日 token"
   },
   "cost.metric.totalCost": {
     "value": "总花费"
@@ -195,10 +222,10 @@
     "value": "总 token"
   },
   "cost.metric.yesterday": {
-    "value": "昨天"
+    "value": "昨日"
   },
   "cost.metric.yesterdayTokens": {
-    "value": "昨天 token"
+    "value": "昨日 token"
   },
   "cost.modelRanking.allProvidersAllTime": {
     "value": "全部厂商 · 全部时间"
@@ -249,7 +276,7 @@
     "value": "30 天"
   },
   "cost.timeframe.today": {
-    "value": "今天"
+    "value": "今日"
   },
   "cost.timeframe.week": {
     "value": "7 天"
@@ -258,7 +285,7 @@
     "value": "7 天"
   },
   "cost.timeframe.yesterday": {
-    "value": "昨天"
+    "value": "昨日"
   },
   "cost.title": {
     "value": "花费"
@@ -306,7 +333,7 @@
     "value": "收起"
   },
   "onboarding.apiKeys.intro": {
-    "value": "这些套餐靠 API key 或控制台 cookie 跟踪，而不是 CLI 登录。勾选你有的那些 — 勾选后会在「其他厂商」页得到一张卡片 — 展开某一行即可现在填写凭据。密钥和 cookies 都会存进你的登录 Keychain。"
+    "value": "这些套餐通过 API key 或控制台 cookie 跟踪，而非 CLI 登录。勾选已持有的项 — 勾选后将在「其他厂商」页生成一张卡片 — 展开对应行即可填写凭据。密钥与 cookies 均存入登录 Keychain。"
   },
   "onboarding.apiKeys.setUp": {
     "value": "设置"
@@ -321,7 +348,7 @@
     "value": "下一步"
   },
   "onboarding.cookies.batchScope": {
-    "value": "这个按钮只覆盖上面四个套餐。下一步的控制台 cookie 套餐有各自的一键批量导入，在「设置 → 浏览器 Cookies」里。"
+    "value": "此按钮仅覆盖上述四个套餐。下一步的控制台 cookie 套餐另有一键批量导入，位于「设置 → 浏览器 Cookies」。"
   },
   "onboarding.cookies.importAll": {
     "value": "立即从所有浏览器导入"
@@ -339,7 +366,7 @@
     "value": "正在导入…"
   },
   "onboarding.cookies.intro": {
-    "value": "网页端额度 — 也就是厂商在自己网站上显示的那份 — 来自浏览器里已有的登录会话。Vibe Bar 会读取这台 Mac 上各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，只保留每个厂商真正需要的那几条，并存进你的登录 Keychain，绝不写入明文文件。首次读取浏览器的 cookie 密钥时，macOS 可能会要求授权一次。"
+    "value": "网页端额度 — 即厂商在其自有网站上展示的部分 — 来自浏览器中已有的登录会话。Vibe Bar 会读取本机各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，仅保留各厂商所需的少量 cookie，并存入登录 Keychain，不写入明文文件。首次读取浏览器 cookie 密钥时，macOS 可能要求授权一次。"
   },
   "onboarding.cookies.notImported": {
     "value": "尚未导入"
@@ -351,7 +378,7 @@
     "value": "cookies 已保存。"
   },
   "onboarding.cookies.signInFirst": {
-    "value": "请先在浏览器里登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已经存在的会话。没登录过的厂商不会有任何结果。"
+    "value": "请先在浏览器中登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已存在的会话；未登录的厂商不会返回任何结果。"
   },
   "onboarding.done.apiKeyProviders": {
     "value": "API key 厂商"
@@ -363,16 +390,16 @@
     "value": "已保存 {saved}/{total} 个厂商"
   },
   "onboarding.done.footer": {
-    "value": "这里的每一项在设置里都能改，向导本身也在「设置 → 系统」里一键可达。"
+    "value": "此处各项均可在设置中修改，向导亦可在「设置 → 系统」中一键打开。"
   },
   "onboarding.done.intro": {
-    "value": "菜单栏需要的都齐了。点「完成」会打开面板并显示当前已能读到的额度，其余的会在第一次刷新时补上。"
+    "value": "菜单栏所需配置已齐备。点击「完成」将打开面板并显示当前可读取的额度，其余部分在首次刷新时补全。"
   },
   "onboarding.done.launchAtLogin": {
     "value": "开机启动"
   },
   "onboarding.done.miscCount": {
-    "value": "「其他厂商」页有 {count} 个"
+    "value": "「其他厂商」页 {count} 个"
   },
   "onboarding.done.modelPricing": {
     "value": "模型价格"
@@ -399,7 +426,7 @@
     "value": "正在获取…"
   },
   "onboarding.pricing.footer": {
-    "value": "价格单位是每百万 token 的美元数。本地覆盖值在「设置 → 模型价格」里。"
+    "value": "价格单位为每百万 token 的美元数。本地覆盖值位于「设置 → 模型价格」。"
   },
   "onboarding.pricing.interval.hour": {
     "value": "小时"
@@ -408,7 +435,7 @@
     "value": "{hours} 小时"
   },
   "onboarding.pricing.intro": {
-    "value": "Token 花费完全在这台 Mac 上按 agent 的会话日志计算，价格来自若干公开价目表合并后的目录 — 同一个模型出现在多处时优先级高的胜出，你自己的覆盖值优先于全部，内置表是离线兜底。目录每 {interval}在后台刷新一次；现在抓一次能让第一批费用数字用上当前价格。"
+    "value": "Token 花费完全在本机依据 agent 的会话日志计算，价格取自若干公开价目表合并后的目录 — 同一模型出现在多个目录时以优先级高者为准，自定义覆盖值优先于全部，内置表为离线兜底。目录每 {interval}在后台刷新一次；此刻获取可使首批费用数字采用当前价格。"
   },
   "onboarding.pricing.merged": {
     "value": "{when}合并 · {count} 个模型"
@@ -444,25 +471,25 @@
     "value": "浏览器 cookies"
   },
   "onboarding.step.done.subtitle": {
-    "value": "这里的每一项在设置里也能改。"
+    "value": "此处各项均可在设置中修改。"
   },
   "onboarding.step.done.title": {
     "value": "完成"
   },
   "onboarding.step.pricing.subtitle": {
-    "value": "费用数字背后的 token 单价从哪来。"
+    "value": "费用数字背后的 token 单价来源。"
   },
   "onboarding.step.pricing.title": {
     "value": "模型价格"
   },
   "onboarding.step.subscriptions.subtitle": {
-    "value": "打开你付费的套餐。"
+    "value": "启用已订阅的套餐。"
   },
   "onboarding.step.subscriptions.title": {
     "value": "订阅"
   },
   "onboarding.step.welcome.subtitle": {
-    "value": "一段话讲清 Vibe Bar 能做什么。"
+    "value": "用一段话说明 Vibe Bar 的功能。"
   },
   "onboarding.step.welcome.title": {
     "value": "欢迎"
@@ -486,16 +513,16 @@
     "value": "已保存 ChatGPT 网页 cookies — 额度将从这里读取。"
   },
   "onboarding.subscriptions.gemini.hint": {
-    "value": "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，没有 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。"
+    "value": "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，无 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。"
   },
   "onboarding.subscriptions.grok.detected": {
     "value": "已检测到 ~/.grok/auth.json — 额度将从这里读取。"
   },
   "onboarding.subscriptions.grok.missing": {
-    "value": "还没有 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。"
+    "value": "尚未找到 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。"
   },
   "onboarding.subscriptions.intro": {
-    "value": "打开你在用的订阅。关掉的厂商不会出现在总览和菜单栏里；之后再关掉也不会丢失凭据和历史。"
+    "value": "启用正在使用的订阅。已关闭的厂商不会出现在总览与菜单栏；之后关闭亦不会删除其凭据与历史。"
   },
   "onboarding.subscriptions.productLine.claude": {
     "value": "Claude Code · claude.ai 网页"
@@ -522,31 +549,31 @@
     "value": "Token 花费"
   },
   "onboarding.welcome.footer": {
-    "value": "整个过程约两分钟。这里的每个选择之后都能在设置里改，向导本身也在「设置 → 系统」里一键可达。"
+    "value": "全程约两分钟。此处的每项选择均可稍后在设置中修改，向导亦可在「设置 → 系统」中一键打开。"
   },
   "onboarding.welcome.intro": {
-    "value": "Vibe Bar 常驻菜单栏，一眼就能看到每个 AI 订阅还剩多少、编码 agent 花了多少钱，以及这台 Mac 上有哪些会话和 skills。它读取 Codex、Claude Code、Gemini、Grok 这些 CLI 本就保存在本机的凭据，在你允许时再从浏览器 cookies 补上网页端额度，并且只会把这些数据发回它们各自的厂商。"
+    "value": "Vibe Bar 常驻菜单栏，可一览各 AI 订阅的剩余量、编码 agent 的支出，以及本机存有哪些会话与 skills。它读取 Codex、Claude Code、Gemini、Grok 等 CLI 已保存在本机的凭据，并在获得授权后从浏览器 cookies 补充网页端额度；所有数据仅发送至其来源厂商。"
   },
   "onboarding.welcome.mcp.detail": {
-    "value": "你的 agent 可以通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度和花费。"
+    "value": "agent 可通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度与花费。"
   },
   "onboarding.welcome.mcp.title": {
     "value": "本地 MCP 服务"
   },
   "onboarding.welcome.quotas.detail": {
-    "value": "Codex、Claude Code、Gemini、Grok，以及一排 API key 套餐，每个都带重置倒计时。"
+    "value": "Codex、Claude Code、Gemini、Grok，以及一系列 API key 套餐，均附带重置倒计时。"
   },
   "onboarding.welcome.quotas.title": {
     "value": "订阅额度"
   },
   "onboarding.welcome.sessions.detail": {
-    "value": "在 Workbench 里浏览、搜索和整理 agent 会话与共享 skills。"
+    "value": "在 Workbench 中浏览、搜索并整理 agent 会话与共享 skills。"
   },
   "onboarding.welcome.sessions.title": {
     "value": "会话与 skills"
   },
   "platform.macos.launchAtLogin.detail": {
-    "value": "Vibe Bar 是没有 Dock 图标的菜单栏应用。开机启动能让额度读数和本地 MCP 服务在你登录后立刻可用；首次启用时 macOS 可能会要求你在「系统设置」中批准这个登录项。"
+    "value": "Vibe Bar 是无 Dock 图标的菜单栏应用。开机启动可使额度读数与本地 MCP 服务在登录后即刻可用；首次启用时 macOS 可能要求在「系统设置」中批准该登录项。"
   },
   "platform.macos.launchAtLogin.enabled": {
     "value": "已在 macOS 登录项中启用。"
@@ -555,13 +582,82 @@
     "value": "已关闭。"
   },
   "platform.macos.launchAtLogin.subtitle": {
-    "value": "登录 Mac 后菜单栏立刻显示读数。"
+    "value": "登录 Mac 后菜单栏即刻显示读数。"
   },
   "platform.macos.launchAtLogin.title": {
     "value": "开机启动"
   },
   "platform.macos.launchAtLogin.toggle": {
     "value": "登录时启动 Vibe Bar"
+  },
+  "platform.macos.menuBar.color.actual": {
+    "value": "实际"
+  },
+  "platform.macos.menuBar.color.actualDetail": {
+    "value": "仅按显示的百分比着色，忽略预测。"
+  },
+  "platform.macos.menuBar.color.forecast": {
+    "value": "预测"
+  },
+  "platform.macos.menuBar.color.forecastDetail": {
+    "value": "绿色表示预计够用 · 蓝色表示预计会有较多闲置 · 橙色表示可能不足 · 红色表示预计会用尽。当某项额度历史过少、无法预测时，回退为按百分比着色。"
+  },
+  "platform.macos.menuBar.displayDensity": {
+    "value": "显示密度"
+  },
+  "platform.macos.menuBar.fieldStyle.label": {
+    "value": "名称"
+  },
+  "platform.macos.menuBar.fieldStyle.labelDetail": {
+    "value": "名称与百分比并列。"
+  },
+  "platform.macos.menuBar.fieldStyle.logo": {
+    "value": "图标"
+  },
+  "platform.macos.menuBar.fieldStyle.logoAndLabel": {
+    "value": "图标与名称"
+  },
+  "platform.macos.menuBar.fieldStyle.logoAndLabelDetail": {
+    "value": "图标、名称与百分比。"
+  },
+  "platform.macos.menuBar.fieldStyle.logoDetail": {
+    "value": "厂商图标与百分比并列 — 不显示文字。"
+  },
+  "platform.macos.menuBar.fields": {
+    "value": "字段"
+  },
+  "platform.macos.menuBar.layout": {
+    "value": "排布"
+  },
+  "platform.macos.menuBar.layout.compact": {
+    "value": "紧凑"
+  },
+  "platform.macos.menuBar.layout.iconOnly": {
+    "value": "仅图标"
+  },
+  "platform.macos.menuBar.layout.singleLine": {
+    "value": "单行"
+  },
+  "platform.macos.menuBar.layout.twoRows": {
+    "value": "双行"
+  },
+  "platform.macos.menuBar.mergeGroupWindows": {
+    "value": "合并同组的窗口"
+  },
+  "platform.macos.menuBar.mergeGroupWindowsDetail": {
+    "value": "把 5 小时与每周显示为 5%/100%，而不是两条独立条目。"
+  },
+  "platform.macos.menuBar.overview": {
+    "value": "总览"
+  },
+  "platform.macos.menuBar.percentColor": {
+    "value": "百分比配色"
+  },
+  "platform.macos.menuBar.showInMenuBar": {
+    "value": "在菜单栏中显示"
+  },
+  "platform.macos.menuBar.showTitleText": {
+    "value": "显示标题文字"
   },
   "popover.header.machinesSubtitle": {
     "value": "端到端加密的远程用量"
@@ -571,6 +667,36 @@
   },
   "popover.header.overviewSubtitle": {
     "value": "全部厂商 · 额度与花费"
+  },
+  "popover.machines.checking": {
+    "value": "正在检查 Relay…"
+  },
+  "popover.machines.includeInTotals": {
+    "value": "计入总计"
+  },
+  "popover.machines.includeInTotalsHelp": {
+    "value": "把这台机器解密后的用量计入本 Core 的总览与厂商花费页"
+  },
+  "popover.machines.labelWithStatus": {
+    "value": "{label} · {status}"
+  },
+  "popover.machines.noData": {
+    "value": "暂无远程机器数据"
+  },
+  "popover.machines.noDataDetail": {
+    "value": "Relay 已连接。探针会在其首个加密批次被解密并导入后出现。"
+  },
+  "popover.machines.notConfigured": {
+    "value": "尚未配置远程 Core"
+  },
+  "popover.machines.notConfiguredDetail": {
+    "value": "先创建 Core 描述文件，再签发工作区范围的 Relay 凭据，然后导入已签名的配置文件。本机无需开放任何入站端口。"
+  },
+  "popover.machines.sequence": {
+    "value": "序号 {value}"
+  },
+  "popover.machines.thirtyDayCost": {
+    "value": "近 30 天花费"
   },
   "popover.refreshGoogleAI": {
     "value": "刷新 Gemini Web + AntiGravity"
@@ -600,7 +726,7 @@
     "value": "距重置 {when}"
   },
   "quota.empty.needsLogin.detail": {
-    "value": "在终端里运行 `{command} login`，然后刷新。"
+    "value": "在终端中运行 `{command} login`，然后刷新。"
   },
   "quota.empty.needsLogin.headline": {
     "value": "需重新登录"
@@ -624,7 +750,7 @@
     "value": "响应格式已变化"
   },
   "quota.empty.rateLimited.detail": {
-    "value": "官方 API 要求稍候，请过一会儿再试。"
+    "value": "官方 API 要求稍候，请稍后重试。"
   },
   "quota.empty.rateLimited.headline": {
     "value": "请求过于频繁"
@@ -639,19 +765,19 @@
     "value": "中等置信度"
   },
   "quota.forecast.guidance.atRisk": {
-    "value": "放慢节奏，或把工作转到别的额度上"
+    "value": "降低使用速度，或将任务转移至其他额度"
   },
   "quota.forecast.guidance.available": {
     "value": "目标保留 {target}% · 约有 {unused}% 可用"
   },
   "quota.forecast.guidance.surplus": {
-    "value": "预计有约 {unused}% 会闲置，超出 {target}% 的安全余量"
+    "value": "预计约 {unused}% 将闲置，超出 {target}% 的安全余量"
   },
   "quota.forecast.guidance.usedAvailable": {
     "value": "目标用到 {target}% · 约有 {unused}% 额度可用"
   },
   "quota.forecast.guidance.usedSurplus": {
-    "value": "预计有约 {unused}% 的额度会剩下，超出 {target}% 的使用目标"
+    "value": "预计约 {unused}% 的额度将剩余，超出 {target}% 的使用目标"
   },
   "quota.forecast.guidance.usedWithinTarget": {
     "value": "仍在 {target}% 的使用目标之内"
@@ -663,22 +789,22 @@
     "value": "仍在 {target}% 的安全余量之内"
   },
   "quota.forecast.reset.atRisk": {
-    "value": "大概率在重置前用尽"
+    "value": "很可能在重置前耗尽"
   },
   "quota.forecast.reset.enough": {
     "value": "预计重置时剩余 {remaining}%"
   },
   "quota.forecast.reset.learning": {
-    "value": "正在学习你的使用规律 · 约剩余 {remaining}%"
+    "value": "正在学习使用规律 · 约剩余 {remaining}%"
   },
   "quota.forecast.reset.surplus": {
-    "value": "大概率有盈余 · 预计剩余 {remaining}%"
+    "value": "预计将有盈余 · 重置时剩余 {remaining}%"
   },
   "quota.forecast.reset.watch": {
-    "value": "可能不够用 · 预计剩余 {remaining}%"
+    "value": "可能不足 · 预计剩余 {remaining}%"
   },
   "quota.forecast.status.atRisk": {
-    "value": "有风险 · 大概率在重置前用尽"
+    "value": "有风险 · 很可能在重置前耗尽"
   },
   "quota.forecast.status.enough": {
     "value": "充足 · 预计重置时{value}"
@@ -693,19 +819,19 @@
     "value": "需关注 · 预计重置时{value}"
   },
   "quota.forecast.useUp.beforeReset": {
-    "value": "预计会在重置前用尽"
+    "value": "预计将在重置前耗尽"
   },
   "quota.forecast.useUp.couldRunOut": {
-    "value": "可能在 {countdown}后用尽"
+    "value": "可能在 {countdown}后耗尽"
   },
   "quota.forecast.useUp.estimated": {
-    "value": "预计 {countdown}后用尽"
+    "value": "预计 {countdown}后耗尽"
   },
   "quota.forecast.useUp.lastsUntilReset": {
     "value": "预计可用到重置"
   },
   "quota.forecast.useUp.uncertain": {
-    "value": "用尽时间不确定 · 可能在重置前不够用"
+    "value": "耗尽时间不确定 · 可能在重置前不足"
   },
   "quota.forecast.value.left": {
     "value": "剩余 {percent}%"
@@ -741,7 +867,7 @@
     "value": "{seconds} 秒"
   },
   "quota.freshness.dataAge": {
-    "value": "数据已 {age}"
+    "value": "数据已有 {age}"
   },
   "quota.freshness.defaultHelp": {
     "value": "实时额度未在预期间隔内刷新。"
@@ -777,7 +903,7 @@
     "value": "每月"
   },
   "quota.group.noUtilization": {
-    "value": "暂无使用数据 — 试试刷新。"
+    "value": "暂无使用数据 — 可尝试刷新"
   },
   "quota.group.other": {
     "value": "其他"
@@ -816,7 +942,7 @@
     "value": "可用到重置"
   },
   "quota.pace.runsOutIn": {
-    "value": "{countdown}后用尽"
+    "value": "{countdown}后耗尽"
   },
   "quota.perModelLimits": {
     "value": "{count, plural, other {# 个}}按模型的限额 · 打开 {provider} 查看详情"
@@ -894,7 +1020,7 @@
     "value": "提前补额，下次重置时间不变"
   },
   "quota.resetHistory.reset.earlyUnclear": {
-    "value": "提前补额，切换到了别的节奏"
+    "value": "提前补额，重置节奏已改变"
   },
   "quota.resetHistory.spoken.allCycles": {
     "value": "全部已记录周期"
@@ -927,25 +1053,25 @@
     "value": "已用 {used}% · 浪费 {wasted}% · {count, plural, other {# 个周期}}"
   },
   "quota.resetHistory.totals.none": {
-    "value": "该区间内没有完整周期"
+    "value": "该区间内无完整周期"
   },
   "quota.resetHistory.truncation": {
     "value": "仅显示最近 {shown} 个周期，共 {total} 个"
   },
   "quota.resetHistory.verdict.clean": {
-    "value": "没有明显浪费 — 补回的额度用掉了 {percent}%。"
+    "value": "无明显浪费 — 补回的额度已使用 {percent}%。"
   },
   "quota.resetHistory.verdict.leaky": {
-    "value": "{label} 在 {count, plural, other {# 个周期}}里平均有 {percent}% 没用掉。"
+    "value": "{label} 在 {count, plural, other {# 个周期}}中平均有 {percent}% 未使用。"
   },
   "quota.resetHistory.verdict.noCycles": {
     "value": "尚无完整周期 — 额度补满时才会记录一个周期。"
   },
   "quota.resetHistory.verdict.noQuota": {
-    "value": "目前还没有跟踪任何按周或更长周期的额度。"
+    "value": "尚未跟踪任何按周或更长周期的额度。"
   },
   "quota.resetHistory.verdict.wasteful": {
-    "value": "{label} 有 {count, plural, other {# 次}}补额时超过一半没用掉。"
+    "value": "{label} 有 {count, plural, other {# 次}}补额后超过一半未使用。"
   },
   "quota.resetHistory.window.all": {
     "value": "全部"
@@ -966,7 +1092,7 @@
     "value": "+{hours} 小时"
   },
   "quota.upcoming.empty": {
-    "value": "未来 7 天内没有额度会补满。"
+    "value": "未来 7 天内无额度补满。"
   },
   "quota.upcoming.forecastAtReset": {
     "value": "预计重置时剩余 {percent}%"
@@ -992,6 +1118,120 @@
   "quota.update.failed": {
     "value": "更新失败：{reason}"
   },
+  "settings.antigravityCookieEnabled": {
+    "value": "Antigravity 的 cookie 导入已启用 — 请先在 antigravity.google 登录。"
+  },
+  "settings.antigravityLocalOnly": {
+    "value": "Antigravity 读取本机运行的语言服务。cookie 导入将等到 Antigravity Cloud 端点上线后再启用。"
+  },
+  "settings.antigravitySource": {
+    "value": "Antigravity 来源"
+  },
+  "settings.appVersion": {
+    "value": "Vibe Bar {version}"
+  },
+  "settings.bundled": {
+    "value": "内置"
+  },
+  "settings.checkConnections": {
+    "value": "检查 {company} 连接"
+  },
+  "settings.checkForUpdates": {
+    "value": "检查更新…"
+  },
+  "settings.checkKitUpdates": {
+    "value": "检查组件更新"
+  },
+  "settings.checkingGitHub": {
+    "value": "正在向 github.com 查询最新版本…"
+  },
+  "settings.clearCostData": {
+    "value": "清除花费数据"
+  },
+  "settings.connectionHealth": {
+    "value": "连接状态"
+  },
+  "settings.costDataIntro": {
+    "value": "花费根据 ~/.codex/sessions 与 ~/.claude/projects 下的本地 CLI 会话 JSONL 日志计算。网页端与桌面端用量不计入。"
+  },
+  "settings.couldNotDeleteCookies": {
+    "value": "无法删除已保存的 cookies。"
+  },
+  "settings.couldNotDeleteGeminiCookies": {
+    "value": "无法删除已保存的 Gemini cookies。"
+  },
+  "settings.couldNotDeleteGrokCookies": {
+    "value": "无法删除已保存的 Grok cookies。"
+  },
+  "settings.credentialSource.apiOnly": {
+    "value": "仅 API / OAuth"
+  },
+  "settings.credentialSource.auto": {
+    "value": "自动"
+  },
+  "settings.credentialSource.browserOnly": {
+    "value": "仅浏览器"
+  },
+  "settings.credentialSource.manualOnly": {
+    "value": "仅手动"
+  },
+  "settings.credentialSource.off": {
+    "value": "关闭"
+  },
+  "settings.cursorNoSession": {
+    "value": "没有可用的 Cursor.app 会话 — 请在下方导入 cursor.com 的 cookies。"
+  },
+  "settings.cursorSessionDetected": {
+    "value": "已检测到 Cursor.app 的登录会话"
+  },
+  "settings.cursorSource": {
+    "value": "Cursor 来源"
+  },
+  "settings.cursorSourceValue": {
+    "value": "Cursor.app → 网页"
+  },
+  "settings.deleteCookies": {
+    "value": "删除 cookies"
+  },
+  "settings.deleteGeminiCookies": {
+    "value": "删除 Gemini 的 cookies"
+  },
+  "settings.deleteGrokCookies": {
+    "value": "删除 Grok 的 cookies"
+  },
+  "settings.displayMode.remaining": {
+    "value": "剩余"
+  },
+  "settings.displayMode.used": {
+    "value": "已用"
+  },
+  "settings.externalChange.title": {
+    "value": "另一个 Vibe Bar 覆盖了此处的修改"
+  },
+  "settings.geminiCookiesSaved": {
+    "value": "Gemini 的 cookies 已保存。"
+  },
+  "settings.geminiShared": {
+    "value": "Gemini 与 Antigravity 共用同一份 Google AI 订阅额度。网页端仅支持 cookie 导入，没有 WebView 登录途径。"
+  },
+  "settings.geminiSource": {
+    "value": "Gemini 来源"
+  },
+  "settings.grokAuthDetected": {
+    "value": "已检测到 ~/.grok/auth.json"
+  },
+  "settings.grokCookiesSaved": {
+    "value": "Grok 的 cookies 已保存。"
+  },
+  "settings.keepHistory": {
+    "value": "保留历史"
+  },
+  "settings.keepHistoryDetail": {
+    "value": "适用于花费历史与订阅填充历史。"
+  },
+  "settings.kitDetail": {
+    "value": "会话发现、harness 命名与 MCP 传输。独立仓库，固定到确切 tag 并编译进本次构建。"
+  },
   "settings.language.caption": {
     "value": "Vibe Bar 默认跟随 macOS 语言，也可以在此单独指定。厂商、模型与 harness 名称保持原始拼写。"
   },
@@ -1000,6 +1240,909 @@
   },
   "settings.language.title": {
     "value": "语言"
+  },
+  "settings.mcp.allowRefresh": {
+    "value": "允许 agent 刷新额度"
+  },
+  "settings.mcp.allowRefreshDetail": {
+    "value": "开启后，agent 可以让 Vibe Bar 重新向厂商拉取额度。强制刷新限流为每 {seconds} 秒一次。关闭后只读工具照常可用，quota.refresh 会报告刷新已禁用。"
+  },
+  "settings.mcp.allowSkills": {
+    "value": "允许 agent 安装 skills"
+  },
+  "settings.mcp.allowSkillsDetail": {
+    "value": "开启后，agent 可以调用 skills.install，从 GitHub 仓库或本地文件夹添加 skill。它走的是与 Workbench → Skills 相同的管理流程，因此只写入 ~/.agents/skills 以及 Vibe Bar 管理的 agent skills 目录 — 绝不覆盖已被其他 skill 占用的文件夹。关闭后该工具会报告安装已禁用。"
+  },
+  "settings.mcp.appendCodexConfig": {
+    "value": "追加到 ~/.codex/config.toml。"
+  },
+  "settings.mcp.connectAgent": {
+    "value": "接入一个 agent"
+  },
+  "settings.mcp.connectedClients": {
+    "value": "已连接客户端"
+  },
+  "settings.mcp.enable": {
+    "value": "启用本地 MCP 服务"
+  },
+  "settings.mcp.intro": {
+    "value": "Vibe Bar 可通过 MCP 向编码 agent 提供本机的额度、用量、花费与本地会话。服务监听 home 目录下的 Unix domain socket — 不开放网络端口，也不创建 token：socket 的文件权限即访问控制。"
+  },
+  "settings.mcp.lastActivity": {
+    "value": "最近一次客户端活动"
+  },
+  "settings.mcp.listening": {
+    "value": "监听中"
+  },
+  "settings.mcp.manualIntro": {
+    "value": "也可手动配置客户端。所有客户端运行同一条命令 — Vibe Bar 自身的可执行文件加 {flag}，它把 stdin/stdout 桥接到上面的 socket。"
+  },
+  "settings.mcp.mergeCursorConfig": {
+    "value": "合并到 ~/.cursor/mcp.json。"
+  },
+  "settings.mcp.movePrompt": {
+    "value": "Vibe Bar 正从 {path} 运行。保存客户端配置前请先移动到 /Applications，否则下次重新构建后配置会失效。"
+  },
+  "settings.mcp.notListening": {
+    "value": "未监听"
+  },
+  "settings.mcp.otherStdioClient": {
+    "value": "其他 stdio 客户端"
+  },
+  "settings.mcp.otherStdioDetail": {
+    "value": "给客户端自己的 mcpServers 映射加一条。"
+  },
+  "settings.mcp.quickestPath": {
+    "value": "最快的方式：把这段粘贴给任意 agent，让它自行完成配置、安装配套 skill 并验证连接。"
+  },
+  "settings.mcp.readOnlyDetail": {
+    "value": "agent 能访问的其余内容均为只读：额度、token 用量、花费、厂商状态、生效模型价格，以及本地会话索引（标题、项目，以及在开启会话正文索引时的消息摘录）。凭据、cookies 与组织 id 从不暴露，邮箱地址会被掩码。"
+  },
+  "settings.mcp.runInTerminal": {
+    "value": "在终端中运行。"
+  },
+  "settings.mcp.setupPrompt": {
+    "value": "Agent 配置提示词"
+  },
+  "settings.mcp.setupPromptDetail": {
+    "value": "一行内容，适用于任何能抓取 URL 的 agent。"
+  },
+  "settings.mcp.socket": {
+    "value": "Socket"
+  },
+  "settings.mcp.socketLifetime": {
+    "value": "socket 仅在 Vibe Bar 运行时存在。退出后，下方配置的 agent 会报告 “Vibe Bar is not running”，这是预期行为。"
+  },
+  "settings.mcp.status": {
+    "value": "状态"
+  },
+  "settings.mcp.title": {
+    "value": "MCP 服务"
+  },
+  "settings.mcp.whatAgentsMayDo": {
+    "value": "agent 的权限范围"
+  },
+  "settings.menuBarHealthUnavailable": {
+    "value": "本进程未接入菜单栏健康监控。"
+  },
+  "settings.miniWindow.add": {
+    "value": "添加迷你窗口"
+  },
+  "settings.miniWindow.allBucketsIncluded": {
+    "value": "已知的 bucket 都已在此窗口中。"
+  },
+  "settings.miniWindow.density.narrow": {
+    "value": "紧凑"
+  },
+  "settings.miniWindow.density.narrowDetail": {
+    "value": "菜单栏的紧凑样式：同样的单元，尺寸更小。"
+  },
+  "settings.miniWindow.density.roomy": {
+    "value": "宽松"
+  },
+  "settings.miniWindow.density.roomyDetail": {
+    "value": "菜单栏的单行样式：显示全部 bucket，名称与数字并列。"
+  },
+  "settings.miniWindow.density.twoLines": {
+    "value": "双行"
+  },
+  "settings.miniWindow.density.twoLinesDetail": {
+    "value": "菜单栏样式：bucket 两两成列堆叠，每个数字旁附名称。"
+  },
+  "settings.miniWindow.dismissBuiltIn": {
+    "value": "在厂商未返回该内置 bucket 期间将其隐藏。厂商一旦恢复返回，它便会重新出现。"
+  },
+  "settings.miniWindow.forgetDiscovered": {
+    "value": "忘记这个已发现的 bucket — 将其从列表以及所有选中它的窗口中移除。"
+  },
+  "settings.miniWindow.includeStyle": {
+    "value": "将{mode}纳入双击循环"
+  },
+  "settings.miniWindow.lastCannotBeRemoved": {
+    "value": "最后一个迷你窗口无法移除。"
+  },
+  "settings.miniWindow.mode.compact": {
+    "value": "紧凑"
+  },
+  "settings.miniWindow.mode.compactDetail": {
+    "value": "同样的三层结构，改为竖条，适合放在屏幕角落。"
+  },
+  "settings.miniWindow.mode.focus": {
+    "value": "聚焦"
+  },
+  "settings.miniWindow.mode.focusDetail": {
+    "value": "一次只显示一个选定 bucket，尺寸更大 — 点击按设定顺序切换。"
+  },
+  "settings.miniWindow.mode.ledger": {
+    "value": "清单"
+  },
+  "settings.miniWindow.mode.ledgerDetail": {
+    "value": "每个额度 bucket 一行 — 宽度固定，向下延伸。"
+  },
+  "settings.miniWindow.mode.rail": {
+    "value": "时间轴"
+  },
+  "settings.miniWindow.mode.railDetail": {
+    "value": "把未来 7 天画成一条补额轴，并列出即将到来的重置。"
+  },
+  "settings.miniWindow.mode.regular": {
+    "value": "标准"
+  },
+  "settings.miniWindow.mode.regularDetail": {
+    "value": "环形仪表，按 company → SubProvider → 额度组分组。"
+  },
+  "settings.miniWindow.mode.strip": {
+    "value": "条带"
+  },
+  "settings.miniWindow.mode.stripDetail": {
+    "value": "与菜单栏样式一致的细长条 — 每个 bucket 一格。"
+  },
+  "settings.miniWindow.mode.tiles": {
+    "value": "磁贴"
+  },
+  "settings.miniWindow.mode.tilesDetail": {
+    "value": "磁贴网格，含大号数字与状态色条。"
+  },
+  "settings.miniWindow.namesAllWindows": {
+    "value": "名称：全部窗口"
+  },
+  "settings.miniWindow.namesThisStyle": {
+    "value": "仅此处的{mode}"
+  },
+  "settings.miniWindow.namesThisWindow": {
+    "value": "仅“{name}”"
+  },
+  "settings.miniWindow.noFieldsSelected": {
+    "value": "未选择任何字段 — 请在上方勾选。"
+  },
+  "settings.miniWindow.notInWindow": {
+    "value": "不在“{name}”中 — 勾选 bucket 即可加入。适配器在运行时发现的 bucket 会自动出现在这里；灰显的行表示已记录但不在账号当前响应中，✕ 可将其忽略，直到厂商重新返回。"
+  },
+  "settings.miniWindow.offline": {
+    "value": "离线"
+  },
+  "settings.miniWindow.openClose": {
+    "value": "打开 / 关闭"
+  },
+  "settings.miniWindow.overridesStyle": {
+    "value": "仅对此窗口的{mode}样式生效的覆盖。留空则先继承窗口名称，再继承共享名称 — 以占位文本显示。"
+  },
+  "settings.miniWindow.overridesWindow": {
+    "value": "仅对此窗口生效的名称覆盖。留空则继承共享名称 — 以占位文本显示。"
+  },
+  "settings.miniWindow.position": {
+    "value": "{position}"
+  },
+  "settings.miniWindow.removeFromWindow": {
+    "value": "从此窗口移除"
+  },
+  "settings.miniWindow.removeHelp": {
+    "value": "移除此迷你窗口"
+  },
+  "settings.miniWindow.stripDensity": {
+    "value": "条带密度"
+  },
+  "settings.miniWindow.styleCycle": {
+    "value": "双击窗口可循环切换样式。点选某个样式即将其纳入循环 — 徽标表示它在循环中的次序。未选任何样式即表示按此顺序使用全部样式。"
+  },
+  "settings.miniWindow.toggleHelp": {
+    "value": "在屏幕上显示或隐藏此迷你窗口"
+  },
+  "settings.miniWindow.treeDetail": {
+    "value": "窗口的一棵树 — 按其折叠方式分组（company → SubProvider → 额度组 → bucket）。拖动行可重新排序，✕ 可移除，任一层级均可就地重命名。第一个字段渲染在最左（或最上）。"
+  },
+  "settings.misc.accessKeyId": {
+    "value": "Access Key ID（AKLT…）"
+  },
+  "settings.misc.akSkSaved": {
+    "value": "AK/SK 已保存到 Keychain。"
+  },
+  "settings.misc.apiKeySaved": {
+    "value": "API key 已保存到 Keychain。"
+  },
+  "settings.misc.clearWorkspace": {
+    "value": "清除已保存的工作区"
+  },
+  "settings.misc.clone": {
+    "value": "复制 {provider}"
+  },
+  "settings.misc.consoleLink": {
+    "value": "{title} →"
+  },
+  "settings.misc.edition": {
+    "value": "版本"
+  },
+  "settings.misc.githubSignInHint": {
+    "value": "通过 GitHub 设备流程登录。"
+  },
+  "settings.misc.githubTokenSaved": {
+    "value": "GitHub 设备令牌已保存到 Keychain。"
+  },
+  "settings.misc.importDetail": {
+    "value": "添加或刷新找到的第一个已登录浏览器配置；已导入的配置会保留叠加，该厂商的额度取上方所有槽位的平均值。每个 Chromium 系浏览器，macOS 可能会要求输入一次登录钥匙串密码。"
+  },
+  "settings.misc.kiroHint": {
+    "value": "运行 `kiro-cli login`，之后 Vibe Bar 会探测 `kiro-cli chat --no-interactive /usage`。"
+  },
+  "settings.misc.noCookieSpec": {
+    "value": "{provider} 未注册 cookie 规格。"
+  },
+  "settings.misc.noCookiesYet": {
+    "value": "尚未导入 cookies — 可从浏览器导入或在下方粘贴。"
+  },
+  "settings.misc.probe": {
+    "value": "探测"
+  },
+  "settings.misc.prompt.copilotHost": {
+    "value": "GitHub Enterprise 主机（可选，例如 github.example.com）"
+  },
+  "settings.misc.prompt.dashscope": {
+    "value": "粘贴 DashScope API key（sk-...）— 可选"
+  },
+  "settings.misc.prompt.kilo": {
+    "value": "粘贴 Kilo API key（可选）"
+  },
+  "settings.misc.prompt.minimax": {
+    "value": "粘贴 MiniMax Token Plan API key（sk-cp-... 或 MINIMAX_CODING_API_KEY）"
+  },
+  "settings.misc.prompt.openRouter": {
+    "value": "粘贴 OpenRouter API key（sk-or-v1-...）"
+  },
+  "settings.misc.prompt.openRouterHost": {
+    "value": "OpenRouter API URL（可选，默认为 https://openrouter.ai/api/v1）"
+  },
+  "settings.misc.prompt.warp": {
+    "value": "粘贴 Warp API key（wk-...）"
+  },
+  "settings.misc.prompt.workspace": {
+    "value": "工作区 ID 或 URL（可选，wrk_... 或 /workspace/wrk_.../go）"
+  },
+  "settings.misc.prompt.zai": {
+    "value": "粘贴 Z.ai API key（zai-...）"
+  },
+  "settings.misc.region": {
+    "value": "区域"
+  },
+  "settings.misc.region.auto": {
+    "value": "自动（两者都试）"
+  },
+  "settings.misc.region.chinaMainland": {
+    "value": "中国大陆（cn-beijing）"
+  },
+  "settings.misc.region.international": {
+    "value": "国际站（ap-southeast-1）"
+  },
+  "settings.misc.region.minimaxChina": {
+    "value": "中国大陆（minimaxi.com）"
+  },
+  "settings.misc.region.minimaxGlobal": {
+    "value": "全球站（minimax.io）"
+  },
+  "settings.misc.region.zaiChina": {
+    "value": "中国大陆（open.bigmodel.cn）"
+  },
+  "settings.misc.region.zaiGlobal": {
+    "value": "全球站（api.z.ai）"
+  },
+  "settings.misc.removeAkSk": {
+    "value": "移除已保存的 {provider} AK/SK"
+  },
+  "settings.misc.removeApiKey": {
+    "value": "移除已保存的 {provider} API key"
+  },
+  "settings.misc.removeCookieSlot": {
+    "value": "移除此 cookie 槽位"
+  },
+  "settings.misc.removeCopy": {
+    "value": "移除此 {provider} 副本"
+  },
+  "settings.misc.removeCopyButton": {
+    "value": "移除副本"
+  },
+  "settings.misc.removeCopyDetail": {
+    "value": "其保存的凭据会从 Keychain 中删除 — 包括 API key 或 AK/SK 以及全部已导入的 cookie 槽位。此操作不可撤销。"
+  },
+  "settings.misc.removeCopyTitle": {
+    "value": "是否移除此 {provider} 副本？"
+  },
+  "settings.misc.removeGithubToken": {
+    "value": "移除已保存的 GitHub 设备令牌"
+  },
+  "settings.misc.rename": {
+    "value": "重命名此副本"
+  },
+  "settings.misc.secretAccessKey": {
+    "value": "Secret Access Key"
+  },
+  "settings.misc.signIn": {
+    "value": "登录"
+  },
+  "settings.misc.signInViaWeb": {
+    "value": "通过网页登录"
+  },
+  "settings.misc.tencentTokenPlanNote": {
+    "value": "个人版 Token Plan 目前仅在中国大陆（cn-beijing）提供。复制此行即可同时跟踪团队版与个人版。"
+  },
+  "settings.misc.variant": {
+    "value": "变体"
+  },
+  "settings.misc.waiting": {
+    "value": "等待中…"
+  },
+  "settings.misc.workspaceNote": {
+    "value": "仅当账号拥有多个工作区时才需要填写 — 否则 Vibe Bar 使用找到的第一个。"
+  },
+  "settings.needsSetup": {
+    "value": "需配置"
+  },
+  "settings.notChecked": {
+    "value": "未检查"
+  },
+  "settings.notCheckedYet": {
+    "value": "尚未检查。在主动发起前不会请求任何内容。"
+  },
+  "settings.openRefreshCooldown": {
+    "value": "打开刷新的最小间隔"
+  },
+  "settings.openRefreshDetail": {
+    "value": "每个间隔周期内，打开面板最多刷新一次全部可见厂商。"
+  },
+  "settings.openStatusPage": {
+    "value": "打开 {company} 状态页"
+  },
+  "settings.percentShows": {
+    "value": "百分比显示"
+  },
+  "settings.planBadge": {
+    "value": "套餐标签"
+  },
+  "settings.planBadgeDetail": {
+    "value": "留空则使用自动检测到的账号套餐。"
+  },
+  "settings.popoverDensity.compact": {
+    "value": "紧凑"
+  },
+  "settings.popoverDensity.compactDetail": {
+    "value": "间距最紧，面板最窄。"
+  },
+  "settings.popoverDensity.regular": {
+    "value": "标准"
+  },
+  "settings.popoverDensity.regularDetail": {
+    "value": "间距均衡 — 默认。"
+  },
+  "settings.popoverDensity.spacious": {
+    "value": "宽松"
+  },
+  "settings.popoverDensity.spaciousDetail": {
+    "value": "间距宽裕，适合大屏。"
+  },
+  "settings.pricing.addOverride": {
+    "value": "添加模型覆盖值"
+  },
+  "settings.pricing.advancedTiers": {
+    "value": "高级分档"
+  },
+  "settings.pricing.alwaysWins": {
+    "value": "始终优先"
+  },
+  "settings.pricing.bundledFallback": {
+    "value": "内置兜底"
+  },
+  "settings.pricing.cacheReadAbove": {
+    "value": "阈值以上缓存读取"
+  },
+  "settings.pricing.cacheWriteAbove": {
+    "value": "阈值以上缓存写入"
+  },
+  "settings.pricing.deleteOverride": {
+    "value": "删除覆盖值"
+  },
+  "settings.pricing.exactModelName": {
+    "value": "模型名称（精确匹配）"
+  },
+  "settings.pricing.fastMultiplier": {
+    "value": "快速档倍率"
+  },
+  "settings.pricing.inputAbove": {
+    "value": "阈值以上输入"
+  },
+  "settings.pricing.intro": {
+    "value": "目录在后台刷新。同一厂商与模型名出现多次时，靠前的条目优先。"
+  },
+  "settings.pricing.localOverrides": {
+    "value": "本地覆盖值"
+  },
+  "settings.pricing.localOverridesName": {
+    "value": "本地覆盖值"
+  },
+  "settings.pricing.noOverrides": {
+    "value": "暂无本地覆盖值。"
+  },
+  "settings.pricing.number": {
+    "value": "{number}"
+  },
+  "settings.pricing.offlineFloor": {
+    "value": "离线下限"
+  },
+  "settings.pricing.outputAbove": {
+    "value": "阈值以上输出"
+  },
+  "settings.pricing.overridesIntro": {
+    "value": "价格单位为每百万 token 的美元数。厂商未公布缓存价格时，相应字段留空。"
+  },
+  "settings.pricing.priorityHealth": {
+    "value": "优先级与来源状态"
+  },
+  "settings.pricing.rateInput": {
+    "value": "输入"
+  },
+  "settings.pricing.rateOutput": {
+    "value": "输出"
+  },
+  "settings.pricing.refreshNow": {
+    "value": "立即刷新"
+  },
+  "settings.pricing.refreshing": {
+    "value": "正在刷新…"
+  },
+  "settings.pricing.thresholdTokens": {
+    "value": "分档阈值 token 数"
+  },
+  "settings.pricingDataDate": {
+    "value": "价格数据：{date}"
+  },
+  "settings.privacyDetail": {
+    "value": "token 从本地 CLI 凭据读取。已保存的 OpenAI 与 Claude 网页 cookies 存放在 macOS Keychain 中，按浏览器与 WebView 来源分开。~/.vibebar/cookies 下的旧版明文 cookie 文件会迁移一次并删除。设置、额度缓存与花费汇总保留在 ~/.vibebar 下。"
+  },
+  "settings.privacyMode": {
+    "value": "隐私模式"
+  },
+  "settings.privacyModeDetail": {
+    "value": "隐私模式不将花费数据写入磁盘，并清除本地花费历史、快照与扫描缓存。"
+  },
+  "settings.ready": {
+    "value": "就绪"
+  },
+  "settings.refreshEvery": {
+    "value": "刷新间隔"
+  },
+  "settings.refreshOnPopoverOpen": {
+    "value": "打开面板时刷新"
+  },
+  "settings.releaseNotes": {
+    "value": "发行说明"
+  },
+  "settings.remote.core": {
+    "value": "远程 Core"
+  },
+  "settings.remote.costAggregation": {
+    "value": "花费汇总"
+  },
+  "settings.remote.costAggregationIntro": {
+    "value": "选择哪些远程机器计入本机的花费与 token 总计。选择与汇总均在本 Core 完成；Relay 不会看到明文用量。"
+  },
+  "settings.remote.differentControlCenter": {
+    "value": "使用其他控制台"
+  },
+  "settings.remote.discard": {
+    "value": "丢弃"
+  },
+  "settings.remote.discardPendingDetail": {
+    "value": "该配对码已失效，且工作区仍将本机视为其 Core。如需重新加入，请先在网页控制台吊销本机，再创建新的配对码。"
+  },
+  "settings.remote.discardPendingTitle": {
+    "value": "是否丢弃这次待完成的加入？"
+  },
+  "settings.remote.disconnect": {
+    "value": "断开连接"
+  },
+  "settings.remote.disconnectButton": {
+    "value": "断开与工作区的连接…"
+  },
+  "settings.remote.disconnectDetail": {
+    "value": "日后重新连接需要新的配对码或配置文件。"
+  },
+  "settings.remote.disconnectIntro": {
+    "value": "断开会从 Keychain 移除本机的 Relay 凭据及其工作区绑定。在 Relay 端吊销之前，探针仍会继续上传。已解密的用量保留在本地账本中。"
+  },
+  "settings.remote.disconnectTitle": {
+    "value": "是否断开与该工作区的连接？"
+  },
+  "settings.remote.exportIdentity": {
+    "value": "导出 Core 身份…"
+  },
+  "settings.remote.importProvisioning": {
+    "value": "导入配置文件…"
+  },
+  "settings.remote.join": {
+    "value": "加入"
+  },
+  "settings.remote.joinIntro": {
+    "value": "在 Vibe Bar 控制台创建 Core 配对码，然后粘贴到此处。本机将以“{device}”的名义加入。"
+  },
+  "settings.remote.joinWithCode": {
+    "value": "用配对码加入"
+  },
+  "settings.remote.lastSync": {
+    "value": "最近同步"
+  },
+  "settings.remote.machineDetail": {
+    "value": "{platform} · 探针 {version}"
+  },
+  "settings.remote.machinesAppearAfterImport": {
+    "value": "机器在首批加密数据导入后出现在此。"
+  },
+  "settings.remote.machinesSynced": {
+    "value": "已同步机器"
+  },
+  "settings.remote.manualPairingIntro": {
+    "value": "配对分三步：导出本机 Core 身份，在 Relay 注册以生成配置文件，然后在此导入该文件。导入会把 Relay 凭据移入 macOS Keychain — 但配置文件本身仍包含该凭据，导入成功后请删除该文件。"
+  },
+  "settings.remote.notConnected": {
+    "value": "本机尚未连接到工作区。远程探针在其他机器上采集归一化用量，用本机 Core 的密钥加密后投递到 Relay — 本机不会开放任何入站端口。"
+  },
+  "settings.remote.orPairManually": {
+    "value": "也可手动配对。"
+  },
+  "settings.remote.pendingIntro": {
+    "value": "上一次加入已被控制台接受，但在本机未完成保存。该配对码已失效，请继续保存，而不是重新申请配对码。"
+  },
+  "settings.remote.provisioning": {
+    "value": "配置接入"
+  },
+  "settings.remote.registeredProbes": {
+    "value": "已注册探针"
+  },
+  "settings.remote.relay": {
+    "value": "Relay"
+  },
+  "settings.remote.resumeSaving": {
+    "value": "继续保存"
+  },
+  "settings.remote.retrySaving": {
+    "value": "重试保存"
+  },
+  "settings.remote.statusWithCode": {
+    "value": "{title} · {code}"
+  },
+  "settings.remote.sync.busy": {
+    "value": "Relay 暂时繁忙"
+  },
+  "settings.remote.sync.connectionFailed": {
+    "value": "Relay 连接中断"
+  },
+  "settings.remote.sync.hostLookupFailed": {
+    "value": "无法解析 Relay 主机"
+  },
+  "settings.remote.sync.invalidResponse": {
+    "value": "Relay 返回了预期之外的响应"
+  },
+  "settings.remote.sync.networkDetail": {
+    "value": "请检查本机的网络或代理设置；已有的机器数据仍然可用。"
+  },
+  "settings.remote.sync.offline": {
+    "value": "本机当前离线"
+  },
+  "settings.remote.sync.rejected": {
+    "value": "Relay 拒绝了访问"
+  },
+  "settings.remote.sync.rejectedDetail": {
+    "value": "工作区凭据可能已被吊销，请在设置中重新连接本 Core。"
+  },
+  "settings.remote.sync.retryDetail": {
+    "value": "已有的机器数据仍然可用，Vibe Bar 会自动重试。"
+  },
+  "settings.remote.sync.secureConnectionFailed": {
+    "value": "Relay 安全连接失败"
+  },
+  "settings.remote.sync.sequenceGap": {
+    "value": "探针历史存在序号缺口"
+  },
+  "settings.remote.sync.sequenceGapDetail": {
+    "value": "Relay 流中缺少一个探针批次，因此后续批次未被导入。"
+  },
+  "settings.remote.sync.timeout": {
+    "value": "Relay 连接超时"
+  },
+  "settings.remote.sync.transportFailed": {
+    "value": "Relay 传输失败"
+  },
+  "settings.remote.sync.unknown": {
+    "value": "远程同步需要处理"
+  },
+  "settings.remote.sync.unknownDetail": {
+    "value": "本地用量未被删除。可立即重试，或在「远程 Core」设置中查看错误码。"
+  },
+  "settings.remote.sync.unverifiedProbe": {
+    "value": "有探针无法通过校验"
+  },
+  "settings.remote.sync.unverifiedProbeDetail": {
+    "value": "当前工作区名单未授权收到的某个批次。"
+  },
+  "settings.remote.syncNow": {
+    "value": "立即同步"
+  },
+  "settings.remote.workspace": {
+    "value": "工作区"
+  },
+  "settings.repository": {
+    "value": "仓库"
+  },
+  "settings.rescanCostLogs": {
+    "value": "重新扫描花费日志"
+  },
+  "settings.route.antigravityLocal": {
+    "value": "本地 Antigravity / agy"
+  },
+  "settings.route.browserCookies": {
+    "value": "Chrome/Safari cookies"
+  },
+  "settings.route.cli": {
+    "value": "CLI"
+  },
+  "settings.route.grokAuthFile": {
+    "value": "~/.grok/auth.json"
+  },
+  "settings.route.oauth": {
+    "value": "OAuth"
+  },
+  "settings.route.webViewCookies": {
+    "value": "WebView cookies"
+  },
+  "settings.routeHealth.agyAvailable": {
+    "value": "agy CLI 可用"
+  },
+  "settings.routeHealth.authFileExpired": {
+    "value": "auth.json 已过期"
+  },
+  "settings.routeHealth.authFileUnreadable": {
+    "value": "无法读取 auth.json"
+  },
+  "settings.routeHealth.cachedOnly": {
+    "value": "仅有缓存数据；无法获取实时额度"
+  },
+  "settings.routeHealth.credentialUnreadable": {
+    "value": "无法读取凭据"
+  },
+  "settings.routeHealth.credentialsAvailable": {
+    "value": "凭据可用"
+  },
+  "settings.routeHealth.invalidCookie": {
+    "value": "cookie 数据无效"
+  },
+  "settings.routeHealth.keychainLocked": {
+    "value": "Keychain 已锁定"
+  },
+  "settings.routeHealth.lspRunning": {
+    "value": "本地 LSP 正在运行"
+  },
+  "settings.routeHealth.noAntigravityData": {
+    "value": "没有本地 Antigravity 数据"
+  },
+  "settings.routeHealth.noAuthFile": {
+    "value": "没有 auth.json"
+  },
+  "settings.routeHealth.noCredential": {
+    "value": "未找到凭据"
+  },
+  "settings.routeHealth.noSavedCookie": {
+    "value": "没有已保存的 cookie"
+  },
+  "settings.routeHealth.savedInKeychain": {
+    "value": "已保存到 Keychain"
+  },
+  "settings.search": {
+    "value": "搜索设置"
+  },
+  "settings.section.components": {
+    "value": "组件"
+  },
+  "settings.section.costData": {
+    "value": "花费数据"
+  },
+  "settings.section.layout": {
+    "value": "布局"
+  },
+  "settings.section.menuBar": {
+    "value": "菜单栏"
+  },
+  "settings.section.menuBarHealth": {
+    "value": "菜单栏健康"
+  },
+  "settings.section.miniWindows": {
+    "value": "迷你窗口"
+  },
+  "settings.section.overview": {
+    "value": "总览"
+  },
+  "settings.section.privacy": {
+    "value": "隐私"
+  },
+  "settings.section.refreshing": {
+    "value": "刷新"
+  },
+  "settings.section.remoteProbes": {
+    "value": "远程探针"
+  },
+  "settings.section.system": {
+    "value": "系统"
+  },
+  "settings.section.updates": {
+    "value": "更新"
+  },
+  "settings.showAssistant": {
+    "value": "打开设置向导"
+  },
+  "settings.showAssistantDetail": {
+    "value": "重新走一遍订阅、浏览器 cookies、API key、模型价格与登录项。不会重置任何设置。"
+  },
+  "settings.sidebar.coreProviders": {
+    "value": "核心厂商"
+  },
+  "settings.sidebar.disableProvider": {
+    "value": "停用厂商"
+  },
+  "settings.sidebar.enableProvider": {
+    "value": "启用厂商"
+  },
+  "settings.sidebar.hideFromOverview": {
+    "value": "从总览中隐藏"
+  },
+  "settings.sidebar.settings": {
+    "value": "设置"
+  },
+  "settings.spaceXAIIntro": {
+    "value": "SpaceXAI 页面同时包含 Grok 与 Cursor。Grok 读取 `~/.grok/auth.json` 或 grok.com 的 cookies；Cursor 先读 Cursor.app，再读 cursor.com 的 cookie 槽位。Grok Bot 提供额度，以及来自本地缓存的只读会话 — 其云端运行仍不产生 token 或花费记录。"
+  },
+  "settings.terminal.copyOnly": {
+    "value": "复制到剪贴板"
+  },
+  "settings.updateChannel": {
+    "value": "更新通道"
+  },
+  "settings.updateChannel.dev": {
+    "value": "预览版"
+  },
+  "settings.updateChannel.devDetail": {
+    "value": "预览版本，以及全部正式版本。"
+  },
+  "settings.updateChannel.main": {
+    "value": "正式版"
+  },
+  "settings.updateChannel.mainDetail": {
+    "value": "仅稳定版本。"
+  },
+  "settings.updateCheckDetail": {
+    "value": "每天检查一次所选通道，安装前会先询问。"
+  },
+  "settings.usageMode.antigravity.autoDetail": {
+    "value": "优先使用 Antigravity 应用，其次是本机安装的 agy CLI；在网页来源可用时回退到已导入的 cookies。"
+  },
+  "settings.usageMode.antigravity.localFirstDetail": {
+    "value": "优先使用 Antigravity 应用或 agy CLI；其次回退到已导入的 cookies。"
+  },
+  "settings.usageMode.antigravity.localOnly": {
+    "value": "仅本地来源"
+  },
+  "settings.usageMode.antigravity.localOnlyDetail": {
+    "value": "仅使用 Antigravity 应用或本机安装的 agy CLI。"
+  },
+  "settings.usageMode.antigravity.localThenWeb": {
+    "value": "先本地来源，后网页"
+  },
+  "settings.usageMode.antigravity.webFirstDetail": {
+    "value": "优先使用已导入的 cookies；其次回退到 Antigravity 应用或 agy CLI。"
+  },
+  "settings.usageMode.antigravity.webOnly": {
+    "value": "仅网页"
+  },
+  "settings.usageMode.antigravity.webOnlyDetail": {
+    "value": "仅使用已导入的 cookies。在 Antigravity Cloud 端点上线前会回退到本地探测。"
+  },
+  "settings.usageMode.antigravity.webThenLocal": {
+    "value": "先网页，后本地来源"
+  },
+  "settings.usageMode.auto": {
+    "value": "自动"
+  },
+  "settings.usageMode.claude.autoDetail": {
+    "value": "优先使用已保存的 claude.ai cookies；其次回退到 Claude OAuth 与 Claude Code。"
+  },
+  "settings.usageMode.claude.codeFirstDetail": {
+    "value": "优先使用 Claude Code；其次回退到已保存的 claude.ai cookies。"
+  },
+  "settings.usageMode.claude.codeOnly": {
+    "value": "仅 Claude Code"
+  },
+  "settings.usageMode.claude.codeOnlyDetail": {
+    "value": "仅使用本地 Claude Code 的 OAuth 凭据。"
+  },
+  "settings.usageMode.claude.codeThenWeb": {
+    "value": "先 Claude Code，后网页"
+  },
+  "settings.usageMode.claude.oauthCodeWeb": {
+    "value": "依次使用 OAuth、Claude Code、网页"
+  },
+  "settings.usageMode.claude.oauthFirstDetail": {
+    "value": "优先使用 Claude OAuth；其次回退到 Claude Code 与已保存的 claude.ai cookies。"
+  },
+  "settings.usageMode.claude.oauthOnly": {
+    "value": "仅 OAuth"
+  },
+  "settings.usageMode.claude.oauthOnlyDetail": {
+    "value": "仅使用 Claude OAuth 凭据。"
+  },
+  "settings.usageMode.claude.webFirstDetail": {
+    "value": "优先使用已保存的 claude.ai cookies；其次回退到 Claude Code 与 OAuth。"
+  },
+  "settings.usageMode.claude.webOnly": {
+    "value": "仅 Claude 网页"
+  },
+  "settings.usageMode.claude.webOnlyDetail": {
+    "value": "仅使用已保存的 claude.ai cookies。"
+  },
+  "settings.usageMode.claude.webThenCode": {
+    "value": "先 Claude 网页，后 Claude Code"
+  },
+  "settings.usageMode.codex.autoDetail": {
+    "value": "优先使用本地 Codex CLI 凭据；其次回退到 Codex OAuth 与已保存的 OpenAI 网页 cookies。"
+  },
+  "settings.usageMode.codex.cliOnly": {
+    "value": "仅 CLI"
+  },
+  "settings.usageMode.codex.cliOnlyDetail": {
+    "value": "仅使用本地 Codex CLI 凭据。"
+  },
+  "settings.usageMode.codex.cliThenOauth": {
+    "value": "先 CLI，后 OAuth"
+  },
+  "settings.usageMode.codex.oauthFirstDetail": {
+    "value": "优先使用 Codex OAuth；其次回退到本地 Codex CLI 凭据与已保存的 OpenAI 网页 cookies。"
+  },
+  "settings.usageMode.codex.oauthOnly": {
+    "value": "仅 OAuth"
+  },
+  "settings.usageMode.codex.oauthOnlyDetail": {
+    "value": "仅使用 auth.json 中的 Codex OAuth 凭据。"
+  },
+  "settings.usageMode.codex.oauthThenCli": {
+    "value": "先 OAuth，后 CLI"
+  },
+  "settings.usageMode.gemini.webOnly": {
+    "value": "仅 Gemini Web"
+  },
+  "settings.usageMode.gemini.webOnlyDetail": {
+    "value": "仅读取已导入的 gemini.google.com cookies。"
+  },
+  "settings.usageSource": {
+    "value": "用量来源"
+  },
+  "settings.webQuota": {
+    "value": "网页端额度"
+  },
+  "settings.whatChangedIn": {
+    "value": "{version} 的更新内容"
   },
   "status.card.componentCount": {
     "value": "{count, plural, other {# 个组件}}"
@@ -1092,7 +2235,7 @@
     "value": "维护中"
   },
   "status.overview.needsAttention": {
-    "value": "需要处理"
+    "value": "需处理"
   },
   "status.overview.operational": {
     "value": "运行正常"
@@ -1206,13 +2349,13 @@
     "value": "{seconds} 秒"
   },
   "usage.harnessMix.activeCount": {
-    "value": "所选范围内有 {count, plural, other {# 个}} harness 在使用"
+    "value": "所选范围内 {count, plural, other {# 个}} harness 活跃"
   },
   "usage.harnessMix.byRealTokens": {
     "value": "按实际 token 计"
   },
   "usage.harnessMix.empty": {
-    "value": "所选范围内没有 harness 流量"
+    "value": "所选范围内无 harness 流量"
   },
   "usage.harnessMix.title": {
     "value": "Harness 分布"
@@ -1251,7 +2394,7 @@
     "value": "{count} 条未计价"
   },
   "usage.hero.unpricedHelp": {
-    "value": "{count, plural, other {# 条请求}}没有可用价格，计入 $0。"
+    "value": "{count, plural, other {# 条请求}}无可用价格，计入 $0。"
   },
   "usage.ledgerUnavailable.detail": {
     "value": "无法打开 ~/.vibebar 下的逐请求账本，本次会话只能显示实时费用卡片。"
@@ -1311,7 +2454,7 @@
     "value": "Token 流向"
   },
   "usage.noHarnessSelected.detail": {
-    "value": "「全部 harness」是一个开关：再点一次即可把所有 harness 放回查询。"
+    "value": "「全部 harness」是一个开关：再次点击即可将全部 harness 重新纳入查询。"
   },
   "usage.noHarnessSelected.title": {
     "value": "未选择任何 harness — 请在上方选择"
@@ -1518,13 +2661,13 @@
     "value": "Token 用量随时间变化"
   },
   "usage.whenYouUse.everything": {
-    "value": "你什么时候在用"
+    "value": "整体使用时段"
   },
   "usage.whenYouUse.googleAI": {
-    "value": "你什么时候用 Google AI"
+    "value": "Google AI 使用时段"
   },
   "usage.whenYouUse.spaceXAI": {
-    "value": "你什么时候用 SpaceXAI"
+    "value": "SpaceXAI 使用时段"
   },
   "workbench.appearance.useDark": {
     "value": "使用深色外观"

@@ -104,7 +104,7 @@
 	<key>quota.resetHistory.verdict.leaky</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>%1$@ 在 %3$#@count@里平均有 %2$@%% 没用掉。</string>
+		<string>%1$@ 在 %3$#@count@中平均有 %2$@%% 未使用。</string>
 		<key>count</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
@@ -118,7 +118,7 @@
 	<key>quota.resetHistory.verdict.wasteful</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>%1$@ 有 %2$#@count@补额时超过一半没用掉。</string>
+		<string>%1$@ 有 %2$#@count@补额后超过一半未使用。</string>
 		<key>count</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
@@ -160,7 +160,7 @@
 	<key>usage.harnessMix.activeCount</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>所选范围内有 %1$#@count@ harness 在使用</string>
+		<string>所选范围内 %1$#@count@ harness 活跃</string>
 		<key>count</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
@@ -174,7 +174,7 @@
 	<key>usage.hero.unpricedHelp</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>%1$#@count@没有可用价格，计入 $0。</string>
+		<string>%1$#@count@无可用价格，计入 $0。</string>
 		<key>count</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>

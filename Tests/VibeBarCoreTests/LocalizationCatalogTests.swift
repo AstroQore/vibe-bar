@@ -238,6 +238,84 @@ final class LocalizationCatalogTests: XCTestCase {
         }
     }
 
+    /// A quota label has one renderer and several readers, and the readers
+    /// get forgotten one at a time — the field picker, the rename dialog's
+    /// placeholder, the calendar entry, the menu-bar composer. Each one that
+    /// reads `title` raw is a Chinese screen with an English quota name on
+    /// it, which is how three of them were found. `displayTitle` is the one
+    /// renderer; this pins what it must do.
+    func testAComposedFieldTitleIsResolvedPartByPart() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = .simplifiedChinese
+
+        func option(_ title: String, default label: String) -> MenuBarFieldOption {
+            MenuBarFieldOption(
+                id: "f", tool: .claude, bucketId: "b", title: title, defaultLabel: label
+            )
+        }
+
+        // Both halves are generic window words, so both translate.
+        XCTAssertEqual(option("All Models · Weekly", default: "Weekly").displayTitle,
+                       "全部模型 · 每周")
+        // A model name is a name: only the window half moves.
+        XCTAssertEqual(option("GPT-5.3 Codex Spark · 5 Hours", default: "5 Hours").displayTitle,
+                       "GPT-5.3 Codex Spark · 5 小时")
+        XCTAssertEqual(option("Weekly", default: "Weekly").displayDefaultLabel, "每周")
+        XCTAssertEqual(option("Sonnet", default: "Sonnet").displayDefaultLabel, "Sonnet")
+
+        // The stored value is a naming-contract value and never moves.
+        XCTAssertEqual(option("All Models · Weekly", default: "Weekly").title,
+                       "All Models · Weekly")
+
+        L10n.languageOverride = .english
+        XCTAssertEqual(option("All Models · Weekly", default: "Weekly").displayTitle,
+                       "All Models · Weekly")
+    }
+
+    /// A machine-readable identifier inside a translated sentence stays
+    /// as it arrived. The Relay's error codes and per-source statuses are
+    /// wire vocabulary — `network_timeout` is something a person greps for
+    /// and a support thread quotes, not something a translator improves —
+    /// so the copy around them moves and they do not.
+    func testAWireIdentifierSurvivesInsideATranslatedSentence() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+
+        L10n.languageOverride = .simplifiedChinese
+        let line = L10n.Settings.remoteStatusWithCode(
+            title: L10n.Settings.remoteSyncTimeout, code: "network_timeout"
+        )
+        XCTAssertTrue(line.contains("network_timeout"), "the error code was altered: \(line)")
+        XCTAssertTrue(line.contains("Relay 连接超时"), "the sentence stayed English: \(line)")
+        XCTAssertFalse(
+            line.contains("Relay connection timed out"),
+            "the English diagnosis survived into the Chinese pane: \(line)"
+        )
+
+        let capsule = L10n.Popover.machinesLabelWithStatus(label: "Claude", status: "ok")
+        XCTAssertEqual(capsule, "Claude · ok", "a wire status is not copy")
+    }
+
+    /// Every Relay status code this build knows must resolve, and a code it
+    /// does not know must still produce a sentence — an unrecognized code
+    /// arriving from a newer Relay cannot leave the pane blank.
+    func testEveryRemoteSyncStatusResolvesAndTheFallbackIsNotEmpty() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+
+        for language in [AppLanguage.english, .simplifiedChinese] {
+            L10n.languageOverride = language
+            for key in L10n.allKeys where key.hasPrefix("settings.remote.sync.") {
+                let value = L10n.string(key)
+                XCTAssertNotEqual(value, key, "\(key) does not resolve in \(language.rawValue)")
+                XCTAssertFalse(value.isEmpty)
+            }
+            XCTAssertFalse(L10n.Settings.remoteSyncUnknown.isEmpty)
+            XCTAssertFalse(L10n.Settings.remoteSyncUnknownDetail.isEmpty)
+        }
+    }
+
     private func locatePython() throws -> URL? {
         for candidate in ["/usr/bin/python3", "/opt/homebrew/bin/python3", "/usr/local/bin/python3"] {
             if FileManager.default.isExecutableFile(atPath: candidate) {

@@ -2,14 +2,23 @@
    Resources/i18n/zh-Hans.json. Do not edit: LocalizationCatalogTests
    regenerates this file and fails on a diff. */
 
+/* Button that appends an entry to a list */
+"common.add" = "添加";
+
 /* Filter chip or menu entry that selects every item. */
 "common.all" = "全部";
+
+/* Picker option and field placeholder meaning 'let Vibe Bar decide' */
+"common.auto" = "自动";
 
 /* Button that abandons an action in progress. */
 "common.cancel" = "取消";
 
 /* Button that empties a search field or resets a filter. */
 "common.clear" = "清除";
+
+/* Confirmation shown in place of the Copy button */
+"common.copied" = "已复制";
 
 /* Button that copies the adjacent value to the clipboard. */
 "common.copy" = "复制";
@@ -65,6 +74,9 @@
 /* Button that closes a sheet or leaves an editing mode. */
 "common.done" = "完成";
 
+/* Tooltip on a drag handle */
+"common.dragToReorder" = "拖动可重新排序";
+
 /* Compact countdown, whole days only */
 "common.duration.days" = "%1$lld 天";
 
@@ -86,6 +98,9 @@
 /* Countdown that has reached zero */
 "common.duration.now" = "现在";
 
+/* Field label for a user-chosen name */
+"common.name" = "名称";
+
 /* A toggle's state, read as a value in a summary row */
 "common.off" = "已关闭";
 
@@ -101,14 +116,26 @@
 /* A whole percentage. Both languages use the sign the same way; the key exists so a language that does not can move it. */
 "common.percent" = "%1$lld%%";
 
+/* Picker label for choosing a provider */
+"common.provider" = "厂商";
+
 /* Generic refresh button and tooltip */
 "common.refresh" = "刷新";
 
 /* Tooltip on a per-card refresh button */
 "common.refreshSection" = "刷新此区块";
 
+/* Button that takes an item out of a list */
+"common.remove" = "移除";
+
 /* Button on a failure state */
 "common.retry" = "重试";
+
+/* Button that retries immediately, skipping a cooldown */
+"common.retryNow" = "立即重试";
+
+/* Button that commits an edited value */
+"common.save" = "保存";
 
 /* Freshness line under five seconds old */
 "common.updated.justNow" = "刚刚更新";
@@ -144,7 +171,7 @@
 "cost.fullCharts" = "%1$@ — 完整图表";
 
 /* Empty Google AI cost card body */
-"cost.gemini.emptyDetail" = "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源都刷新不了时，缓存值会标记为已过期。";
+"cost.gemini.emptyDetail" = "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源均无法刷新时，缓存值将标记为已过期。";
 
 /* Empty Google AI cost card headline */
 "cost.gemini.emptyTitle" = "暂未发现 Gemini 或 AntiGravity 的用量。";
@@ -177,10 +204,10 @@
 "cost.metric.thirtyDayTokens" = "近 30 天 token";
 
 /* All-caps metric label */
-"cost.metric.today" = "今天";
+"cost.metric.today" = "今日";
 
 /* All-caps metric label */
-"cost.metric.todayTokens" = "今天 token";
+"cost.metric.todayTokens" = "今日 token";
 
 /* All-caps metric label on the Overview cost card. English is set in caps by the copy; Chinese has no case. */
 "cost.metric.totalCost" = "总花费";
@@ -189,10 +216,10 @@
 "cost.metric.totalTokens" = "总 token";
 
 /* All-caps metric label */
-"cost.metric.yesterday" = "昨天";
+"cost.metric.yesterday" = "昨日";
 
 /* All-caps metric label */
-"cost.metric.yesterdayTokens" = "昨天 token";
+"cost.metric.yesterdayTokens" = "昨日 token";
 
 /* Scope subtitle on the Overview's combined Model Ranking card */
 "cost.modelRanking.allProvidersAllTime" = "全部厂商 · 全部时间";
@@ -243,7 +270,7 @@
 "cost.timeframe.monthShort" = "30 天";
 
 /* Cost timeframe label */
-"cost.timeframe.today" = "今天";
+"cost.timeframe.today" = "今日";
 
 /* Cost timeframe label, full form */
 "cost.timeframe.week" = "7 天";
@@ -252,7 +279,7 @@
 "cost.timeframe.weekShort" = "7 天";
 
 /* Cost timeframe label */
-"cost.timeframe.yesterday" = "昨天";
+"cost.timeframe.yesterday" = "昨日";
 
 /* Card title on a provider page */
 "cost.title" = "花费";
@@ -300,7 +327,7 @@
 "onboarding.apiKeys.hide" = "收起";
 
 /* Intro paragraph of the API-key providers step */
-"onboarding.apiKeys.intro" = "这些套餐靠 API key 或控制台 cookie 跟踪，而不是 CLI 登录。勾选你有的那些 — 勾选后会在「其他厂商」页得到一张卡片 — 展开某一行即可现在填写凭据。密钥和 cookies 都会存进你的登录 Keychain。";
+"onboarding.apiKeys.intro" = "这些套餐通过 API key 或控制台 cookie 跟踪，而非 CLI 登录。勾选已持有的项 — 勾选后将在「其他厂商」页生成一张卡片 — 展开对应行即可填写凭据。密钥与 cookies 均存入登录 Keychain。";
 
 /* Button that unfolds a provider's credential form */
 "onboarding.apiKeys.setUp" = "设置";
@@ -315,7 +342,7 @@
 "onboarding.continue" = "下一步";
 
 /* Caption under the batch import button */
-"onboarding.cookies.batchScope" = "这个按钮只覆盖上面四个套餐。下一步的控制台 cookie 套餐有各自的一键批量导入，在「设置 → 浏览器 Cookies」里。";
+"onboarding.cookies.batchScope" = "此按钮仅覆盖上述四个套餐。下一步的控制台 cookie 套餐另有一键批量导入，位于「设置 → 浏览器 Cookies」。";
 
 /* Batch import button in the setup assistant */
 "onboarding.cookies.importAll" = "立即从所有浏览器导入";
@@ -333,7 +360,7 @@
 "onboarding.cookies.importing" = "正在导入…";
 
 /* Intro paragraph of the browser-cookies step */
-"onboarding.cookies.intro" = "网页端额度 — 也就是厂商在自己网站上显示的那份 — 来自浏览器里已有的登录会话。Vibe Bar 会读取这台 Mac 上各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，只保留每个厂商真正需要的那几条，并存进你的登录 Keychain，绝不写入明文文件。首次读取浏览器的 cookie 密钥时，macOS 可能会要求授权一次。";
+"onboarding.cookies.intro" = "网页端额度 — 即厂商在其自有网站上展示的部分 — 来自浏览器中已有的登录会话。Vibe Bar 会读取本机各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，仅保留各厂商所需的少量 cookie，并存入登录 Keychain，不写入明文文件。首次读取浏览器 cookie 密钥时，macOS 可能要求授权一次。";
 
 /* Status line before any import */
 "onboarding.cookies.notImported" = "尚未导入";
@@ -345,7 +372,7 @@
 "onboarding.cookies.saved" = "cookies 已保存。";
 
 /* Caption under the batch import button */
-"onboarding.cookies.signInFirst" = "请先在浏览器里登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已经存在的会话。没登录过的厂商不会有任何结果。";
+"onboarding.cookies.signInFirst" = "请先在浏览器中登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已存在的会话；未登录的厂商不会返回任何结果。";
 
 /* Summary row label */
 "onboarding.done.apiKeyProviders" = "API key 厂商";
@@ -357,16 +384,16 @@
 "onboarding.done.cookieCount" = "已保存 %1$lld/%2$lld 个厂商";
 
 /* Closing line of the final step */
-"onboarding.done.footer" = "这里的每一项在设置里都能改，向导本身也在「设置 → 系统」里一键可达。";
+"onboarding.done.footer" = "此处各项均可在设置中修改，向导亦可在「设置 → 系统」中一键打开。";
 
 /* Intro line of the final step */
-"onboarding.done.intro" = "菜单栏需要的都齐了。点「完成」会打开面板并显示当前已能读到的额度，其余的会在第一次刷新时补上。";
+"onboarding.done.intro" = "菜单栏所需配置已齐备。点击「完成」将打开面板并显示当前可读取的额度，其余部分在首次刷新时补全。";
 
 /* Summary row label */
 "onboarding.done.launchAtLogin" = "开机启动";
 
 /* Summary value counting visible misc providers */
-"onboarding.done.miscCount" = "「其他厂商」页有 %1$lld 个";
+"onboarding.done.miscCount" = "「其他厂商」页 %1$lld 个";
 
 /* Summary row label */
 "onboarding.done.modelPricing" = "模型价格";
@@ -393,7 +420,7 @@
 "onboarding.pricing.fetching" = "正在获取…";
 
 /* Closing line of the pricing step */
-"onboarding.pricing.footer" = "价格单位是每百万 token 的美元数。本地覆盖值在「设置 → 模型价格」里。";
+"onboarding.pricing.footer" = "价格单位为每百万 token 的美元数。本地覆盖值位于「设置 → 模型价格」。";
 
 /* Refresh interval of exactly one hour, read inside a sentence */
 "onboarding.pricing.interval.hour" = "小时";
@@ -402,7 +429,7 @@
 "onboarding.pricing.interval.hours" = "%1$lld 小时";
 
 /* Intro paragraph of the pricing step; interval is a duration phrase */
-"onboarding.pricing.intro" = "Token 花费完全在这台 Mac 上按 agent 的会话日志计算，价格来自若干公开价目表合并后的目录 — 同一个模型出现在多处时优先级高的胜出，你自己的覆盖值优先于全部，内置表是离线兜底。目录每 %1$@在后台刷新一次；现在抓一次能让第一批费用数字用上当前价格。";
+"onboarding.pricing.intro" = "Token 花费完全在本机依据 agent 的会话日志计算，价格取自若干公开价目表合并后的目录 — 同一模型出现在多个目录时以优先级高者为准，自定义覆盖值优先于全部，内置表为离线兜底。目录每 %1$@在后台刷新一次；此刻获取可使首批费用数字采用当前价格。";
 
 /* Status line after a successful merge; when is an already-formatted date */
 "onboarding.pricing.merged" = "%1$@合并 · %2$lld 个模型";
@@ -438,25 +465,25 @@
 "onboarding.step.browserCookies.title" = "浏览器 cookies";
 
 /* Setup assistant step subtitle */
-"onboarding.step.done.subtitle" = "这里的每一项在设置里也能改。";
+"onboarding.step.done.subtitle" = "此处各项均可在设置中修改。";
 
 /* Setup assistant step name */
 "onboarding.step.done.title" = "完成";
 
 /* Setup assistant step subtitle */
-"onboarding.step.pricing.subtitle" = "费用数字背后的 token 单价从哪来。";
+"onboarding.step.pricing.subtitle" = "费用数字背后的 token 单价来源。";
 
 /* Setup assistant step name */
 "onboarding.step.pricing.title" = "模型价格";
 
 /* Setup assistant step subtitle */
-"onboarding.step.subscriptions.subtitle" = "打开你付费的套餐。";
+"onboarding.step.subscriptions.subtitle" = "启用已订阅的套餐。";
 
 /* Setup assistant step name */
 "onboarding.step.subscriptions.title" = "订阅";
 
 /* Setup assistant step subtitle */
-"onboarding.step.welcome.subtitle" = "一段话讲清 Vibe Bar 能做什么。";
+"onboarding.step.welcome.subtitle" = "用一段话说明 Vibe Bar 的功能。";
 
 /* Setup assistant step name in the rail */
 "onboarding.step.welcome.title" = "欢迎";
@@ -480,16 +507,16 @@
 "onboarding.subscriptions.codex.web" = "已保存 ChatGPT 网页 cookies — 额度将从这里读取。";
 
 /* Credential hint */
-"onboarding.subscriptions.gemini.hint" = "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，没有 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。";
+"onboarding.subscriptions.gemini.hint" = "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，无 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。";
 
 /* Credential hint; the path is never translated */
 "onboarding.subscriptions.grok.detected" = "已检测到 ~/.grok/auth.json — 额度将从这里读取。";
 
 /* Credential hint */
-"onboarding.subscriptions.grok.missing" = "还没有 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。";
+"onboarding.subscriptions.grok.missing" = "尚未找到 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。";
 
 /* Intro line of the subscriptions step */
-"onboarding.subscriptions.intro" = "打开你在用的订阅。关掉的厂商不会出现在总览和菜单栏里；之后再关掉也不会丢失凭据和历史。";
+"onboarding.subscriptions.intro" = "启用正在使用的订阅。已关闭的厂商不会出现在总览与菜单栏；之后关闭亦不会删除其凭据与历史。";
 
 /* Where this provider's quota can come from */
 "onboarding.subscriptions.productLine.claude" = "Claude Code · claude.ai 网页";
@@ -516,31 +543,31 @@
 "onboarding.welcome.cost.title" = "Token 花费";
 
 /* Closing line of the welcome step */
-"onboarding.welcome.footer" = "整个过程约两分钟。这里的每个选择之后都能在设置里改，向导本身也在「设置 → 系统」里一键可达。";
+"onboarding.welcome.footer" = "全程约两分钟。此处的每项选择均可稍后在设置中修改，向导亦可在「设置 → 系统」中一键打开。";
 
 /* Opening paragraph of the setup assistant */
-"onboarding.welcome.intro" = "Vibe Bar 常驻菜单栏，一眼就能看到每个 AI 订阅还剩多少、编码 agent 花了多少钱，以及这台 Mac 上有哪些会话和 skills。它读取 Codex、Claude Code、Gemini、Grok 这些 CLI 本就保存在本机的凭据，在你允许时再从浏览器 cookies 补上网页端额度，并且只会把这些数据发回它们各自的厂商。";
+"onboarding.welcome.intro" = "Vibe Bar 常驻菜单栏，可一览各 AI 订阅的剩余量、编码 agent 的支出，以及本机存有哪些会话与 skills。它读取 Codex、Claude Code、Gemini、Grok 等 CLI 已保存在本机的凭据，并在获得授权后从浏览器 cookies 补充网页端额度；所有数据仅发送至其来源厂商。";
 
 /* Feature row body */
-"onboarding.welcome.mcp.detail" = "你的 agent 可以通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度和花费。";
+"onboarding.welcome.mcp.detail" = "agent 可通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度与花费。";
 
 /* Feature row title */
 "onboarding.welcome.mcp.title" = "本地 MCP 服务";
 
 /* Feature row body */
-"onboarding.welcome.quotas.detail" = "Codex、Claude Code、Gemini、Grok，以及一排 API key 套餐，每个都带重置倒计时。";
+"onboarding.welcome.quotas.detail" = "Codex、Claude Code、Gemini、Grok，以及一系列 API key 套餐，均附带重置倒计时。";
 
 /* Feature row title */
 "onboarding.welcome.quotas.title" = "订阅额度";
 
 /* Feature row body */
-"onboarding.welcome.sessions.detail" = "在 Workbench 里浏览、搜索和整理 agent 会话与共享 skills。";
+"onboarding.welcome.sessions.detail" = "在 Workbench 中浏览、搜索并整理 agent 会话与共享 skills。";
 
 /* Feature row title */
 "onboarding.welcome.sessions.title" = "会话与 skills";
 
 /* Body of the launch-at-login step. macOS-only. */
-"platform.macos.launchAtLogin.detail" = "Vibe Bar 是没有 Dock 图标的菜单栏应用。开机启动能让额度读数和本地 MCP 服务在你登录后立刻可用；首次启用时 macOS 可能会要求你在「系统设置」中批准这个登录项。";
+"platform.macos.launchAtLogin.detail" = "Vibe Bar 是无 Dock 图标的菜单栏应用。开机启动可使额度读数与本地 MCP 服务在登录后即刻可用；首次启用时 macOS 可能要求在「系统设置」中批准该登录项。";
 
 /* Status line under the launch-at-login toggle. macOS-only. */
 "platform.macos.launchAtLogin.enabled" = "已在 macOS 登录项中启用。";
@@ -549,13 +576,82 @@
 "platform.macos.launchAtLogin.off" = "已关闭。";
 
 /* Setup assistant step subtitle. macOS-only. */
-"platform.macos.launchAtLogin.subtitle" = "登录 Mac 后菜单栏立刻显示读数。";
+"platform.macos.launchAtLogin.subtitle" = "登录 Mac 后菜单栏即刻显示读数。";
 
 /* Setup assistant step name. macOS-only: a login item has no counterpart on other clients. */
 "platform.macos.launchAtLogin.title" = "开机启动";
 
 /* Toggle in the setup assistant. macOS-only. */
 "platform.macos.launchAtLogin.toggle" = "登录时启动 Vibe Bar";
+
+/* Menu-bar colour basis: colour by the displayed percentage. macOS-only. */
+"platform.macos.menuBar.color.actual" = "实际";
+
+/* Caption under the Actual colour basis. macOS-only. */
+"platform.macos.menuBar.color.actualDetail" = "仅按显示的百分比着色，忽略预测。";
+
+/* Menu-bar colour basis: colour by the forecast verdict. macOS-only. */
+"platform.macos.menuBar.color.forecast" = "预测";
+
+/* Caption under the Forecast colour basis. macOS-only. */
+"platform.macos.menuBar.color.forecastDetail" = "绿色表示预计够用 · 蓝色表示预计会有较多闲置 · 橙色表示可能不足 · 红色表示预计会用尽。当某项额度历史过少、无法预测时，回退为按百分比着色。";
+
+/* Picker choosing the popover density from the menu-bar editor. macOS-only. */
+"platform.macos.menuBar.displayDensity" = "显示密度";
+
+/* Menu-bar field style: show the field's name. macOS-only. */
+"platform.macos.menuBar.fieldStyle.label" = "名称";
+
+/* Caption under the Label field style. macOS-only. */
+"platform.macos.menuBar.fieldStyle.labelDetail" = "名称与百分比并列。";
+
+/* Menu-bar field style: show the provider's logo. macOS-only. */
+"platform.macos.menuBar.fieldStyle.logo" = "图标";
+
+/* Menu-bar field style. macOS-only. */
+"platform.macos.menuBar.fieldStyle.logoAndLabel" = "图标与名称";
+
+/* Caption under the Logo and label field style. macOS-only. */
+"platform.macos.menuBar.fieldStyle.logoAndLabelDetail" = "图标、名称与百分比。";
+
+/* Caption under the Logo field style. macOS-only. */
+"platform.macos.menuBar.fieldStyle.logoDetail" = "厂商图标与百分比并列 — 不显示文字。";
+
+/* Heading over the menu-bar field checklist. macOS-only. */
+"platform.macos.menuBar.fields" = "字段";
+
+/* Picker choosing how the menu-bar item is laid out. macOS-only. Distinct from the Layout settings section, which is about page layout. */
+"platform.macos.menuBar.layout" = "排布";
+
+/* Menu-bar layout option. macOS-only. */
+"platform.macos.menuBar.layout.compact" = "紧凑";
+
+/* Menu-bar layout option. macOS-only. */
+"platform.macos.menuBar.layout.iconOnly" = "仅图标";
+
+/* Menu-bar layout option. macOS-only. */
+"platform.macos.menuBar.layout.singleLine" = "单行";
+
+/* Menu-bar layout option. macOS-only. */
+"platform.macos.menuBar.layout.twoRows" = "双行";
+
+/* Toggle that folds a quota group's windows into one entry. macOS-only. */
+"platform.macos.menuBar.mergeGroupWindows" = "合并同组的窗口";
+
+/* Caption under the combine toggle. macOS-only. */
+"platform.macos.menuBar.mergeGroupWindowsDetail" = "把 5 小时与每周显示为 5%/100%，而不是两条独立条目。";
+
+/* The menu-bar item that summarises every provider. macOS-only. */
+"platform.macos.menuBar.overview" = "总览";
+
+/* Picker choosing what colours the menu-bar percentage. macOS-only. */
+"platform.macos.menuBar.percentColor" = "百分比配色";
+
+/* Toggle in the menu-bar item editor. macOS-only: no other client renders a menu-bar extra. */
+"platform.macos.menuBar.showInMenuBar" = "在菜单栏中显示";
+
+/* Toggle in the menu-bar item editor. macOS-only. */
+"platform.macos.menuBar.showTitleText" = "显示标题文字";
 
 /* Subtitle under the Machines page header */
 "popover.header.machinesSubtitle" = "端到端加密的远程用量";
@@ -565,6 +661,36 @@
 
 /* Subtitle under the Overview page header */
 "popover.header.overviewSubtitle" = "全部厂商 · 额度与花费";
+
+/* Empty-state title while a sync is in flight */
+"popover.machines.checking" = "正在检查 Relay…";
+
+/* Toggle on a remote machine card */
+"popover.machines.includeInTotals" = "计入总计";
+
+/* Tooltip on the include-in-totals toggle */
+"popover.machines.includeInTotalsHelp" = "把这台机器解密后的用量计入本 Core 的总览与厂商花费页";
+
+/* A source label followed by its status; both halves arrive already localized */
+"popover.machines.labelWithStatus" = "%1$@ · %2$@";
+
+/* Empty-state title when the Relay is connected but nothing has arrived */
+"popover.machines.noData" = "暂无远程机器数据";
+
+/* Empty-state body on the Machines page */
+"popover.machines.noDataDetail" = "Relay 已连接。探针会在其首个加密批次被解密并导入后出现。";
+
+/* Empty-state title on the Machines page */
+"popover.machines.notConfigured" = "尚未配置远程 Core";
+
+/* Empty-state body on the Machines page */
+"popover.machines.notConfiguredDetail" = "先创建 Core 描述文件，再签发工作区范围的 Relay 凭据，然后导入已签名的配置文件。本机无需开放任何入站端口。";
+
+/* The last imported batch's sequence number on a machine card; the number is raw */
+"popover.machines.sequence" = "序号 %1$@";
+
+/* Metric label on a remote machine card */
+"popover.machines.thirtyDayCost" = "近 30 天花费";
 
 /* Tooltip on the Google AI page's refresh button; the SubProvider names are never translated */
 "popover.refreshGoogleAI" = "刷新 Gemini Web + AntiGravity";
@@ -594,7 +720,7 @@
 "quota.bucket.resetsIn" = "距重置 %1$@";
 
 /* Empty state body; command is a CLI name such as codex or claude and is never translated */
-"quota.empty.needsLogin.detail" = "在终端里运行 `%1$@ login`，然后刷新。";
+"quota.empty.needsLogin.detail" = "在终端中运行 `%1$@ login`，然后刷新。";
 
 /* Empty state headline */
 "quota.empty.needsLogin.headline" = "需重新登录";
@@ -618,7 +744,7 @@
 "quota.empty.parseChanged.headline" = "响应格式已变化";
 
 /* Empty state body */
-"quota.empty.rateLimited.detail" = "官方 API 要求稍候，请过一会儿再试。";
+"quota.empty.rateLimited.detail" = "官方 API 要求稍候，请稍后重试。";
 
 /* Empty state headline */
 "quota.empty.rateLimited.headline" = "请求过于频繁";
@@ -633,19 +759,19 @@
 "quota.forecast.confidence.medium" = "中等置信度";
 
 /* What to do about an at-risk forecast */
-"quota.forecast.guidance.atRisk" = "放慢节奏，或把工作转到别的额度上";
+"quota.forecast.guidance.atRisk" = "降低使用速度，或将任务转移至其他额度";
 
 /* Remaining-mode guidance when there is headroom */
 "quota.forecast.guidance.available" = "目标保留 %1$lld%% · 约有 %2$lld%% 可用";
 
 /* Remaining-mode guidance for a surplus verdict */
-"quota.forecast.guidance.surplus" = "预计有约 %1$lld%% 会闲置，超出 %2$lld%% 的安全余量";
+"quota.forecast.guidance.surplus" = "预计约 %1$lld%% 将闲置，超出 %2$lld%% 的安全余量";
 
 /* Used-mode guidance when there is headroom */
 "quota.forecast.guidance.usedAvailable" = "目标用到 %1$lld%% · 约有 %2$lld%% 额度可用";
 
 /* Used-mode guidance for a surplus verdict */
-"quota.forecast.guidance.usedSurplus" = "预计有约 %1$lld%% 的额度会剩下，超出 %2$lld%% 的使用目标";
+"quota.forecast.guidance.usedSurplus" = "预计约 %1$lld%% 的额度将剩余，超出 %2$lld%% 的使用目标";
 
 /* Used-mode guidance when nothing needs saying */
 "quota.forecast.guidance.usedWithinTarget" = "仍在 %1$lld%% 的使用目标之内";
@@ -657,22 +783,22 @@
 "quota.forecast.guidance.withinTarget" = "仍在 %1$lld%% 的安全余量之内";
 
 /* One-line forecast summary */
-"quota.forecast.reset.atRisk" = "大概率在重置前用尽";
+"quota.forecast.reset.atRisk" = "很可能在重置前耗尽";
 
 /* One-line forecast summary */
 "quota.forecast.reset.enough" = "预计重置时剩余 %1$lld%%";
 
 /* One-line forecast summary */
-"quota.forecast.reset.learning" = "正在学习你的使用规律 · 约剩余 %1$lld%%";
+"quota.forecast.reset.learning" = "正在学习使用规律 · 约剩余 %1$lld%%";
 
 /* One-line forecast summary */
-"quota.forecast.reset.surplus" = "大概率有盈余 · 预计剩余 %1$lld%%";
+"quota.forecast.reset.surplus" = "预计将有盈余 · 重置时剩余 %1$lld%%";
 
 /* One-line forecast summary */
-"quota.forecast.reset.watch" = "可能不够用 · 预计剩余 %1$lld%%";
+"quota.forecast.reset.watch" = "可能不足 · 预计剩余 %1$lld%%";
 
 /* Status line under the quota bar */
-"quota.forecast.status.atRisk" = "有风险 · 大概率在重置前用尽";
+"quota.forecast.status.atRisk" = "有风险 · 很可能在重置前耗尽";
 
 /* Status line under the quota bar; value is the already-formatted forecast figure */
 "quota.forecast.status.enough" = "充足 · 预计重置时%1$@";
@@ -687,19 +813,19 @@
 "quota.forecast.status.watch" = "需关注 · 预计重置时%1$@";
 
 /* Use-up line for an at-risk verdict with no ETA */
-"quota.forecast.useUp.beforeReset" = "预计会在重置前用尽";
+"quota.forecast.useUp.beforeReset" = "预计将在重置前耗尽";
 
 /* Use-up ETA for a watch verdict, which is possible rather than certain */
-"quota.forecast.useUp.couldRunOut" = "可能在 %1$@后用尽";
+"quota.forecast.useUp.couldRunOut" = "可能在 %1$@后耗尽";
 
 /* Use-up ETA from the personal forecast */
-"quota.forecast.useUp.estimated" = "预计 %1$@后用尽";
+"quota.forecast.useUp.estimated" = "预计 %1$@后耗尽";
 
 /* Use-up line when the model does not predict exhaustion before the refill */
 "quota.forecast.useUp.lastsUntilReset" = "预计可用到重置";
 
 /* Use-up line when no ETA can be derived */
-"quota.forecast.useUp.uncertain" = "用尽时间不确定 · 可能在重置前不够用";
+"quota.forecast.useUp.uncertain" = "耗尽时间不确定 · 可能在重置前不足";
 
 /* The forecast figure in Remaining mode, used inside the status line */
 "quota.forecast.value.left" = "剩余 %1$lld%%";
@@ -735,7 +861,7 @@
 "quota.freshness.age.seconds" = "%1$lld 秒";
 
 /* Fragment inside the freshness badge saying how old the shown numbers are */
-"quota.freshness.dataAge" = "数据已 %1$@";
+"quota.freshness.dataAge" = "数据已有 %1$@";
 
 /* Tooltip on a stale freshness badge */
 "quota.freshness.defaultHelp" = "实时额度未在预期间隔内刷新。";
@@ -771,7 +897,7 @@
 "quota.group.monthly" = "每月";
 
 /* Empty state inside a quota group card */
-"quota.group.noUtilization" = "暂无使用数据 — 试试刷新。";
+"quota.group.noUtilization" = "暂无使用数据 — 可尝试刷新";
 
 /* Fallback group heading for a bucket with no group of its own */
 "quota.group.other" = "其他";
@@ -810,7 +936,7 @@
 "quota.pace.lastsUntilReset" = "可用到重置";
 
 /* Legacy elapsed-time pace ETA on a Misc provider card */
-"quota.pace.runsOutIn" = "%1$@后用尽";
+"quota.pace.runsOutIn" = "%1$@后耗尽";
 
 /* Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time */
 "quota.reset.in" = "距重置 %1$@";
@@ -879,7 +1005,7 @@
 "quota.resetHistory.reset.earlyClockUnchanged" = "提前补额，下次重置时间不变";
 
 /* An early refill that matches neither shape */
-"quota.resetHistory.reset.earlyUnclear" = "提前补额，切换到了别的节奏";
+"quota.resetHistory.reset.earlyUnclear" = "提前补额，重置节奏已改变";
 
 /* Spoken window name */
 "quota.resetHistory.spoken.allCycles" = "全部已记录周期";
@@ -909,19 +1035,19 @@
 "quota.resetHistory.title" = "重置历史";
 
 /* Header arithmetic when nothing has closed */
-"quota.resetHistory.totals.none" = "该区间内没有完整周期";
+"quota.resetHistory.totals.none" = "该区间内无完整周期";
 
 /* Caveat when the grid draws fewer cycles than the numbers describe */
 "quota.resetHistory.truncation" = "仅显示最近 %1$lld 个周期，共 %2$lld 个";
 
 /* Header sentence when everything is being spent */
-"quota.resetHistory.verdict.clean" = "没有明显浪费 — 补回的额度用掉了 %1$@%%。";
+"quota.resetHistory.verdict.clean" = "无明显浪费 — 补回的额度已使用 %1$@%%。";
 
 /* Header sentence: lanes exist but none has closed */
 "quota.resetHistory.verdict.noCycles" = "尚无完整周期 — 额度补满时才会记录一个周期。";
 
 /* Header sentence: nothing to compare */
-"quota.resetHistory.verdict.noQuota" = "目前还没有跟踪任何按周或更长周期的额度。";
+"quota.resetHistory.verdict.noQuota" = "尚未跟踪任何按周或更长周期的额度。";
 
 /* Compact window picker label covering every recorded cycle */
 "quota.resetHistory.window.all" = "全部";
@@ -942,7 +1068,7 @@
 "quota.upcoming.axisHours" = "+%1$lld 小时";
 
 /* Empty state on the resets timeline */
-"quota.upcoming.empty" = "未来 7 天内没有额度会补满。";
+"quota.upcoming.empty" = "未来 7 天内无额度补满。";
 
 /* Row caption showing the forecast remaining quota at the refill */
 "quota.upcoming.forecastAtReset" = "预计重置时剩余 %1$lld%%";
@@ -968,6 +1094,120 @@
 /* Inline error row; reason is a provider message and is not translated */
 "quota.update.failed" = "更新失败：%1$@";
 
+/* Hint under the Antigravity source picker */
+"settings.antigravityCookieEnabled" = "Antigravity 的 cookie 导入已启用 — 请先在 antigravity.google 登录。";
+
+/* Hint under the Antigravity source picker */
+"settings.antigravityLocalOnly" = "Antigravity 读取本机运行的语言服务。cookie 导入将等到 Antigravity Cloud 端点上线后再启用。";
+
+/* Picker label */
+"settings.antigravitySource" = "Antigravity 来源";
+
+/* Current version line; version is a raw version string */
+"settings.appVersion" = "Vibe Bar %1$@";
+
+/* Badge on the version currently compiled in */
+"settings.bundled" = "内置";
+
+/* Button that probes a company's credentials; company is an L1 company name and is never translated */
+"settings.checkConnections" = "检查 %1$@ 连接";
+
+/* Button label */
+"settings.checkForUpdates" = "检查更新…";
+
+/* Button that queries GitHub for a newer agent-session-kit */
+"settings.checkKitUpdates" = "检查组件更新";
+
+/* Progress line while an update check runs */
+"settings.checkingGitHub" = "正在向 github.com 查询最新版本…";
+
+/* Button label */
+"settings.clearCostData" = "清除花费数据";
+
+/* Heading over the per-provider connection rows */
+"settings.connectionHealth" = "连接状态";
+
+/* Intro under the Cost Data heading */
+"settings.costDataIntro" = "花费根据 ~/.codex/sessions 与 ~/.claude/projects 下的本地 CLI 会话 JSONL 日志计算。网页端与桌面端用量不计入。";
+
+/* Error under the delete-cookies button */
+"settings.couldNotDeleteCookies" = "无法删除已保存的 cookies。";
+
+/* Error line */
+"settings.couldNotDeleteGeminiCookies" = "无法删除已保存的 Gemini cookies。";
+
+/* Error line */
+"settings.couldNotDeleteGrokCookies" = "无法删除已保存的 Grok cookies。";
+
+/* Misc-provider credential source option */
+"settings.credentialSource.apiOnly" = "仅 API / OAuth";
+
+/* Misc-provider credential source option */
+"settings.credentialSource.auto" = "自动";
+
+/* Misc-provider credential source option */
+"settings.credentialSource.browserOnly" = "仅浏览器";
+
+/* Misc-provider credential source option */
+"settings.credentialSource.manualOnly" = "仅手动";
+
+/* Misc-provider credential source option: do not fetch at all */
+"settings.credentialSource.off" = "关闭";
+
+/* Credential state line */
+"settings.cursorNoSession" = "没有可用的 Cursor.app 会话 — 请在下方导入 cursor.com 的 cookies。";
+
+/* Credential state line */
+"settings.cursorSessionDetected" = "已检测到 Cursor.app 的登录会话";
+
+/* Row label */
+"settings.cursorSource" = "Cursor 来源";
+
+/* Value beside the Cursor source row */
+"settings.cursorSourceValue" = "Cursor.app → 网页";
+
+/* Button that clears a provider's stored cookies */
+"settings.deleteCookies" = "删除 cookies";
+
+/* Button label */
+"settings.deleteGeminiCookies" = "删除 Gemini 的 cookies";
+
+/* Button label */
+"settings.deleteGrokCookies" = "删除 Grok 的 cookies";
+
+/* Segmented option: the percentage shows what is left. Title case because it is a picker option; quota.mode.remaining is the lowercase caption under a bar. */
+"settings.displayMode.remaining" = "剩余";
+
+/* Segmented option: the percentage shows what has been spent */
+"settings.displayMode.used" = "已用";
+
+/* Banner shown when a second client overwrote a setting this one had changed */
+"settings.externalChange.title" = "另一个 Vibe Bar 覆盖了此处的修改";
+
+/* Confirmation line */
+"settings.geminiCookiesSaved" = "Gemini 的 cookies 已保存。";
+
+/* Explanation on the Google AI settings page */
+"settings.geminiShared" = "Gemini 与 Antigravity 共用同一份 Google AI 订阅额度。网页端仅支持 cookie 导入，没有 WebView 登录途径。";
+
+/* Row label for where Gemini quota is read from */
+"settings.geminiSource" = "Gemini 来源";
+
+/* Credential state line; the path is never translated */
+"settings.grokAuthDetected" = "已检测到 ~/.grok/auth.json";
+
+/* Confirmation line */
+"settings.grokCookiesSaved" = "Grok 的 cookies 已保存。";
+
+/* Picker label for the retention window */
+"settings.keepHistory" = "保留历史";
+
+/* Caption under the retention picker */
+"settings.keepHistoryDetail" = "适用于花费历史与订阅填充历史。";
+
+/* Description of the bundled agent-session-kit component */
+"settings.kitDetail" = "会话发现、harness 命名与 MCP 传输。独立仓库，固定到确切 tag 并编译进本次构建。";
+
 /* Caption under the language picker in Settings */
 "settings.language.caption" = "Vibe Bar 默认跟随 macOS 语言，也可以在此单独指定。厂商、模型与 harness 名称保持原始拼写。";
 
@@ -976,6 +1216,909 @@
 
 /* Settings row label for the in-app language override */
 "settings.language.title" = "语言";
+
+/* Toggle label */
+"settings.mcp.allowRefresh" = "允许 agent 刷新额度";
+
+/* Caption under the refresh toggle; quota.refresh is an MCP tool name and is never translated */
+"settings.mcp.allowRefreshDetail" = "开启后，agent 可以让 Vibe Bar 重新向厂商拉取额度。强制刷新限流为每 %1$lld 秒一次。关闭后只读工具照常可用，quota.refresh 会报告刷新已禁用。";
+
+/* Toggle label */
+"settings.mcp.allowSkills" = "允许 agent 安装 skills";
+
+/* Caption under the skills toggle; skills.install is an MCP tool name */
+"settings.mcp.allowSkillsDetail" = "开启后，agent 可以调用 skills.install，从 GitHub 仓库或本地文件夹添加 skill。它走的是与 Workbench → Skills 相同的管理流程，因此只写入 ~/.agents/skills 以及 Vibe Bar 管理的 agent skills 目录 — 绝不覆盖已被其他 skill 占用的文件夹。关闭后该工具会报告安装已禁用。";
+
+/* Caption on a copyable config snippet; the path is never translated */
+"settings.mcp.appendCodexConfig" = "追加到 ~/.codex/config.toml。";
+
+/* Sub-heading over the setup instructions */
+"settings.mcp.connectAgent" = "接入一个 agent";
+
+/* Row label for the live connection count */
+"settings.mcp.connectedClients" = "已连接客户端";
+
+/* Toggle label */
+"settings.mcp.enable" = "启用本地 MCP 服务";
+
+/* Intro paragraph of the MCP settings section */
+"settings.mcp.intro" = "Vibe Bar 可通过 MCP 向编码 agent 提供本机的额度、用量、花费与本地会话。服务监听 home 目录下的 Unix domain socket — 不开放网络端口，也不创建 token：socket 的文件权限即访问控制。";
+
+/* Row label for when a client last spoke to the server */
+"settings.mcp.lastActivity" = "最近一次客户端活动";
+
+/* MCP server state: the socket is accepting connections */
+"settings.mcp.listening" = "监听中";
+
+/* Intro to the manual client configuration snippets; flag is a command-line flag and is never translated */
+"settings.mcp.manualIntro" = "也可手动配置客户端。所有客户端运行同一条命令 — Vibe Bar 自身的可执行文件加 %1$@，它把 stdin/stdout 桥接到上面的 socket。";
+
+/* Caption on a copyable config snippet */
+"settings.mcp.mergeCursorConfig" = "合并到 ~/.cursor/mcp.json。";
+
+/* Warning shown when the app runs from a build directory; path is a filesystem path */
+"settings.mcp.movePrompt" = "Vibe Bar 正从 %1$@ 运行。保存客户端配置前请先移动到 /Applications，否则下次重新构建后配置会失效。";
+
+/* MCP server state: the socket is closed */
+"settings.mcp.notListening" = "未监听";
+
+/* Heading for the generic client snippet */
+"settings.mcp.otherStdioClient" = "其他 stdio 客户端";
+
+/* Caption on the generic client snippet */
+"settings.mcp.otherStdioDetail" = "给客户端自己的 mcpServers 映射加一条。";
+
+/* Caption over the one-line setup prompt */
+"settings.mcp.quickestPath" = "最快的方式：把这段粘贴给任意 agent，让它自行完成配置、安装配套 skill 并验证连接。";
+
+/* Caption closing the MCP permissions section */
+"settings.mcp.readOnlyDetail" = "agent 能访问的其余内容均为只读：额度、token 用量、花费、厂商状态、生效模型价格，以及本地会话索引（标题、项目，以及在开启会话正文索引时的消息摘录）。凭据、cookies 与组织 id 从不暴露，邮箱地址会被掩码。";
+
+/* Caption on a copyable shell command */
+"settings.mcp.runInTerminal" = "在终端中运行。";
+
+/* Label for the copyable one-line prompt */
+"settings.mcp.setupPrompt" = "Agent 配置提示词";
+
+/* Caption under the setup prompt */
+"settings.mcp.setupPromptDetail" = "一行内容，适用于任何能抓取 URL 的 agent。";
+
+/* Row label for the socket path. The term stays as spelled. */
+"settings.mcp.socket" = "Socket";
+
+/* Caption under the MCP status rows. The quoted phrase is the message another tool prints and stays in English. */
+"settings.mcp.socketLifetime" = "socket 仅在 Vibe Bar 运行时存在。退出后，下方配置的 agent 会报告 “Vibe Bar is not running”，这是预期行为。";
+
+/* Row label for whether the MCP socket is listening. Distinct from status.overview.title, which is a provider's service status. */
+"settings.mcp.status" = "状态";
+
+/* Settings section heading for the local MCP server */
+"settings.mcp.title" = "MCP 服务";
+
+/* Sub-heading over the permission toggles */
+"settings.mcp.whatAgentsMayDo" = "agent 的权限范围";
+
+/* Shown when the watchdog is not running */
+"settings.menuBarHealthUnavailable" = "本进程未接入菜单栏健康监控。";
+
+/* Button in the mini windows settings section */
+"settings.miniWindow.add" = "添加迷你窗口";
+
+/* Empty state under the add-bucket list */
+"settings.miniWindow.allBucketsIncluded" = "已知的 bucket 都已在此窗口中。";
+
+/* Mini-window strip density */
+"settings.miniWindow.density.narrow" = "紧凑";
+
+/* Caption under the Narrow strip density */
+"settings.miniWindow.density.narrowDetail" = "菜单栏的紧凑样式：同样的单元，尺寸更小。";
+
+/* Mini-window strip density */
+"settings.miniWindow.density.roomy" = "宽松";
+
+/* Caption under the Roomy strip density */
+"settings.miniWindow.density.roomyDetail" = "菜单栏的单行样式：显示全部 bucket，名称与数字并列。";
+
+/* Mini-window strip density */
+"settings.miniWindow.density.twoLines" = "双行";
+
+/* Caption under the Two Lines strip density */
+"settings.miniWindow.density.twoLinesDetail" = "菜单栏样式：bucket 两两成列堆叠，每个数字旁附名称。";
+
+/* Tooltip on the dismiss button of a built-in bucket */
+"settings.miniWindow.dismissBuiltIn" = "在厂商未返回该内置 bucket 期间将其隐藏。厂商一旦恢复返回，它便会重新出现。";
+
+/* Tooltip on the dismiss button of a runtime-discovered bucket */
+"settings.miniWindow.forgetDiscovered" = "忘记这个已发现的 bucket — 将其从列表以及所有选中它的窗口中移除。";
+
+/* Tooltip on a style toggle; mode is a display-mode name */
+"settings.miniWindow.includeStyle" = "将%1$@纳入双击循环";
+
+/* Tooltip explaining a disabled remove button */
+"settings.miniWindow.lastCannotBeRemoved" = "最后一个迷你窗口无法移除。";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.compact" = "紧凑";
+
+/* Caption under the Compact mini-window style */
+"settings.miniWindow.mode.compactDetail" = "同样的三层结构，改为竖条，适合放在屏幕角落。";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.focus" = "聚焦";
+
+/* Caption under the Focus mini-window style */
+"settings.miniWindow.mode.focusDetail" = "一次只显示一个选定 bucket，尺寸更大 — 点击按设定顺序切换。";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.ledger" = "清单";
+
+/* Caption under the Ledger mini-window style */
+"settings.miniWindow.mode.ledgerDetail" = "每个额度 bucket 一行 — 宽度固定，向下延伸。";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.rail" = "时间轴";
+
+/* Caption under the Rail mini-window style */
+"settings.miniWindow.mode.railDetail" = "把未来 7 天画成一条补额轴，并列出即将到来的重置。";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.regular" = "标准";
+
+/* Caption under the Regular mini-window style */
+"settings.miniWindow.mode.regularDetail" = "环形仪表，按 company → SubProvider → 额度组分组。";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.strip" = "条带";
+
+/* Caption under the Strip mini-window style */
+"settings.miniWindow.mode.stripDetail" = "与菜单栏样式一致的细长条 — 每个 bucket 一格。";
+
+/* Mini-window display style */
+"settings.miniWindow.mode.tiles" = "磁贴";
+
+/* Caption under the Tiles mini-window style */
+"settings.miniWindow.mode.tilesDetail" = "磁贴网格，含大号数字与状态色条。";
+
+/* Segment label: edit the shared names */
+"settings.miniWindow.namesAllWindows" = "名称：全部窗口";
+
+/* Segment label: edit only this display style's overrides; mode is a display-mode name */
+"settings.miniWindow.namesThisStyle" = "仅此处的%1$@";
+
+/* Segment label: edit only this window's name overrides */
+"settings.miniWindow.namesThisWindow" = "仅“%1$@”";
+
+/* Empty state under the field list */
+"settings.miniWindow.noFieldsSelected" = "未选择任何字段 — 请在上方勾选。";
+
+/* Caption over the list of buckets not yet in this window */
+"settings.miniWindow.notInWindow" = "不在“%1$@”中 — 勾选 bucket 即可加入。适配器在运行时发现的 bucket 会自动出现在这里；灰显的行表示已记录但不在账号当前响应中，✕ 可将其忽略，直到厂商重新返回。";
+
+/* Badge on a remote machine's row in the mini window preview */
+"settings.miniWindow.offline" = "离线";
+
+/* Button that shows or hides a mini window */
+"settings.miniWindow.openClose" = "打开 / 关闭";
+
+/* Caption over the per-style name fields */
+"settings.miniWindow.overridesStyle" = "仅对此窗口的%1$@样式生效的覆盖。留空则先继承窗口名称，再继承共享名称 — 以占位文本显示。";
+
+/* Caption over the per-window name fields */
+"settings.miniWindow.overridesWindow" = "仅对此窗口生效的名称覆盖。留空则继承共享名称 — 以占位文本显示。";
+
+/* Ordinal badge showing a field's place in the order */
+"settings.miniWindow.position" = "%1$lld";
+
+/* Tooltip on a row's remove control */
+"settings.miniWindow.removeFromWindow" = "从此窗口移除";
+
+/* Tooltip on the remove button */
+"settings.miniWindow.removeHelp" = "移除此迷你窗口";
+
+/* Picker label for the mini window's row density */
+"settings.miniWindow.stripDensity" = "条带密度";
+
+/* Caption over the style cycle picker */
+"settings.miniWindow.styleCycle" = "双击窗口可循环切换样式。点选某个样式即将其纳入循环 — 徽标表示它在循环中的次序。未选任何样式即表示按此顺序使用全部样式。";
+
+/* Tooltip on the open/close button */
+"settings.miniWindow.toggleHelp" = "在屏幕上显示或隐藏此迷你窗口";
+
+/* Caption over the mini window field tree */
+"settings.miniWindow.treeDetail" = "窗口的一棵树 — 按其折叠方式分组（company → SubProvider → 额度组 → bucket）。拖动行可重新排序，✕ 可移除，任一层级均可就地重命名。第一个字段渲染在最左（或最上）。";
+
+/* Field placeholder for the AK half of an AK/SK pair */
+"settings.misc.accessKeyId" = "Access Key ID（AKLT…）";
+
+/* Confirmation under an AK/SK field */
+"settings.misc.akSkSaved" = "AK/SK 已保存到 Keychain。";
+
+/* Confirmation under a credential field */
+"settings.misc.apiKeySaved" = "API key 已保存到 Keychain。";
+
+/* Tooltip on the button that forgets a stored workspace id */
+"settings.misc.clearWorkspace" = "清除已保存的工作区";
+
+/* Tooltip on the button that adds a second instance of a provider */
+"settings.misc.clone" = "复制 %1$@";
+
+/* Console link row; title is the provider's own page name */
+"settings.misc.consoleLink" = "%1$@ →";
+
+/* Picker label for a provider's edition (Team, Personal, …) */
+"settings.misc.edition" = "版本";
+
+/* Hint under the GitHub sign-in row */
+"settings.misc.githubSignInHint" = "通过 GitHub 设备流程登录。";
+
+/* Confirmation under the GitHub sign-in row */
+"settings.misc.githubTokenSaved" = "GitHub 设备令牌已保存到 Keychain。";
+
+/* Caption under the cookie import button */
+"settings.misc.importDetail" = "添加或刷新找到的第一个已登录浏览器配置；已导入的配置会保留叠加，该厂商的额度取上方所有槽位的平均值。每个 Chromium 系浏览器，macOS 可能会要求输入一次登录钥匙串密码。";
+
+/* Hint under the Kiro row; the commands are never translated */
+"settings.misc.kiroHint" = "运行 `kiro-cli login`，之后 Vibe Bar 会探测 `kiro-cli chat --no-interactive /usage`。";
+
+/* Shown when a provider has no cookie import path */
+"settings.misc.noCookieSpec" = "%1$@ 未注册 cookie 规格。";
+
+/* Empty state in the cookie slot list */
+"settings.misc.noCookiesYet" = "尚未导入 cookies — 可从浏览器导入或在下方粘贴。";
+
+/* Button that runs a local CLI probe */
+"settings.misc.probe" = "探测";
+
+/* Field placeholder */
+"settings.misc.prompt.copilotHost" = "GitHub Enterprise 主机（可选，例如 github.example.com）";
+
+/* Field placeholder */
+"settings.misc.prompt.dashscope" = "粘贴 DashScope API key（sk-...）— 可选";
+
+/* Field placeholder */
+"settings.misc.prompt.kilo" = "粘贴 Kilo API key（可选）";
+
+/* Field placeholder */
+"settings.misc.prompt.minimax" = "粘贴 MiniMax Token Plan API key（sk-cp-... 或 MINIMAX_CODING_API_KEY）";
+
+/* Field placeholder */
+"settings.misc.prompt.openRouter" = "粘贴 OpenRouter API key（sk-or-v1-...）";
+
+/* Field placeholder */
+"settings.misc.prompt.openRouterHost" = "OpenRouter API URL（可选，默认为 https://openrouter.ai/api/v1）";
+
+/* Field placeholder */
+"settings.misc.prompt.warp" = "粘贴 Warp API key（wk-...）";
+
+/* Field placeholder */
+"settings.misc.prompt.workspace" = "工作区 ID 或 URL（可选，wrk_... 或 /workspace/wrk_.../go）";
+
+/* Field placeholder; the key prefix is a format example */
+"settings.misc.prompt.zai" = "粘贴 Z.ai API key（zai-...）";
+
+/* Picker label for a provider's service region */
+"settings.misc.region" = "区域";
+
+/* Misc-provider region option */
+"settings.misc.region.auto" = "自动（两者都试）";
+
+/* Alibaba region option */
+"settings.misc.region.chinaMainland" = "中国大陆（cn-beijing）";
+
+/* Alibaba region option; the region id is never translated */
+"settings.misc.region.international" = "国际站（ap-southeast-1）";
+
+/* MiniMax region option */
+"settings.misc.region.minimaxChina" = "中国大陆（minimaxi.com）";
+
+/* MiniMax region option */
+"settings.misc.region.minimaxGlobal" = "全球站（minimax.io）";
+
+/* Z.ai region option */
+"settings.misc.region.zaiChina" = "中国大陆（open.bigmodel.cn）";
+
+/* Z.ai region option; the host is never translated */
+"settings.misc.region.zaiGlobal" = "全球站（api.z.ai）";
+
+/* Tooltip on the button that clears a stored AK/SK pair */
+"settings.misc.removeAkSk" = "移除已保存的 %1$@ AK/SK";
+
+/* Tooltip on the button that clears a stored key */
+"settings.misc.removeApiKey" = "移除已保存的 %1$@ API key";
+
+/* Tooltip on a cookie slot's delete button */
+"settings.misc.removeCookieSlot" = "移除此 cookie 槽位";
+
+/* Tooltip on the button that deletes a cloned instance */
+"settings.misc.removeCopy" = "移除此 %1$@ 副本";
+
+/* Destructive button in the remove-copy dialog */
+"settings.misc.removeCopyButton" = "移除副本";
+
+/* Confirmation dialog body */
+"settings.misc.removeCopyDetail" = "其保存的凭据会从 Keychain 中删除 — 包括 API key 或 AK/SK 以及全部已导入的 cookie 槽位。此操作不可撤销。";
+
+/* Confirmation dialog title */
+"settings.misc.removeCopyTitle" = "是否移除此 %1$@ 副本？";
+
+/* Tooltip on the button that clears the GitHub token */
+"settings.misc.removeGithubToken" = "移除已保存的 GitHub 设备令牌";
+
+/* Tooltip on the rename button of a cloned instance */
+"settings.misc.rename" = "重命名此副本";
+
+/* Field placeholder for the SK half of an AK/SK pair. The term is the provider's own and stays as spelled. */
+"settings.misc.secretAccessKey" = "Secret Access Key";
+
+/* Button that starts a device-flow sign-in */
+"settings.misc.signIn" = "登录";
+
+/* Button that opens a WebView login */
+"settings.misc.signInViaWeb" = "通过网页登录";
+
+/* Caption under the Tencent token plan row */
+"settings.misc.tencentTokenPlanNote" = "个人版 Token Plan 目前仅在中国大陆（cn-beijing）提供。复制此行即可同时跟踪团队版与个人版。";
+
+/* Picker label for a provider's plan variant */
+"settings.misc.variant" = "变体";
+
+/* Button label while a device-flow sign-in is pending */
+"settings.misc.waiting" = "等待中…";
+
+/* Caption under the workspace field */
+"settings.misc.workspaceNote" = "仅当账号拥有多个工作区时才需要填写 — 否则 Vibe Bar 使用找到的第一个。";
+
+/* Provider state: credentials are missing */
+"settings.needsSetup" = "需配置";
+
+/* Connection state before any probe has run */
+"settings.notChecked" = "未检查";
+
+/* Line under the update-check button */
+"settings.notCheckedYet" = "尚未检查。在主动发起前不会请求任何内容。";
+
+/* Picker label */
+"settings.openRefreshCooldown" = "打开刷新的最小间隔";
+
+/* Caption under the cooldown picker */
+"settings.openRefreshDetail" = "每个间隔周期内，打开面板最多刷新一次全部可见厂商。";
+
+/* Link to a company's public status page */
+"settings.openStatusPage" = "打开 %1$@ 状态页";
+
+/* Picker label choosing between remaining and used */
+"settings.percentShows" = "百分比显示";
+
+/* Field label for a user-chosen plan label override */
+"settings.planBadge" = "套餐标签";
+
+/* Caption under the plan badge field */
+"settings.planBadgeDetail" = "留空则使用自动检测到的账号套餐。";
+
+/* Popover density option */
+"settings.popoverDensity.compact" = "紧凑";
+
+/* Caption under the Compact density */
+"settings.popoverDensity.compactDetail" = "间距最紧，面板最窄。";
+
+/* Popover density option */
+"settings.popoverDensity.regular" = "标准";
+
+/* Caption under the Regular density */
+"settings.popoverDensity.regularDetail" = "间距均衡 — 默认。";
+
+/* Popover density option */
+"settings.popoverDensity.spacious" = "宽松";
+
+/* Caption under the Spacious density */
+"settings.popoverDensity.spaciousDetail" = "间距宽裕，适合大屏。";
+
+/* Button that appends a blank rate card */
+"settings.pricing.addOverride" = "添加模型覆盖值";
+
+/* Disclosure heading over the threshold rate fields */
+"settings.pricing.advancedTiers" = "高级分档";
+
+/* Detail beside the local-overrides source */
+"settings.pricing.alwaysWins" = "始终优先";
+
+/* Name of the lowest-priority price source */
+"settings.pricing.bundledFallback" = "内置兜底";
+
+/* Rate field label */
+"settings.pricing.cacheReadAbove" = "阈值以上缓存读取";
+
+/* Rate field label */
+"settings.pricing.cacheWriteAbove" = "阈值以上缓存写入";
+
+/* Tooltip on a rate card's delete button */
+"settings.pricing.deleteOverride" = "删除覆盖值";
+
+/* Placeholder in the model-name field of a rate card */
+"settings.pricing.exactModelName" = "模型名称（精确匹配）";
+
+/* Rate field label: the multiplier applied to a fast tier */
+"settings.pricing.fastMultiplier" = "快速档倍率";
+
+/* Rate field label for input tokens beyond the threshold */
+"settings.pricing.inputAbove" = "阈值以上输入";
+
+/* Intro under the Model Pricing heading */
+"settings.pricing.intro" = "目录在后台刷新。同一厂商与模型名出现多次时，靠前的条目优先。";
+
+/* Settings section heading over the user's own rate cards */
+"settings.pricing.localOverrides" = "本地覆盖值";
+
+/* Name of the highest-priority price source */
+"settings.pricing.localOverridesName" = "本地覆盖值";
+
+/* Empty state in the overrides list */
+"settings.pricing.noOverrides" = "暂无本地覆盖值。";
+
+/* Ordinal badge beside a price source */
+"settings.pricing.number" = "%1$lld";
+
+/* Detail beside the bundled source */
+"settings.pricing.offlineFloor" = "离线下限";
+
+/* Rate field label for output tokens beyond the threshold */
+"settings.pricing.outputAbove" = "阈值以上输出";
+
+/* Intro under the Local overrides heading */
+"settings.pricing.overridesIntro" = "价格单位为每百万 token 的美元数。厂商未公布缓存价格时，相应字段留空。";
+
+/* Settings section heading over the price-source list */
+"settings.pricing.priorityHealth" = "优先级与来源状态";
+
+/* Rate field label: input tokens */
+"settings.pricing.rateInput" = "输入";
+
+/* Rate field label: output tokens */
+"settings.pricing.rateOutput" = "输出";
+
+/* Button that fetches price catalogs immediately */
+"settings.pricing.refreshNow" = "立即刷新";
+
+/* Button label while a price refresh runs */
+"settings.pricing.refreshing" = "正在刷新…";
+
+/* Field label: the token count above which the higher rates apply */
+"settings.pricing.thresholdTokens" = "分档阈值 token 数";
+
+/* Footer showing when the bundled price table was built; date is a raw stamp */
+"settings.pricingDataDate" = "价格数据：%1$@";
+
+/* Body of the Privacy section */
+"settings.privacyDetail" = "token 从本地 CLI 凭据读取。已保存的 OpenAI 与 Claude 网页 cookies 存放在 macOS Keychain 中，按浏览器与 WebView 来源分开。~/.vibebar/cookies 下的旧版明文 cookie 文件会迁移一次并删除。设置、额度缓存与花费汇总保留在 ~/.vibebar 下。";
+
+/* Toggle label */
+"settings.privacyMode" = "隐私模式";
+
+/* Caption under the privacy toggle */
+"settings.privacyModeDetail" = "隐私模式不将花费数据写入磁盘，并清除本地花费历史、快照与扫描缓存。";
+
+/* Provider state: credentials are usable */
+"settings.ready" = "就绪";
+
+/* Picker label for a background refresh interval */
+"settings.refreshEvery" = "刷新间隔";
+
+/* Toggle label */
+"settings.refreshOnPopoverOpen" = "打开面板时刷新";
+
+/* Link label */
+"settings.releaseNotes" = "发行说明";
+
+/* Settings section heading. Core is the product term for this Mac's aggregator. */
+"settings.remote.core" = "远程 Core";
+
+/* Settings section heading */
+"settings.remote.costAggregation" = "花费汇总";
+
+/* Intro under the cost aggregation heading */
+"settings.remote.costAggregationIntro" = "选择哪些远程机器计入本机的花费与 token 总计。选择与汇总均在本 Core 完成；Relay 不会看到明文用量。";
+
+/* Toggle that reveals the control-centre URL field */
+"settings.remote.differentControlCenter" = "使用其他控制台";
+
+/* Button that abandons a pending join */
+"settings.remote.discard" = "丢弃";
+
+/* Confirmation dialog body */
+"settings.remote.discardPendingDetail" = "该配对码已失效，且工作区仍将本机视为其 Core。如需重新加入，请先在网页控制台吊销本机，再创建新的配对码。";
+
+/* Confirmation dialog title */
+"settings.remote.discardPendingTitle" = "是否丢弃这次待完成的加入？";
+
+/* Settings section heading, and the destructive button in its dialog */
+"settings.remote.disconnect" = "断开连接";
+
+/* Button that unpairs this Mac */
+"settings.remote.disconnectButton" = "断开与工作区的连接…";
+
+/* Confirmation dialog body */
+"settings.remote.disconnectDetail" = "日后重新连接需要新的配对码或配置文件。";
+
+/* Explanation under the Disconnect heading */
+"settings.remote.disconnectIntro" = "断开会从 Keychain 移除本机的 Relay 凭据及其工作区绑定。在 Relay 端吊销之前，探针仍会继续上传。已解密的用量保留在本地账本中。";
+
+/* Confirmation dialog title */
+"settings.remote.disconnectTitle" = "是否断开与该工作区的连接？";
+
+/* Button that writes this Mac's public identity to a file */
+"settings.remote.exportIdentity" = "导出 Core 身份…";
+
+/* Button that reads a provisioning file */
+"settings.remote.importProvisioning" = "导入配置文件…";
+
+/* Button that submits a pairing code */
+"settings.remote.join" = "加入";
+
+/* Explanation above the pairing-code field; device is the Mac's name */
+"settings.remote.joinIntro" = "在 Vibe Bar 控制台创建 Core 配对码，然后粘贴到此处。本机将以“%1$@”的名义加入。";
+
+/* Heading over the pairing-code field */
+"settings.remote.joinWithCode" = "用配对码加入";
+
+/* Row label for the last sync time */
+"settings.remote.lastSync" = "最近同步";
+
+/* Second line of a remote machine row; platform and version are raw values */
+"settings.remote.machineDetail" = "%1$@ · 探针 %2$@";
+
+/* Empty state in the machine list */
+"settings.remote.machinesAppearAfterImport" = "机器在首批加密数据导入后出现在此。";
+
+/* Row label for the machine count */
+"settings.remote.machinesSynced" = "已同步机器";
+
+/* Explanation of the manual pairing flow */
+"settings.remote.manualPairingIntro" = "配对分三步：导出本机 Core 身份，在 Relay 注册以生成配置文件，然后在此导入该文件。导入会把 Relay 凭据移入 macOS Keychain — 但配置文件本身仍包含该凭据，导入成功后请删除该文件。";
+
+/* Explanation shown when no workspace is paired */
+"settings.remote.notConnected" = "本机尚未连接到工作区。远程探针在其他机器上采集归一化用量，用本机 Core 的密钥加密后投递到 Relay — 本机不会开放任何入站端口。";
+
+/* Caption above the manual pairing buttons */
+"settings.remote.orPairManually" = "也可手动配对。";
+
+/* Explanation of a half-finished join */
+"settings.remote.pendingIntro" = "上一次加入已被控制台接受，但在本机未完成保存。该配对码已失效，请继续保存，而不是重新申请配对码。";
+
+/* Settings section heading over the pairing controls */
+"settings.remote.provisioning" = "配置接入";
+
+/* Row label for the probe count */
+"settings.remote.registeredProbes" = "已注册探针";
+
+/* Row label for the relay URL. The term stays as spelled. */
+"settings.remote.relay" = "Relay";
+
+/* Button that finishes a half-completed join */
+"settings.remote.resumeSaving" = "继续保存";
+
+/* Button that retries a failed save */
+"settings.remote.retrySaving" = "重试保存";
+
+/* Sync status line: a translated title and the raw status code */
+"settings.remote.statusWithCode" = "%1$@ · %2$@";
+
+/* Remote sync status title for HTTP 429/503 */
+"settings.remote.sync.busy" = "Relay 暂时繁忙";
+
+/* Remote sync status title */
+"settings.remote.sync.connectionFailed" = "Relay 连接中断";
+
+/* Remote sync status title */
+"settings.remote.sync.hostLookupFailed" = "无法解析 Relay 主机";
+
+/* Remote sync status title */
+"settings.remote.sync.invalidResponse" = "Relay 返回了预期之外的响应";
+
+/* Remote sync status detail for an offline or DNS failure */
+"settings.remote.sync.networkDetail" = "请检查本机的网络或代理设置；已有的机器数据仍然可用。";
+
+/* Remote sync status title. The error code beside it is a machine-readable identifier and stays English. */
+"settings.remote.sync.offline" = "本机当前离线";
+
+/* Remote sync status title for HTTP 401/403 */
+"settings.remote.sync.rejected" = "Relay 拒绝了访问";
+
+/* Remote sync status detail for HTTP 401/403 */
+"settings.remote.sync.rejectedDetail" = "工作区凭据可能已被吊销，请在设置中重新连接本 Core。";
+
+/* Remote sync status detail for a transient transport failure */
+"settings.remote.sync.retryDetail" = "已有的机器数据仍然可用，Vibe Bar 会自动重试。";
+
+/* Remote sync status title */
+"settings.remote.sync.secureConnectionFailed" = "Relay 安全连接失败";
+
+/* Remote sync status title */
+"settings.remote.sync.sequenceGap" = "探针历史存在序号缺口";
+
+/* Remote sync status detail */
+"settings.remote.sync.sequenceGapDetail" = "Relay 流中缺少一个探针批次，因此后续批次未被导入。";
+
+/* Remote sync status title */
+"settings.remote.sync.timeout" = "Relay 连接超时";
+
+/* Remote sync status title */
+"settings.remote.sync.transportFailed" = "Relay 传输失败";
+
+/* Remote sync status title for a code this build does not recognize. A new Relay error code must still render a sentence. */
+"settings.remote.sync.unknown" = "远程同步需要处理";
+
+/* Remote sync status detail for an unrecognized code */
+"settings.remote.sync.unknownDetail" = "本地用量未被删除。可立即重试，或在「远程 Core」设置中查看错误码。";
+
+/* Remote sync status title for an invalid signature or unauthorized producer */
+"settings.remote.sync.unverifiedProbe" = "有探针无法通过校验";
+
+/* Remote sync status detail */
+"settings.remote.sync.unverifiedProbeDetail" = "当前工作区名单未授权收到的某个批次。";
+
+/* Button that pulls remote batches immediately */
+"settings.remote.syncNow" = "立即同步";
+
+/* Row label for the workspace id */
+"settings.remote.workspace" = "工作区";
+
+/* Link label */
+"settings.repository" = "仓库";
+
+/* Button label */
+"settings.rescanCostLogs" = "重新扫描花费日志";
+
+/* Connection-health row: the local AntiGravity probe or agy CLI */
+"settings.route.antigravityLocal" = "本地 Antigravity / agy";
+
+/* Connection-health row: cookies imported from a browser */
+"settings.route.browserCookies" = "Chrome/Safari cookies";
+
+/* Connection-health row: the local CLI credential path */
+"settings.route.cli" = "CLI";
+
+/* Connection-health row: the Grok CLI's credential file. A path, never translated. */
+"settings.route.grokAuthFile" = "~/.grok/auth.json";
+
+/* Connection-health row: the OAuth credential path */
+"settings.route.oauth" = "OAuth";
+
+/* Connection-health row: cookies from the in-app login window */
+"settings.route.webViewCookies" = "WebView cookies";
+
+/* Connection-health detail: the agy CLI is installed */
+"settings.routeHealth.agyAvailable" = "agy CLI 可用";
+
+/* Connection-health detail; the filename is never translated */
+"settings.routeHealth.authFileExpired" = "auth.json 已过期";
+
+/* Connection-health detail */
+"settings.routeHealth.authFileUnreadable" = "无法读取 auth.json";
+
+/* Connection-health detail */
+"settings.routeHealth.cachedOnly" = "仅有缓存数据；无法获取实时额度";
+
+/* Connection-health detail */
+"settings.routeHealth.credentialUnreadable" = "无法读取凭据";
+
+/* Connection-health detail: a usable credential was found */
+"settings.routeHealth.credentialsAvailable" = "凭据可用";
+
+/* Connection-health detail */
+"settings.routeHealth.invalidCookie" = "cookie 数据无效";
+
+/* Connection-health detail */
+"settings.routeHealth.keychainLocked" = "Keychain 已锁定";
+
+/* Connection-health detail: the AntiGravity language server is up */
+"settings.routeHealth.lspRunning" = "本地 LSP 正在运行";
+
+/* Connection-health detail */
+"settings.routeHealth.noAntigravityData" = "没有本地 Antigravity 数据";
+
+/* Connection-health detail */
+"settings.routeHealth.noAuthFile" = "没有 auth.json";
+
+/* Connection-health detail */
+"settings.routeHealth.noCredential" = "未找到凭据";
+
+/* Connection-health detail */
+"settings.routeHealth.noSavedCookie" = "没有已保存的 cookie";
+
+/* Connection-health detail: a cookie is stored */
+"settings.routeHealth.savedInKeychain" = "已保存到 Keychain";
+
+/* Placeholder in the settings sidebar's search field */
+"settings.search" = "搜索设置";
+
+/* Settings section heading listing bundled components. Distinct from status.card.components, which are a provider's status-page components. */
+"settings.section.components" = "组件";
+
+/* Settings section heading */
+"settings.section.costData" = "花费数据";
+
+/* Settings section heading for page layout */
+"settings.section.layout" = "布局";
+
+/* Settings sidebar destination and section heading */
+"settings.section.menuBar" = "菜单栏";
+
+/* Settings section heading for the status-item watchdog */
+"settings.section.menuBarHealth" = "菜单栏健康";
+
+/* Settings section heading */
+"settings.section.miniWindows" = "迷你窗口";
+
+/* Settings section heading for the Overview surface */
+"settings.section.overview" = "总览";
+
+/* Settings section heading */
+"settings.section.privacy" = "隐私";
+
+/* Settings section heading for refresh intervals. Distinct from status.overview.refreshing, which says a fetch is in flight. */
+"settings.section.refreshing" = "刷新";
+
+/* Settings sidebar destination for remote machine sync */
+"settings.section.remoteProbes" = "远程探针";
+
+/* Settings section heading for login items and the setup assistant. Distinct from settings.language.system, which is a language-picker option meaning 'follow macOS'. */
+"settings.section.system" = "系统";
+
+/* Settings section heading for the app updater */
+"settings.section.updates" = "更新";
+
+/* Button that reopens the first-run assistant */
+"settings.showAssistant" = "打开设置向导";
+
+/* Caption under the assistant button */
+"settings.showAssistantDetail" = "重新走一遍订阅、浏览器 cookies、API key、模型价格与登录项。不会重置任何设置。";
+
+/* Sidebar group heading over the four core provider pages */
+"settings.sidebar.coreProviders" = "核心厂商";
+
+/* Tooltip on the toggle that turns a misc provider off */
+"settings.sidebar.disableProvider" = "停用厂商";
+
+/* Tooltip on the toggle that turns a misc provider on */
+"settings.sidebar.enableProvider" = "启用厂商";
+
+/* Tooltip on the toggle that removes a provider from the Overview */
+"settings.sidebar.hideFromOverview" = "从总览中隐藏";
+
+/* Sidebar group heading over the static preference pages */
+"settings.sidebar.settings" = "设置";
+
+/* Explanation on the SpaceXAI settings page */
+"settings.spaceXAIIntro" = "SpaceXAI 页面同时包含 Grok 与 Cursor。Grok 读取 `~/.grok/auth.json` 或 grok.com 的 cookies；Cursor 先读 Cursor.app，再读 cursor.com 的 cookie 槽位。Grok Bot 提供额度，以及来自本地缓存的只读会话 — 其云端运行仍不产生 token 或花费记录。";
+
+/* Terminal preference: copy the resume command instead of running it. Terminal and iTerm2 are product names and stay as spelled. */
+"settings.terminal.copyOnly" = "复制到剪贴板";
+
+/* Picker label */
+"settings.updateChannel" = "更新通道";
+
+/* Update channel option */
+"settings.updateChannel.dev" = "预览版";
+
+/* Caption under the Dev channel option */
+"settings.updateChannel.devDetail" = "预览版本，以及全部正式版本。";
+
+/* Update channel option */
+"settings.updateChannel.main" = "正式版";
+
+/* Caption under the Main channel option */
+"settings.updateChannel.mainDetail" = "仅稳定版本。";
+
+/* Caption under the update controls */
+"settings.updateCheckDetail" = "每天检查一次所选通道，安装前会先询问。";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.autoDetail" = "优先使用 Antigravity 应用，其次是本机安装的 agy CLI；在网页来源可用时回退到已导入的 cookies。";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.localFirstDetail" = "优先使用 Antigravity 应用或 agy CLI；其次回退到已导入的 cookies。";
+
+/* AntiGravity usage-source option */
+"settings.usageMode.antigravity.localOnly" = "仅本地来源";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.localOnlyDetail" = "仅使用 Antigravity 应用或本机安装的 agy CLI。";
+
+/* AntiGravity usage-source option */
+"settings.usageMode.antigravity.localThenWeb" = "先本地来源，后网页";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.webFirstDetail" = "优先使用已导入的 cookies；其次回退到 Antigravity 应用或 agy CLI。";
+
+/* AntiGravity usage-source option */
+"settings.usageMode.antigravity.webOnly" = "仅网页";
+
+/* Caption under an AntiGravity usage-source option */
+"settings.usageMode.antigravity.webOnlyDetail" = "仅使用已导入的 cookies。在 Antigravity Cloud 端点上线前会回退到本地探测。";
+
+/* AntiGravity usage-source option */
+"settings.usageMode.antigravity.webThenLocal" = "先网页，后本地来源";
+
+/* Usage-source option: let Vibe Bar choose the order */
+"settings.usageMode.auto" = "自动";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.autoDetail" = "优先使用已保存的 claude.ai cookies；其次回退到 Claude OAuth 与 Claude Code。";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.codeFirstDetail" = "优先使用 Claude Code；其次回退到已保存的 claude.ai cookies。";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.codeOnly" = "仅 Claude Code";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.codeOnlyDetail" = "仅使用本地 Claude Code 的 OAuth 凭据。";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.codeThenWeb" = "先 Claude Code，后网页";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.oauthCodeWeb" = "依次使用 OAuth、Claude Code、网页";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.oauthFirstDetail" = "优先使用 Claude OAuth；其次回退到 Claude Code 与已保存的 claude.ai cookies。";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.oauthOnly" = "仅 OAuth";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.oauthOnlyDetail" = "仅使用 Claude OAuth 凭据。";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.webFirstDetail" = "优先使用已保存的 claude.ai cookies；其次回退到 Claude Code 与 OAuth。";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.webOnly" = "仅 Claude 网页";
+
+/* Caption under a Claude usage-source option */
+"settings.usageMode.claude.webOnlyDetail" = "仅使用已保存的 claude.ai cookies。";
+
+/* Claude usage-source option */
+"settings.usageMode.claude.webThenCode" = "先 Claude 网页，后 Claude Code";
+
+/* Caption under a Codex usage-source option */
+"settings.usageMode.codex.autoDetail" = "优先使用本地 Codex CLI 凭据；其次回退到 Codex OAuth 与已保存的 OpenAI 网页 cookies。";
+
+/* Codex usage-source option */
+"settings.usageMode.codex.cliOnly" = "仅 CLI";
+
+/* Caption under a Codex usage-source option */
+"settings.usageMode.codex.cliOnlyDetail" = "仅使用本地 Codex CLI 凭据。";
+
+/* Codex usage-source option */
+"settings.usageMode.codex.cliThenOauth" = "先 CLI，后 OAuth";
+
+/* Caption under a Codex usage-source option */
+"settings.usageMode.codex.oauthFirstDetail" = "优先使用 Codex OAuth；其次回退到本地 Codex CLI 凭据与已保存的 OpenAI 网页 cookies。";
+
+/* Codex usage-source option */
+"settings.usageMode.codex.oauthOnly" = "仅 OAuth";
+
+/* Caption under a Codex usage-source option */
+"settings.usageMode.codex.oauthOnlyDetail" = "仅使用 auth.json 中的 Codex OAuth 凭据。";
+
+/* Codex usage-source option */
+"settings.usageMode.codex.oauthThenCli" = "先 OAuth，后 CLI";
+
+/* Gemini usage-source option */
+"settings.usageMode.gemini.webOnly" = "仅 Gemini Web";
+
+/* Caption under the Gemini usage-source option */
+"settings.usageMode.gemini.webOnlyDetail" = "仅读取已导入的 gemini.google.com cookies。";
+
+/* Picker label choosing where a provider's quota is read from */
+"settings.usageSource" = "用量来源";
+
+/* Value beside the Gemini source row */
+"settings.webQuota" = "网页端额度";
+
+/* Link to a release's notes; version is a tag name */
+"settings.whatChangedIn" = "%1$@ 的更新内容";
 
 /* Group heading for a provider's status components */
 "status.card.components" = "组件";
@@ -1065,7 +2208,7 @@
 "status.overview.maintenance" = "维护中";
 
 /* Overview status tile detail */
-"status.overview.needsAttention" = "需要处理";
+"status.overview.needsAttention" = "需处理";
 
 /* Overview status tile detail */
 "status.overview.operational" = "运行正常";
@@ -1179,7 +2322,7 @@
 "usage.harnessMix.byRealTokens" = "按实际 token 计";
 
 /* Empty state inside the harness mix card */
-"usage.harnessMix.empty" = "所选范围内没有 harness 流量";
+"usage.harnessMix.empty" = "所选范围内无 harness 流量";
 
 /* All-caps card title. 'Harness' is the usage-axis unit and stays as spelled. */
 "usage.harnessMix.title" = "Harness 分布";
@@ -1272,7 +2415,7 @@
 "usage.mix.tokenFlow.title" = "Token 流向";
 
 /* Empty state body explaining the All chip */
-"usage.noHarnessSelected.detail" = "「全部 harness」是一个开关：再点一次即可把所有 harness 放回查询。";
+"usage.noHarnessSelected.detail" = "「全部 harness」是一个开关：再次点击即可将全部 harness 重新纳入查询。";
 
 /* Empty state when the harness filter excludes everything. 'harness' is the usage-axis unit and stays as spelled. */
 "usage.noHarnessSelected.title" = "未选择任何 harness — 请在上方选择";
@@ -1455,13 +2598,13 @@
 "usage.trend.tokensChartLabel" = "Token 用量随时间变化";
 
 /* Heatmap title on the Overview, covering every provider at once */
-"usage.whenYouUse.everything" = "你什么时候在用";
+"usage.whenYouUse.everything" = "整体使用时段";
 
 /* Heatmap title on the Google AI page */
-"usage.whenYouUse.googleAI" = "你什么时候用 Google AI";
+"usage.whenYouUse.googleAI" = "Google AI 使用时段";
 
 /* Heatmap title on the SpaceXAI page */
-"usage.whenYouUse.spaceXAI" = "你什么时候用 SpaceXAI";
+"usage.whenYouUse.spaceXAI" = "SpaceXAI 使用时段";
 
 /* Tooltip on the Workbench header button that switches the window to dark */
 "workbench.appearance.useDark" = "使用深色外观";
