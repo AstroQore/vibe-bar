@@ -598,12 +598,14 @@ struct OverviewQuotaHistoryCard: View {
     /// where the label is composed: a generic window word is translated and a
     /// model name ("Sonnet") comes back exactly as the contract spells it.
     private func bucketTitle(_ bucket: QuotaBucket) -> String {
-        let title = QuotaGroupLabelLocalizer.display(bucket.title)
+        let title = QuotaGroupLabelLocalizer.displayComposed(bucket.title)
         guard let group = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
               !group.isEmpty
         else { return title }
-        guard group != bucket.title else { return QuotaGroupLabelLocalizer.display(group) }
-        return "\(QuotaGroupLabelLocalizer.display(group)) \(title)"
+        guard group != bucket.title else {
+            return QuotaGroupLabelLocalizer.displayComposed(group)
+        }
+        return "\(QuotaGroupLabelLocalizer.displayComposed(group)) \(title)"
     }
 
     /// Short, non-identifying account hint. Aliases are the user's own words so

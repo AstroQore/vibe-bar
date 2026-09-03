@@ -382,7 +382,7 @@ private struct MiscQuotaBody: View {
         }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
-                Text(QuotaGroupLabelLocalizer.display(bucket.title))
+                Text(QuotaGroupLabelLocalizer.displayComposed(bucket.title))
                     .font(.system(
                         size: density.bucketTitleFontSize - (isCompact ? 2 : 1),
                         weight: .medium
@@ -418,7 +418,7 @@ private struct MiscQuotaBody: View {
                 )
             }
             if let group = bucket.groupTitle, !group.isEmpty, group != bucket.title {
-                Text(QuotaGroupLabelLocalizer.display(group))
+                Text(QuotaGroupLabelLocalizer.displayComposed(group))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }

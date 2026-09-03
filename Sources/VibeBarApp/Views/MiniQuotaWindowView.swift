@@ -372,12 +372,12 @@ private struct MiniCell: Identifiable {
         if let bucket,
            let group = bucket.groupTitle,
            group.caseInsensitiveCompare(subProviderName) == .orderedSame {
-            return QuotaGroupLabelLocalizer.display(bucket.title)
+            return QuotaGroupLabelLocalizer.displayComposed(bucket.title)
         }
         if let bucket, field.defaultLabel != bucket.shortLabel {
-            return QuotaGroupLabelLocalizer.display(bucket.shortLabel)
+            return QuotaGroupLabelLocalizer.displayComposed(bucket.shortLabel)
         }
-        return QuotaGroupLabelLocalizer.display(field.defaultLabel)
+        return QuotaGroupLabelLocalizer.displayComposed(field.defaultLabel)
     }
 }
 
@@ -405,7 +405,7 @@ private struct MiniBranchCell: Identifiable {
     /// The contract label, with the generic window words translated on the
     /// way to the screen; a model-named bucket comes back untouched.
     private var defaultTitle: String {
-        QuotaGroupLabelLocalizer.display(contractTitle)
+        QuotaGroupLabelLocalizer.displayComposed(contractTitle)
     }
 
     private var contractTitle: String {
@@ -451,7 +451,7 @@ private struct MiniBranchCell: Identifiable {
     }
 
     var defaultGroupTitle: String {
-        QuotaGroupLabelLocalizer.display(contractGroupTitle)
+        QuotaGroupLabelLocalizer.displayComposed(contractGroupTitle)
     }
 
     private var contractGroupTitle: String {
@@ -1603,7 +1603,7 @@ private func miniCellHelp(tool: ToolType, label: String) -> String {
 /// Provider · group · bucket, with the generic window words translated and
 /// every name left exactly as its owner spells it.
 private func miniCellHelp(tool: ToolType, bucket: QuotaBucket) -> String {
-    let group = QuotaGroupLabelLocalizer.display(bucket.groupTitle ?? bucket.shortLabel)
-    let title = QuotaGroupLabelLocalizer.display(bucket.title)
+    let group = QuotaGroupLabelLocalizer.displayComposed(bucket.groupTitle ?? bucket.shortLabel)
+    let title = QuotaGroupLabelLocalizer.displayComposed(bucket.title)
     return "\(providerTitle(for: tool)) · \(group) · \(title)"
 }

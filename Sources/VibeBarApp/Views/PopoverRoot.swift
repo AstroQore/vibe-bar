@@ -2303,7 +2303,7 @@ private struct ProviderBucketRow: View {
         let isExpired = resetStatus?.isExpired ?? false
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text(QuotaGroupLabelLocalizer.display(bucket.title))
+                Text(QuotaGroupLabelLocalizer.displayComposed(bucket.title))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 if let resetStatus {
                     // Same size and scale floor as the primary bucket rows —

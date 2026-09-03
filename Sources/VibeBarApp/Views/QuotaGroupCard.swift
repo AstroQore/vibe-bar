@@ -409,7 +409,7 @@ struct QuotaGroupCard: View {
         let isExpired = resetStatus?.isExpired ?? false
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text(bucket.title)
+                Text(QuotaGroupLabelLocalizer.displayComposed(bucket.title))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     .lineLimit(1)
                 if let resetStatus {

@@ -28,7 +28,7 @@ struct MiniEntry: Identifiable {
         if let customLabel, !customLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return customLabel
         }
-        return QuotaGroupLabelLocalizer.display(bucket.title)
+        return QuotaGroupLabelLocalizer.displayComposed(bucket.title)
     }
 
     /// Row label for list-style layouts: always the quota-axis path, with a
@@ -38,7 +38,7 @@ struct MiniEntry: Identifiable {
     /// group made every row identical.
     var rowLabel: String {
         if let groupLabel {
-            return "\(QuotaGroupLabelLocalizer.display(groupLabel)) · \(bucketDisplayName)"
+            return "\(QuotaGroupLabelLocalizer.displayComposed(groupLabel)) · \(bucketDisplayName)"
         }
         return bucketDisplayName
     }
@@ -939,10 +939,10 @@ private extension Array {
 /// Provider · group · bucket for a mini entry's tooltip, with the generic
 /// window words translated and every name left as its owner spells it.
 private func miniEntryHelp(_ entry: MiniEntry) -> String {
-    let group = QuotaGroupLabelLocalizer.display(
+    let group = QuotaGroupLabelLocalizer.displayComposed(
         entry.bucket.groupTitle ?? entry.subProviderDisplayName
     )
-    let title = QuotaGroupLabelLocalizer.display(entry.bucket.title)
+    let title = QuotaGroupLabelLocalizer.displayComposed(entry.bucket.title)
     return "\(providerTitle(for: entry.tool)) · \(group) · \(title)"
 }
 
@@ -950,7 +950,7 @@ private func miniEntryHelp(_ entry: MiniEntry) -> String {
 /// interpolation at the call site: the join happens once, and every part that
 /// can be a generic window word goes through the localizer on the way.
 private func miniTileHelp(_ entry: MiniEntry) -> String {
-    let title = QuotaGroupLabelLocalizer.display(entry.bucket.title)
+    let title = QuotaGroupLabelLocalizer.displayComposed(entry.bucket.title)
     return "\(providerTitle(for: entry.tool)) · \(entry.rowLabel) · \(title)"
 }
 

@@ -41,6 +41,35 @@ public enum QuotaGroupLabelLocalizer {
         return table[normalized]?() ?? contractLabel
     }
 
+    /// The separator a composed contract label is built with, on every
+    /// surface that builds one: "ChatGPT · All Models", "Claude · Weekly".
+    private static let separator = " · "
+
+    /// The label to show for a contract label that may be *composed*.
+    ///
+    /// `display` is a whole-string lookup, so it returns "All Models · Weekly"
+    /// untouched — both halves are in the table, and neither gets translated
+    /// because the joined string is not. This resolves part by part instead,
+    /// which is the only rule that gets both of these right at once:
+    ///
+    /// - "All Models · Weekly" translates both halves.
+    /// - "GPT-5.3 Codex Spark · 5 Hours" keeps the product name and
+    ///   translates only the window.
+    ///
+    /// A label with no separator is one part, so this agrees with `display`
+    /// on every simple label and can be used wherever a label is drawn.
+    ///
+    /// Splitting on the separator rather than on whitespace is what keeps
+    /// "All Models" whole; a word-by-word rule would look up "All" and
+    /// "Models" separately and translate neither.
+    public static func displayComposed(_ contractLabel: String) -> String {
+        guard contractLabel.contains(separator) else { return display(contractLabel) }
+        return contractLabel
+            .components(separatedBy: separator)
+            .map(display)
+            .joined(separator: separator)
+    }
+
     /// Whether a label is one this translates, for the tests that assert a
     /// model name is *not* in the table.
     public static func isTranslated(_ contractLabel: String) -> Bool {

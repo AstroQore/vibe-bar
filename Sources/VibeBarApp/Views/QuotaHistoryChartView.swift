@@ -412,7 +412,7 @@ struct QuotaHistoryChartView: View, Equatable {
                 if showsGroupTitle, let groupTitle = group.title {
                     // Same treatment as the group heading in Subscription
                     // Utilization, so the two surfaces read as one section.
-                    Text(QuotaGroupLabelLocalizer.display(groupTitle))
+                    Text(QuotaGroupLabelLocalizer.displayComposed(groupTitle))
                         .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))
                         .foregroundStyle(.tertiary)
                         .textCase(.uppercase)
@@ -725,7 +725,7 @@ struct QuotaHistoryChartView: View, Equatable {
                 id: "bucket-\(bucket.id)",
                 stroke: .solid,
                 color: color(at: index),
-                label: QuotaGroupLabelLocalizer.display(bucket.title),
+                label: QuotaGroupLabelLocalizer.displayComposed(bucket.title),
                 value: currentRemainingLabel(bucket: bucket),
                 detail: currentForecastLabel(bucket: bucket)
                     .map { L10n.Quota.forecastValueAtReset(value: $0) }
@@ -965,7 +965,7 @@ struct QuotaHistoryChartView: View, Equatable {
             let series = built[bucket.id] ?? .empty
             return QuotaHoverLane(
                 id: bucket.id,
-                title: bucket.title,
+                title: QuotaGroupLabelLocalizer.displayComposed(bucket.title),
                 color: color(at: index),
                 windowSeconds: bucket.rawWindowSeconds,
                 actual: series.actual.flatMap { $0 },
@@ -1294,13 +1294,13 @@ struct QuotaHistoryChartView: View, Equatable {
         let span = Self.spanLabel(window.visibleSpan)
         let total = Self.spanLabel(window.domainSpan)
         let shown = buckets.prefix(3)
-            .map { QuotaGroupLabelLocalizer.display($0.title) }
+            .map { QuotaGroupLabelLocalizer.displayComposed($0.title) }
             .joined(separator: " + ")
         let names = buckets.count > 3
             ? L10n.Quota.historyMoreBuckets(names: shown, count: buckets.count - 3)
             : shown
         let scope = group.title
-            .map { "\(QuotaGroupLabelLocalizer.display($0)) · \(names)" } ?? names
+            .map { "\(QuotaGroupLabelLocalizer.displayComposed($0)) · \(names)" } ?? names
         return L10n.Quota.historyScopeNote(scope: scope, visible: span, total: total)
     }
 

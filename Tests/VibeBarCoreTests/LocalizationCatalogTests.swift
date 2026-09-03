@@ -212,6 +212,38 @@ final class LocalizationCatalogTests: XCTestCase {
         }
     }
 
+    /// A composed label has to be resolved part by part. Whole-string lookup
+    /// leaves "All Models · Weekly" in English — both halves are in the table
+    /// and the joined string is not — and a word-by-word rule would split
+    /// "All Models" and translate neither half.
+    func testComposedLabelsAreResolvedPartByPart() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = .simplifiedChinese
+
+        XCTAssertEqual(
+            QuotaGroupLabelLocalizer.displayComposed("All Models · Weekly"),
+            "全部模型 · 每周"
+        )
+        // The product name survives; only the window word moves.
+        XCTAssertEqual(
+            QuotaGroupLabelLocalizer.displayComposed("GPT-5.3 Codex Spark · 5 Hours"),
+            "GPT-5.3 Codex Spark · 5 小时"
+        )
+        XCTAssertEqual(
+            QuotaGroupLabelLocalizer.displayComposed("Claude · Weekly · Sonnet"),
+            "Claude · 每周 · Sonnet"
+        )
+        // A label with no separator is one part, so the two agree everywhere
+        // a simple label is drawn.
+        for label in ["Weekly", "All Models", "Sonnet", "gpt-5.5", ""] {
+            XCTAssertEqual(
+                QuotaGroupLabelLocalizer.displayComposed(label),
+                QuotaGroupLabelLocalizer.display(label)
+            )
+        }
+    }
+
     /// Every glossary term is a name the app is allowed to print verbatim.
     /// If one of them ever became a catalog *value*, the two would be
     /// saying different things about the same word.
