@@ -140,7 +140,7 @@ struct MenuBarFieldsEditor: View {
             Circle()
                 .fill(Theme.providerAccent(for: option.tool))
                 .frame(width: 6, height: 6)
-            Text(option.title)
+            Text(option.displayTitle)
                 .font(.system(size: 11.5, weight: .medium))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -160,7 +160,7 @@ struct MenuBarFieldsEditor: View {
             .frame(width: 108)
             .help("How this field draws on the menu bar: its label, the provider's logo, or both — each beside the percent.")
             DebouncedSettingsTextField(
-                prompt: option.defaultLabel,
+                prompt: option.displayDefaultLabel,
                 value: labelBinding(option)
             )
             .frame(width: 108)
@@ -265,7 +265,7 @@ struct MenuBarFieldsEditor: View {
                 get: { settingsStore.settings.menuBarItem(kind).selectedFieldIds.contains(option.id) },
                 set: { setSelected(option.id, $0) }
             )) {
-                Text(option.title)
+                Text(option.displayTitle)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
             }

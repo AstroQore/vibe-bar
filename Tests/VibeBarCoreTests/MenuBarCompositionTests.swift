@@ -1792,6 +1792,118 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertNil(registry.field(id: "codex.gpt_reserve_weekly"))
     }
 
+    // MARK: - A template applies the shape it names (review thread 2)
+
+    private func rowCount(_ composed: MenuBarComposition) -> Int {
+        composed.plan(
+            quotas: [
+                quota("claude.five_hour", label: "5 Hours", used: 40, display: 40),
+                quota("claude.weekly", label: "Weekly", used: 60, display: 60)
+            ],
+            displayMode: .used,
+            colorBasis: .actual,
+            now: reference
+        ).rows.filter { !$0.isEmpty }.count
+    }
+
+    func testChoosingTwoRowsActuallyProducesTwoRows() {
+        // The picker's own description says "Two stacked rows in one status
+        // item". Setting the enum alone left the strip single-row, because
+        // rows come from `.lineBreak` blocks and nothing had added one.
+        var composed = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
+        composed.isEnabled = true
+        XCTAssertEqual(rowCount(composed), 1)
+
+        composed.setTemplate(.twoColumn)
+        XCTAssertEqual(composed.template, .twoColumn)
+        XCTAssertEqual(rowCount(composed), 2)
+    }
+
+    func testTheSplitTakesOverTheDividerRatherThanJoiningIt() {
+        // The break lands where the seed would put it, replacing the divider
+        // between the two entries instead of leaving a dangling one.
+        var composed = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
+        composed.setTemplate(.twoColumn)
+        XCTAssertEqual(composed.tokens.map(\.kind), [
+            .quota(fieldId: "claude.five_hour", metric: .label),
+            .quota(fieldId: "claude.five_hour", metric: .displayPercent),
+            .lineBreak,
+            .quota(fieldId: "claude.weekly", metric: .label),
+            .quota(fieldId: "claude.weekly", metric: .displayPercent)
+        ])
+    }
+
+    func testChoosingASingleRowTemplateJoinsTheRowsBackUp() {
+        var composed = MenuBarComposition.seeded(template: .twoColumn, from: layoutItem(.twoRows))
+        composed.isEnabled = true
+        XCTAssertEqual(rowCount(composed), 2)
+
+        composed.setTemplate(.roomy)
+        XCTAssertEqual(composed.lineBreakCount, 0)
+        XCTAssertEqual(rowCount(composed), 1)
+        // The divider the break took over comes back, so the entries are still
+        // separated rather than run together.
+        XCTAssertTrue(composed.tokens.contains { $0.kind == .separator(" · ") })
+    }
+
+    func testTheTwoDirectionsRoundTrip() {
+        let original = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
+        var composed = original
+        composed.setTemplate(.twoColumn)
+        composed.setTemplate(.roomy)
+        XCTAssertEqual(composed.tokens.map(\.kind), original.tokens.map(\.kind))
+    }
+
+    func testCompactRejoinsWithASpaceBecauseThatIsWhatItDraws() {
+        var composed = MenuBarComposition.seeded(template: .twoColumn, from: layoutItem(.twoRows))
+        composed.setTemplate(.compact)
+        XCTAssertTrue(composed.tokens.contains { $0.kind == .space })
+        XCTAssertFalse(composed.tokens.contains { $0.kind == .separator(" · ") })
+    }
+
+    func testChoosingTwoRowsTwiceDoesNotAddASecondBreak() {
+        var composed = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
+        composed.setTemplate(.twoColumn)
+        composed.setTemplate(.twoColumn)
+        XCTAssertEqual(composed.lineBreakCount, 1)
+    }
+
+    func testAStripWithNothingToSplitIsLeftAlone() {
+        var composed = composition([MenuBarToken(kind: .text("only"))])
+        composed.setTemplate(.twoColumn)
+        XCTAssertEqual(composed.lineBreakCount, 0)
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("only")])
+        XCTAssertEqual(composed.template, .twoColumn)
+    }
+
+    // MARK: - A field is chosen by the words it is drawn with (review thread 3)
+
+    func testAnOptionIsNamedTheWayTheStripDrawsIt() {
+        // The picker used to render the contract spelling while the strip drew
+        // the resolved one, so the user chose "5 Hours" and got "5 小时".
+        let fiveHour = MenuBarFieldCatalog.field(id: "claude.five_hour")!
+        XCTAssertEqual(fiveHour.displayTitle, QuotaGroupLabelLocalizer.display("5 Hours"))
+        XCTAssertEqual(fiveHour.displayDefaultLabel, QuotaGroupLabelLocalizer.display("5 Hours"))
+    }
+
+    func testAComposedTitleIsResolvedPartByPart() {
+        // "All Models · Weekly": both halves are generic window words.
+        let weekly = MenuBarFieldCatalog.field(id: "claude.weekly")!
+        XCTAssertEqual(weekly.title, "All Models · Weekly")
+        XCTAssertEqual(
+            weekly.displayTitle,
+            [QuotaGroupLabelLocalizer.display("All Models"),
+             QuotaGroupLabelLocalizer.display("Weekly")].joined(separator: " · ")
+        )
+    }
+
+    func testAProductNameInATitleIsNeverTranslated() {
+        // "GPT-5.3 Codex Spark · 5 Hours": only the window half may move.
+        let spark = MenuBarFieldCatalog.field(id: "codex.gpt_5_3_codex_spark_five_hour")!
+        XCTAssertTrue(spark.displayTitle.hasPrefix("GPT-5.3 Codex Spark · "))
+        XCTAssertFalse(QuotaGroupLabelLocalizer.isTranslated("GPT-5.3 Codex Spark"))
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {

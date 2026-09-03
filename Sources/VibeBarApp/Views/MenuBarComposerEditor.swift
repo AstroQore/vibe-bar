@@ -27,7 +27,7 @@ struct MenuBarComposerEditor: View {
     @StateObject private var inputs = MenuBarStripInputObserver()
     /// Holds a debounced control's last change until a moment this view can
     /// observe — see `MenuBarPendingCommit`.
-    @StateObject private var pendingCommit = MenuBarPendingCommit()
+    @StateObject private var pendingCommit = PendingEditQueue()
     @State private var selection: UUID?
     @State private var draggedTokenId: UUID?
     /// The order the strip *would* have if the drag ended here.
@@ -380,7 +380,7 @@ struct MenuBarComposerEditor: View {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? L10n.MenuBar.composerBlockEmptyText : MenuBarToken.truncated(trimmed)
         case let .quota(fieldId, metric):
-            let name = optionsById[fieldId]?.defaultLabel ?? fieldId
+            let name = optionsById[fieldId]?.displayDefaultLabel ?? fieldId
             return "\(name) · \(metric.title)"
         case .space:
             return L10n.MenuBar.composerBlockSpace
@@ -428,7 +428,7 @@ struct MenuBarComposerEditor: View {
                 ForEach(paletteQuotaSections) { section in
                     Menu {
                         ForEach(section.options) { option in
-                            Button(option.title) {
+                            Button(option.displayTitle) {
                                 add(MenuBarToken(
                                     kind: .quota(fieldId: option.id, metric: .displayPercent),
                                     style: .percent
@@ -583,7 +583,7 @@ struct MenuBarComposerEditor: View {
             if !availability.isFullyAvailable {
                 warning(L10n.MenuBar.composerWarningMissing(
                     fields: availability.missingFieldIds
-                        .map { optionsById[$0]?.title ?? $0 }
+                        .map { optionsById[$0]?.displayTitle ?? $0 }
                         .joined(separator: ", ")
                 ))
             }
@@ -704,10 +704,13 @@ struct MenuBarComposerEditor: View {
     private func templateBinding() -> Binding<MenuBarComposition.Template> {
         Binding(
             get: { composition.template },
-            // Changing the template re-styles the strip, never its contents:
-            // the blocks the user arranged are theirs. "Start over" is the
-            // control that rebuilds them, and it asks first.
-            set: { template in mutate { $0.template = template } }
+            // A template is spacing and type size — and, for "Two rows", a
+            // shape. `setTemplate` takes the row structure with it, because a
+            // picker whose description promises two stacked rows has to
+            // produce them. It still never invents or discards content: the
+            // blocks the user arranged are theirs, and "Start over" is the
+            // control that rebuilds those, after asking.
+            set: { template in mutate { $0.setTemplate(template) } }
         )
     }
 
@@ -768,7 +771,7 @@ private struct MenuBarTokenInspector: View {
     let token: MenuBarToken
     let options: [MenuBarFieldOption]
     let liveFieldIds: Set<String>
-    let pending: MenuBarPendingCommit
+    let pending: PendingEditQueue
     /// Hands over *what changed*, applied to the stored token at write time.
     let apply: (@escaping (inout MenuBarToken) -> Void) -> Void
 
@@ -1013,7 +1016,9 @@ private struct MenuBarTokenInspector: View {
         let apply = self.apply
         // Only the colour: a queued write that carried a whole token would
         // undo whatever else the user changed while it sat in the queue.
-        pending.schedule { apply { $0.style.color = .hex(hex) } }
+        // Keyed on this block's colour: the threshold control beside it queues
+        // under its own key and neither can drop the other.
+        pending.schedule("color.\(token.id)") { apply { $0.style.color = .hex(hex) } }
     }
 
     // MARK: Rule
@@ -1091,7 +1096,11 @@ private struct MenuBarTokenInspector: View {
         HStack(spacing: 8) {
             Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
             fieldPicker(selected: fieldId) { newId in set(newId, percent) }
-            DebouncedPercentStepper(percent: percent, pending: pending) { set(fieldId, $0) }
+            DebouncedPercentStepper(
+                percent: percent,
+                pending: pending,
+                key: "threshold.\(token.id)"
+            ) { set(fieldId, $0) }
             Spacer(minLength: 0)
         }
     }
@@ -1108,8 +1117,8 @@ private struct MenuBarTokenInspector: View {
             }
             ForEach(options) { option in
                 Text(liveFieldIds.contains(option.id)
-                    ? option.title
-                    : L10n.MenuBar.composerFieldOfflineOption(title: option.title))
+                    ? option.displayTitle
+                    : L10n.MenuBar.composerFieldOfflineOption(title: option.displayTitle))
                     .tag(option.id)
             }
         }
@@ -1209,49 +1218,6 @@ private struct MenuBarTokenInspector: View {
     }
 }
 
-/// One queued settings write, owned by something that outlives the control
-/// that queued it.
-///
-/// Debouncing a control means the last change lives in limbo for a moment, and
-/// whatever owns that moment must survive long enough to spend it. Hanging it
-/// off the control itself and flushing in `onDisappear` looks equivalent and
-/// is not: the inspector is `.id(token.id)`, so selecting another block tears
-/// the control down, and a window being destroyed does not reliably deliver
-/// `onDisappear` at all. The editor outlives both, so the editor holds the
-/// pending write and flushes it at moments it can actually observe — a
-/// selection change, any other edit, its own teardown.
-@MainActor
-final class MenuBarPendingCommit: ObservableObject {
-    private var pending: (() -> Void)?
-    private var task: Task<Void, Never>?
-
-    /// Queue `commit`, replacing anything already queued: while the user is
-    /// still dragging or clicking, only the newest value matters.
-    func schedule(
-        after delay: Duration = .milliseconds(250),
-        _ commit: @escaping () -> Void
-    ) {
-        pending = commit
-        task?.cancel()
-        task = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            self?.flush()
-        }
-    }
-
-    /// Write whatever is queued, now. Safe to call when nothing is, and safe
-    /// to re-enter: the queue is cleared before the work runs, so a flush
-    /// triggered from inside a commit finds nothing to do.
-    func flush() {
-        task?.cancel()
-        task = nil
-        let work = pending
-        pending = nil
-        work?()
-    }
-}
-
 /// A percent stepper that writes settings on an idle window rather than on
 /// every repeat.
 ///
@@ -1261,7 +1227,8 @@ final class MenuBarPendingCommit: ObservableObject {
 /// well: the control tracks its own draft and commits once the user stops.
 private struct DebouncedPercentStepper: View {
     let percent: Double
-    let pending: MenuBarPendingCommit
+    let pending: PendingEditQueue
+    let key: String
     let commit: (Double) -> Void
 
     @State private var draft: Double = 0
@@ -1284,7 +1251,7 @@ private struct DebouncedPercentStepper: View {
         .onChange(of: draft) { _, value in
             guard value != percent else { return }
             let commit = self.commit
-            pending.schedule { commit(value) }
+            pending.schedule(key) { commit(value) }
         }
     }
 }

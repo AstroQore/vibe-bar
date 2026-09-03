@@ -356,6 +356,13 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
 
         var seedsSecondRow: Bool { self == .twoColumn }
 
+        /// What this template draws between two entries sharing a row. Used
+        /// when a two-row strip collapses back to one, so the entries that
+        /// were rows again become entries side by side.
+        var inlineSeparator: MenuBarToken.Kind {
+            self == .compact ? .space : .separator(" · ")
+        }
+
         /// The template whose proportions match a field-mode layout, so
         /// seeding from that layout starts with matching spacing as well as
         /// matching content.
@@ -397,6 +404,60 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         self.tokens = tokens
         self.fontScale = fontScale.map { $0.clamped(to: Self.fontScaleRange) }
         self.tokenSpacing = tokenSpacing.map { $0.clamped(to: Self.tokenSpacingRange) }
+    }
+
+    /// Choose a template, and take the row structure it describes with it.
+    ///
+    /// A template is mostly spacing and type size, but "Two rows" is a claim
+    /// about shape, and `plan` builds rows from `.lineBreak` blocks alone —
+    /// so setting the enum without touching the blocks left the picker
+    /// promising two rows and drawing one. Selecting it splits the strip;
+    /// selecting a single-row template joins it back up.
+    ///
+    /// The split lands where the seed would put it: at the seam between the
+    /// two halves of the entries, taking over the divider that was already
+    /// there rather than adding a second one. Collapsing restores that
+    /// divider, so the two directions round-trip.
+    public mutating func setTemplate(_ newTemplate: Template) {
+        template = newTemplate
+        if newTemplate.seedsSecondRow {
+            guard lineBreakCount == 0, let seam = Self.rowSeamIndex(in: tokens) else { return }
+            switch tokens[seam].kind {
+            case .space, .separator:
+                tokens[seam] = MenuBarToken(kind: .lineBreak)
+            default:
+                tokens.insert(MenuBarToken(kind: .lineBreak), at: seam)
+            }
+        } else {
+            for index in tokens.indices where tokens[index].kind == .lineBreak {
+                tokens[index] = MenuBarToken(
+                    kind: newTemplate.inlineSeparator,
+                    style: .divider
+                )
+            }
+        }
+    }
+
+    /// Where a strip splits into two rows: before the first block of the
+    /// second half, preferring the spacing block just in front of it so the
+    /// break replaces the divider instead of joining it. `nil` when there is
+    /// not enough on the strip to split.
+    private static func rowSeamIndex(in tokens: [MenuBarToken]) -> Int? {
+        let content = tokens.indices.filter { index in
+            switch tokens[index].kind {
+            case .space, .separator, .lineBreak: return false
+            default: return true
+            }
+        }
+        guard content.count >= 2 else { return nil }
+        let start = content[(content.count + 1) / 2]
+        if start > 0 {
+            switch tokens[start - 1].kind {
+            case .space, .separator: return start - 1
+            default: break
+            }
+        }
+        return start
     }
 
     public var effectiveFontScale: Double { fontScale ?? template.fontScale }
