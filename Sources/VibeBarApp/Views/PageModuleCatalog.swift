@@ -170,7 +170,13 @@ enum PageModuleCatalog {
                 fallbackHeight: FallbackHeight.summary
             )
         )
-        // Refill horizon — a quota answer, so it sits with the quota band.
+        // The history band, in reading order: when quota comes back, how it has
+        // been trending, and how much of the last cycles expired unused.
+        //
+        // These are quota *answers*, but they are not the quota cards. Carrying
+        // `.quota` put all three in the band a reader scans for "how much is
+        // left", which grew that band to seven cards; `.history` is that band's
+        // own segment, immediately below it.
         result.append(
             PageModuleDescriptor(
                 id: .custom("overview-upcoming-resets"),
@@ -178,13 +184,24 @@ enum PageModuleCatalog {
                 displayName: "Upcoming Resets",
                 defaultColumn: 1,
                 accent: .neutral,
-                masonryPhase: .quota,
+                masonryPhase: .history,
                 fallbackHeight: FallbackHeight.status
             )
         )
-        // The retrospective half of the same question, immediately after the
-        // horizon: Upcoming Resets says when quota comes back, this says how
-        // much of the last one expired unused.
+        result.append(
+            PageModuleDescriptor(
+                id: .quotaHistoryAll,
+                kind: .overviewQuotaHistoryAll,
+                displayName: "All Providers Quota History",
+                defaultColumn: 0,
+                accent: .neutral,
+                masonryPhase: .history,
+                fallbackHeight: FallbackHeight.quotaHistory
+            )
+        )
+        // The retrospective half of the horizon's question: Upcoming Resets
+        // says when quota comes back, this says how much of the last one
+        // expired unused.
         result.append(
             PageModuleDescriptor(
                 id: .custom("overview-reset-history-compare"),
@@ -192,15 +209,15 @@ enum PageModuleCatalog {
                 displayName: "Reset History Compare",
                 defaultColumn: 1,
                 accent: .neutral,
-                masonryPhase: .quota,
+                masonryPhase: .history,
                 fallbackHeight: FallbackHeight.resetCompareAll
             )
         )
         let hasCostData = self.hasCostData(environment: environment, settings: settings)
         if hasCostData {
-            // The composition explorer is a headline usage answer, so it
-            // starts the first post-summary band instead of disappearing
-            // below every provider's long cost history.
+            // The composition explorer opens the cost band rather than the
+            // quota one: it measures what was spent, which is the question the
+            // cards under it answer per provider.
             result.append(
                 PageModuleDescriptor(
                     id: .custom("overview-usage-mix"),
@@ -208,7 +225,7 @@ enum PageModuleCatalog {
                     displayName: "Usage Mix",
                     defaultColumn: 1,
                     accent: .cost,
-                    masonryPhase: .quota,
+                    masonryPhase: .cost,
                     fallbackHeight: FallbackHeight.usageMix
                 )
             )
@@ -226,17 +243,6 @@ enum PageModuleCatalog {
                 )
             )
         }
-        result.append(
-            PageModuleDescriptor(
-                id: .quotaHistoryAll,
-                kind: .overviewQuotaHistoryAll,
-                displayName: "All Providers Quota History",
-                defaultColumn: 0,
-                accent: .neutral,
-                masonryPhase: .quota,
-                fallbackHeight: FallbackHeight.quotaHistory
-            )
-        )
         if hasCostData {
             result.append(
                 PageModuleDescriptor(

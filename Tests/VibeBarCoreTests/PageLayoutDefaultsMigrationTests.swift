@@ -246,6 +246,59 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         )
     }
 
+    // MARK: - The Overview is left to resolve itself
+
+    private let overview = PageLayoutPageID.overview
+    private let summaryIDs = [
+        PageLayoutModuleID(rawValue: "overview-summary-cost"),
+        PageLayoutModuleID(rawValue: "overview-summary-status")
+    ]
+
+    /// The three bands the old phase grouping produced.
+    private func previousOverviewSegments() -> [[PageLayoutModuleID]] {
+        [
+            summaryIDs,
+            [
+                PageLayoutModuleID(rawValue: "overview-quota:codex"),
+                PageLayoutModuleID(rawValue: "overview-quota:claude"),
+                PageLayoutModuleID(rawValue: "overview-upcoming-resets"),
+                PageLayoutModuleID(rawValue: "overview-reset-history-compare"),
+                PageLayoutModuleID(rawValue: "overview-usage-mix"),
+                .quotaHistoryAll
+            ],
+            [
+                .costAll,
+                .cost(tool: .codex),
+                .modelBreakdown(tool: .codex),
+                PageLayoutModuleID(rawValue: "heatmap-year:all"),
+                PageLayoutModuleID(rawValue: "heatmap-activity:all")
+            ]
+        ]
+    }
+
+    /// The decision this file records by *not* having an Overview entry.
+    ///
+    /// A stored segmentation cannot prove the page is untouched — the layout
+    /// editor keeps hand-dragged `columns` in every mode — so nothing here
+    /// rewrites one, and `PageLayoutSegments.resolve` is what places the moved
+    /// cards. `PageLayoutTests` covers where they land.
+    func testAStoredOverviewSegmentationIsNeverRewritten() {
+        let layout = StoredPageLayout(
+            mode: .compact,
+            ratio: .equal,
+            columns: [summaryIDs, []],
+            segments: previousOverviewSegments()
+        )
+        let result = PageLayoutDefaultsMigration.migrate(
+            layouts: [overview: layout],
+            applied: []
+        )
+        XCTAssertEqual(
+            result.layouts[overview], layout,
+            "the Overview's saved arrangement is the user's, including its bands"
+        )
+    }
+
     // MARK: - Once, and only once
 
     func testMigrateRecordsItsIdentifierAndDoesNothingOnASecondPass() {
@@ -298,6 +351,33 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
         XCTAssertEqual(decoded.appliedLayoutMigrations, settings.appliedLayoutMigrations)
+    }
+
+    func testTheResetHistoryAxisRoundTripsThroughSettings() throws {
+        // A user-facing control, so it round-trips through `AppSettings` like
+        // every other one (`AGENTS.md` § 11).
+        var settings = AppSettings.default
+        settings.resetHistoryCompareAxis = .time
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.resetHistoryCompareAxis, .time)
+    }
+
+    func testSettingsWrittenBeforeTheAxisToggleDecodeToCycles() throws {
+        // An upgrade must not silently re-lay-out a module the user was
+        // reading yesterday.
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+        XCTAssertEqual(decoded.resetHistoryCompareAxis, .cycle)
+        XCTAssertEqual(AppSettings.default.resetHistoryCompareAxis, .cycle)
+    }
+
+    func testAnUnknownAxisInTheSettingsFileFallsBackToCycles() throws {
+        // A value written by a newer build must cost the axis, not the file.
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"resetHistoryCompareAxis":"spiral"}"#.utf8)
+        )
+        XCTAssertEqual(decoded.resetHistoryCompareAxis, .cycle)
     }
 
     func testSettingsWrittenBeforeMigrationsExistedDecodeToNoneApplied() throws {

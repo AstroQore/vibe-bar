@@ -35,6 +35,18 @@ public enum PageLayoutDefaultsMigration {
     /// column to close the wide one.
     public static let providerRightColumnIdentifier = "provider-right-column-v2"
 
+    // No entry for the Overview's split quota phase, deliberately. Its stored
+    // `columns` are a hand-draggable arrangement in *every* mode — the layout
+    // editor keeps them when the page is switched to Auto or Compact and back
+    // — so a phase-homogeneous three-band segmentation does not establish that
+    // the page is untouched, and clearing it would re-sort those columns under
+    // the new four-band default. Nothing needs the rewrite either: a stored
+    // segmentation has never seen the three moved cards, so
+    // `PageLayoutSegments.resolve` places them at
+    // `min(defaultIndex, count - 1)` and the quota band keeps only the
+    // provider cards. They share the cost band instead of getting their own,
+    // which is the right price for not overruling an arrangement.
+
     /// Module family the reset-history table is registered under.
     static let resetHistoryFamily = "reset-history-compare"
 

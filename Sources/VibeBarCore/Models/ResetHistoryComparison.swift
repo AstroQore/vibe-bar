@@ -79,6 +79,39 @@ public struct ResetHistoryLaneInput: Equatable, Sendable, Identifiable {
     }
 }
 
+/// Which axis the reset-history comparison lays its bars out on.
+///
+/// Two honest answers to "compare these quotas", and the module ships both
+/// because they answer different questions. `cycle` puts every quota's newest
+/// refill in the same column, so two rows can be read against each other even
+/// though they refill on unrelated schedules — the comparison the module was
+/// built for. `time` puts each cycle where it actually happened, which is the
+/// only way to see that two quotas ran dry in the same week, or that a lane
+/// stopped refilling in March.
+///
+/// Persisted in `AppSettings.resetHistoryCompareAxis`, one choice shared by
+/// every surface that draws the module.
+public enum ResetHistoryAxis: String, CaseIterable, Hashable, Sendable, Codable {
+    case cycle
+    case time
+
+    /// Segmented-control label. Plain words: the difference between the two is
+    /// not something an icon can carry.
+    public var title: String {
+        switch self {
+        case .cycle: "Cycles"
+        case .time: "Time"
+        }
+    }
+
+    public var help: String {
+        switch self {
+        case .cycle: "One column per cycle, newest aligned across every quota"
+        case .time: "Each cycle where it actually happened, on a shared calendar"
+        }
+    }
+}
+
 /// Every weekly-and-longer quota's reset history, side by side as one table,
 /// answering a single question: how much of what was paid for expired unused?
 ///
@@ -114,17 +147,22 @@ public struct ResetHistoryComparison: Equatable, Sendable {
 
     // MARK: - Nested types
 
-    /// How many cycles back the table reaches. Counted in cycles rather than
-    /// weeks, because the columns are ordinals: "last 8" means the same eight
-    /// columns for every row, however far apart one row's refills happen to
-    /// fall.
+    /// How far back the comparison reaches.
+    ///
+    /// The four steps are shared by both axes, but the unit is the axis's own:
+    /// on `cycle` they count cycles, because the columns are ordinals and
+    /// "last 8" has to mean the same eight columns for every row however far
+    /// apart its refills fall; on `time` they count weeks, because there the
+    /// x position *is* the calendar.
     public enum Window: String, CaseIterable, Hashable, Sendable, Codable {
         case four
         case eight
         case twelve
         case all
 
-        /// `nil` for `all`, which is then bounded by `ColumnPlan.maximumColumns`.
+        /// Cycle axis: how many of the newest cycles the window keeps. `nil`
+        /// for `all`, whose *drawing* is then bounded by
+        /// `ColumnPlan.maximumColumns`.
         public var cycleLimit: Int? {
             switch self {
             case .four: 4
@@ -134,24 +172,71 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             }
         }
 
-        /// Compact picker label.
-        public var shortTitle: String {
+        /// Time axis: how many weeks back the span starts. `nil` for `all`,
+        /// which starts at the oldest recorded cycle.
+        public var weeks: Int? {
             switch self {
-            case .four: "4"
-            case .eight: "8"
-            case .twelve: "12"
-            case .all: "All"
+            case .four: 4
+            case .eight: 8
+            case .twelve: 12
+            case .all: nil
             }
         }
 
-        public var spokenTitle: String {
-            switch self {
-            case .four: "last 4 cycles"
-            case .eight: "last 8 cycles"
-            case .twelve: "last 12 cycles"
-            case .all: "every recorded cycle"
+        /// Compact picker label. Carries the unit on the time axis, because
+        /// "8" next to a calendar would read as eight of the wrong thing.
+        public func shortTitle(for axis: ResetHistoryAxis) -> String {
+            switch (self, axis) {
+            case (.four, .cycle): "4"
+            case (.eight, .cycle): "8"
+            case (.twelve, .cycle): "12"
+            case (.four, .time): "4w"
+            case (.eight, .time): "8w"
+            case (.twelve, .time): "12w"
+            case (.all, _): "All"
             }
         }
+
+        public func spokenTitle(for axis: ResetHistoryAxis) -> String {
+            switch (self, axis) {
+            case (.four, .cycle): "last 4 cycles"
+            case (.eight, .cycle): "last 8 cycles"
+            case (.twelve, .cycle): "last 12 cycles"
+            case (.all, .cycle): "every recorded cycle"
+            case (.four, .time): "last 4 weeks"
+            case (.eight, .time): "last 8 weeks"
+            case (.twelve, .time): "last 12 weeks"
+            case (.all, .time): "all recorded history"
+            }
+        }
+    }
+
+    /// The stretch of calendar the time axis maps onto the plot.
+    public struct TimeSpan: Equatable, Sendable {
+        public let start: Date
+        public let end: Date
+
+        public init(start: Date, end: Date) {
+            self.start = start
+            // A span has to have width, or every bar lands on the same pixel.
+            self.end = max(end, start.addingTimeInterval(1))
+        }
+
+        public var duration: TimeInterval { end.timeIntervalSince(start) }
+
+        /// Where a date sits across the span, 0…1 at the ends. Deliberately
+        /// unclamped: a cycle that begins before the span still has to be
+        /// drawn from off the left edge and clipped, not stacked at zero.
+        public func fraction(of date: Date) -> Double {
+            date.timeIntervalSince(start) / duration
+        }
+    }
+
+    /// The grid the bars are placed on, which is what the two axes actually
+    /// differ in — everything else about a comparison is shared.
+    public enum Grid: Equatable, Sendable {
+        case cycles(ColumnPlan)
+        case time(TimeSpan)
     }
 
     /// The shared column grid every row is drawn against.
@@ -369,14 +454,15 @@ public struct ResetHistoryComparison: Equatable, Sendable {
 
     // MARK: - Value
 
+    public let axis: ResetHistoryAxis
     public let window: Window
     /// The clock the comparison was built against, so the view never reads the
     /// wall clock inside a draw pass — a value that changed under an
     /// otherwise-equal comparison would make the drawing surface's `Equatable`
     /// short-circuit a lie.
     public let now: Date
-    /// The shared column grid every row is drawn against.
-    public let columns: ColumnPlan
+    /// Where the bars go: ordinal columns, or a stretch of calendar.
+    public let grid: Grid
     /// Rows in hierarchy order: L1 company, then L2 SubProvider, then the L3
     /// groups and buckets in the order the popover lists them.
     public let lanes: [Lane]
@@ -387,15 +473,36 @@ public struct ResetHistoryComparison: Equatable, Sendable {
 
     public var isEmpty: Bool { lanes.isEmpty }
 
+    /// The cycle axis's column grid. An empty plan on the time axis, which
+    /// has no columns — callers switch on `grid`, and this is the convenience
+    /// for the ones that only ever ask about one of them.
+    public var columns: ColumnPlan {
+        guard case let .cycles(plan) = grid else {
+            return ColumnPlan(completedColumnCount: 0, hasCurrentColumn: false)
+        }
+        return plan
+    }
+
+    /// The time axis's span, or `nil` on the cycle axis.
+    public var span: TimeSpan? {
+        guard case let .time(span) = grid else { return nil }
+        return span
+    }
+
     /// What to say when the grid shows fewer cycles than the numbers describe.
     ///
     /// `All` on a three-year retention can reach past the column ceiling. The
     /// statistics still cover everything — only the drawing is capped — and
     /// this is the sentence that keeps the two honest with each other.
     public var truncationNote: String? {
-        guard lanes.contains(where: \.isTruncated) else { return nil }
+        // Only the cycle axis has a ceiling to overflow: the time axis draws
+        // every retained cycle and thins by pixel at draw time, which loses no
+        // cycle from the arithmetic and needs no caveat on it.
+        guard case let .cycles(plan) = grid,
+              lanes.contains(where: \.isTruncated)
+        else { return nil }
         let deepest = lanes.map(\.windowCycleCount).max() ?? 0
-        return "showing the newest \(columns.completedColumnCount) of \(deepest) cycles"
+        return "showing the newest \(plan.completedColumnCount) of \(deepest) cycles"
     }
 
     /// Whole-module screen-reader text. The lanes are a drawing surface, so
@@ -414,7 +521,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         // The note comes before the numbers on purpose: it is the caveat on
         // them, not a footnote to the lane list.
         let truncation = truncationNote.map { " Grid \($0); the figures cover every one." } ?? ""
-        return "Reset history comparison, \(window.spokenTitle), bar height is the quota remaining at reset.\(truncation) \(totals.headline). \(verdict) \(laneText).\(more)"
+        return "Reset history comparison, \(window.spokenTitle(for: axis)), bar height is the quota remaining at reset.\(truncation) \(totals.headline). \(verdict) \(laneText).\(more)"
     }
 
     // MARK: - Building
@@ -422,6 +529,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
     /// Build the comparison. Pure: everything it needs is in `inputs`.
     public static func build(
         inputs: [ResetHistoryLaneInput],
+        axis: ResetHistoryAxis = .cycle,
         window: Window = .eight,
         now: Date
     ) -> ResetHistoryComparison {
@@ -433,16 +541,26 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             return (input, seconds)
         }
 
-        // 2. One lane per qualifying quota.
+        // 2. The window, in whichever unit this axis counts. The cycle axis
+        //    keeps the newest N cycles per lane; the time axis keeps whatever
+        //    fell inside a stretch of calendar, which is a different set and
+        //    a different size per lane.
         //
-        //    Two limits, deliberately different. `retained` is what the window
-        //    means — the newest N cycles, or every recorded one for `all` — and
-        //    every statistic is computed from it. `drawable` is what the grid
-        //    has columns for. Capping the statistics at the drawing budget
-        //    would make "All" quietly mean "the newest 52" in the headline, the
-        //    verdict and the wasteful-cycle counts.
-        let statisticsLimit = window.cycleLimit ?? Int.max
-        let drawLimit = min(statisticsLimit, ColumnPlan.maximumColumns)
+        //    On the cycle axis, two limits, deliberately different. `retained`
+        //    is what the window means and every statistic is computed from it;
+        //    `drawable` is what the grid has columns for. Capping the
+        //    statistics at the drawing budget would make "All" quietly mean
+        //    "the newest 52" in the headline, the verdict and the
+        //    wasteful-cycle counts. The time axis needs no such cap — it thins
+        //    by pixel at draw time, which drops no cycle from the arithmetic.
+        let statisticsLimit = axis == .cycle ? (window.cycleLimit ?? Int.max) : Int.max
+        let drawLimit = axis == .cycle
+            ? min(statisticsLimit, ColumnPlan.maximumColumns)
+            : Int.max
+        let spanStart = axis == .time
+            ? timeSpanStart(window: window, qualifying: qualifying, now: now)
+            : nil
+        var latestEnd = now
         var lanes: [Lane] = []
         var totalCycleCount = 0
         var totalUsedSum: Double = 0
@@ -474,10 +592,17 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                 }
             }
             completed.sort { $0.end < $1.end }
+            if let spanStart {
+                // The time axis's window is a date, not a count: a lane that
+                // refilled twice in twelve weeks contributes two bars, and a
+                // lane that refilled thirty times contributes thirty.
+                completed.removeAll { $0.end < spanStart }
+            }
             let retained = Array(completed.suffix(statisticsLimit))
             let drawable = Array(retained.suffix(drawLimit))
             totalCycleCount += retained.count
             totalUsedSum += retained.reduce(0) { $0 + $1.usedPercent }
+            if let last = retained.last { latestEnd = max(latestEnd, last.end) }
 
             // The live quota is the fallback for the in-progress cycle: a lane
             // whose history holds only closed samples still has one running.
@@ -522,10 +647,23 @@ public struct ResetHistoryComparison: Equatable, Sendable {
 
         // 3. Hierarchy order, then the grid every row shares.
         let ordered = hierarchical(lanes, ranks: hierarchyRanks(qualifying.map(\.input)))
-        let columns = ColumnPlan(
-            completedColumnCount: ordered.map(\.cycles.count).max() ?? 0,
-            hasCurrentColumn: ordered.contains { $0.currentCycle != nil }
-        )
+        let grid: Grid
+        if let spanStart {
+            // The live cycle's bar runs to its scheduled reset, which is in
+            // the future — the span has to reach it or the dashed bar is
+            // clipped off the right edge on every lane.
+            for lane in ordered {
+                if let current = lane.currentCycle { latestEnd = max(latestEnd, current.end) }
+            }
+            grid = .time(TimeSpan(start: spanStart, end: latestEnd))
+        } else {
+            grid = .cycles(
+                ColumnPlan(
+                    completedColumnCount: ordered.map(\.cycles.count).max() ?? 0,
+                    hasCurrentColumn: ordered.contains { $0.currentCycle != nil }
+                )
+            )
+        }
 
         // 4. Header arithmetic and the sentence under it, over every cycle the
         //    window covers — not only the ones that fit on the grid.
@@ -535,16 +673,70 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         )
 
         return ResetHistoryComparison(
+            axis: axis,
             window: window,
             now: now,
-            columns: columns,
+            grid: grid,
             lanes: ordered,
             totals: totals,
             verdict: verdict(lanes: ordered, totals: totals)
         )
     }
 
+    // MARK: - Draw budget
+
+    /// Bars a lane actually draws on the **time** axis, when it has more
+    /// cycles than the row has pixels.
+    ///
+    /// The cycle axis needs none of this — one column is one cycle, and the
+    /// ceiling is the plan. The time axis has no such bound: a year of Codex
+    /// weeklies on a 200-point row is a bar every two pixels, so something has
+    /// to go, and *which* something matters. Not a uniform stride, which is
+    /// exactly as likely to drop the worst cycle as any other: the endpoints
+    /// survive first because they anchor the span, then the largest waste,
+    /// because a chart about wasted quota that drops the wasteful cycles is
+    /// worse than no chart. The result comes back in time order.
+    public static func downsampled(_ cycles: [Cycle], limit: Int) -> [Cycle] {
+        guard limit > 0 else { return [] }
+        guard cycles.count > limit else { return cycles }
+        var keep: Set<Int> = []
+        if limit >= 1 { keep.insert(0) }
+        if limit >= 2 { keep.insert(cycles.count - 1) }
+        let byWaste = cycles.indices.sorted { lhs, rhs in
+            let left = cycles[lhs].wastedPercent
+            let right = cycles[rhs].wastedPercent
+            return left == right ? lhs < rhs : left > right
+        }
+        for index in byWaste where keep.count < limit {
+            keep.insert(index)
+        }
+        return keep.sorted().map { cycles[$0] }
+    }
+
     // MARK: - Internals
+
+    /// Where the time axis starts: a fixed number of weeks back, or the oldest
+    /// recorded cycle for `all`.
+    private static func timeSpanStart(
+        window: Window,
+        qualifying: [(input: ResetHistoryLaneInput, windowSeconds: Int)],
+        now: Date
+    ) -> Date {
+        if let weeks = window.weeks {
+            return now.addingTimeInterval(-Double(weeks) * 7 * 86_400)
+        }
+        let earliest = qualifying.compactMap { entry in
+            entry.input.samples
+                .map { cycleStart($0, windowSeconds: entry.windowSeconds) }
+                .min()
+        }.min()
+        // Nothing recorded yet still needs a span with width to it.
+        guard let earliest, earliest < now else {
+            return now.addingTimeInterval(-8 * 7 * 86_400)
+        }
+        return earliest
+    }
+
 
     /// The lane's window length: what the live bucket says, else the length
     /// the samples agree on most often. Ties go to the longer window, because

@@ -226,6 +226,161 @@ final class ResetHistoryComparisonTests: XCTestCase {
         XCTAssertNil(result.truncationNote)
     }
 
+    // MARK: - Time axis
+
+    func testTheTimeAxisPlacesEachCycleWhereItActuallyHappened() {
+        // The point of the second axis: bars sit on the calendar, so a lane
+        // that refilled in March is drawn in March rather than in "column 3".
+        let input = lane(samples: [
+            sample(bucketId: "weekly", endingDaysAgo: 21, used: 10),
+            sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)
+        ])
+        let result = ResetHistoryComparison.build(inputs: [input], axis: .time, window: .all, now: now)
+        let span = try? XCTUnwrap(result.span)
+        XCTAssertNotNil(span)
+        // No columns on this axis.
+        XCTAssertEqual(result.columns.totalColumnCount, 0)
+
+        let cycles = result.lanes[0].cycles
+        XCTAssertEqual(cycles.count, 2)
+        // Each bar's own dates decide where it goes, and they are the sample's
+        // real window, not an ordinal.
+        XCTAssertEqual(cycles[0].end, now.addingTimeInterval(-21 * 86_400))
+        XCTAssertEqual(cycles[1].end, now.addingTimeInterval(-7 * 86_400))
+        // …and they map to increasing positions across the span.
+        if let span {
+            XCTAssertLessThan(span.fraction(of: cycles[0].end), span.fraction(of: cycles[1].end))
+            XCTAssertGreaterThanOrEqual(span.end, now)
+        }
+    }
+
+    func testTheTimeAxisWindowIsCountedInWeeks() {
+        // Same four steps as the cycle axis, different unit: here "4" is four
+        // weeks of calendar, so an older cycle falls outside it however few
+        // cycles the lane has.
+        let input = lane(samples: [
+            sample(bucketId: "weekly", endingDaysAgo: 3, used: 90),
+            sample(bucketId: "weekly", endingDaysAgo: 40, used: 10)
+        ])
+        let fourWeeks = ResetHistoryComparison.build(inputs: [input], axis: .time, window: .four, now: now)
+        XCTAssertEqual(fourWeeks.lanes[0].cycles.count, 1)
+        XCTAssertEqual(fourWeeks.totals.cycleCount, 1)
+        XCTAssertEqual(fourWeeks.span?.start, now.addingTimeInterval(-4 * 7 * 86_400))
+
+        let all = ResetHistoryComparison.build(inputs: [input], axis: .time, window: .all, now: now)
+        XCTAssertEqual(all.lanes[0].cycles.count, 2)
+        // `all` reaches back to the oldest recorded cycle's start.
+        XCTAssertLessThanOrEqual(
+            try XCTUnwrap(all.span?.start),
+            now.addingTimeInterval(-40 * 86_400)
+        )
+    }
+
+    func testTheSpanReachesTheScheduledResetSoTheDashedBarIsNotClipped() {
+        let resetAt = now.addingTimeInterval(5 * 86_400)
+        let input = lane(
+            currentUsed: 30,
+            currentResetAt: resetAt,
+            samples: [sample(bucketId: "weekly", endingDaysAgo: 2, used: 40)]
+        )
+        let result = ResetHistoryComparison.build(inputs: [input], axis: .time, window: .eight, now: now)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(result.span?.end), resetAt)
+    }
+
+    func testTheTimeAxisNeverReportsTruncation() {
+        // It thins by pixel at draw time, which drops no cycle from the
+        // arithmetic, so there is nothing to caveat.
+        var samples: [SubscriptionWindowSample] = []
+        for index in 0..<(ResetHistoryComparison.ColumnPlan.maximumColumns + 20) {
+            samples.append(sample(bucketId: "weekly", endingDaysAgo: Double(7 * (index + 1)), used: 50))
+        }
+        let result = ResetHistoryComparison.build(
+            inputs: [lane(samples: samples)], axis: .time, window: .all, now: now
+        )
+        XCTAssertNil(result.truncationNote)
+        XCTAssertFalse(result.lanes[0].isTruncated)
+        XCTAssertEqual(result.lanes[0].cycles.count, ResetHistoryComparison.ColumnPlan.maximumColumns + 20)
+    }
+
+    func testBothAxesAgreeOnTheStatisticsForTheSameCycles() {
+        // The axis decides where a bar goes, never what the numbers say. With
+        // a window both axes resolve to the same set, every figure matches.
+        let input = lane(samples: [
+            sample(bucketId: "weekly", endingDaysAgo: 7, used: 20),
+            sample(bucketId: "weekly", endingDaysAgo: 14, used: 60)
+        ])
+        let cycles = ResetHistoryComparison.build(inputs: [input], axis: .cycle, window: .all, now: now)
+        let time = ResetHistoryComparison.build(inputs: [input], axis: .time, window: .all, now: now)
+
+        XCTAssertEqual(cycles.totals.cycleCount, time.totals.cycleCount)
+        XCTAssertEqual(cycles.totals.usedPercent, time.totals.usedPercent, accuracy: 0.001)
+        XCTAssertEqual(cycles.verdict, time.verdict)
+        XCTAssertEqual(cycles.lanes[0].averageWastedPercent, time.lanes[0].averageWastedPercent)
+        XCTAssertEqual(cycles.lanes[0].wastefulCycleCount, time.lanes[0].wastefulCycleCount)
+        XCTAssertEqual(cycles.lanes.map(\.id), time.lanes.map(\.id))
+    }
+
+    func testTheAxisIsCarriedOnTheComparison() {
+        let input = lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)])
+        XCTAssertEqual(ResetHistoryComparison.build(inputs: [input], now: now).axis, .cycle)
+        XCTAssertEqual(
+            ResetHistoryComparison.build(inputs: [input], axis: .time, now: now).axis,
+            .time
+        )
+    }
+
+    // MARK: - Time-axis draw budget
+
+    func testDownsamplingKeepsTheEndpointsAndTheWorstBars() {
+        // The time axis has no column ceiling, so something has to go when a
+        // lane has more cycles than the row has pixels — and a chart about
+        // wasted quota must not be the thing that drops the wasteful cycles.
+        var cycles: [ResetHistoryComparison.Cycle] = []
+        for index in 0..<10 {
+            cycles.append(cycle(index: index, used: index == 5 ? 1 : 90))
+        }
+        let kept = ResetHistoryComparison.downsampled(cycles, limit: 3)
+        XCTAssertEqual(kept.map(\.id), ["c0", "c5", "c9"])
+    }
+
+    func testDownsamplingLeavesALaneThatAlreadyFitsAlone() {
+        var cycles: [ResetHistoryComparison.Cycle] = []
+        for index in 0..<3 {
+            cycles.append(cycle(index: index, used: 50))
+        }
+        XCTAssertEqual(ResetHistoryComparison.downsampled(cycles, limit: 10).count, 3)
+        XCTAssertTrue(ResetHistoryComparison.downsampled(cycles, limit: 0).isEmpty)
+    }
+
+    private func cycle(index: Int, used: Double) -> ResetHistoryComparison.Cycle {
+        let start: Date = now.addingTimeInterval(Double(index) * week)
+        let end: Date = start.addingTimeInterval(week)
+        return ResetHistoryComparison.Cycle(
+            id: "c\(index)",
+            start: start,
+            end: end,
+            usedPercent: used,
+            isCompleted: true
+        )
+    }
+
+    // MARK: - Picker labels
+
+    func testThePickerLabelsCarryTheUnitOfTheirAxis() {
+        XCTAssertEqual(ResetHistoryComparison.Window.eight.shortTitle(for: .cycle), "8")
+        XCTAssertEqual(ResetHistoryComparison.Window.eight.shortTitle(for: .time), "8w")
+        XCTAssertEqual(ResetHistoryComparison.Window.all.shortTitle(for: .cycle), "All")
+        XCTAssertEqual(ResetHistoryComparison.Window.all.shortTitle(for: .time), "All")
+        XCTAssertEqual(
+            ResetHistoryComparison.Window.eight.spokenTitle(for: .cycle),
+            "last 8 cycles"
+        )
+        XCTAssertEqual(
+            ResetHistoryComparison.Window.eight.spokenTitle(for: .time),
+            "last 8 weeks"
+        )
+    }
+
     // MARK: - Ordinal alignment
 
     func testRowsWithFewerCyclesRightAlignToTheNewestColumn() {

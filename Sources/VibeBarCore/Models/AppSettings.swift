@@ -132,6 +132,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// documented app state instead of leaking into `UserDefaults`.
     public var costChartMetric: String
 
+    /// Which axis the reset-history comparison lays its bars out on —
+    /// ordinal cycle columns, or a real calendar.
+    ///
+    /// A user-facing control, so it round-trips here rather than living in
+    /// `@State` per surface: the Overview, the provider pages and the
+    /// Workbench's Resets page all draw the same module, and a reader who
+    /// switches one of them means all of them. Written only when the
+    /// segmented control is used — never on a refresh tick.
+    ///
+    /// `.cycle` by default, which is what a settings file written before this
+    /// existed decodes to and what the module shipped with.
+    public var resetHistoryCompareAxis: ResetHistoryAxis
+
     /// Per-page card arrangement chosen in Settings → Layout, keyed by
     /// `PageLayoutPageID` raw value (`"overview"`, `"detail:claude"`, …).
     ///
@@ -330,6 +343,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
         costChartMetric: String = "cost",
         pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
+        resetHistoryCompareAxis: ResetHistoryAxis = .cycle,
         appliedLayoutMigrations: Set<String> = [],
         pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:],
         miscCookieAutoImportEnabled: Bool = false,
@@ -381,6 +395,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
         self.costChartMetric = costChartMetric
         self.pageLayouts = pageLayouts
+        self.resetHistoryCompareAxis = resetHistoryCompareAxis
         self.appliedLayoutMigrations = appliedLayoutMigrations
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
         self.miscCookieAutoImportEnabled = miscCookieAutoImportEnabled
@@ -446,6 +461,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case overviewQuotaHistoryHiddenCurveIds
         case costChartMetric
         case pageLayouts
+        case resetHistoryCompareAxis
         case appliedLayoutMigrations
         case pageLayoutPresets
         case miscCookieAutoImportEnabled
@@ -607,6 +623,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // the user their card arrangement, not every other setting in the file.
         self.pageLayouts =
             (try? c.decodeIfPresent([PageLayoutPageID: StoredPageLayout].self, forKey: .pageLayouts)) ?? [:]
+        // Absent means a file written before the axis toggle existed, which
+        // must decode to the layout that shipped — an upgrade cannot silently
+        // re-lay-out a module the user was reading yesterday.
+        // `try?` for the same reason `pageLayouts` uses it: an axis a newer
+        // build wrote, or a hand-edited file, should cost the reader their
+        // choice of layout — not every other setting in the file.
+        self.resetHistoryCompareAxis =
+            (try? c.decodeIfPresent(ResetHistoryAxis.self, forKey: .resetHistoryCompareAxis)) ?? .cycle
         // Absent means "no layout migration has run on this Mac", which is
         // what a file written before they existed should decode to: the
         // migrations are then applied once, on this launch.
@@ -702,6 +726,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
         try c.encode(costChartMetric, forKey: .costChartMetric)
         try c.encode(pageLayouts, forKey: .pageLayouts)
+        try c.encode(resetHistoryCompareAxis, forKey: .resetHistoryCompareAxis)
         try c.encode(appliedLayoutMigrations, forKey: .appliedLayoutMigrations)
         try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)
         try c.encode(miscCookieAutoImportEnabled, forKey: .miscCookieAutoImportEnabled)
