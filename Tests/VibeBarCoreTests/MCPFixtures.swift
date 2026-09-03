@@ -316,18 +316,26 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
         query: String,
         filter: SessionQueryFilter,
         limit: Int
-    ) async throws -> [SessionSearchHit] {
+    ) async throws -> MCPSessionSearchOutcome {
         lastSessionQuery = query
         lastSessionLimit = limit
         lastSessionFilter = filter
-        return [
-            SessionSearchHit(
-                summary: Self.sessionSummary,
-                snippet: "the <b>socket</b> server",
-                matchedSeq: 4
-            )
-        ]
+        return MCPSessionSearchOutcome(
+            hits: searchHits,
+            notice: searchNotice
+        )
     }
+
+    /// What `searchSessions` hands back. A test that cares about the ranking
+    /// cut empties this and sets `searchNotice`.
+    var searchHits: [SessionSearchHit] = [
+        SessionSearchHit(
+            summary: FakeMCPDataSource.sessionSummary,
+            snippet: "the <b>socket</b> server",
+            matchedSeq: 4
+        )
+    ]
+    var searchNotice: String?
 
     func listSessions(
         filter: SessionQueryFilter,

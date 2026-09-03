@@ -193,6 +193,16 @@ the failure mode here.
 - **A window past the readable region comes back empty** with `readCeiling`
   and no cursor. Retrying the identical call will not help; that part of the
   log is past what a bounded read reaches.
+- **Four stores can only be read whole, so a large one is refused.** Cursor,
+  AntiGravity, Grok Build and Grok Bot keep sessions in formats that cannot be
+  cut at a byte offset. Past the bounded-read ceiling `sessions.transcript`
+  refuses and names the size rather than stalling on a multi-hundred-megabyte
+  parse. Use `sessions.search` to find the moment you need, or send the user to
+  the owning app.
+- **A short `sessions.search` page may carry a `notice`.** Filters run after
+  the index ranks, so a query whose top hits are all excluded can come back
+  short. When that happens the payload says so — read `notice` before telling
+  anyone nothing matched.
 - **Sessions are read-only here.** There is no edit, no delete, no resume.
   Hand the user a resume command; do not try to drive another agent's session.
 

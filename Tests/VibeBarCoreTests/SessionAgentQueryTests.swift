@@ -485,6 +485,170 @@ final class SessionAgentQueryTests: XCTestCase {
         XCTAssertLessThan(result.bytesRead, result.fileBytes)
     }
 
+    // MARK: - Stores that can only be read whole
+
+    /// Cursor, AntiGravity, Grok and Grok Bot keep their sessions in formats
+    /// that cannot be cut at a byte offset, so a bounded read of a large one
+    /// is impossible. Documenting that was not enough: `sessions.transcript`
+    /// advertises a ceiling and an agent may call it in a loop, so it refuses
+    /// rather than performing the unbounded parse.
+    func testAnOversizedWholeFileOnlyStoreIsRefusedNotParsed() throws {
+        let fileURL = directory.appendingPathComponent("store.db")
+        try Data(repeating: 0x41, count: 4_096).write(to: fileURL)
+
+        let adapter = WholeFileOnlyAdapter()
+        XCTAssertFalse(
+            SessionIndexingBounds.headTruncatableProviders.contains(adapter.provider),
+            "this test is only meaningful for a store that cannot be head-read"
+        )
+        XCTAssertThrowsError(
+            try SessionIndexingBounds.readTranscriptWindow(
+                adapter: adapter,
+                fileURL: fileURL,
+                request: TranscriptWindowRequest(from: 0, limit: 10),
+                byteCeiling: 1_024,
+                scratchDirectory: scratchURL
+            )
+        ) { error in
+            guard case let TranscriptReadRefusal.wholeFileOnly(provider, fileBytes, ceiling) = error
+            else { return XCTFail("expected a refusal, got \(error)") }
+            XCTAssertEqual(provider, .cursor)
+            XCTAssertEqual(fileBytes, 4_096)
+            XCTAssertEqual(ceiling, 1_024)
+            // The message has to be actionable: it names the size, the limit
+            // and what to do instead.
+            let message = (error as? LocalizedError)?.errorDescription ?? ""
+            XCTAssertTrue(message.contains("read"), message)
+            XCTAssertTrue(message.contains("sessions.search"), message)
+        }
+        XCTAssertEqual(
+            adapter.parses.value, 0,
+            "the refusal must come before any parse, or it saved nothing"
+        )
+    }
+
+    func testAWholeFileOnlyStoreUnderTheCeilingIsStillRead() throws {
+        // Small enough to be safe, so the refusal must not fire: the ceiling
+        // bounds the damage, it does not ban the provider.
+        let fileURL = directory.appendingPathComponent("small.db")
+        try Data(repeating: 0x41, count: 64).write(to: fileURL)
+        let adapter = WholeFileOnlyAdapter()
+        let result = try SessionIndexingBounds.readTranscriptWindow(
+            adapter: adapter,
+            fileURL: fileURL,
+            request: TranscriptWindowRequest(from: 0, limit: 10),
+            byteCeiling: 1_024,
+            scratchDirectory: scratchURL
+        )
+        XCTAssertEqual(adapter.parses.value, 1, "under the ceiling it should still read")
+        XCTAssertEqual(result.messages.map(\.text), ["stored turn"])
+    }
+
+    /// Stands in for Cursor / AntiGravity / Grok / Grok Bot: a provider whose
+    /// store can only be read whole. Deterministic, and it counts parses so a
+    /// test can prove the refusal happened *before* one.
+    private struct WholeFileOnlyAdapter: SessionProviderAdapter {
+        let parses = Counter()
+        var provider: SessionProvider { .cursor }
+
+        func roots(homeDirectory: String) -> [URL] { [] }
+        func discoverSessionFiles(homeDirectory: String) -> [URL] { [] }
+
+        func extractMetadata(fileURL: URL) throws -> SessionSummary {
+            SessionSummary(provider: .cursor, sessionID: "s", sourcePath: fileURL.path)
+        }
+
+        func deletionPlan(for summary: SessionSummary, homeDirectory: String) throws
+            -> SessionDeletionPlan {
+            throw SessionDeleteError.providerIsReadOnly(.cursor)
+        }
+
+        func parseTranscript(fileURL: URL, range: Range<Int>?) throws -> TranscriptDocument {
+            parses.increment()
+            return TranscriptDocument(
+                messages: [SessionMessage(seq: 0, role: .user, text: "stored turn", timestamp: nil)],
+                totalMessageCount: 1,
+                truncated: false
+            )
+        }
+    }
+
+    /// Thread-safe call counter for the stub above.
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        @discardableResult
+        func increment() -> Int {
+            lock.lock(); defer { lock.unlock() }
+            count += 1
+            return count
+        }
+
+        var value: Int {
+            lock.lock(); defer { lock.unlock() }
+            return count
+        }
+    }
+
+    // MARK: - A cursor always advances
+
+    /// The loop this prevents: when `roles` excluded every message in the
+    /// window, `chosen` was empty and the cursor was set back to the window's
+    /// own start, so a client following the documented loop fetched the same
+    /// empty page forever.
+    func testARoleFilterThatMatchesNothingStillAdvancesTheCursor() {
+        // seq 0…9 are user/assistant only, so a tool filter matches none.
+        let result = window(
+            TranscriptWindowRequest(from: 0, limit: 10, roles: [.tool]), in: messages(100)
+        )
+        XCTAssertTrue(result.messages.isEmpty)
+        let next = try? XCTUnwrap(result.nextFrom)
+        XCTAssertEqual(next, 10, "the cursor must move past the span that was examined")
+        XCTAssertGreaterThan(next ?? 0, 0)
+
+        // And following it makes progress rather than repeating.
+        let second = window(
+            TranscriptWindowRequest(from: next ?? 0, limit: 10, roles: [.tool]), in: messages(100)
+        )
+        XCTAssertNotEqual(second.nextFrom, result.nextFrom)
+        XCTAssertEqual(second.nextFrom, 20)
+    }
+
+    func testAnAroundWindowWhoseRolesMatchNothingAlsoAdvances() {
+        let result = window(
+            TranscriptWindowRequest(around: 50, radius: 5, roles: [.tool]), in: messages(100)
+        )
+        XCTAssertTrue(result.messages.isEmpty)
+        XCTAssertEqual(result.nextFrom, 56, "past the examined span, not back to its start")
+    }
+
+    /// An empty role set can never match, so paging cannot rescue it: the
+    /// answer is "no cursor", not "try the next page".
+    func testAnEmptyRoleSetOffersNoCursorAtAll() {
+        let result = window(TranscriptWindowRequest(from: 0, limit: 10, roles: []), in: messages(100))
+        XCTAssertTrue(result.messages.isEmpty)
+        XCTAssertNil(result.nextFrom)
+        XCTAssertFalse(result.hasMore)
+    }
+
+    /// A cursor is only ever useful if it is strictly ahead of where the call
+    /// started. Walk the documented loop and prove it terminates.
+    func testFollowingTheCursorAlwaysTerminates() {
+        var from = 0
+        var pages = 0
+        while pages < 50 {
+            let page = window(
+                TranscriptWindowRequest(from: from, limit: 7, roles: [.tool]), in: messages(60)
+            )
+            guard let next = page.nextFrom else { break }
+            XCTAssertGreaterThan(next, from, "page \(pages) did not advance")
+            from = next
+            pages += 1
+        }
+        XCTAssertLessThan(pages, 50, "the loop must end rather than run out the counter")
+    }
+
     // MARK: - One backfill call site
 
     /// The fresh-install bug this guards: `sessions.list` grew a host-side
@@ -524,6 +688,38 @@ final class SessionAgentQueryTests: XCTestCase {
                 "\(path) must read through the shared entry point"
             )
         }
+    }
+
+    /// The regression the single door introduced: it treated *any* empty
+    /// result as an unbuilt index, so an offset past the last row, a filter
+    /// that legitimately matches nothing, or an unknown transcript id each
+    /// kicked off a filesystem-wide sweep on an installation with thousands
+    /// of indexed sessions.
+    ///
+    /// The door stays; what changed is that it asks the store whether it has
+    /// ever held a row instead of inferring it from zero results.
+    func testTheBackfillDoorAsksTheStoreInsteadOfInferringFromAnEmptyPage() throws {
+        let source = try String(
+            contentsOf: repoRoot().appendingPathComponent("Sources/VibeBarApp/MCPController.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            source.contains("func isSessionIndexUnbuilt()"),
+            "the door needs a way to tell an uninitialised index from an empty page"
+        )
+        XCTAssertTrue(
+            source.contains("store.sessionCount()"),
+            "that answer has to come from the store, not from the shape of a result"
+        )
+        // And the backfill is gated on it, not on emptiness alone.
+        guard let door = source.range(of: "private func readingSessions<T>") else {
+            return XCTFail("readingSessions not found")
+        }
+        let body = source[door.lowerBound...].prefix(1_200)
+        XCTAssertTrue(
+            body.contains("isSessionIndexUnbuilt()"),
+            "readingSessions must consult the store before starting a sweep"
+        )
     }
 
     private func repoRoot() throws -> URL {

@@ -299,6 +299,37 @@ public struct TranscriptWindow: Sendable, Equatable {
     }
 }
 
+/// A bounded read that cannot be performed as asked.
+///
+/// Four providers keep their sessions in stores that are not byte-truncatable
+/// JSONL — Cursor's and AntiGravity's SQLite databases, Grok's sibling-file
+/// transcript, Grok Bot's blob cache. For those, "read the first N bytes" has
+/// no meaning: the only read available is the whole store.
+///
+/// The transcript tool advertises a byte ceiling, and an agent may call it in
+/// a loop. Documenting the exception was not enough — an unbounded parse of a
+/// large store stalls the request and can exhaust the app. So the tool refuses
+/// above the ceiling and says why, which is something the caller can act on.
+public enum TranscriptReadRefusal: Error, LocalizedError, Equatable {
+    case wholeFileOnly(provider: SessionProvider, fileBytes: Int64, ceilingBytes: Int64)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .wholeFileOnly(provider, fileBytes, ceilingBytes):
+            return "\(provider.displayName) stores its sessions in a format that can only be read "
+                + "whole, and this one is \(Self.megabytes(fileBytes)) — past the "
+                + "\(Self.megabytes(ceilingBytes)) a bounded read allows. Reading it would hold the "
+                + "entire store in memory. Use sessions.search to find the moment you need, or open "
+                + "the session in \(provider.displayName) itself."
+        }
+    }
+
+    static func megabytes(_ bytes: Int64) -> String {
+        let mb = Double(bytes) / (1024 * 1024)
+        return mb >= 10 ? "\(Int(mb.rounded())) MB" : String(format: "%.1f MB", mb)
+    }
+}
+
 /// One session, read for an agent.
 public struct SessionTranscriptResult: Sendable {
     public let summary: SessionSummary

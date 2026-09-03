@@ -550,6 +550,25 @@ Reads resolve **through the index**: the tool takes `id` or
 Bar already discovered under a provider's own roots. The parse runs on a held
 detached task off both the main actor and the index actor.
 
+Three refusals are deliberate, because a tool an agent calls in a loop must
+never answer with silence or a stall. A store outside
+`headTruncatableProviders` — Cursor, AntiGravity, Grok, Grok Bot — cannot be
+bounded at all, so above the ceiling `readTranscriptWindow` throws
+`TranscriptReadRefusal.wholeFileOnly` naming the size instead of parsing the
+whole thing. A window whose cursor could not advance (the read never reached
+it, or the role filter can never match) returns **no** cursor rather than one
+that repeats the same page. And `sessions.search` applies its host-side
+filters after the index's ranking cut, so when a page comes back short because
+of that cut it says so in `notice` — an agent cannot otherwise tell "nothing
+matches" from "the cut ate the matches".
+
+The backfill for a never-built index lives behind one door
+(`MCPController.readingSessions`) shared by all three reads, and that door asks
+the store whether it has ever held a row. It must not infer it from a zero-row
+result: an offset past the end, a filter that matches nothing and an unknown id
+are all ordinary empty answers, and treating them as "unbuilt" turned each one
+into a filesystem-wide sweep.
+
 **Privacy.** Everything is read-only except two tools. `quota.refresh`
 is gated on `AppSettings.mcpServer.allowRefreshTools` and throttled to
 one forced refresh per 20 s. `skills.install` is gated on

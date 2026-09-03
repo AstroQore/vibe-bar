@@ -409,6 +409,28 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(source.lastTranscriptWindow?.roles, [])
     }
 
+    /// Filters run after the index's ranking cut, so a short page can mean
+    /// "nothing matches" or "the matches are below the cut". An agent cannot
+    /// tell those apart from an empty array, so the payload says which.
+    func testSearchSurfacesTheRankingCutRatherThanReturningASilentEmptyPage() async throws {
+        source.searchHits = []
+        source.searchNotice = "Filters ran after the ranking cut: the top 200 hits for this "
+            + "query yielded 0 match(es), and more may exist below the cut."
+        let result = try await call("sessions.search", .object([
+            "query": .string("socket"),
+            "to": .string("2020-01-01T00:00:00Z")
+        ]))
+        XCTAssertEqual(result["sessions"]?.arrayValue?.count, 0)
+        let notice = try XCTUnwrap(result["notice"]?.stringValue)
+        XCTAssertTrue(notice.contains("below the cut"), notice)
+    }
+
+    func testACompleteSearchCarriesNoNotice() async throws {
+        let result = try await call("sessions.search", .object(["query": .string("socket")]))
+        XCTAssertEqual(result["sessions"]?.arrayValue?.count, 1)
+        XCTAssertNil(result["notice"], "a full page must not be labelled incomplete")
+    }
+
     func testAHostSideFilterWithholdsTheCountAndSaysWhy() async throws {
         source.listTotalCount = nil
         source.listHasMore = true

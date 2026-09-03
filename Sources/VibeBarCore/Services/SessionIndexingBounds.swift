@@ -176,6 +176,19 @@ public enum SessionIndexingBounds {
         scratchDirectory: URL = VibeBarLocalStore.sessionIndexScratchDirectoryURL,
         isCancelled: () -> Bool = { Task.isCancelled }
     ) throws -> TranscriptWindow {
+        // A store that cannot be cut at a byte offset cannot be bounded, and
+        // the ceiling above is a promise this function makes to a caller that
+        // may be an agent in a loop. Refuse rather than quietly parsing the
+        // whole thing: a refusal naming the size is something the agent can
+        // act on, a multi-hundred-megabyte parse is a stall it cannot.
+        let size = SessionParsing.fileSize(fileURL)
+        if !headTruncatableProviders.contains(adapter.provider), size > byteCeiling {
+            throw TranscriptReadRefusal.wholeFileOnly(
+                provider: adapter.provider,
+                fileBytes: size,
+                ceilingBytes: byteCeiling
+            )
+        }
         let needed = request.upperBound
         var limit = min(agentTranscriptInitialByteLimit, byteCeiling)
         var read = try readTranscript(
@@ -307,17 +320,33 @@ public enum SessionIndexingBounds {
             ))
         }
 
-        // Where "keep reading" resumes: after the last message returned.
+        // Where "keep reading" resumes.
         //
-        // The exception is a window that returned nothing because the read
-        // never got that far. Handing back a cursor there would invite an
-        // agent to retry the identical request forever, so it gets `nil` and
-        // the `readCeiling` notice, which is the only useful answer.
+        // A cursor must always be *past* something this call already looked
+        // at, or a client following the documented loop repeats the identical
+        // page forever. Two ways that used to happen:
+        //
+        // - the read never reached the requested window (`readCeiling`), so
+        //   retrying it would parse the same bytes to the same non-answer;
+        // - every message in the window was filtered out by `roles`, which
+        //   left `chosen` empty and resumed at the window's own start.
+        //
+        // The first gets no cursor. The second resumes after the span that
+        // *was* examined, so the loop makes progress — unless the filter can
+        // never match anything at all, in which case there is nothing to make
+        // progress towards.
+        let examinedEnd = messages.isEmpty
+            ? request.lowerBound
+            : min(request.upperBound, messages.count - 1) + 1
         let nextFrom: Int?
         if kept.isEmpty, reasons.contains(.readCeiling) {
             nextFrom = nil
+        } else if request.roles?.isEmpty == true {
+            // An empty role set selects no role, here and everywhere else.
+            // Paging cannot rescue it.
+            nextFrom = nil
         } else {
-            let resume = (chosen.last.map { $0 + 1 }) ?? request.lowerBound
+            let resume = chosen.last.map { $0 + 1 } ?? examinedEnd
             nextFrom = hitCap || resume < messages.count || !reachedEndOfFile ? resume : nil
         }
 

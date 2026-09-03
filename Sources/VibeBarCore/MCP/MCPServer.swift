@@ -27,12 +27,23 @@ public enum MCPCostHistoryTimeframe: String, Sendable, CaseIterable {
 
 // MARK: - Data source
 
-/// Everything the MCP surface needs from the running app.
+/// What `sessions.search` came back with.
 ///
-/// Core owns the protocol shape and every projection; the App supplies one
-/// implementation over `AppEnvironment`. That split is what lets the whole
-/// tool surface be tested against a fixture without a menu bar, a home
-/// directory, or a network.
+/// The notice exists because the host-side filters (`to`, `from`, `models`)
+/// run *after* the index's ranking cut. When a page comes back short and the
+/// cut is the reason, saying so is the difference between "nothing matches"
+/// and "the matches are below the cut" — an agent cannot tell those apart
+/// from an empty array.
+public struct MCPSessionSearchOutcome: Sendable {
+    public var hits: [SessionSearchHit]
+    public var notice: String?
+
+    public init(hits: [SessionSearchHit], notice: String? = nil) {
+        self.hits = hits
+        self.notice = notice
+    }
+}
+
 /// What `sessions.list` came back with.
 ///
 /// A plain page when the index answered the whole filter; otherwise the rows
@@ -65,6 +76,12 @@ public struct MCPSessionListing: Sendable {
     }
 }
 
+/// Everything the MCP surface needs from the running app.
+///
+/// Core owns the protocol shape and every projection; the App supplies one
+/// implementation over `AppEnvironment`. That split is what lets the whole
+/// tool surface be tested against a fixture without a menu bar, a home
+/// directory, or a network.
 public protocol MCPDataSource: AnyObject, Sendable {
     func serverInfo() async -> MCPServerInfo
 
@@ -87,7 +104,7 @@ public protocol MCPDataSource: AnyObject, Sendable {
         query: String,
         filter: SessionQueryFilter,
         limit: Int
-    ) async throws -> [SessionSearchHit]
+    ) async throws -> MCPSessionSearchOutcome
     func listSessions(
         filter: SessionQueryFilter,
         offset: Int,
@@ -412,20 +429,21 @@ public final class MCPServer: @unchecked Sendable {
             throw MCPRPCError.invalidParams("'query' must not be blank.")
         }
         let limit = try arguments.optionalInt("limit", minimum: 1, maximum: 50) ?? 20
-        let hits = try await dataSource.searchSessions(
+        let outcome = try await dataSource.searchSessions(
             query: query,
             filter: try sessionFilter(arguments),
             limit: limit
         )
         return MCPSessionListDTO(
             generatedAt: now(),
-            sessions: hits.map {
+            sessions: outcome.hits.map {
                 MCPSessionSummaryDTO(summary: $0.summary, snippet: $0.snippet, matchedSeq: $0.matchedSeq)
             },
             totalCount: nil,
             offset: nil,
             limit: limit,
-            hasMore: nil
+            hasMore: nil,
+            notice: outcome.notice
         )
     }
 

@@ -45,6 +45,9 @@ final class MCPController: ObservableObject, MCPDataSource {
     private var didAttemptSessionBackfill = false
     /// Built on the first `sessions.transcript` call. See `transcriptRegistry`.
     private var registryStorage: SessionProviderRegistry?
+    /// Latched once the index is known to hold rows, so `readingSessions`
+    /// stops asking. See `isSessionIndexUnbuilt`.
+    private var didObservePopulatedIndex = false
 
     /// How long a connected client may say nothing before its socket is
     /// closed.
@@ -335,49 +338,111 @@ final class MCPController: ObservableObject, MCPDataSource {
 
     /// The one door every session read goes through.
     ///
-    /// `read` runs, and if it came back empty on an index that has never been
-    /// built, the one-per-process backfill runs and `read` is retried. It is a
-    /// single entry point on purpose: the backfill used to be remembered at
-    /// each call site, and the host-side `sessions.list` path was added
-    /// without it — so a fresh install with a `to` or `models` filter returned
-    /// zero and never scanned. Two places that must both remember something
-    /// is how that happens.
+    /// `read` runs, and if the index has *never been built* the one-per-process
+    /// backfill runs and `read` is retried. It is a single entry point on
+    /// purpose: the backfill used to be remembered at each call site, and the
+    /// host-side `sessions.list` path was added without it — so a fresh
+    /// install with a `to` or `models` filter returned zero and never scanned.
+    ///
+    /// "Never been built" is asked of the store, not inferred from a zero-row
+    /// result. Inferring it made the door far too eager: an offset past the
+    /// last row, a filter that legitimately matches nothing, an unknown
+    /// transcript id — each of those is an ordinary empty answer, and each
+    /// used to kick off a filesystem-wide sweep of every provider's logs.
+    /// `isEmpty` survives only as a cheap gate on *asking*: rows in hand
+    /// already prove the index is populated, so the count query never runs on
+    /// the common path.
     private func readingSessions<T>(
-        isEmpty: @escaping (T) -> Bool,
+        isEmpty: (T) -> Bool,
         _ read: (SessionIndexService) async throws -> T
     ) async throws -> T {
         let index = try sessionIndexService()
         let first = try await read(index)
-        guard isEmpty(first), await backfillSessionIndexIfNeeded(index) else { return first }
+        guard isEmpty(first) else {
+            didObservePopulatedIndex = true
+            return first
+        }
+        guard await isSessionIndexUnbuilt(), await backfillSessionIndexIfNeeded(index) else {
+            return first
+        }
         return try await read(index)
+    }
+
+    /// Has the session index never held a row?
+    ///
+    /// One `SELECT COUNT(*)` per process at most: a populated index latches
+    /// the flag and is never asked again, and an unpopulated one is answered
+    /// by the backfill's own one-shot guard.
+    private func isSessionIndexUnbuilt() async -> Bool {
+        if didObservePopulatedIndex { return false }
+        guard let store = environment?.sessionIndex.store else { return false }
+        let count = (try? await store.sessionCount()) ?? 0
+        if count > 0 {
+            didObservePopulatedIndex = true
+            return false
+        }
+        return true
     }
 
     func searchSessions(
         query: String,
         filter: SessionQueryFilter,
         limit: Int
-    ) async throws -> [SessionSearchHit] {
+    ) async throws -> MCPSessionSearchOutcome {
         // An explicitly empty list means "nothing" (see
         // `SessionQueryFilter.matchesNothing`), and nothing is answerable
         // without touching the index at all.
-        guard !filter.matchesNothing else { return [] }
-        // The store ranks and caps; `to`, `from` and `models` are ours to
+        guard !filter.matchesNothing else { return MCPSessionSearchOutcome(hits: []) }
+        // The store ranks and caps, and `to`, `from` and `models` are ours to
         // apply afterwards (it has no upper time bound and no model column
-        // filter). Over-fetch so a narrow filter over a broad query still
-        // fills a page, but stay bounded — this is a ranked result set, not a
-        // scan, and asking for the whole index would defeat the ranking.
-        let wanted = filter.isAnsweredEntirelyByTheIndex && filter.from == nil
-            ? limit
-            : min(limit * Self.searchOverFetchFactor, Self.searchOverFetchCap)
-        let hits = try await readingSessions(isEmpty: \.isEmpty) { index in
-            try await Self.rankedHits(index, query: query, filter: filter, limit: wanted)
+        // filter). So the host-side filter runs *after* the ranking cut, and
+        // a query whose top hits are all excluded — searching with an old
+        // `to` bound against a term that matches mostly recent sessions — can
+        // starve a page of matches that exist further down.
+        //
+        // Escalate rather than accept that: ask for more ranked hits until
+        // the page is filled or the store's own ceiling is reached. At most
+        // two passes, and FTS ranking is the fast part of this query.
+        let needsHostFilter = !(filter.isAnsweredEntirelyByTheIndex && filter.from == nil)
+        return try await readingSessions(isEmpty: \.hits.isEmpty) { index in
+            var wanted = needsHostFilter
+                ? min(limit * Self.searchOverFetchFactor, Self.searchOverFetchCap)
+                : limit
+            var matched: [SessionSearchHit] = []
+            var sawEverything = false
+            while true {
+                let hits = try await Self.rankedHits(
+                    index, query: query, filter: filter, limit: wanted
+                )
+                matched = hits.filter { filter.matches($0.summary) }
+                // Fewer hits than asked for means the store had no more to
+                // rank, so nothing is hiding below the cut.
+                sawEverything = hits.count < wanted
+                if matched.count >= limit || sawEverything || wanted >= Self.searchRankingCeiling {
+                    break
+                }
+                wanted = Self.searchRankingCeiling
+            }
+            // Silence is the one wrong answer here: an agent cannot tell
+            // "nothing matches" from "the ranking cut ate the matches".
+            let incomplete = matched.count < limit && !sawEverything
+            return MCPSessionSearchOutcome(
+                hits: Array(matched.prefix(limit)),
+                notice: incomplete
+                    ? "Filters ran after the ranking cut: the top \(wanted) hits for this query "
+                        + "yielded \(matched.count) match(es), and more may exist below the cut. "
+                        + "Narrow 'query', or widen 'from' / 'to' / 'models' / 'projectDir'."
+                    : nil
+            )
         }
-        return Array(hits.filter { filter.matches($0.summary) }.prefix(limit))
     }
 
-    /// Over-fetch multiplier and ceiling for a filtered search.
+    /// Over-fetch multiplier and the ceiling on one ranked pass.
     private static let searchOverFetchFactor = 4
     private static let searchOverFetchCap = 200
+    /// `SessionIndexStore.search` clamps its own limit here, so asking for
+    /// more than this returns the same rows.
+    private static let searchRankingCeiling = 500
     /// How many index rows a host-side-filtered `sessions.list` will walk
     /// before it stops and says so. Eight store pages at 11 000 indexed
     /// sessions — enough to page deep into a filtered view, bounded enough
