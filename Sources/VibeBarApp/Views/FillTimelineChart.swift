@@ -24,6 +24,19 @@ struct FillTimelineChart: View {
     @EnvironmentObject var quotaService: QuotaService
     @State private var hoveredIndex: Int?
 
+    /// The visible window memoized on the samples it was built from. Hovering
+    /// the strip writes `hoveredIndex`, which re-runs `body`, which used to
+    /// re-sort the bucket's whole retained history on every mouse move. A
+    /// reference box on purpose: filling it during `body` must not dirty view
+    /// state.
+    private final class CycleCache {
+        var key: SubscriptionHistoryKey?
+        var samples: [SubscriptionWindowSample] = []
+        var visible: [SubscriptionWindowSample] = []
+    }
+
+    @State private var cycleCache = CycleCache()
+
     private static let maxCycles = 12
 
     private var barSpacing: CGFloat {
@@ -69,7 +82,16 @@ struct FillTimelineChart: View {
     private func visibleCycles(series: FillTimelineSeries) -> [SubscriptionWindowSample] {
         let key = SubscriptionHistoryKey(accountId: series.accountId, bucketId: series.bucket.id)
         let samples = quotaService.historyByAccountBucket[key] ?? []
-        return Array(samples.sorted { cycleDate($0) < cycleDate($1) }.suffix(Self.maxCycles))
+        // An equality check over the retained samples is far cheaper than the
+        // sort plus the per-element date resolution it drives.
+        if cycleCache.key == key, cycleCache.samples == samples {
+            return cycleCache.visible
+        }
+        let visible = Array(samples.sorted { cycleDate($0) < cycleDate($1) }.suffix(Self.maxCycles))
+        cycleCache.key = key
+        cycleCache.samples = samples
+        cycleCache.visible = visible
+        return visible
     }
 
     @ViewBuilder

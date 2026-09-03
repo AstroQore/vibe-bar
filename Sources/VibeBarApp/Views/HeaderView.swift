@@ -27,8 +27,11 @@ struct HeaderView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .layoutPriority(2)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    Text(updatedSummary(now: context.date))
+                // `PageClock`, not `TimelineView(.periodic(from: .now, ...))`:
+                // shared 5-minute-floored phase with every other quota
+                // surface, and it stops ticking while the popover is hidden.
+                PageClock(interval: 30) { now in
+                    Text(updatedSummary(now: now))
                         .font(.system(size: subtitleFontSize))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
