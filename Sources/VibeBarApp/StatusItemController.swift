@@ -27,6 +27,27 @@ private struct TwoRowMenuColumn {
     var bottom: TwoRowMenuCell?
 }
 
+/// One percentage the status item draws, with the color it earned on its own.
+/// A merged piece carries several: the group's windows keep their individual
+/// verdict colors even though they share a label.
+private struct MenuBarPercentValue {
+    var value: Double
+    var color: NSColor
+}
+
+/// One rendered menu-bar entry, resolved once per render and consumed by
+/// whichever layout is active. A merged group contributes a single piece with
+/// several `percents`; every other field contributes a piece with one.
+private struct MenuBarPiece {
+    var label: String?
+    var percents: [MenuBarPercentValue]
+    var tool: ToolType
+    var style: MenuBarFieldStyle
+    /// Every quota window spelled out separately — never the merged
+    /// `5%/100%` shorthand. Feeds the tooltip and the accessibility label.
+    var spokenDescription: String
+}
+
 @MainActor
 final class StatusItemController: NSObject, NSPopoverDelegate {
     private static let initialPopoverHeight: CGFloat = 720
@@ -792,27 +813,129 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             button.image = nil
             button.imagePosition = .noImage
             removeTwoRowStatusContent(from: button)
+            // Resolved once and shared by every layout: the field walk, the
+            // group merge, the bucket lookups, and the forecast colors all
+            // happen here rather than inside each builder.
+            let pieces = itemSettings.layout == .iconOnly
+                ? []
+                : menuBarPieces(for: itemSettings, settings: settings)
             switch itemSettings.layout {
             case .iconOnly:
                 installIconOnlyContent(in: button, item: item, kind: kind)
             case .singleLine:
-                button.attributedTitle = singleLineMenuTitle(for: itemSettings, settings: settings)
+                button.attributedTitle = singleLineMenuTitle(pieces: pieces, itemSettings: itemSettings)
                 item.length = NSStatusItem.variableLength
+                applyStatusDescription(pieces, to: button, kind: kind)
             case .twoRows:
                 installTwoRowImageContent(
                     in: button,
                     item: item,
-                    columns: twoRowMenuColumns(for: itemSettings, settings: settings),
-                    kind: kind
+                    columns: twoRowMenuColumns(pieces: pieces, itemSettings: itemSettings)
                 )
+                applyStatusDescription(pieces, to: button, kind: kind)
             case .compact:
-                button.attributedTitle = compactMenuTitle(for: itemSettings, settings: settings)
+                button.attributedTitle = compactMenuTitle(pieces: pieces, itemSettings: itemSettings)
                 item.length = NSStatusItem.variableLength
+                applyStatusDescription(pieces, to: button, kind: kind)
             }
         }
     }
 
-    private func singleLineMenuTitle(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> NSAttributedString {
+    /// Everything the three text layouts need for one render.
+    ///
+    /// Runs inside the 120 ms render throttle on the main thread, so it stays
+    /// a single forward walk of the user's selection: resolve each field and
+    /// its live bucket once, collapse adjacent same-group fields into runs
+    /// (only when the user asked for it — see `MenuBarItemSettings
+    /// .mergesGroupWindows`), then read a percent and a color per window.
+    private func menuBarPieces(
+        for itemSettings: MenuBarItemSettings,
+        settings: AppSettings
+    ) -> [MenuBarPiece] {
+        let registry = environment.quotaService.fieldRegistry
+        var fields: [MenuBarFieldOption] = []
+        var buckets: [QuotaBucket] = []
+        fields.reserveCapacity(itemSettings.selectedFieldIds.count)
+        buckets.reserveCapacity(itemSettings.selectedFieldIds.count)
+        for fieldId in itemSettings.selectedFieldIds {
+            guard
+                let field = MenuBarFieldCatalog.field(id: fieldId, registry: registry),
+                let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
+            else { continue }
+            fields.append(field)
+            buckets.append(bucket)
+        }
+
+        let runs = MenuBarFieldCatalog.runs(fields, merging: itemSettings.mergesGroupWindows)
+        let modeWord = settings.displayMode == .used ? "used" : "remaining"
+        var pieces: [MenuBarPiece] = []
+        pieces.reserveCapacity(runs.count)
+        var cursor = 0
+        for run in runs {
+            var percents: [MenuBarPercentValue] = []
+            percents.reserveCapacity(run.fields.count)
+            // Only a merged piece needs per-window words; a lone field's
+            // spoken form is already its label and its one percentage.
+            var windows: [String] = []
+            if run.isMerged { windows.reserveCapacity(run.fields.count) }
+            for offset in 0..<run.fields.count {
+                let field = fields[cursor + offset]
+                let bucket = buckets[cursor + offset]
+                let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
+                percents.append(MenuBarPercentValue(
+                    value: percent,
+                    color: percentColor(for: field, bucket: bucket, settings: settings)
+                ))
+                if run.isMerged {
+                    windows.append("\(bucket.shortLabel) \(percentText(percent)) \(modeWord)")
+                }
+            }
+            let label = run.isMerged
+                ? MenuBarFieldCatalog.mergedGroupLabel(
+                    for: run,
+                    customLabels: itemSettings.customLabels,
+                    groupCatalogLabel: MiniWindowGroupLabelCatalog.defaultLabel(for:)
+                )
+                : label(for: run.primary, bucket: buckets[cursor], itemSettings: itemSettings)
+            pieces.append(MenuBarPiece(
+                label: label,
+                percents: percents,
+                tool: run.primary.tool,
+                style: itemSettings.style(for: run.primary.id),
+                spokenDescription: run.isMerged
+                    ? "\(label) \(windows.joined(separator: ", "))"
+                    : "\(label) \(percentText(percents[0].value)) \(modeWord)"
+            ))
+            cursor += run.fields.count
+        }
+        return pieces
+    }
+
+    private func percentText(_ percent: Double) -> String {
+        "\(Int(percent.rounded()))%"
+    }
+
+    /// The status item always *speaks* one clause per quota window, even when
+    /// the bar draws a merged group as `5%/100%`: "Claude 5 Hours 5% used,
+    /// Weekly 100% used". The shorthand is a space-saving glyph, not a
+    /// description anyone can read aloud.
+    private func applyStatusDescription(
+        _ pieces: [MenuBarPiece],
+        to button: NSStatusBarButton,
+        kind: MenuBarItemKind
+    ) {
+        let body = pieces.map(\.spokenDescription).joined(separator: " · ")
+        let description = body.isEmpty
+            ? "\(kind.label) quota"
+            : "\(kind.label) quota: \(body)"
+        button.setAccessibilityLabel(description)
+        if button.toolTip != description { button.toolTip = description }
+    }
+
+    private func singleLineMenuTitle(
+        pieces: [MenuBarPiece],
+        itemSettings: MenuBarItemSettings
+    ) -> NSAttributedString {
         let fontSize = NSFont.smallSystemFontSize
         let attributed = NSMutableAttributedString()
         if itemSettings.showTitle {
@@ -825,13 +948,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             ))
         }
 
-        var displayed = 0
-        for fieldId in itemSettings.selectedFieldIds {
-            guard
-                let field = MenuBarFieldCatalog.field(id: fieldId, registry: environment.quotaService.fieldRegistry),
-                let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
-            else { continue }
-            if displayed > 0 {
+        for (index, piece) in pieces.enumerated() {
+            if index > 0 {
                 attributed.append(NSAttributedString(
                     string: " · ",
                     attributes: [
@@ -840,18 +958,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                     ]
                 ))
             }
-            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
-            let label = label(for: field, bucket: bucket, itemSettings: itemSettings)
-            attributed.append(menuPiece(
-                label: label,
-                percent: percent,
-                color: percentColor(for: field, bucket: bucket, settings: settings),
+            // This layout has always drawn words only — the per-field logo
+            // styles belong to the compact and two-row bars.
+            attributed.append(menuTextPiece(
+                label: piece.label,
+                percents: piece.percents,
                 fontSize: fontSize
             ))
-            displayed += 1
         }
 
-        if displayed == 0 {
+        if pieces.isEmpty {
             attributed.append(NSAttributedString(
                 string: "—",
                 attributes: [
@@ -863,7 +979,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return attributed
     }
 
-    private func compactMenuTitle(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> NSAttributedString {
+    private func compactMenuTitle(
+        pieces: [MenuBarPiece],
+        itemSettings: MenuBarItemSettings
+    ) -> NSAttributedString {
         let fontSize = MenuBarStatusMetrics.twoRowFontSize
         let attributed = NSMutableAttributedString()
         if itemSettings.showTitle {
@@ -876,23 +995,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             ))
         }
 
-        let entries = itemSettings.selectedFieldIds.compactMap { fieldId -> NSAttributedString? in
-            guard
-                let field = MenuBarFieldCatalog.field(id: fieldId, registry: environment.quotaService.fieldRegistry),
-                let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
-            else { return nil }
-            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
-            return menuTextPiece(
-                label: label(for: field, bucket: bucket, itemSettings: itemSettings),
-                percent: percent,
-                color: percentColor(for: field, bucket: bucket, settings: settings),
-                fontSize: fontSize,
-                style: itemSettings.style(for: field.id),
-                tool: field.tool
-            )
-        }
-
-        for (index, entry) in entries.enumerated() {
+        for (index, piece) in pieces.enumerated() {
             if index > 0 {
                 attributed.append(NSAttributedString(
                     string: " ",
@@ -902,10 +1005,18 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                     ]
                 ))
             }
-            attributed.append(entry)
+            // One brand attachment per piece, not per percentage: a merged
+            // group is one quota family, so it wears one logo.
+            attributed.append(menuTextPiece(
+                label: piece.label,
+                percents: piece.percents,
+                fontSize: fontSize,
+                style: piece.style,
+                tool: piece.tool
+            ))
         }
 
-        if entries.isEmpty {
+        if pieces.isEmpty {
             attributed.append(NSAttributedString(
                 string: "—",
                 attributes: [
@@ -917,8 +1028,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return attributed
     }
 
-    private func twoRowMenuColumns(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> [TwoRowMenuColumn] {
-        let entries = displayedEntries(for: itemSettings, settings: settings)
+    private func twoRowMenuColumns(
+        pieces: [MenuBarPiece],
+        itemSettings: MenuBarItemSettings
+    ) -> [TwoRowMenuColumn] {
+        let entries = displayedEntries(pieces: pieces)
         guard !entries.isEmpty else {
             return [TwoRowMenuColumn(top: TwoRowMenuCell(
                 text: emptyMenuTitle(for: itemSettings, fontSize: MenuBarStatusMetrics.twoRowFontSize),
@@ -954,29 +1068,21 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return columns
     }
 
-    private func displayedEntries(for itemSettings: MenuBarItemSettings, settings: AppSettings) -> [TwoRowMenuCell] {
-        itemSettings.selectedFieldIds.compactMap { fieldId in
-            guard
-                let field = MenuBarFieldCatalog.field(id: fieldId, registry: environment.quotaService.fieldRegistry),
-                let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
-            else { return nil }
-            let percent = bucket.displayPercent(settings.displayMode, tool: field.tool)
-            let style = itemSettings.style(for: field.id)
+    private func displayedEntries(pieces: [MenuBarPiece]) -> [TwoRowMenuCell] {
+        pieces.map { piece in
             // The two-row canvas is thickness - 2 with overlapping lines; a
             // text attachment inflates its line box to 14pt no matter what
             // bounds it declares, so logos never enter these strings — the
-            // rasterizer draws them beside the text instead.
+            // rasterizer draws them beside the text instead. One logo per
+            // cell, so a merged group shows its brand once.
             let text = menuTextPiece(
-                label: style == .logoAndPercent
-                    ? nil
-                    : label(for: field, bucket: bucket, itemSettings: itemSettings),
-                percent: percent,
-                color: percentColor(for: field, bucket: bucket, settings: settings),
+                label: piece.style == .logoAndPercent ? nil : piece.label,
+                percents: piece.percents,
                 fontSize: MenuBarStatusMetrics.twoRowFontSize
             )
-            let logo = style == .labelAndPercent
+            let logo = piece.style == .labelAndPercent
                 ? nil
-                : brandLogoImage(for: field.tool, side: MenuBarStatusMetrics.twoRowLogoSide)
+                : brandLogoImage(for: piece.tool, side: MenuBarStatusMetrics.twoRowLogoSide)
             return TwoRowMenuCell(text: text, logo: logo)
         }
     }
@@ -1009,14 +1115,34 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return field.defaultLabel
     }
 
-    private func menuPiece(label: String, percent: Double, color: NSColor, fontSize: CGFloat) -> NSAttributedString {
-        menuTextPiece(label: label, percent: percent, color: color, fontSize: fontSize)
-    }
-
     private func menuTextPiece(
         label: String?,
         percent: Double?,
         color: NSColor,
+        fontSize: CGFloat,
+        style: MenuBarFieldStyle = .labelAndPercent,
+        tool: ToolType? = nil
+    ) -> NSAttributedString {
+        menuTextPiece(
+            label: label,
+            percents: percent.map { [MenuBarPercentValue(value: $0, color: color)] } ?? [],
+            fontSize: fontSize,
+            style: style,
+            tool: tool
+        )
+    }
+
+    /// One menu-bar piece: an optional logo, an optional label, then every
+    /// percentage the piece carries.
+    ///
+    /// A merged group passes several percentages and gets `5%/100%` — each
+    /// keeping the color it would have had standing alone, joined by a
+    /// tertiary slash so the divider reads as punctuation rather than
+    /// competing with the numbers. The logo and the label are drawn once for
+    /// the whole piece, never once per percentage.
+    private func menuTextPiece(
+        label: String?,
+        percents: [MenuBarPercentValue],
         fontSize: CGFloat,
         style: MenuBarFieldStyle = .labelAndPercent,
         tool: ToolType? = nil
@@ -1040,12 +1166,22 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 ]
             ))
         }
-        if let percent {
+        let percentFont = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold)
+        for (index, percent) in percents.enumerated() {
+            if index > 0 {
+                chunk.append(NSAttributedString(
+                    string: "/",
+                    attributes: [
+                        .foregroundColor: NSColor.tertiaryLabelColor,
+                        .font: percentFont
+                    ]
+                ))
+            }
             chunk.append(NSAttributedString(
-                string: "\(Int(percent.rounded()))%",
+                string: percentText(percent.value),
                 attributes: [
-                    .foregroundColor: color,
-                    .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold)
+                    .foregroundColor: percent.color,
+                    .font: percentFont
                 ]
             ))
         }
@@ -1113,13 +1249,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.imagePosition = .imageOnly
         item.length = NSStatusItem.squareLength
         button.setAccessibilityLabel(kind.label)
+        // This layout draws no percentages, so it skips the piece walk (and
+        // its per-bucket forecasts) entirely — which also means it must clear
+        // any live description a previous layout left on the button.
+        let idleToolTip = "\(kind.label) quota"
+        if button.toolTip != idleToolTip { button.toolTip = idleToolTip }
     }
 
     private func installTwoRowImageContent(
         in button: NSStatusBarButton,
         item: NSStatusItem,
-        columns: [TwoRowMenuColumn],
-        kind: MenuBarItemKind
+        columns: [TwoRowMenuColumn]
     ) {
         // Keep two-row content as a static image; custom status-item subviews trigger continuous AppKit replicant redraws.
         let image = twoRowImage(for: columns, appearance: button.effectiveAppearance)
@@ -1127,7 +1267,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.image = image
         button.imagePosition = .imageOnly
         item.length = max(MenuBarStatusMetrics.minimumTwoRowLength, ceil(image.size.width + 2))
-        button.setAccessibilityLabel("\(kind.label) \(twoRowAccessibilityTitle(for: columns))")
+        // The accessibility label is set from the resolved pieces by
+        // `applyStatusDescription` — reading it back off the rasterized
+        // columns would speak the merged `5%/100%` shorthand.
     }
 
     nonisolated private static func cellWidth(_ cell: TwoRowMenuCell) -> CGFloat {
@@ -1230,18 +1372,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
 
         return image
-    }
-
-    private func twoRowAccessibilityTitle(for columns: [TwoRowMenuColumn]) -> String {
-        columns
-            .map { column in
-                [column.top.text.string, column.bottom?.text.string]
-                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " ")
-            }
-            .filter { !$0.isEmpty }
-            .joined(separator: " · ")
     }
 
     private func removeTwoRowStatusContent(from button: NSStatusBarButton) {

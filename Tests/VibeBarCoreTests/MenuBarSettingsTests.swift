@@ -36,4 +36,48 @@ final class MenuBarSettingsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(MenuBarItemSettings.self, from: Data(json.utf8))
         XCTAssertTrue(decoded.fieldStyles.isEmpty)
     }
+
+    func testMergesGroupWindowsRoundTrips() throws {
+        var item = MenuBarItemSettings(
+            kind: .compact,
+            isVisible: true,
+            showTitle: false,
+            selectedFieldIds: ["claude.five_hour", "claude.weekly"]
+        )
+        // Opt-in: a freshly built item shows the un-merged list.
+        XCTAssertFalse(item.mergesGroupWindows)
+        item.mergesGroupWindows = true
+        let data = try JSONEncoder().encode(item)
+        XCTAssertTrue(
+            try JSONDecoder().decode(MenuBarItemSettings.self, from: data).mergesGroupWindows
+        )
+    }
+
+    func testPreMergeSettingsDecodeWithMergingOff() throws {
+        // Every settings file written before group merging existed: the bar
+        // was arranged against the un-merged layout, so that is what it keeps.
+        let json = """
+        {"kind":"compact","isVisible":true,"showTitle":true,"layout":"singleLine",
+         "selectedFieldIds":["claude.five_hour","claude.weekly"],"customLabels":{},
+         "fieldStyles":{}}
+        """
+        let decoded = try JSONDecoder().decode(MenuBarItemSettings.self, from: Data(json.utf8))
+        XCTAssertFalse(decoded.mergesGroupWindows)
+    }
+
+    func testMergesGroupWindowsSurvivesAppSettingsRoundTrip() throws {
+        var settings = AppSettings(
+            displayMode: .remaining,
+            refreshIntervalSeconds: 600,
+            launchAtLogin: false,
+            menuBarTextEnabled: true,
+            mockEnabled: false
+        )
+        var item = settings.menuBarItem(.compact)
+        item.mergesGroupWindows = true
+        settings.setMenuBarItem(item)
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(decoded.menuBarItem(.compact).mergesGroupWindows)
+    }
 }
