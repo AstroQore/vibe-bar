@@ -85,11 +85,22 @@ final class ServiceStatusController: ObservableObject {
         }
     }
 
+    /// Encode + write off the main actor.
+    ///
+    /// The cache is a few hundred KB of JSON; encoding and writing it inline
+    /// held the main thread on every refresh (and on every login / cookie
+    /// reload that funnels through `refreshAll`) for no benefit — nothing
+    /// waits on the result. The snapshot is captured here so the detached
+    /// task writes the value as of this moment, not whatever the actor's
+    /// state has become by the time it runs.
     private func persist() {
-        do {
-            try ServiceStatusCacheStore.save(snapshotByTool)
-        } catch {
-            // best-effort cache; ignore failures
+        let snapshot = snapshotByTool
+        Task.detached(priority: .utility) {
+            do {
+                try ServiceStatusCacheStore.save(snapshot)
+            } catch {
+                // best-effort cache; ignore failures
+            }
         }
     }
 }

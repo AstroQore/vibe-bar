@@ -105,8 +105,22 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// cached events. This is deliberately separate from `schemaVersion`:
     /// advancing it reparses only AntiGravity databases while preserving
     /// opaque `.pb` RPC results and every other provider's warm cache.
-    public var antigravityDBParserVersion: Int?
+    public var antigravityDBParserVersion: Int? {
+        didSet {
+            if oldValue != antigravityDBParserVersion { dirty = true }
+        }
+    }
     public var entries: [String: FileEntry]
+
+    /// Whether this copy has diverged from what is on disk.
+    ///
+    /// A steady-state scan touches no entry at all — every file is
+    /// unchanged and served from the warm cache — and re-encoding plus
+    /// rewriting a multi-tens-of-MB JSON in that case is pure waste.
+    /// Set by `store` / `prune` / the legacy-key migration, cleared by
+    /// `saveIfDirty`. Not persisted: a freshly decoded cache is by
+    /// definition identical to its file.
+    public private(set) var dirty: Bool = false
 
     public init(
         entries: [String: FileEntry] = [:],
@@ -141,8 +155,9 @@ public struct CostUsageScanCache: Codable, Sendable {
     public mutating func reusable(for path: String, mtime: Date, size: Int64) -> [ParsedEvent]? {
         let key = entryKey(for: path)
         let legacyEntry = entries.removeValue(forKey: path)
-        if let legacyEntry, entries[key] == nil {
-            entries[key] = legacyEntry
+        if let legacyEntry {
+            if entries[key] == nil { entries[key] = legacyEntry }
+            dirty = true
         }
         guard let entry = entries[key] else { return nil }
         if entry.size != size { return nil }
@@ -162,11 +177,14 @@ public struct CostUsageScanCache: Codable, Sendable {
 
     public mutating func store(_ events: [ParsedEvent], for path: String, mtime: Date, size: Int64) {
         entries[entryKey(for: path)] = FileEntry(mtime: mtime, size: size, events: events)
+        dirty = true
     }
 
     public mutating func prune(known: Set<String>) {
         let knownKeys = Set(known.map { entryKey(for: $0) })
+        let before = entries.count
         entries = entries.filter { knownKeys.contains($0.key) }
+        if entries.count != before { dirty = true }
     }
 
     public static func entryKey(for path: String) -> String {
@@ -179,9 +197,22 @@ public struct CostUsageScanCache: Codable, Sendable {
 
     // MARK: - Disk I/O
 
-    /// 64 MB safety cap. The cache for a heavy user with several years of
-    /// Codex / Claude history is usually under 10 MB.
-    private static let maxFileBytes: Int = 64 * 1024 * 1024
+    /// Size past which a cache file is *reported* as unusually large. It is
+    /// deliberately NOT a rejection threshold any more.
+    ///
+    /// It used to be: `load` returned an empty cache above 64 MB. On an
+    /// install with ~3k Claude transcripts the file crosses that on its own
+    /// and the result was a permanent thrash loop — every pass re-parsed
+    /// every transcript (GBs of reads, gigabytes of transient JSON
+    /// allocations) and rewrote the same oversized file, which `load` then
+    /// refused again. A cache is not corrupt just because the user has a lot
+    /// of history, and `save` must never write a file `load` would refuse.
+    static let largeFileWarningBytes: Int = 64 * 1024 * 1024
+    /// Corruption guard, far above any realistic cache. 3k Claude
+    /// transcripts produce ~70 MB; 1 GiB is only reachable by a runaway
+    /// writer or a truncated/garbage file, and decoding one of those would
+    /// cost more than skipping it.
+    static let maxFileBytes: Int = 1024 * 1024 * 1024
     /// v3 adds `ParsedEvent.serviceTier` (Claude fast-tier billing) and
     /// fast-multiplier cost semantics; bumping forces a one-time
     /// re-parse so historical events pick up the new field.
@@ -221,10 +252,19 @@ public struct CostUsageScanCache: Codable, Sendable {
     ) -> CostUsageScanCache {
         let normalizedRetentionDays = retentionDays.map(CostDataSettings.normalizedRetentionDays)
         let url = fileURL(homeDirectory: homeDirectory, tool: tool)
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-           let size = (attrs[.size] as? NSNumber)?.intValue,
-           size > maxFileBytes {
-            return CostUsageScanCache(retentionDays: normalizedRetentionDays)
+        if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize {
+            if size > maxFileBytes {
+                SafeLog.warn(
+                    "CostUsageScanCache discarding implausible cache tool=\(tool.rawValue) bytes=\(size)"
+                )
+                try? FileManager.default.removeItem(at: url)
+                return CostUsageScanCache(retentionDays: normalizedRetentionDays)
+            }
+            if size > largeFileWarningBytes {
+                SafeLog.info(
+                    "CostUsageScanCache large cache tool=\(tool.rawValue) bytes=\(size) — still reused"
+                )
+            }
         }
         guard let data = try? Data(contentsOf: url),
               let cache = try? JSONDecoder().decode(CostUsageScanCache.self, from: data)
@@ -255,10 +295,131 @@ public struct CostUsageScanCache: Codable, Sendable {
         )
     }
 
+    /// Write only when this copy diverged from disk, then mark it clean.
+    /// Callers that hold the cache across passes use this; the unconditional
+    /// `save` stays for tests and one-shot writers.
+    public mutating func saveIfDirty(homeDirectory: String, tool: ToolType) {
+        guard dirty else { return }
+        save(homeDirectory: homeDirectory, tool: tool)
+        dirty = false
+    }
+
     public static func eraseAll(homeDirectory: String) {
         let root = URL(fileURLWithPath: homeDirectory)
             .appendingPathComponent(VibeBarLocalStore.directoryName, isDirectory: true)
             .appendingPathComponent("scan_cache", isDirectory: true)
         try? FileManager.default.removeItem(at: root)
+        CostUsageScanCacheStore.shared.forget()
+    }
+}
+
+/// Process-wide warm copy of the decoded per-tool scan caches.
+///
+/// Decoding `~/.vibebar/scan_cache/<tool>.json` is not cheap once a user has
+/// real history behind them (tens of MB of JSON, hundreds of thousands of
+/// `ParsedEvent`s), and the previous design paid that decode *and* a full
+/// re-encode on every refresh even when not a single session file had
+/// changed. Holding the decoded value here makes the disk read a
+/// once-per-launch cost.
+///
+/// Correctness comes from the file's own identity: the entry records the
+/// (mtime, size) of the cache file as it was after the last read or write,
+/// and a checkout whose stat no longer matches falls back to disk. That
+/// covers a test writing a cache file by hand, another process editing it,
+/// and `eraseAll` deleting it.
+final class CostUsageScanCacheStore: @unchecked Sendable {
+    static let shared = CostUsageScanCacheStore()
+
+    private struct Entry {
+        var cache: CostUsageScanCache
+        var homeDirectory: String
+        var retentionDays: Int?
+        var fileMTime: Date?
+        var fileSize: Int64
+    }
+
+    private let lock = NSLock()
+    /// One slot per tool. Production has exactly one home directory; a test
+    /// pointing the scanner at a temp home simply evicts the previous slot
+    /// instead of accumulating one entry per temp directory.
+    private var entries: [ToolType: Entry] = [:]
+
+    /// The warm cache for `tool`, or a fresh read from disk when there is no
+    /// usable warm copy.
+    func checkout(
+        homeDirectory: String,
+        tool: ToolType,
+        retentionDays: Int?
+    ) -> CostUsageScanCache {
+        let normalized = retentionDays.map(CostDataSettings.normalizedRetentionDays)
+        lock.lock()
+        defer { lock.unlock() }
+        let stat = Self.stat(homeDirectory: homeDirectory, tool: tool)
+        if let entry = entries[tool],
+           entry.homeDirectory == homeDirectory,
+           entry.retentionDays == normalized,
+           entry.fileSize == stat.size,
+           entry.fileMTime == stat.mtime {
+            return entry.cache
+        }
+        let loaded = CostUsageScanCache.load(
+            homeDirectory: homeDirectory,
+            tool: tool,
+            retentionDays: retentionDays
+        )
+        // Re-stat: `load` deletes the file on a schema / retention mismatch.
+        let after = Self.stat(homeDirectory: homeDirectory, tool: tool)
+        entries[tool] = Entry(
+            cache: loaded,
+            homeDirectory: homeDirectory,
+            retentionDays: normalized,
+            fileMTime: after.mtime,
+            fileSize: after.size
+        )
+        return loaded
+    }
+
+    /// Hand the cache back after a pass. `persist: false` keeps the dirty
+    /// flag so an abandoned (cancelled) pass doesn't pay for a full rewrite
+    /// while still keeping the events it did parse.
+    func checkin(
+        _ cache: CostUsageScanCache,
+        homeDirectory: String,
+        tool: ToolType,
+        retentionDays: Int?,
+        persist: Bool = true
+    ) {
+        var cache = cache
+        if persist {
+            cache.saveIfDirty(homeDirectory: homeDirectory, tool: tool)
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        let stat = Self.stat(homeDirectory: homeDirectory, tool: tool)
+        entries[tool] = Entry(
+            cache: cache,
+            homeDirectory: homeDirectory,
+            retentionDays: retentionDays.map(CostDataSettings.normalizedRetentionDays),
+            fileMTime: stat.mtime,
+            fileSize: stat.size
+        )
+    }
+
+    /// Drop every warm copy. Called by the privacy / "clear cost data" erase.
+    func forget() {
+        lock.lock()
+        defer { lock.unlock() }
+        entries.removeAll()
+    }
+
+    private static func stat(homeDirectory: String, tool: ToolType) -> (mtime: Date?, size: Int64) {
+        let url = CostUsageScanCache.fileURL(homeDirectory: homeDirectory, tool: tool)
+        guard let values = try? url.resourceValues(
+            forKeys: [.contentModificationDateKey, .fileSizeKey]
+        ) else {
+            // Sentinel: distinguishable from a real zero-byte file.
+            return (nil, -1)
+        }
+        return (values.contentModificationDate, Int64(values.fileSize ?? 0))
     }
 }

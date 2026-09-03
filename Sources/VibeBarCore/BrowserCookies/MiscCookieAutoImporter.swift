@@ -19,25 +19,41 @@ import Foundation
 ///   isn't already unlocked in this process is simply skipped.
 /// - **Exactly one retry.** A slot that fails, gets a fresh header, and
 ///   fails again surfaces the original credential error. No loops.
+/// - **At most one re-import per provider instance per cooldown.** A slot
+///   that is genuinely signed out stays in a credential-error state, so
+///   without a cooldown every quota refresh — the user can set that to a few
+///   minutes — paid for a full browser walk (SQLite reads across every
+///   profile plus Keychain work) that can only succeed if the user has
+///   meanwhile signed back in.
 ///
 /// The hooks are injectable so the gating and merge logic can be tested
-/// without a Keychain, a browser, or a network.
+/// without a Keychain, a browser, or a network. The cooldown is per
+/// *instance* of this type for the same reason: `shared` is the long-lived
+/// one adapters use, while a test's own importer starts cold.
 public struct MiscCookieAutoImporter: Sendable {
     /// The instance the adapters use.
     public static let shared = MiscCookieAutoImporter()
 
+    /// Six hours. Signing back into a provider in the browser is a
+    /// deliberate, infrequent act; anything shorter is just re-reading the
+    /// same expired jar.
+    public static let defaultReimportCooldown: TimeInterval = 6 * 60 * 60
+
     private let isEnabled: @Sendable () -> Bool
     private let reimport: @Sendable (MiscCookieResolver.Spec, String) async -> Bool
     private let resolve: @Sendable (MiscCookieResolver.Spec, String) -> [MiscCookieResolver.Resolution]
+    private let cooldown: ReimportCooldown
 
     public init(
         isEnabled: (@Sendable () -> Bool)? = nil,
         reimport: (@Sendable (MiscCookieResolver.Spec, String) async -> Bool)? = nil,
-        resolve: (@Sendable (MiscCookieResolver.Spec, String) -> [MiscCookieResolver.Resolution])? = nil
+        resolve: (@Sendable (MiscCookieResolver.Spec, String) -> [MiscCookieResolver.Resolution])? = nil,
+        reimportCooldown: TimeInterval = MiscCookieAutoImporter.defaultReimportCooldown
     ) {
         self.isEnabled = isEnabled ?? Self.defaultIsEnabled
         self.reimport = reimport ?? Self.defaultReimport
         self.resolve = resolve ?? Self.defaultResolve
+        self.cooldown = ReimportCooldown(interval: reimportCooldown)
     }
 
     /// Fan `fetch` out across `resolutions`, and when a slot comes back
@@ -68,6 +84,9 @@ public struct MiscCookieAutoImporter: Sendable {
             fromAccountID: account.id,
             fallbackTool: spec.tool
         )
+        // Claimed before the work, not after: a re-import that finds nothing
+        // is exactly the case we must not repeat every refresh.
+        guard cooldown.claim(tool: spec.tool, instanceID: instanceID) else { return first }
         guard await reimport(spec, instanceID) else { return first }
 
         // Retry only the slots we actually tried and that actually
@@ -141,5 +160,30 @@ public struct MiscCookieAutoImporter: Sendable {
         _ instanceID: String
     ) -> [MiscCookieResolver.Resolution] {
         MiscCookieResolver.resolveAll(for: spec, instanceID: instanceID)
+    }
+}
+
+/// Last re-import attempt per `(tool, instanceID)`. In memory only: the
+/// cooldown exists to keep a permanently signed-out slot from re-reading the
+/// browser on every refresh, and a relaunch is a fine moment to try once more.
+private final class ReimportCooldown: @unchecked Sendable {
+    private let lock = NSLock()
+    private let interval: TimeInterval
+    private var lastAttempt: [String: Date] = [:]
+
+    init(interval: TimeInterval) {
+        self.interval = interval
+    }
+
+    /// Records an attempt and reports whether it may proceed.
+    func claim(tool: ToolType, instanceID: String, now: Date = Date()) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = "\(tool.rawValue)\u{0}\(instanceID)"
+        if let last = lastAttempt[key], now >= last, now.timeIntervalSince(last) < interval {
+            return false
+        }
+        lastAttempt[key] = now
+        return true
     }
 }

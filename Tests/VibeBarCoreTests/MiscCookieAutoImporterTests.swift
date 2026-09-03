@@ -240,6 +240,66 @@ final class MiscCookieAutoImporterTests: XCTestCase {
         XCTAssertEqual(results.first?.outcome.failureError, .network("timeout"))
     }
 
+    /// A slot that is genuinely signed out stays in a credential-error state
+    /// forever. Without a cooldown, every quota refresh paid for another full
+    /// browser + Keychain walk that could not possibly help.
+    func testSecondStaleFetchInsideTheCooldownDoesNotReimportAgain() async {
+        let slotID = UUID()
+        let reimportCalls = Counter()
+        let importer = MiscCookieAutoImporter(
+            isEnabled: { true },
+            reimport: { _, _ in
+                reimportCalls.increment()
+                return true
+            },
+            resolve: { _, _ in
+                [.init(slotID: slotID, header: "kimi-auth=also-stale", sourceLabel: "Chrome")]
+            }
+        )
+
+        for _ in 0..<3 {
+            _ = await importer.gatherSlotResults(
+                spec: spec,
+                account: account,
+                resolutions: [.init(slotID: slotID, header: "kimi-auth=stale", sourceLabel: "Chrome")]
+            ) { _ in
+                throw QuotaError.needsLogin
+            }
+        }
+
+        XCTAssertEqual(reimportCalls.value, 1, "one browser walk per cooldown window, not one per refresh")
+    }
+
+    /// The cooldown is per importer instance, and it is a *cooldown*, not a
+    /// one-shot: once the window passes the next stale fetch tries again.
+    func testReimportRunsAgainAfterTheCooldownWindow() async {
+        let slotID = UUID()
+        let reimportCalls = Counter()
+        let importer = MiscCookieAutoImporter(
+            isEnabled: { true },
+            reimport: { _, _ in
+                reimportCalls.increment()
+                return true
+            },
+            resolve: { _, _ in
+                [.init(slotID: slotID, header: "kimi-auth=also-stale", sourceLabel: "Chrome")]
+            },
+            reimportCooldown: 0
+        )
+
+        for _ in 0..<2 {
+            _ = await importer.gatherSlotResults(
+                spec: spec,
+                account: account,
+                resolutions: [.init(slotID: slotID, header: "kimi-auth=stale", sourceLabel: "Chrome")]
+            ) { _ in
+                throw QuotaError.needsLogin
+            }
+        }
+
+        XCTAssertEqual(reimportCalls.value, 2)
+    }
+
     func testMergeKeepsOrderAndUntouchedSlots() {
         let slotA = UUID()
         let slotB = UUID()

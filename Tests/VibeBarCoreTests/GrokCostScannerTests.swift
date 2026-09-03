@@ -68,6 +68,40 @@ final class GrokCostScannerTests: XCTestCase {
         try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
     }
 
+    /// Discovery walks `<root>/<cwd>/<session>/` directly instead of
+    /// recursively enumerating everything under `~/.grok/sessions`. A layout
+    /// that nests deeper than that must still be found by the fallback.
+    func testDeeperNestingStillFindsUpdatesFiles() async throws {
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let dir = home
+            .appendingPathComponent(".grok", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent("cwd-label", isDirectory: true)
+            .appendingPathComponent("extra-level", isDirectory: true)
+            .appendingPathComponent("session-uuid", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let ms = Int64(now.addingTimeInterval(-3_600).timeIntervalSince1970 * 1000)
+        let line = """
+        {"_meta":{"totalTokens":10000,"agentTimestampMs":\(ms),"updateType":"AvailableCommandsUpdate"},"payload":{}}
+        """
+        try line.write(
+            to: dir.appendingPathComponent("updates.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let snapshot = await CostUsageScanner.scan(
+            tool: .grok,
+            homeDirectory: home.path,
+            now: now
+        )
+        XCTAssertEqual(snapshot?.jsonlFilesFound, 1)
+        XCTAssertEqual(snapshot?.allTimeTokens, 10_000)
+    }
+
     func testEmptyHomeProducesEmptySnapshot() async throws {
         let home = try makeTempHome()
         defer { cleanup(home) }
