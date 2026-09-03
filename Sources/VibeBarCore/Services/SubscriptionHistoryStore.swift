@@ -338,7 +338,13 @@ public actor SubscriptionHistoryStore {
                             bucketId: first.bucketId,
                             windowEnd: point.sampledAt,
                             windowStart: segmentStart,
-                            rawWindowSeconds: nil,
+                            // The window the provider reported while this
+                            // cycle was live. Cursor's weekly bucket has
+                            // reported 13-, 156- and 168-hour windows, and
+                            // ResetsPage sorts a cycle into the sub-daily lane
+                            // or the month calendar by this value; `nil` here
+                            // would file a recovered 13-hour cycle as a day.
+                            rawWindowSeconds: previous.rawWindowSeconds ?? point.rawWindowSeconds,
                             peakUsedPercent: peak,
                             lastUsedPercent: clamp(previous.usedPercent),
                             observationCount: 1,

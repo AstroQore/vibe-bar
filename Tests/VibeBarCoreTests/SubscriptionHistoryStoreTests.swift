@@ -982,6 +982,10 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
         XCTAssertEqual(recovered.completionReason, .legacyTimelineMigration)
         XCTAssertEqual(recovered.peakUsedPercent, 55, accuracy: 0.001)
         XCTAssertEqual(recovered.resetKind, .onSchedule)
+        XCTAssertEqual(
+            recovered.rawWindowSeconds, week,
+            "a recovered cycle must keep the window the provider reported while it was live"
+        )
 
         await store.importLegacyTimeline(points, retentionDays: 3_650)
         cursor = await store.samples(accountId: "acct-test", bucketId: "grok_bot_weekly")
