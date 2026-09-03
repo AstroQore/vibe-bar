@@ -565,6 +565,48 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         tokens.contains { $0.metric?.isTimeBased == true }
     }
 
+    /// Whether the strip shows anything derived from the personal forecast.
+    ///
+    /// Three different things make a strip forecast-driven and only one of
+    /// them is a metric, which is why classifying on metrics alone left the
+    /// other two stale until the next refresh:
+    ///
+    /// - a `.forecastPercent` or `.runsOutIn` **block**,
+    /// - a `.whenForecast` **visibility rule**, which decides whether a block
+    ///   is on screen at all,
+    /// - a **colour** that follows a forecast — either explicitly, or
+    ///   `.automatic` when the app-wide basis *is* the forecast, which is the
+    ///   colour every seeded percentage wears.
+    ///
+    /// `QuotaService` recomputes forecasts on its own five-minute grid, so a
+    /// strip like this needs a tick of its own; the refresh interval can be
+    /// half an hour.
+    public func needsForecastClock(colorBasis: MenuBarColorBasis) -> Bool {
+        tokens.contains { token in
+            if token.metric?.needsForecast == true { return true }
+            if token.visibility.needsForecast { return true }
+            if token.style.color.needsForecast { return true }
+            return colorBasis == .forecast
+                && token.style.color.followsOwnQuota
+                && token.quotaFieldId != nil
+        }
+    }
+
+    /// How often this strip has to be redrawn from nothing but the clock, or
+    /// nil when it never does.
+    ///
+    /// A minute when anything counts down, otherwise the forecast's own
+    /// quantum. A strip that needs both is served by the faster tick — the
+    /// forecast is memoised on its five-minute grid, so the extra passes hit
+    /// the memo rather than recomputing.
+    public func clockInterval(colorBasis: MenuBarColorBasis) -> TimeInterval? {
+        if hasTimeBasedBlock { return MenuBarCountdownClock.interval }
+        if needsForecastClock(colorBasis: colorBasis) {
+            return MenuBarCountdownClock.forecastInterval
+        }
+        return nil
+    }
+
     public func availability(liveFieldIds: Set<String>) -> Availability {
         var result = Availability()
         for token in tokens {
@@ -648,12 +690,15 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             tokens.append(MenuBarToken(kind: .text(item.kind.title), style: .label))
         }
 
-        // The Compact layout butts its entries together with a plain space;
-        // Single line puts a dot between them. Seed whichever the user is
-        // looking at.
-        let separator: MenuBarToken.Kind = item.layout == .compact
-            ? .space
-            : .separator(" · ")
+        // What each renderer actually puts between two entries: Single line
+        // appends a tertiary " · "; Compact appends a plain space; Two rows
+        // packs entries into columns separated by `twoRowColumnSpacing` and
+        // draws no divider at all. Seeding a dot into a Two rows strip put
+        // punctuation on screen that the layout had never drawn, which is the
+        // seed failing at its one job.
+        let separator: MenuBarToken.Kind = item.layout == .singleLine
+            ? .separator(" · ")
+            : .space
 
         for (rowIndex, row) in seedRows(runs, item: item, template: template).enumerated() {
             if rowIndex > 0 { tokens.append(MenuBarToken(kind: .lineBreak)) }
@@ -1612,6 +1657,13 @@ private extension Double {
 public enum MenuBarCountdownClock {
     /// A minute: the finest granularity any menu-bar metric renders.
     public static let interval: TimeInterval = 60
+
+    /// The tick a forecast-driven strip needs. Paced to the forecast's own
+    /// quantization — `QuotaService` floors its clock to five minutes and
+    /// memoises on it, so a faster tick buys nothing but wakeups on the
+    /// menu bar's hot path.
+    public static let forecastInterval: TimeInterval =
+        QuotaService.paceForecastClockQuantumSeconds
 
     /// The next grid point strictly after `date`, on the phase grid anchored
     /// at `anchor`. Strictly after, so a tick that fires a hair early cannot

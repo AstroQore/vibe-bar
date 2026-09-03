@@ -89,6 +89,15 @@ struct MenuBarComposerEditor: View {
         var customLabels: [String: String]
     }
 
+    /// Whether the preview's cached snapshot goes stale on the forecast's own
+    /// clock. The `TimelineView` below only re-plans; forecast values live in
+    /// the snapshot, so they need a rebuild, not a redraw.
+    private var needsForecastClock: Bool {
+        displayedComposition.needsForecastClock(
+            colorBasis: settingsStore.settings.menuBarColorBasis
+        )
+    }
+
     private var snapshotKey: SnapshotKey {
         SnapshotKey(
             requirements: composition.quotaRequirements,
@@ -131,6 +140,24 @@ struct MenuBarComposerEditor: View {
         // teardown to be delivered.
         .onChange(of: selection) { _, _ in pendingCommit.flush() }
         .onDisappear { pendingCommit.flush() }
+        // A forecast percentage, a verdict rule, or a forecast colour goes
+        // stale on `QuotaService`'s five-minute grid, and none of the input
+        // publishers fires in between. Rebuild the cached snapshot on that
+        // grid — gated, so a strip with no forecast in it starts nothing, and
+        // paced to the forecast's own quantum rather than anything faster.
+        .task(id: needsForecastClock) {
+            guard needsForecastClock else { return }
+            while !Task.isCancelled {
+                let next = MenuBarCountdownClock.nextTick(
+                    after: Date(),
+                    anchor: QuotaClockSchedule.anchor,
+                    interval: MenuBarCountdownClock.forecastInterval
+                )
+                try? await Task.sleep(for: .seconds(max(0, next.timeIntervalSinceNow)))
+                guard !Task.isCancelled else { return }
+                rebuildSnapshots()
+            }
+        }
     }
 
     // MARK: - Template

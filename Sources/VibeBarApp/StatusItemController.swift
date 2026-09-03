@@ -132,6 +132,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Nil whenever no visible item shows a time-based block — see
     /// `updateCountdownClock`.
     private var countdownTimer: Timer?
+    /// The cadence `countdownTimer` was armed at, so a strip that changes what
+    /// it needs re-arms instead of keeping the old one.
+    private var countdownInterval: TimeInterval?
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -806,6 +809,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     func applicationWillTerminate() {
         countdownTimer?.invalidate()
         countdownTimer = nil
+        countdownInterval = nil
         miniWindowController.applicationWillTerminate()
         blockWatchdog?.stop()
     }
@@ -838,8 +842,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // Set while walking the items, so the clock decision uses the same
         // effective visibility the drawing does rather than a second copy of
         // the rule.
-        var needsCountdownClock = false
-        defer { updateCountdownClock(needed: needsCountdownClock) }
+        var stripClockInterval: TimeInterval?
+        defer { updateStripClock(interval: stripClockInterval) }
         for kind in MenuBarItemKind.allCases {
             guard let item = statusItem(for: kind) else { continue }
             let itemSettings = settings.menuBarItem(kind)
@@ -854,7 +858,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             // owns its own rows, so it also supersedes `layout`. Everything
             // the field path stores stays untouched underneath it.
             if let composition = itemSettings.composition, composition.isEnabled {
-                if item.isVisible, composition.hasTimeBasedBlock { needsCountdownClock = true }
+                if item.isVisible,
+                   let interval = composition.clockInterval(
+                       colorBasis: settings.menuBarColorBasis
+                   ) {
+                    stripClockInterval = min(stripClockInterval ?? interval, interval)
+                }
                 installComposedContent(
                     composition,
                     in: button,
@@ -893,32 +902,44 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
-    /// Keeps a composed countdown honest between refreshes.
+    /// Keeps a composed strip honest between refreshes.
     ///
     /// The render pipeline is driven by settings, quota, account, cost and
     /// status publishers — none of which is a clock. A strip printing
-    /// `resets in 12m` therefore sat unchanged until the next refresh, which
-    /// on a 30-minute interval means the number is wrong for most of its life
-    /// and can outlive its own deadline.
+    /// `resets in 12m` sat unchanged until the next refresh, which on a
+    /// 30-minute interval means the number is wrong for most of its life; a
+    /// forecast percentage, a verdict rule, or a forecast colour goes stale
+    /// the same way, just on the forecast's own five-minute grid.
     ///
-    /// Armed only while a *visible* item draws a time-based block, so a strip
-    /// of percentages costs no wakeups at all (`AGENTS.md` § 7's idle-CPU
-    /// budget). One shot at a time rather than a repeating 60 s timer, and
-    /// phased on the same process-wide anchor the popover's clocks use — a
-    /// menu bar drifting a few seconds from the popover would show two
-    /// different countdowns for one quota.
-    private func updateCountdownClock(needed: Bool) {
-        guard needed else {
+    /// Armed only while a *visible* item needs it, at the interval that item
+    /// asks for, so a strip of plain percentages costs no wakeups at all
+    /// (`AGENTS.md` § 7's idle-CPU budget). One shot at a time rather than a
+    /// repeating timer, and phased on the same process-wide anchor the
+    /// popover's clocks use — a menu bar drifting a few seconds from the
+    /// popover would show two different countdowns for one quota.
+    private func updateStripClock(interval: TimeInterval?) {
+        guard let interval else {
             countdownTimer?.invalidate()
             countdownTimer = nil
+            countdownInterval = nil
             return
         }
-        // Already armed for a future tick. Re-arming here would let a burst of
-        // quota publishes push the countdown out indefinitely.
-        if let existing = countdownTimer, existing.isValid, existing.fireDate > Date() { return }
+        // Already armed for a future tick at this cadence. Re-arming here
+        // would let a burst of quota publishes push the tick out indefinitely.
+        if let existing = countdownTimer,
+           existing.isValid,
+           existing.fireDate > Date(),
+           countdownInterval == interval {
+            return
+        }
         countdownTimer?.invalidate()
+        countdownInterval = interval
         let timer = Timer(
-            fire: MenuBarCountdownClock.nextTick(after: Date(), anchor: QuotaClockSchedule.anchor),
+            fire: MenuBarCountdownClock.nextTick(
+                after: Date(),
+                anchor: QuotaClockSchedule.anchor,
+                interval: interval
+            ),
             interval: 0,
             repeats: false
         ) { [weak self] _ in

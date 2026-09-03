@@ -1389,6 +1389,149 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(rendered.spokenDescription, "Weekly runs out in 5h")
     }
 
+    // MARK: - A forecast-driven strip is on a clock (review thread 1)
+
+    func testAForecastMetricPutsTheStripOnAClock() {
+        for metric in [MenuBarQuotaMetric.forecastPercent, .runsOutIn] {
+            let composed = composition([
+                MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: metric))
+            ])
+            XCTAssertTrue(
+                composed.needsForecastClock(colorBasis: .actual),
+                "\(metric) reads the forecast"
+            )
+        }
+    }
+
+    func testAForecastVisibilityRulePutsTheStripOnAClock() {
+        // The rule decides whether the block is on screen at all, so a stale
+        // verdict leaves a block wrongly shown or wrongly hidden.
+        let composed = composition([
+            MenuBarToken(
+                kind: .text("!"),
+                visibility: .whenForecast(fieldId: "claude.weekly", verdicts: [.atRisk])
+            )
+        ])
+        XCTAssertTrue(composed.needsForecastClock(colorBasis: .actual))
+    }
+
+    func testAForecastColourPutsTheStripOnAClock() {
+        // Explicit forecast colour...
+        let explicit = composition([
+            MenuBarToken(
+                kind: .quota(fieldId: "claude.weekly", metric: .displayPercent),
+                style: .init(color: .forecast)
+            )
+        ])
+        XCTAssertTrue(explicit.needsForecastClock(colorBasis: .actual))
+
+        // ...and one that follows another quota's forecast.
+        let follows = composition([
+            MenuBarToken(
+                kind: .text("Claude"),
+                style: .init(color: .followsQuota(fieldId: "claude.weekly", basis: .forecast))
+            )
+        ])
+        XCTAssertTrue(follows.needsForecastClock(colorBasis: .actual))
+    }
+
+    func testAnAutomaticColourIsAForecastColourUnderThatBasis() {
+        // What every seeded percentage wears. Under the forecast basis its
+        // colour is the verdict, so the strip is forecast-driven even though
+        // no block names a forecast.
+        let composed = composition([
+            MenuBarToken(
+                kind: .quota(fieldId: "claude.weekly", metric: .displayPercent),
+                style: .percent
+            )
+        ])
+        XCTAssertTrue(composed.needsForecastClock(colorBasis: .forecast))
+        XCTAssertFalse(composed.needsForecastClock(colorBasis: .actual))
+    }
+
+    func testAPlainStripStartsNoClockAtAll() {
+        let composed = composition([
+            MenuBarToken(kind: .logo(.claude)),
+            MenuBarToken(kind: .text("Claude")),
+            MenuBarToken(
+                kind: .quota(fieldId: "claude.weekly", metric: .usedPercent),
+                style: .init(color: .primary)
+            )
+        ])
+        XCTAssertFalse(composed.needsForecastClock(colorBasis: .actual))
+        XCTAssertFalse(composed.hasTimeBasedBlock)
+        XCTAssertNil(composed.clockInterval(colorBasis: .actual))
+    }
+
+    func testTheClockIsPacedToWhateverTheStripActuallyNeeds() {
+        // Forecast only: the forecast's own quantum, because `QuotaService`
+        // floors and memoises on it and a faster tick buys only wakeups.
+        let forecastOnly = composition([
+            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .forecastPercent))
+        ])
+        XCTAssertEqual(
+            forecastOnly.clockInterval(colorBasis: .actual),
+            MenuBarCountdownClock.forecastInterval
+        )
+        XCTAssertEqual(
+            MenuBarCountdownClock.forecastInterval,
+            QuotaService.paceForecastClockQuantumSeconds
+        )
+
+        // Anything counting down needs the minute, and that also covers the
+        // forecast.
+        let countdown = composition([
+            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .resetsIn)),
+            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .forecastPercent))
+        ])
+        XCTAssertEqual(
+            countdown.clockInterval(colorBasis: .actual),
+            MenuBarCountdownClock.interval
+        )
+    }
+
+    // MARK: - Seeds match what each layout draws (review thread 2)
+
+    func testTwoRowsSeedsSpacingNotADivider() {
+        // `twoRowMenuColumns` packs entries into columns separated by
+        // `twoRowColumnSpacing` and draws no divider, so a seeded " · " put
+        // punctuation on screen the layout never had.
+        let seeded = MenuBarComposition.seeded(
+            template: .matching(.twoRows),
+            from: layoutItem(.twoRows)
+        )
+        XCTAssertFalse(
+            seeded.tokens.contains { $0.kind == .separator(" · ") },
+            "Two rows draws no dot between entries"
+        )
+        XCTAssertTrue(seeded.tokens.contains { $0.kind == .space })
+    }
+
+    func testEachLayoutSeedsTheSeparatorItsRendererDraws() {
+        // Single line appends a tertiary " · " between pieces.
+        let single = MenuBarComposition.seeded(
+            template: .matching(.singleLine),
+            from: layoutItem(.singleLine, fields: ["claude.five_hour", "claude.weekly"])
+        )
+        XCTAssertTrue(single.tokens.contains { $0.kind == .separator(" · ") })
+        XCTAssertFalse(single.tokens.contains { $0.kind == .space })
+
+        // Compact appends a plain space.
+        let compact = MenuBarComposition.seeded(
+            template: .matching(.compact),
+            from: layoutItem(.compact, fields: ["claude.five_hour", "claude.weekly"])
+        )
+        XCTAssertTrue(compact.tokens.contains { $0.kind == .space })
+        XCTAssertFalse(compact.tokens.contains { $0.kind == .separator(" · ") })
+
+        // Icon Only draws one glyph and nothing else.
+        let icon = MenuBarComposition.seeded(
+            template: .matching(.iconOnly),
+            from: layoutItem(.iconOnly)
+        )
+        XCTAssertEqual(icon.tokens.map(\.kind), [.appIcon])
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {
