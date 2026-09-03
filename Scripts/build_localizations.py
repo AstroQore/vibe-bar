@@ -35,8 +35,13 @@ to `String(format:)` by mistake.
 
 Usage:
     Scripts/build_localizations.py [--check]
+    Scripts/build_localizations.py --duplicates
 
 --check writes nothing and exits non-zero when the tree is stale.
+--duplicates reports keys whose English says the same thing, using the same
+signature `vibe-bar-i18n`'s validator uses. It reports rather than fails:
+the backlog is being resolved by the extraction into that repository, and
+failing here would block the migration batches still landing.
 """
 import json
 import pathlib
@@ -581,9 +586,146 @@ def render_swift(base: dict, base_args: dict) -> str:
 # ------------------------------------------------------------------- main
 
 
+# ---------------------------------------------------------------------------
+# Reuse signature
+# ---------------------------------------------------------------------------
+
+# When two source values say the same thing. Ported from
+# `vibe-bar-i18n`'s `scripts/validate.py` (a659832), which is where the rule
+# will live once this catalogue is extracted; it is here so the two sides
+# report the same duplicates in the meantime.
+#
+# The subtlety that cost a debugging session there and a wrong count here: a
+# placeholder's *name* is not the sentence, but a plural's *branch text* is.
+# A signature that drops everything inside braces collapses
+# "{n, plural, one {# cycle} other {# cycles}}" and the same shape for files
+# onto one signature, so every plural after the first reads as a duplicate.
+# The walk below tells the two kinds of brace apart.
+
+_PLURAL_ARG = re.compile(r"\A\s*[a-z0-9_]+\s*,\s*(plural|selectordinal)\s*,(.*)\Z", re.S)
+
+
+def _matching_brace(text: str, start: int) -> int:
+    """Index of the `}` closing the `{` at `start`, or len(text) if unbalanced."""
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+    return len(text)
+
+
+def _render(text: str) -> str:
+    """Normalize placeholder arguments; keep every other character."""
+    out = []
+    index = 0
+    while index < len(text):
+        if text[index] != "{":
+            out.append(text[index])
+            index += 1
+            continue
+        close = _matching_brace(text, index)
+        body = text[index + 1:close]
+        plural = _PLURAL_ARG.match(body)
+        if plural:
+            out.append("{}")
+            out.append(plural.group(1))
+            out.append(_render_branches(plural.group(2)))
+        else:
+            out.append("{}")
+        index = close + 1
+    return "".join(out)
+
+
+def _render_branches(text: str) -> str:
+    """Keep selectors and branch text; normalize placeholders nested inside."""
+    out = []
+    index = 0
+    while index < len(text):
+        if text[index] != "{":
+            out.append(text[index])
+            index += 1
+            continue
+        close = _matching_brace(text, index)
+        out.append("{")
+        out.append(_render(text[index + 1:close]))
+        out.append("}")
+        index = close + 1
+    return "".join(out)
+
+
+def reuse_signature(text: str) -> str:
+    return " ".join(_render(text.strip().lower().rstrip(".…")).split())
+
+
+# What `reuse_signature` must and must not collapse, pinned here for the
+# same reason the upstream copy pins them: a check that silently starts
+# matching everything looks exactly like a check that is passing.
+_REUSE_CASES = [
+    ("two plurals differ by their branch text",
+     "{count, plural, one {# cycle} other {# cycles}}",
+     "{count, plural, one {# file} other {# files}}", False),
+    ("a plural's argument name is not the sentence",
+     "{count, plural, one {# cycle} other {# cycles}}",
+     "{n, plural, one {# cycle} other {# cycles}}", True),
+    ("a placeholder name is not the sentence",
+     "{provider} is offline", "{tool} is offline", True),
+    ("a placeholder nested in a branch is still a placeholder",
+     "{n, plural, other {# of {total} used}}",
+     "{m, plural, other {# of {sum} used}}", True),
+    ("but the words around it are not",
+     "{n, plural, other {# of {total} used}}",
+     "{n, plural, other {# of {total} spent}}", False),
+    ("trailing punctuation and case are presentation",
+     "Refresh", "refresh.", True),
+    ("an unbalanced brace degrades instead of raising",
+     "{count, plural, one {# cycle", "{count, plural, one {# cycle", True),
+]
+
+
+def run_reuse_self_test() -> None:
+    for name, left, right, same in _REUSE_CASES:
+        matched = reuse_signature(left) == reuse_signature(right)
+        if matched != same:
+            raise Failure(
+                "reuse signature self-test failed (%s): %r and %r %s"
+                % (name, left, right,
+                   "collapsed but should not" if matched else "differ but should not")
+            )
+
+
+def report_duplicates(entries: dict) -> int:
+    """Two keys whose English says the same thing are one key with two names.
+
+    Reported, not enforced. The catalogue has a backlog of these and they
+    are being resolved by the extraction into `vibe-bar-i18n`, whose
+    `validate.py` fails on them; failing here as well would only block the
+    migration batches that are still landing.
+    """
+    run_reuse_self_test()
+    groups = {}
+    for key, entry in sorted(entries.items()):
+        signature = reuse_signature(entry["value"])
+        if signature:
+            groups.setdefault(signature, []).append(key)
+    duplicates = {s: k for s, k in groups.items() if len(k) > 1}
+    for keys in sorted(duplicates.values()):
+        print("  %r" % entries[keys[0]]["value"])
+        for key in keys:
+            print("      %s" % key)
+    print("%d duplicate group(s) across %d keys" % (len(duplicates), len(entries)))
+    return 0
+
+
 def main() -> None:
     check_only = "--check" in sys.argv[1:]
     base = load(BASE)
+    if "--duplicates" in sys.argv[1:]:
+        check_base(base)
+        sys.exit(report_duplicates(base))
     if not base:
         raise Failure("en.json is empty")
     base_args = check_base(base)
