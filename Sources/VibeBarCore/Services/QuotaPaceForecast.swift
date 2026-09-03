@@ -17,6 +17,20 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         case watch
         case atRisk
         case learning
+
+        /// The verdict in words. On the enum rather than on the forecast so a
+        /// surface that only has a verdict in hand — the menu-bar composer's
+        /// visibility rule, say — reads the same key the quota bar does
+        /// instead of spelling the five words again.
+        public var label: String {
+            switch self {
+            case .enough: L10n.Quota.forecastVerdictEnough
+            case .surplus: L10n.Quota.forecastVerdictSurplus
+            case .watch: L10n.Quota.forecastVerdictWatch
+            case .atRisk: L10n.Quota.forecastVerdictAtRisk
+            case .learning: L10n.Quota.forecastVerdictLearning
+            }
+        }
     }
 
     public enum Confidence: String, Sendable, Equatable {
@@ -74,15 +88,7 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         max(0, projectedRemainingPercent - targetRemainingPercent)
     }
 
-    public var verdictLabel: String {
-        switch verdict {
-        case .enough: L10n.Quota.forecastVerdictEnough
-        case .surplus: L10n.Quota.forecastVerdictSurplus
-        case .watch: L10n.Quota.forecastVerdictWatch
-        case .atRisk: L10n.Quota.forecastVerdictAtRisk
-        case .learning: L10n.Quota.forecastVerdictLearning
-        }
-    }
+    public var verdictLabel: String { verdict.label }
 
     public var confidenceLabel: String {
         switch confidence {

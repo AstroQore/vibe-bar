@@ -572,6 +572,393 @@ extension L10n {
         }
     }
 
+    public enum MenuBar {
+        /// `menuBar.composer.action.duplicate` — Duplicate
+        public static var composerActionDuplicate: String {
+            L10n.string("menuBar.composer.action.duplicate")
+        }
+        /// `menuBar.composer.action.remove` — Remove
+        public static var composerActionRemove: String {
+            L10n.string("menuBar.composer.action.remove")
+        }
+        /// `menuBar.composer.appIcon.detail` — Vibe Bar's own icon — what the Icon Only layout shows.
+        public static var composerAppIconDetail: String {
+            L10n.string("menuBar.composer.appIcon.detail")
+        }
+        /// `menuBar.composer.block.appIcon` — Vibe Bar icon
+        public static var composerBlockAppIcon: String {
+            L10n.string("menuBar.composer.block.appIcon")
+        }
+        /// `menuBar.composer.block.emptyText` — Empty text
+        public static var composerBlockEmptyText: String {
+            L10n.string("menuBar.composer.block.emptyText")
+        }
+        /// `menuBar.composer.block.gap` — Gap
+        public static var composerBlockGap: String {
+            L10n.string("menuBar.composer.block.gap")
+        }
+        /// `menuBar.composer.block.logo` — Logo
+        public static var composerBlockLogo: String {
+            L10n.string("menuBar.composer.block.logo")
+        }
+        /// `menuBar.composer.block.newRow` — New row
+        public static var composerBlockNewRow: String {
+            L10n.string("menuBar.composer.block.newRow")
+        }
+        /// `menuBar.composer.block.quota` — Quota
+        public static var composerBlockQuota: String {
+            L10n.string("menuBar.composer.block.quota")
+        }
+        /// `menuBar.composer.block.separator` — Separator
+        public static var composerBlockSeparator: String {
+            L10n.string("menuBar.composer.block.separator")
+        }
+        /// `menuBar.composer.block.space` — Space
+        public static var composerBlockSpace: String {
+            L10n.string("menuBar.composer.block.space")
+        }
+        /// `menuBar.composer.block.structure` — Structure
+        public static var composerBlockStructure: String {
+            L10n.string("menuBar.composer.block.structure")
+        }
+        /// `menuBar.composer.block.text` — Text
+        public static var composerBlockText: String {
+            L10n.string("menuBar.composer.block.text")
+        }
+        /// `menuBar.composer.blocks` — Blocks — drag to reorder
+        public static var composerBlocks: String {
+            L10n.string("menuBar.composer.blocks")
+        }
+        /// `menuBar.composer.blocks.empty` — No blocks yet. Add one from the palette below.
+        public static var composerBlocksEmpty: String {
+            L10n.string("menuBar.composer.blocks.empty")
+        }
+        /// `menuBar.composer.colour.automatic` — Automatic
+        public static var composerColourAutomatic: String {
+            L10n.string("menuBar.composer.colour.automatic")
+        }
+        /// `menuBar.composer.colour.brand` — Brand
+        public static var composerColourBrand: String {
+            L10n.string("menuBar.composer.colour.brand")
+        }
+        /// `menuBar.composer.colour.fixed` — Custom…
+        public static var composerColourFixed: String {
+            L10n.string("menuBar.composer.colour.fixed")
+        }
+        /// `menuBar.composer.colour.followsQuota` — Follow a quota
+        public static var composerColourFollowsQuota: String {
+            L10n.string("menuBar.composer.colour.followsQuota")
+        }
+        /// `menuBar.composer.colour.forecast` — Forecast
+        public static var composerColourForecast: String {
+            L10n.string("menuBar.composer.colour.forecast")
+        }
+        /// `menuBar.composer.colour.primary` — Primary
+        public static var composerColourPrimary: String {
+            L10n.string("menuBar.composer.colour.primary")
+        }
+        /// `menuBar.composer.colour.secondary` — Secondary
+        public static var composerColourSecondary: String {
+            L10n.string("menuBar.composer.colour.secondary")
+        }
+        /// `menuBar.composer.colour.tertiary` — Tertiary
+        public static var composerColourTertiary: String {
+            L10n.string("menuBar.composer.colour.tertiary")
+        }
+        /// `menuBar.composer.field.colour` — Colour
+        public static var composerFieldColour: String {
+            L10n.string("menuBar.composer.field.colour")
+        }
+        /// `menuBar.composer.field.monospacedDigits` — Monospaced digits
+        public static var composerFieldMonospacedDigits: String {
+            L10n.string("menuBar.composer.field.monospacedDigits")
+        }
+        /// `menuBar.composer.field.monospacedDigitsHelp` — Keeps a changing number from shifting the blocks beside it.
+        public static var composerFieldMonospacedDigitsHelp: String {
+            L10n.string("menuBar.composer.field.monospacedDigitsHelp")
+        }
+        /// `menuBar.composer.field.offlineOption` — {title} (offline)
+        public static func composerFieldOfflineOption(title: String) -> String {
+            L10n.string("menuBar.composer.field.offlineOption", title)
+        }
+        /// `menuBar.composer.field.provider` — Provider
+        public static var composerFieldProvider: String {
+            L10n.string("menuBar.composer.field.provider")
+        }
+        /// `menuBar.composer.field.show` — Show
+        public static var composerFieldShow: String {
+            L10n.string("menuBar.composer.field.show")
+        }
+        /// `menuBar.composer.field.shows` — Shows
+        public static var composerFieldShows: String {
+            L10n.string("menuBar.composer.field.shows")
+        }
+        /// `menuBar.composer.field.size` — Size
+        public static var composerFieldSize: String {
+            L10n.string("menuBar.composer.field.size")
+        }
+        /// `menuBar.composer.field.verdicts` — Verdicts
+        public static var composerFieldVerdicts: String {
+            L10n.string("menuBar.composer.field.verdicts")
+        }
+        /// `menuBar.composer.field.weight` — Weight
+        public static var composerFieldWeight: String {
+            L10n.string("menuBar.composer.field.weight")
+        }
+        /// `menuBar.composer.metric.displayPercent` — Percent (follows setting)
+        public static var composerMetricDisplayPercent: String {
+            L10n.string("menuBar.composer.metric.displayPercent")
+        }
+        /// `menuBar.composer.metric.forecastPercent` — Forecast at reset
+        public static var composerMetricForecastPercent: String {
+            L10n.string("menuBar.composer.metric.forecastPercent")
+        }
+        /// `menuBar.composer.metric.label` — Name
+        public static var composerMetricLabel: String {
+            L10n.string("menuBar.composer.metric.label")
+        }
+        /// `menuBar.composer.metric.pace` — Pace
+        public static var composerMetricPace: String {
+            L10n.string("menuBar.composer.metric.pace")
+        }
+        /// `menuBar.composer.metric.remainingPercent` — Remaining %
+        public static var composerMetricRemainingPercent: String {
+            L10n.string("menuBar.composer.metric.remainingPercent")
+        }
+        /// `menuBar.composer.metric.resetAt` — Resets at
+        public static var composerMetricResetAt: String {
+            L10n.string("menuBar.composer.metric.resetAt")
+        }
+        /// `menuBar.composer.metric.resetsIn` — Resets in
+        public static var composerMetricResetsIn: String {
+            L10n.string("menuBar.composer.metric.resetsIn")
+        }
+        /// `menuBar.composer.metric.runsOutIn` — Runs out in
+        public static var composerMetricRunsOutIn: String {
+            L10n.string("menuBar.composer.metric.runsOutIn")
+        }
+        /// `menuBar.composer.metric.usedPercent` — Used %
+        public static var composerMetricUsedPercent: String {
+            L10n.string("menuBar.composer.metric.usedPercent")
+        }
+        /// `menuBar.composer.mode.custom` — Custom
+        public static var composerModeCustom: String {
+            L10n.string("menuBar.composer.mode.custom")
+        }
+        /// `menuBar.composer.mode.customCaption` — Switching back to Default keeps every block you built — you can return to Custom and find it exactly as you left it.
+        public static var composerModeCustomCaption: String {
+            L10n.string("menuBar.composer.mode.customCaption")
+        }
+        /// `menuBar.composer.mode.default` — Default
+        public static var composerModeDefault: String {
+            L10n.string("menuBar.composer.mode.default")
+        }
+        /// `menuBar.composer.mode.defaultCaption` — Default shows the fields you tick below. Custom lets you build the strip out of blocks: logos, words, and any quota.
+        public static var composerModeDefaultCaption: String {
+            L10n.string("menuBar.composer.mode.defaultCaption")
+        }
+        /// `menuBar.composer.mode.label` — Strip
+        public static var composerModeLabel: String {
+            L10n.string("menuBar.composer.mode.label")
+        }
+        /// `menuBar.composer.newRow.capped` — The menu bar can only draw two rows.
+        public static var composerNewRowCapped: String {
+            L10n.string("menuBar.composer.newRow.capped")
+        }
+        /// `menuBar.composer.newRow.detail` — Ends the first row and starts the second. Give it a rule below to split only when that quota says so.
+        public static var composerNewRowDetail: String {
+            L10n.string("menuBar.composer.newRow.detail")
+        }
+        /// `menuBar.composer.newRow.help` — Split the strip into a second row.
+        public static var composerNewRowHelp: String {
+            L10n.string("menuBar.composer.newRow.help")
+        }
+        /// `menuBar.composer.palette` — Add a block
+        public static var composerPalette: String {
+            L10n.string("menuBar.composer.palette")
+        }
+        /// `menuBar.composer.preview` — Preview
+        public static var composerPreview: String {
+            L10n.string("menuBar.composer.preview")
+        }
+        /// `menuBar.composer.preview.dark` — Dark menu bar preview
+        public static var composerPreviewDark: String {
+            L10n.string("menuBar.composer.preview.dark")
+        }
+        /// `menuBar.composer.preview.empty` — Empty strip
+        public static var composerPreviewEmpty: String {
+            L10n.string("menuBar.composer.preview.empty")
+        }
+        /// `menuBar.composer.preview.grounds` — Light and dark menu bars, side by side — a fixed colour that reads well on one can vanish on the other.
+        public static var composerPreviewGrounds: String {
+            L10n.string("menuBar.composer.preview.grounds")
+        }
+        /// `menuBar.composer.preview.light` — Light menu bar preview
+        public static var composerPreviewLight: String {
+            L10n.string("menuBar.composer.preview.light")
+        }
+        /// `menuBar.composer.preview.twoRowScaling` — Two rows share the menu bar's height, so large sizes are scaled down to fit — the preview scales with them.
+        public static var composerPreviewTwoRowScaling: String {
+            L10n.string("menuBar.composer.preview.twoRowScaling")
+        }
+        /// `menuBar.composer.removeTarget` — Drag here to remove
+        public static var composerRemoveTarget: String {
+            L10n.string("menuBar.composer.removeTarget")
+        }
+        /// `menuBar.composer.rule.always` — Always
+        public static var composerRuleAlways: String {
+            L10n.string("menuBar.composer.rule.always")
+        }
+        /// `menuBar.composer.rule.whenForecast` — When the forecast says
+        public static var composerRuleWhenForecast: String {
+            L10n.string("menuBar.composer.rule.whenForecast")
+        }
+        /// `menuBar.composer.rule.whenRemainingAtMost` — When remaining is at most
+        public static var composerRuleWhenRemainingAtMost: String {
+            L10n.string("menuBar.composer.rule.whenRemainingAtMost")
+        }
+        /// `menuBar.composer.rule.whenUsedAtLeast` — When used is at least
+        public static var composerRuleWhenUsedAtLeast: String {
+            L10n.string("menuBar.composer.rule.whenUsedAtLeast")
+        }
+        /// `menuBar.composer.selected` — Selected block
+        public static var composerSelected: String {
+            L10n.string("menuBar.composer.selected")
+        }
+        /// `menuBar.composer.size.large` — Large
+        public static var composerSizeLarge: String {
+            L10n.string("menuBar.composer.size.large")
+        }
+        /// `menuBar.composer.size.regular` — Regular
+        public static var composerSizeRegular: String {
+            L10n.string("menuBar.composer.size.regular")
+        }
+        /// `menuBar.composer.size.small` — Small
+        public static var composerSizeSmall: String {
+            L10n.string("menuBar.composer.size.small")
+        }
+        /// `menuBar.composer.space.detail` — A gap one space wide. Size changes how wide.
+        public static var composerSpaceDetail: String {
+            L10n.string("menuBar.composer.space.detail")
+        }
+        /// `menuBar.composer.startOver` — Start over from the current strip…
+        public static var composerStartOver: String {
+            L10n.string("menuBar.composer.startOver")
+        }
+        /// `menuBar.composer.startOver.confirm` — Start over
+        public static var composerStartOverConfirm: String {
+            L10n.string("menuBar.composer.startOver.confirm")
+        }
+        /// `menuBar.composer.startOver.confirmMessage` — Every block you arranged is discarded and rebuilt from the default strip.
+        public static var composerStartOverConfirmMessage: String {
+            L10n.string("menuBar.composer.startOver.confirmMessage")
+        }
+        /// `menuBar.composer.startOver.confirmTitle` — Replace your blocks?
+        public static var composerStartOverConfirmTitle: String {
+            L10n.string("menuBar.composer.startOver.confirmTitle")
+        }
+        /// `menuBar.composer.startOver.detail` — Starting over replaces every block with a fresh copy of the default strip. There is no undo.
+        public static var composerStartOverDetail: String {
+            L10n.string("menuBar.composer.startOver.detail")
+        }
+        /// `menuBar.composer.template` — Template
+        public static var composerTemplate: String {
+            L10n.string("menuBar.composer.template")
+        }
+        /// `menuBar.composer.template.compact` — Compact
+        public static var composerTemplateCompact: String {
+            L10n.string("menuBar.composer.template.compact")
+        }
+        /// `menuBar.composer.template.compactDetail` — Tight spacing and a slightly smaller face.
+        public static var composerTemplateCompactDetail: String {
+            L10n.string("menuBar.composer.template.compactDetail")
+        }
+        /// `menuBar.composer.template.roomy` — Roomy
+        public static var composerTemplateRoomy: String {
+            L10n.string("menuBar.composer.template.roomy")
+        }
+        /// `menuBar.composer.template.roomyDetail` — Today's size, with more air between blocks.
+        public static var composerTemplateRoomyDetail: String {
+            L10n.string("menuBar.composer.template.roomyDetail")
+        }
+        /// `menuBar.composer.template.twoRows` — Two rows
+        public static var composerTemplateTwoRows: String {
+            L10n.string("menuBar.composer.template.twoRows")
+        }
+        /// `menuBar.composer.template.twoRowsDetail` — Two stacked rows in one status item.
+        public static var composerTemplateTwoRowsDetail: String {
+            L10n.string("menuBar.composer.template.twoRowsDetail")
+        }
+        /// `menuBar.composer.text.limit` — Blocks longer than {count} characters are cut short with an ellipsis in the bar.
+        public static func composerTextLimit(count: Int) -> String {
+            L10n.string("menuBar.composer.text.limit", count)
+        }
+        /// `menuBar.composer.text.placeholder` — Label
+        public static var composerTextPlaceholder: String {
+            L10n.string("menuBar.composer.text.placeholder")
+        }
+        /// `menuBar.composer.warning.degraded` — This block still draws, but a colour or a rule on it points at a quota that is not being returned right now.
+        public static var composerWarningDegraded: String {
+            L10n.string("menuBar.composer.warning.degraded")
+        }
+        /// `menuBar.composer.warning.missing` — Not answering right now: {fields}
+        public static func composerWarningMissing(fields: String) -> String {
+            L10n.string("menuBar.composer.warning.missing", fields)
+        }
+        /// `menuBar.composer.warning.silent` — This quota is not being returned right now, so this block draws nothing. It stays here and comes back on its own.
+        public static var composerWarningSilent: String {
+            L10n.string("menuBar.composer.warning.silent")
+        }
+        /// `menuBar.composer.weight.medium` — Medium
+        public static var composerWeightMedium: String {
+            L10n.string("menuBar.composer.weight.medium")
+        }
+        /// `menuBar.composer.weight.regular` — Regular
+        public static var composerWeightRegular: String {
+            L10n.string("menuBar.composer.weight.regular")
+        }
+        /// `menuBar.composer.weight.semibold` — Semibold
+        public static var composerWeightSemibold: String {
+            L10n.string("menuBar.composer.weight.semibold")
+        }
+        /// `menuBar.spoken.forecast` — {label} forecast {value} left at reset
+        public static func spokenForecast(label: String, value: String) -> String {
+            L10n.string("menuBar.spoken.forecast", label, value)
+        }
+        /// `menuBar.spoken.pace` — {label} pace {value}
+        public static func spokenPace(label: String, value: String) -> String {
+            L10n.string("menuBar.spoken.pace", label, value)
+        }
+        /// `menuBar.spoken.remaining` — {label} {value} remaining
+        public static func spokenRemaining(label: String, value: String) -> String {
+            L10n.string("menuBar.spoken.remaining", label, value)
+        }
+        /// `menuBar.spoken.resetAt` — {label} resets at {value}
+        public static func spokenResetAt(label: String, value: String) -> String {
+            L10n.string("menuBar.spoken.resetAt", label, value)
+        }
+        /// `menuBar.spoken.resetsIn` — {label} resets in {value}
+        public static func spokenResetsIn(label: String, value: String) -> String {
+            L10n.string("menuBar.spoken.resetsIn", label, value)
+        }
+        /// `menuBar.spoken.runsOutIn` — {label} runs out in {value}
+        public static func spokenRunsOutIn(label: String, value: String) -> String {
+            L10n.string("menuBar.spoken.runsOutIn", label, value)
+        }
+        /// `menuBar.spoken.title` — {kind} quota
+        public static func spokenTitle(kind: String) -> String {
+            L10n.string("menuBar.spoken.title", kind)
+        }
+        /// `menuBar.spoken.titleBody` — {kind} quota: {body}
+        public static func spokenTitleBody(kind: String, body: String) -> String {
+            L10n.string("menuBar.spoken.titleBody", kind, body)
+        }
+        /// `menuBar.spoken.used` — {label} {value} used
+        public static func spokenUsed(label: String, value: String) -> String {
+            L10n.string("menuBar.spoken.used", label, value)
+        }
+    }
+
     public enum Onboarding {
         /// `onboarding.apiKeys.hide` — Hide
         public static var apiKeysHide: String {
@@ -5875,6 +6262,102 @@ extension L10n {
         "error.rateLimited",
         "error.unknown",
         "error.unknownDetail",
+        "menuBar.composer.action.duplicate",
+        "menuBar.composer.action.remove",
+        "menuBar.composer.appIcon.detail",
+        "menuBar.composer.block.appIcon",
+        "menuBar.composer.block.emptyText",
+        "menuBar.composer.block.gap",
+        "menuBar.composer.block.logo",
+        "menuBar.composer.block.newRow",
+        "menuBar.composer.block.quota",
+        "menuBar.composer.block.separator",
+        "menuBar.composer.block.space",
+        "menuBar.composer.block.structure",
+        "menuBar.composer.block.text",
+        "menuBar.composer.blocks",
+        "menuBar.composer.blocks.empty",
+        "menuBar.composer.colour.automatic",
+        "menuBar.composer.colour.brand",
+        "menuBar.composer.colour.fixed",
+        "menuBar.composer.colour.followsQuota",
+        "menuBar.composer.colour.forecast",
+        "menuBar.composer.colour.primary",
+        "menuBar.composer.colour.secondary",
+        "menuBar.composer.colour.tertiary",
+        "menuBar.composer.field.colour",
+        "menuBar.composer.field.monospacedDigits",
+        "menuBar.composer.field.monospacedDigitsHelp",
+        "menuBar.composer.field.offlineOption",
+        "menuBar.composer.field.provider",
+        "menuBar.composer.field.show",
+        "menuBar.composer.field.shows",
+        "menuBar.composer.field.size",
+        "menuBar.composer.field.verdicts",
+        "menuBar.composer.field.weight",
+        "menuBar.composer.metric.displayPercent",
+        "menuBar.composer.metric.forecastPercent",
+        "menuBar.composer.metric.label",
+        "menuBar.composer.metric.pace",
+        "menuBar.composer.metric.remainingPercent",
+        "menuBar.composer.metric.resetAt",
+        "menuBar.composer.metric.resetsIn",
+        "menuBar.composer.metric.runsOutIn",
+        "menuBar.composer.metric.usedPercent",
+        "menuBar.composer.mode.custom",
+        "menuBar.composer.mode.customCaption",
+        "menuBar.composer.mode.default",
+        "menuBar.composer.mode.defaultCaption",
+        "menuBar.composer.mode.label",
+        "menuBar.composer.newRow.capped",
+        "menuBar.composer.newRow.detail",
+        "menuBar.composer.newRow.help",
+        "menuBar.composer.palette",
+        "menuBar.composer.preview",
+        "menuBar.composer.preview.dark",
+        "menuBar.composer.preview.empty",
+        "menuBar.composer.preview.grounds",
+        "menuBar.composer.preview.light",
+        "menuBar.composer.preview.twoRowScaling",
+        "menuBar.composer.removeTarget",
+        "menuBar.composer.rule.always",
+        "menuBar.composer.rule.whenForecast",
+        "menuBar.composer.rule.whenRemainingAtMost",
+        "menuBar.composer.rule.whenUsedAtLeast",
+        "menuBar.composer.selected",
+        "menuBar.composer.size.large",
+        "menuBar.composer.size.regular",
+        "menuBar.composer.size.small",
+        "menuBar.composer.space.detail",
+        "menuBar.composer.startOver",
+        "menuBar.composer.startOver.confirm",
+        "menuBar.composer.startOver.confirmMessage",
+        "menuBar.composer.startOver.confirmTitle",
+        "menuBar.composer.startOver.detail",
+        "menuBar.composer.template",
+        "menuBar.composer.template.compact",
+        "menuBar.composer.template.compactDetail",
+        "menuBar.composer.template.roomy",
+        "menuBar.composer.template.roomyDetail",
+        "menuBar.composer.template.twoRows",
+        "menuBar.composer.template.twoRowsDetail",
+        "menuBar.composer.text.limit",
+        "menuBar.composer.text.placeholder",
+        "menuBar.composer.warning.degraded",
+        "menuBar.composer.warning.missing",
+        "menuBar.composer.warning.silent",
+        "menuBar.composer.weight.medium",
+        "menuBar.composer.weight.regular",
+        "menuBar.composer.weight.semibold",
+        "menuBar.spoken.forecast",
+        "menuBar.spoken.pace",
+        "menuBar.spoken.remaining",
+        "menuBar.spoken.resetAt",
+        "menuBar.spoken.resetsIn",
+        "menuBar.spoken.runsOutIn",
+        "menuBar.spoken.title",
+        "menuBar.spoken.titleBody",
+        "menuBar.spoken.used",
         "onboarding.apiKeys.hide",
         "onboarding.apiKeys.intro",
         "onboarding.apiKeys.setUp",

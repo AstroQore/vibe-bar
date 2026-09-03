@@ -164,7 +164,7 @@ struct MenuBarComposerEditor: View {
 
     private func templateRow(_ composition: MenuBarComposition) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Picker("Template", selection: templateBinding()) {
+            Picker(L10n.MenuBar.composerTemplate, selection: templateBinding()) {
                 ForEach(MenuBarComposition.Template.allCases, id: \.self) { template in
                     Text(template.title).tag(template)
                 }
@@ -180,7 +180,7 @@ struct MenuBarComposerEditor: View {
 
     private func previewRow(_ composition: MenuBarComposition) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            caption("Preview")
+            caption(L10n.MenuBar.composerPreview)
             // A countdown block is wrong a minute later with no new data
             // behind it, and nothing else here invalidates the view. Gated on
             // the strip actually printing one: `QuotaClockSchedule` yields a
@@ -207,12 +207,12 @@ struct MenuBarComposerEditor: View {
                         displayMode: settingsStore.settings.displayMode,
                         highlighted: selection
                     )
-                    Text("Light and dark menu bars, side by side — a fixed colour that reads well on one can vanish on the other.")
+                    Text(L10n.MenuBar.composerPreviewGrounds)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     if plan.rows.filter({ !$0.isEmpty }).count >= 2 {
-                        Text("Two rows share the menu bar's height, so large sizes are scaled down to fit — the preview scales with them.")
+                        Text(L10n.MenuBar.composerPreviewTwoRowScaling)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -229,9 +229,9 @@ struct MenuBarComposerEditor: View {
         availability: MenuBarComposition.Availability
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            caption("Blocks — drag to reorder")
+            caption(L10n.MenuBar.composerBlocks)
             if composition.tokens.isEmpty {
-                Text("No blocks yet. Add one from the palette below.")
+                Text(L10n.MenuBar.composerBlocksEmpty)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
@@ -284,7 +284,7 @@ struct MenuBarComposerEditor: View {
         HStack(spacing: 6) {
             Image(systemName: "trash")
                 .font(.system(size: 10, weight: .semibold))
-            Text("Drag here to remove")
+            Text(L10n.MenuBar.composerRemoveTarget)
                 .font(.caption)
         }
         .foregroundStyle(isOverRemoveTarget ? Color.red : Color.secondary)
@@ -378,30 +378,28 @@ struct MenuBarComposerEditor: View {
             return tool.menuTitle
         case let .text(text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "Empty text" : MenuBarToken.truncated(trimmed)
+            return trimmed.isEmpty ? L10n.MenuBar.composerBlockEmptyText : MenuBarToken.truncated(trimmed)
         case let .quota(fieldId, metric):
             let name = optionsById[fieldId]?.defaultLabel ?? fieldId
             return "\(name) · \(metric.title)"
         case .space:
-            return "Space"
+            return L10n.MenuBar.composerBlockSpace
         case let .separator(separator):
             let trimmed = separator.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "Gap" : trimmed
+            return trimmed.isEmpty ? L10n.MenuBar.composerBlockGap : trimmed
         case .lineBreak:
-            return "New row"
+            return L10n.MenuBar.composerBlockNewRow
         case .appIcon:
-            return "Vibe Bar icon"
+            return L10n.MenuBar.composerBlockAppIcon
         }
     }
 
     private func chipHelp(_ token: MenuBarToken, isSilent: Bool, isDegraded: Bool) -> String {
         if isSilent {
-            return "This quota is not being returned right now, so this block draws nothing. "
-                + "It stays here and comes back on its own."
+            return L10n.MenuBar.composerWarningSilent
         }
         if isDegraded {
-            return "This block still draws, but a colour or a rule on it points at a quota "
-                + "that is not being returned right now."
+            return L10n.MenuBar.composerWarningDegraded
         }
         return chipTitle(token)
     }
@@ -410,9 +408,9 @@ struct MenuBarComposerEditor: View {
 
     private func paletteRow(_ composition: MenuBarComposition) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            caption("Add a block")
-            paletteGroup("Logo") {
-                paletteButton(title: "Vibe Bar", icon: "menubar.rectangle") {
+            caption(L10n.MenuBar.composerPalette)
+            paletteGroup(L10n.MenuBar.composerBlockLogo) {
+                paletteButton(title: L10n.MenuBar.composerBlockAppIcon, icon: "menubar.rectangle") {
                     add(MenuBarToken(kind: .appIcon, style: .label))
                 }
                 ForEach(paletteLogoTools, id: \.self) { tool in
@@ -421,12 +419,12 @@ struct MenuBarComposerEditor: View {
                     }
                 }
             }
-            paletteGroup("Text") {
-                paletteButton(title: "Text", icon: "textformat") {
-                    add(MenuBarToken(kind: .text("Label"), style: .label))
+            paletteGroup(L10n.MenuBar.composerBlockText) {
+                paletteButton(title: L10n.MenuBar.composerBlockText, icon: "textformat") {
+                    add(MenuBarToken(kind: .text(L10n.MenuBar.composerTextPlaceholder), style: .label))
                 }
             }
-            paletteGroup("Quota") {
+            paletteGroup(L10n.MenuBar.composerBlockQuota) {
                 ForEach(paletteQuotaSections) { section in
                     Menu {
                         ForEach(section.options) { option in
@@ -447,14 +445,14 @@ struct MenuBarComposerEditor: View {
                     .fixedSize()
                 }
             }
-            paletteGroup("Structure") {
-                paletteButton(title: "Space", icon: "space") {
+            paletteGroup(L10n.MenuBar.composerBlockStructure) {
+                paletteButton(title: L10n.MenuBar.composerBlockSpace, icon: "space") {
                     add(MenuBarToken(kind: .space))
                 }
-                paletteButton(title: "Separator", icon: "line.diagonal") {
+                paletteButton(title: L10n.MenuBar.composerBlockSeparator, icon: "line.diagonal") {
                     add(MenuBarToken(kind: .separator(" · "), style: .divider))
                 }
-                paletteButton(title: "New row", icon: "return") {
+                paletteButton(title: L10n.MenuBar.composerBlockNewRow, icon: "return") {
                     add(MenuBarToken(kind: .lineBreak))
                 }
                 // Two rows is all the status item can draw; offering a third
@@ -462,8 +460,8 @@ struct MenuBarComposerEditor: View {
                 .disabled(!composition.canAddLineBreak)
                 .help(
                     composition.canAddLineBreak
-                        ? "Split the strip into a second row."
-                        : "The menu bar can only draw two rows."
+                        ? L10n.MenuBar.composerNewRowHelp
+                        : L10n.MenuBar.composerNewRowCapped
                 )
             }
         }
@@ -520,30 +518,36 @@ struct MenuBarComposerEditor: View {
         if let id = selection, let token = composition.token(id) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    caption("Selected block")
+                    caption(L10n.MenuBar.composerSelected)
                     Spacer(minLength: 8)
-                    Button("Duplicate") { mutate { $0.duplicate(id) } }
+                    Button(L10n.MenuBar.composerActionDuplicate) { mutate { $0.duplicate(id) } }
                         .buttonStyle(.vibeBar)
-                    Button("Remove") {
+                    Button(L10n.MenuBar.composerActionRemove) {
                         selection = nil
                         mutate { $0.remove(id) }
                     }
                     .buttonStyle(.vibeBar)
                 }
                 if availability.silentTokenIds.contains(id) {
-                    warning("This quota is not being returned right now, so the block draws nothing. Nothing is broken — it reappears when the provider answers again.")
+                    warning(L10n.MenuBar.composerWarningSilent)
                 } else if availability.degradedTokenIds.contains(id) {
-                    warning("A colour or rule on this block points at a quota that is not being returned right now, so that part falls back.")
+                    warning(L10n.MenuBar.composerWarningDegraded)
                 }
                 MenuBarTokenInspector(
                     token: token,
                     options: sortedOptions,
                     liveFieldIds: liveFieldIds,
                     pending: pendingCommit,
-                    apply: { updated in
+                    // A control hands over the field it owns, not a copy of
+                    // the whole block. `mutate` flushes a queued write first,
+                    // so the edit lands on the token as it is *after* that
+                    // flush — a whole-token replacement built before it would
+                    // carry pre-flush state and silently undo the colour or
+                    // threshold the user had just set.
+                    apply: { change in
                         mutate { composed in
-                            guard let index = composed.index(of: updated.id) else { return }
-                            composed.tokens[index] = updated
+                            guard let index = composed.index(of: id) else { return }
+                            change(&composed.tokens[index])
                         }
                     }
                 )
@@ -577,30 +581,28 @@ struct MenuBarComposerEditor: View {
     private func footerRow(availability: MenuBarComposition.Availability) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if !availability.isFullyAvailable {
-                warning(
-                    "Not answering right now: "
-                        + availability.missingFieldIds
-                            .map { optionsById[$0]?.title ?? $0 }
-                            .joined(separator: ", ")
-                        + "."
-                )
+                warning(L10n.MenuBar.composerWarningMissing(
+                    fields: availability.missingFieldIds
+                        .map { optionsById[$0]?.title ?? $0 }
+                        .joined(separator: ", ")
+                ))
             }
             HStack(spacing: 8) {
-                Button("Start over from the current strip…") { isConfirmingReseed = true }
+                Button(L10n.MenuBar.composerStartOver) { isConfirmingReseed = true }
                     .buttonStyle(.vibeBar)
                 Spacer(minLength: 8)
             }
-            Text("Starting over replaces every block with a fresh copy of the default strip. There is no undo.")
+            Text(L10n.MenuBar.composerStartOverDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .confirmationDialog(
-            "Replace your blocks?",
+            L10n.MenuBar.composerStartOverConfirmTitle,
             isPresented: $isConfirmingReseed,
             titleVisibility: .visible
         ) {
-            Button("Start over", role: .destructive) {
+            Button(L10n.MenuBar.composerStartOverConfirm, role: .destructive) {
                 selection = nil
                 var updated = item
                 updated.reseedComposedStrip(
@@ -610,9 +612,9 @@ struct MenuBarComposerEditor: View {
                 )
                 settingsStore.settings.setMenuBarItem(updated)
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.Common.cancel, role: .cancel) {}
         } message: {
-            Text("Every block you arranged is discarded and rebuilt from the default strip.")
+            Text(L10n.MenuBar.composerStartOverConfirmMessage)
         }
     }
 
@@ -638,8 +640,12 @@ struct MenuBarComposerEditor: View {
         dragComposition = nil
         draggedTokenId = nil
         var updated = item
-        var composed = updated.composition ?? MenuBarComposition(isEnabled: true)
+        let before = updated.composition
+        var composed = before ?? MenuBarComposition(isEnabled: true)
         change(&composed)
+        // An edit that changes nothing must not publish settings: every write
+        // fans out to every subscriber and re-renders the menu bar.
+        guard composed != before else { return }
         updated.composition = composed
         settingsStore.settings.setMenuBarItem(updated)
     }
@@ -763,7 +769,8 @@ private struct MenuBarTokenInspector: View {
     let options: [MenuBarFieldOption]
     let liveFieldIds: Set<String>
     let pending: MenuBarPendingCommit
-    let apply: (MenuBarToken) -> Void
+    /// Hands over *what changed*, applied to the stored token at write time.
+    let apply: (@escaping (inout MenuBarToken) -> Void) -> Void
 
     @State private var fixedDraft: Color = .accentColor
 
@@ -778,14 +785,14 @@ private struct MenuBarTokenInspector: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .automatic: return "Automatic"
-            case .forecast: return "Forecast"
-            case .followsQuota: return "Follow a quota"
-            case .brand: return "Brand"
-            case .primary: return "Primary"
-            case .secondary: return "Secondary"
-            case .tertiary: return "Tertiary"
-            case .fixed: return "Custom…"
+            case .automatic: return L10n.MenuBar.composerColourAutomatic
+            case .forecast: return L10n.MenuBar.composerColourForecast
+            case .followsQuota: return L10n.MenuBar.composerColourFollowsQuota
+            case .brand: return L10n.MenuBar.composerColourBrand
+            case .primary: return L10n.MenuBar.composerColourPrimary
+            case .secondary: return L10n.MenuBar.composerColourSecondary
+            case .tertiary: return L10n.MenuBar.composerColourTertiary
+            case .fixed: return L10n.MenuBar.composerColourFixed
             }
         }
     }
@@ -795,10 +802,10 @@ private struct MenuBarTokenInspector: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .always: return "Always"
-            case .whenUsedAtLeast: return "When used is at least"
-            case .whenRemainingAtMost: return "When remaining is at most"
-            case .whenForecast: return "When the forecast says"
+            case .always: return L10n.MenuBar.composerRuleAlways
+            case .whenUsedAtLeast: return L10n.MenuBar.composerRuleWhenUsedAtLeast
+            case .whenRemainingAtMost: return L10n.MenuBar.composerRuleWhenRemainingAtMost
+            case .whenForecast: return L10n.MenuBar.composerRuleWhenForecast
             }
         }
     }
@@ -813,17 +820,17 @@ private struct MenuBarTokenInspector: View {
                 Divider().opacity(0.4)
                 colorControls
                 HStack(spacing: 10) {
-                    Picker("Size", selection: sizeBinding) {
+                    Picker(L10n.MenuBar.composerFieldSize, selection: sizeBinding) {
                         ForEach(MenuBarToken.SizeStep.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
                     .frame(width: 150)
-                    Picker("Weight", selection: weightBinding) {
+                    Picker(L10n.MenuBar.composerFieldWeight, selection: weightBinding) {
                         ForEach(MenuBarToken.Weight.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
                     .frame(width: 165)
                 }
-                Toggle("Monospaced digits", isOn: monospacedBinding)
-                    .help("Keeps a changing number from shifting the blocks beside it.")
+                Toggle(L10n.MenuBar.composerFieldMonospacedDigits, isOn: monospacedBinding)
+                    .help(L10n.MenuBar.composerFieldMonospacedDigitsHelp)
             }
             Divider().opacity(0.4)
             ruleControls
@@ -838,9 +845,9 @@ private struct MenuBarTokenInspector: View {
         switch token.kind {
         case let .text(text):
             HStack(spacing: 8) {
-                Text("Text").frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.composerBlockText).frame(width: 62, alignment: .leading)
                 DebouncedSettingsTextField(
-                    prompt: "Label",
+                    prompt: L10n.MenuBar.composerBlockText,
                     value: Binding(
                         get: { text },
                         set: { value in
@@ -852,12 +859,12 @@ private struct MenuBarTokenInspector: View {
                     )
                 )
             }
-            Text("Blocks longer than \(MenuBarToken.maximumTextLength) characters are cut short with an ellipsis in the bar.")
+            Text(L10n.MenuBar.composerTextLimit(count: MenuBarToken.maximumTextLength))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         case let .separator(separator):
             HStack(spacing: 8) {
-                Text("Separator").frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.composerBlockSeparator).frame(width: 62, alignment: .leading)
                 DebouncedSettingsTextField(
                     prompt: " · ",
                     value: Binding(
@@ -868,13 +875,13 @@ private struct MenuBarTokenInspector: View {
             }
         case let .quota(fieldId, metric):
             HStack(spacing: 8) {
-                Text("Quota").frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
                 fieldPicker(selected: fieldId) { newId in
                     update { $0.kind = .quota(fieldId: newId, metric: metric) }
                 }
             }
             HStack(spacing: 8) {
-                Text("Shows").frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.composerFieldShows).frame(width: 62, alignment: .leading)
                 Picker("", selection: Binding(
                     get: { metric },
                     set: { value in update { $0.kind = .quota(fieldId: fieldId, metric: value) } }
@@ -886,7 +893,7 @@ private struct MenuBarTokenInspector: View {
             }
         case let .logo(tool):
             HStack(spacing: 8) {
-                Text("Provider").frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.composerFieldProvider).frame(width: 62, alignment: .leading)
                 Picker("", selection: Binding(
                     get: { tool },
                     set: { value in update { $0.kind = .logo(value) } }
@@ -901,16 +908,16 @@ private struct MenuBarTokenInspector: View {
         case .space:
             // Nothing to configure until the model grows a width; size and
             // colour below still apply to the gap it draws.
-            Text("A gap one space wide. Size changes how wide.")
+            Text(L10n.MenuBar.composerSpaceDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         case .lineBreak:
-            Text("Ends the first row and starts the second. Give it a rule below to split only when that quota says so.")
+            Text(L10n.MenuBar.composerNewRowDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         case .appIcon:
-            Text("Vibe Bar's own icon — what the Icon Only layout shows.")
+            Text(L10n.MenuBar.composerAppIconDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -921,7 +928,7 @@ private struct MenuBarTokenInspector: View {
     @ViewBuilder
     private var colorControls: some View {
         HStack(spacing: 8) {
-            Text("Colour").frame(width: 62, alignment: .leading)
+            Text(L10n.MenuBar.composerFieldColour).frame(width: 62, alignment: .leading)
             Picker("", selection: colorChoiceBinding) {
                 ForEach(ColorChoice.allCases) { Text($0.title).tag($0) }
             }
@@ -1003,10 +1010,10 @@ private struct MenuBarTokenInspector: View {
             Int((resolved.blueComponent * 255).rounded())
         )
         guard current != hex else { return }
-        var updated = token
-        updated.style.color = .hex(hex)
         let apply = self.apply
-        pending.schedule { apply(updated) }
+        // Only the colour: a queued write that carried a whole token would
+        // undo whatever else the user changed while it sat in the queue.
+        pending.schedule { apply { $0.style.color = .hex(hex) } }
     }
 
     // MARK: Rule
@@ -1014,7 +1021,7 @@ private struct MenuBarTokenInspector: View {
     @ViewBuilder
     private var ruleControls: some View {
         HStack(spacing: 8) {
-            Text("Show").frame(width: 62, alignment: .leading)
+            Text(L10n.MenuBar.composerFieldShow).frame(width: 62, alignment: .leading)
             Picker("", selection: ruleChoiceBinding) {
                 ForEach(RuleChoice.allCases) { Text($0.title).tag($0) }
             }
@@ -1035,14 +1042,14 @@ private struct MenuBarTokenInspector: View {
             }
         case let .whenForecast(fieldId, verdicts):
             HStack(spacing: 8) {
-                Text("Quota").frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
                 fieldPicker(selected: fieldId) { newId in
                     update { $0.visibility = .whenForecast(fieldId: newId, verdicts: verdicts) }
                 }
                 Spacer(minLength: 0)
             }
             HStack(spacing: 6) {
-                Text("Verdicts").frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.composerFieldVerdicts).frame(width: 62, alignment: .leading)
                 ForEach(Self.selectableVerdicts, id: \.self) { verdict in
                     Toggle(Self.verdictTitle(verdict), isOn: Binding(
                         get: { verdicts.contains(verdict) },
@@ -1070,14 +1077,10 @@ private struct MenuBarTokenInspector: View {
     private static let selectableVerdicts: [QuotaPaceForecast.Verdict] =
         [.atRisk, .watch, .enough, .surplus]
 
+    /// The verdict names the forecast surfaces already use, so the composer's
+    /// checkboxes cannot drift from the quota bar's wording.
     private static func verdictTitle(_ verdict: QuotaPaceForecast.Verdict) -> String {
-        switch verdict {
-        case .atRisk: return "At risk"
-        case .watch: return "Watch"
-        case .enough: return "Enough"
-        case .surplus: return "Surplus"
-        case .learning: return "Learning"
-        }
+        verdict.label
     }
 
     private func thresholdRow(
@@ -1086,7 +1089,7 @@ private struct MenuBarTokenInspector: View {
         set: @escaping (String, Double) -> Void
     ) -> some View {
         HStack(spacing: 8) {
-            Text("Quota").frame(width: 62, alignment: .leading)
+            Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
             fieldPicker(selected: fieldId) { newId in set(newId, percent) }
             DebouncedPercentStepper(percent: percent, pending: pending) { set(fieldId, $0) }
             Spacer(minLength: 0)
@@ -1104,7 +1107,9 @@ private struct MenuBarTokenInspector: View {
                 Text(selected).tag(selected)
             }
             ForEach(options) { option in
-                Text(liveFieldIds.contains(option.id) ? option.title : "\(option.title) (offline)")
+                Text(liveFieldIds.contains(option.id)
+                    ? option.title
+                    : L10n.MenuBar.composerFieldOfflineOption(title: option.title))
                     .tag(option.id)
             }
         }
@@ -1114,11 +1119,8 @@ private struct MenuBarTokenInspector: View {
 
     // MARK: Bindings
 
-    private func update(_ change: (inout MenuBarToken) -> Void) {
-        var updated = token
-        change(&updated)
-        guard updated != token else { return }
-        apply(updated)
+    private func update(_ change: @escaping (inout MenuBarToken) -> Void) {
+        apply(change)
     }
 
     private var colorChoiceBinding: Binding<ColorChoice> {
@@ -1266,7 +1268,7 @@ private struct DebouncedPercentStepper: View {
 
     var body: some View {
         Stepper(value: $draft, in: 0...100, step: 5) {
-            Text("\(Int(draft.rounded()))%")
+            Text(L10n.Common.percent(value: Int(draft.rounded())))
                 .font(.system(size: 11.5).monospacedDigit())
                 .frame(width: 42, alignment: .trailing)
         }

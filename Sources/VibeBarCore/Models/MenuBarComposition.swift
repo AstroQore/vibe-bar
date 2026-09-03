@@ -44,15 +44,15 @@ public enum MenuBarQuotaMetric: String, Codable, CaseIterable, Sendable {
     /// Menu label for the stage-2 editor's metric picker.
     public var title: String {
         switch self {
-        case .usedPercent: return "Used %"
-        case .remainingPercent: return "Remaining %"
-        case .displayPercent: return "Percent (follows setting)"
-        case .pace: return "Pace"
-        case .forecastPercent: return "Forecast at reset"
-        case .resetsIn: return "Resets in"
-        case .resetAt: return "Resets at"
-        case .runsOutIn: return "Runs out in"
-        case .label: return "Name"
+        case .usedPercent: return L10n.MenuBar.composerMetricUsedPercent
+        case .remainingPercent: return L10n.MenuBar.composerMetricRemainingPercent
+        case .displayPercent: return L10n.MenuBar.composerMetricDisplayPercent
+        case .pace: return L10n.MenuBar.composerMetricPace
+        case .forecastPercent: return L10n.MenuBar.composerMetricForecastPercent
+        case .resetsIn: return L10n.MenuBar.composerMetricResetsIn
+        case .resetAt: return L10n.MenuBar.composerMetricResetAt
+        case .runsOutIn: return L10n.MenuBar.composerMetricRunsOutIn
+        case .label: return L10n.MenuBar.composerMetricLabel
         }
     }
 
@@ -196,9 +196,9 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
 
         public var title: String {
             switch self {
-            case .small: return "Small"
-            case .regular: return "Regular"
-            case .large: return "Large"
+            case .small: return L10n.MenuBar.composerSizeSmall
+            case .regular: return L10n.MenuBar.composerSizeRegular
+            case .large: return L10n.MenuBar.composerSizeLarge
             }
         }
     }
@@ -210,9 +210,9 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
 
         public var title: String {
             switch self {
-            case .regular: return "Regular"
-            case .medium: return "Medium"
-            case .semibold: return "Semibold"
+            case .regular: return L10n.MenuBar.composerWeightRegular
+            case .medium: return L10n.MenuBar.composerWeightMedium
+            case .semibold: return L10n.MenuBar.composerWeightSemibold
             }
         }
     }
@@ -319,17 +319,17 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
 
         public var title: String {
             switch self {
-            case .compact: return "Compact"
-            case .roomy: return "Roomy"
-            case .twoColumn: return "Two rows"
+            case .compact: return L10n.MenuBar.composerTemplateCompact
+            case .roomy: return L10n.MenuBar.composerTemplateRoomy
+            case .twoColumn: return L10n.MenuBar.composerTemplateTwoRows
             }
         }
 
         public var detail: String {
             switch self {
-            case .compact: return "Tight spacing and a slightly smaller face."
-            case .roomy: return "Today's size, with more air between blocks."
-            case .twoColumn: return "Two stacked rows in one status item."
+            case .compact: return L10n.MenuBar.composerTemplateCompactDetail
+            case .roomy: return L10n.MenuBar.composerTemplateRoomyDetail
+            case .twoColumn: return L10n.MenuBar.composerTemplateTwoRowsDetail
             }
         }
 
@@ -781,7 +781,12 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     ) -> String {
         let custom = customLabels[field.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let custom, !custom.isEmpty { return custom }
-        return field.defaultLabel
+        // Through the naming seam: "5 Hours" and "Weekly" are generic window
+        // words a Chinese reader has no reason to meet, while "Sonnet" or
+        // "Codex Spark" is a name that comes back untouched. Seeding the raw
+        // contract label would have put English in the middle of a Chinese
+        // strip from the first switch to Custom.
+        return QuotaGroupLabelLocalizer.display(field.defaultLabel)
     }
 
     // MARK: Codable
@@ -1281,7 +1286,9 @@ public extension MenuBarComposition {
     }
 
     private static func percent(_ value: Double) -> String {
-        "\(Int(value.rounded()))%"
+        // Through the shared seam rather than a local "%": the sign's place is
+        // a language's decision, and `common.percent` is where that is made.
+        L10n.Common.percent(value: Int(value.rounded()))
     }
 
     private static func spokenClause(
@@ -1290,25 +1297,30 @@ public extension MenuBarComposition {
         quota: MenuBarQuotaSnapshot,
         displayMode: DisplayMode
     ) -> String {
+        // One key per sentence, with the label and the figure as named
+        // placeholders: Chinese does not put the verb where English does, so a
+        // clause assembled by concatenation would come out wrong.
         switch metric {
         case .label:
             return value
         case .usedPercent:
-            return "\(quota.label) \(value) used"
+            return L10n.MenuBar.spokenUsed(label: quota.label, value: value)
         case .remainingPercent:
-            return "\(quota.label) \(value) remaining"
+            return L10n.MenuBar.spokenRemaining(label: quota.label, value: value)
         case .displayPercent:
-            return "\(quota.label) \(value) \(displayMode == .used ? "used" : "remaining")"
+            return displayMode == .used
+                ? L10n.MenuBar.spokenUsed(label: quota.label, value: value)
+                : L10n.MenuBar.spokenRemaining(label: quota.label, value: value)
         case .pace:
-            return "\(quota.label) pace \(value)"
+            return L10n.MenuBar.spokenPace(label: quota.label, value: value)
         case .forecastPercent:
-            return "\(quota.label) forecast \(value) left at reset"
+            return L10n.MenuBar.spokenForecast(label: quota.label, value: value)
         case .resetsIn:
-            return "\(quota.label) resets in \(value)"
+            return L10n.MenuBar.spokenResetsIn(label: quota.label, value: value)
         case .resetAt:
-            return "\(quota.label) resets at \(value)"
+            return L10n.MenuBar.spokenResetAt(label: quota.label, value: value)
         case .runsOutIn:
-            return "\(quota.label) runs out in \(value)"
+            return L10n.MenuBar.spokenRunsOutIn(label: quota.label, value: value)
         }
     }
 
@@ -1723,5 +1735,36 @@ public enum MenuBarStripGeometry {
     public static func cellWidth(runWidths: [Double], gap: Double) -> Double {
         guard !runWidths.isEmpty else { return 0 }
         return runWidths.reduce(0, +) + gap * Double(runWidths.count - 1)
+    }
+
+    /// Past this a glyph, rather than the type, decides a two-row band's
+    /// height.
+    public static let maximumTwoRowGlyphSide: Double = 12
+
+    /// The glyph box for a block drawn at `fontSize` in a strip of
+    /// `rowCount` rows.
+    ///
+    /// One decision for three drawing paths — the status item's single-row
+    /// text attachment, its two-row rasterizer, and the Settings preview —
+    /// which each used to carry their own arithmetic and agreed only by
+    /// coincidence, until they stopped: a `.large` block previewed at the
+    /// 12pt cap while the bar drew it at roughly 16.
+    ///
+    /// The two shapes really are different and both are kept. A one-row strip
+    /// has the whole bar and grows with its type; the two-row rasterizer has
+    /// a fixed band per row, so a glyph that outgrew it would be the thing
+    /// that forced the whole strip to shrink.
+    public static func glyphSide(fontSize: Double, rowCount: Int) -> Double {
+        rowCount >= 2
+            ? twoRowGlyphSide(fontSize: fontSize)
+            : singleRowGlyphSide(fontSize: fontSize)
+    }
+
+    public static func singleRowGlyphSide(fontSize: Double) -> Double {
+        (fontSize + 3).rounded()
+    }
+
+    public static func twoRowGlyphSide(fontSize: Double) -> Double {
+        Swift.min((fontSize + 1).rounded(), maximumTwoRowGlyphSide)
     }
 }

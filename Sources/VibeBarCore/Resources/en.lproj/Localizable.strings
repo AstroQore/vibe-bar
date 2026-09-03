@@ -407,6 +407,294 @@
 /* QuotaError: unclassified failure; reason is the underlying message, untranslated */
 "error.unknownDetail" = "Error: %1$@";
 
+/* Button copying the selected block. */
+"menuBar.composer.action.duplicate" = "Duplicate";
+
+/* Button deleting the selected block. */
+"menuBar.composer.action.remove" = "Remove";
+
+/* What the app-icon block shows. */
+"menuBar.composer.appIcon.detail" = "Vibe Bar's own icon — what the Icon Only layout shows.";
+
+/* A block showing the app's own icon. */
+"menuBar.composer.block.appIcon" = "Vibe Bar icon";
+
+/* Chip label for a text block with nothing typed in it. */
+"menuBar.composer.block.emptyText" = "Empty text";
+
+/* Chip label for a separator block with nothing typed in it. */
+"menuBar.composer.block.gap" = "Gap";
+
+/* A block showing a provider's brand mark. */
+"menuBar.composer.block.logo" = "Logo";
+
+/* A block that ends one row and starts the next. */
+"menuBar.composer.block.newRow" = "New row";
+
+/* A block showing a number read from a quota. */
+"menuBar.composer.block.quota" = "Quota";
+
+/* A block that draws a divider the user chose. */
+"menuBar.composer.block.separator" = "Separator";
+
+/* A block that draws blank space. */
+"menuBar.composer.block.space" = "Space";
+
+/* Palette group holding spacing and row blocks. */
+"menuBar.composer.block.structure" = "Structure";
+
+/* A block showing words the user typed. */
+"menuBar.composer.block.text" = "Text";
+
+/* Caption over the reorderable list of blocks. */
+"menuBar.composer.blocks" = "Blocks — drag to reorder";
+
+/* Shown when the strip has no blocks. */
+"menuBar.composer.blocks.empty" = "No blocks yet. Add one from the palette below.";
+
+/* Colour choice: whatever the strip would use on its own. */
+"menuBar.composer.colour.automatic" = "Automatic";
+
+/* Colour choice: a provider's brand colour. */
+"menuBar.composer.colour.brand" = "Brand";
+
+/* Colour choice: a colour the user picks. Opens a colour well. */
+"menuBar.composer.colour.fixed" = "Custom…";
+
+/* Colour choice: track another quota's colour. */
+"menuBar.composer.colour.followsQuota" = "Follow a quota";
+
+/* Colour choice: the quota's forecast verdict colour. */
+"menuBar.composer.colour.forecast" = "Forecast";
+
+/* Colour choice: the menu bar's ordinary text colour. */
+"menuBar.composer.colour.primary" = "Primary";
+
+/* Colour choice: a quieter text colour. */
+"menuBar.composer.colour.secondary" = "Secondary";
+
+/* Colour choice: the quietest text colour. */
+"menuBar.composer.colour.tertiary" = "Tertiary";
+
+/* Picker choosing a block's colour. */
+"menuBar.composer.field.colour" = "Colour";
+
+/* Toggle keeping digits the same width. */
+"menuBar.composer.field.monospacedDigits" = "Monospaced digits";
+
+/* Why monospaced digits matter. */
+"menuBar.composer.field.monospacedDigitsHelp" = "Keeps a changing number from shifting the blocks beside it.";
+
+/* A quota in a picker that is not currently being returned. Title is the quota's name. */
+"menuBar.composer.field.offlineOption" = "%1$@ (offline)";
+
+/* Picker choosing which provider's logo a block shows. */
+"menuBar.composer.field.provider" = "Provider";
+
+/* Picker choosing when a block is on screen. */
+"menuBar.composer.field.show" = "Show";
+
+/* Picker choosing which number a quota block prints. */
+"menuBar.composer.field.shows" = "Shows";
+
+/* Picker choosing a block's type size. */
+"menuBar.composer.field.size" = "Size";
+
+/* Checkboxes choosing which forecast verdicts show a block. */
+"menuBar.composer.field.verdicts" = "Verdicts";
+
+/* Picker choosing a block's type weight. */
+"menuBar.composer.field.weight" = "Weight";
+
+/* Quota metric: whichever percentage the app-wide Used/Remaining setting selects. */
+"menuBar.composer.metric.displayPercent" = "Percent (follows setting)";
+
+/* Quota metric: the projected figure when the quota refills. */
+"menuBar.composer.metric.forecastPercent" = "Forecast at reset";
+
+/* Quota metric: the quota's own name. */
+"menuBar.composer.metric.label" = "Name";
+
+/* Quota metric: distance from the linear expectation. */
+"menuBar.composer.metric.pace" = "Pace";
+
+/* Quota metric: the remaining percentage. */
+"menuBar.composer.metric.remainingPercent" = "Remaining %";
+
+/* Quota metric: the wall-clock time of the refill. */
+"menuBar.composer.metric.resetAt" = "Resets at";
+
+/* Quota metric: countdown to the refill. */
+"menuBar.composer.metric.resetsIn" = "Resets in";
+
+/* Quota metric: countdown to projected exhaustion. */
+"menuBar.composer.metric.runsOutIn" = "Runs out in";
+
+/* Quota metric: the used percentage. */
+"menuBar.composer.metric.usedPercent" = "Used %";
+
+/* Segment: the strip the user assembles out of blocks. */
+"menuBar.composer.mode.custom" = "Custom";
+
+/* Caption under the mode picker while Custom is selected; reassures that switching back is not destructive. */
+"menuBar.composer.mode.customCaption" = "Switching back to Default keeps every block you built — you can return to Custom and find it exactly as you left it.";
+
+/* Segment: the field-list strip the app has always drawn. */
+"menuBar.composer.mode.default" = "Default";
+
+/* Caption under the mode picker while Default is selected. */
+"menuBar.composer.mode.defaultCaption" = "Default shows the fields you tick below. Custom lets you build the strip out of blocks: logos, words, and any quota.";
+
+/* Segmented control choosing how the menu-bar strip is built. */
+"menuBar.composer.mode.label" = "Strip";
+
+/* Tooltip on the New row palette button once both rows are used. */
+"menuBar.composer.newRow.capped" = "The menu bar can only draw two rows.";
+
+/* What a new-row block does, and that it accepts a rule. */
+"menuBar.composer.newRow.detail" = "Ends the first row and starts the second. Give it a rule below to split only when that quota says so.";
+
+/* Tooltip on the New row palette button when a second row is still available. */
+"menuBar.composer.newRow.help" = "Split the strip into a second row.";
+
+/* Caption over the list of blocks that can be added. */
+"menuBar.composer.palette" = "Add a block";
+
+/* Caption over the live preview of the composed strip. */
+"menuBar.composer.preview" = "Preview";
+
+/* Accessibility label for the dark-background preview. */
+"menuBar.composer.preview.dark" = "Dark menu bar preview";
+
+/* Accessibility label for a preview with nothing to draw. */
+"menuBar.composer.preview.empty" = "Empty strip";
+
+/* Explains why the preview is shown twice. */
+"menuBar.composer.preview.grounds" = "Light and dark menu bars, side by side — a fixed colour that reads well on one can vanish on the other.";
+
+/* Accessibility label for the light-background preview. */
+"menuBar.composer.preview.light" = "Light menu bar preview";
+
+/* Explains that a two-row strip is scaled to fit the menu bar's height. */
+"menuBar.composer.preview.twoRowScaling" = "Two rows share the menu bar's height, so large sizes are scaled down to fit — the preview scales with them.";
+
+/* Drop target that deletes the dragged block. */
+"menuBar.composer.removeTarget" = "Drag here to remove";
+
+/* Visibility rule: the block is always shown. */
+"menuBar.composer.rule.always" = "Always";
+
+/* Visibility rule: show only for chosen forecast verdicts. */
+"menuBar.composer.rule.whenForecast" = "When the forecast says";
+
+/* Visibility rule: show once a quota's remaining percentage falls to a threshold. */
+"menuBar.composer.rule.whenRemainingAtMost" = "When remaining is at most";
+
+/* Visibility rule: show once a quota's used percentage reaches a threshold. */
+"menuBar.composer.rule.whenUsedAtLeast" = "When used is at least";
+
+/* Caption over the controls for the selected block. */
+"menuBar.composer.selected" = "Selected block";
+
+/* Type size choice. */
+"menuBar.composer.size.large" = "Large";
+
+/* Type size choice. */
+"menuBar.composer.size.regular" = "Regular";
+
+/* Type size choice. */
+"menuBar.composer.size.small" = "Small";
+
+/* What a space block does. */
+"menuBar.composer.space.detail" = "A gap one space wide. Size changes how wide.";
+
+/* Button rebuilding every block from the default strip. */
+"menuBar.composer.startOver" = "Start over from the current strip…";
+
+/* Destructive button in the confirmation dialog. */
+"menuBar.composer.startOver.confirm" = "Start over";
+
+/* Body of the confirmation dialog. */
+"menuBar.composer.startOver.confirmMessage" = "Every block you arranged is discarded and rebuilt from the default strip.";
+
+/* Title of the confirmation dialog. */
+"menuBar.composer.startOver.confirmTitle" = "Replace your blocks?";
+
+/* Warns that starting over cannot be undone. */
+"menuBar.composer.startOver.detail" = "Starting over replaces every block with a fresh copy of the default strip. There is no undo.";
+
+/* Picker choosing a starting set of spacing and type sizes. */
+"menuBar.composer.template" = "Template";
+
+/* Template name. */
+"menuBar.composer.template.compact" = "Compact";
+
+/* What the Compact template does. */
+"menuBar.composer.template.compactDetail" = "Tight spacing and a slightly smaller face.";
+
+/* Template name. */
+"menuBar.composer.template.roomy" = "Roomy";
+
+/* What the Roomy template does. */
+"menuBar.composer.template.roomyDetail" = "Today's size, with more air between blocks.";
+
+/* Template name: two stacked rows. */
+"menuBar.composer.template.twoRows" = "Two rows";
+
+/* What the Two rows template does. */
+"menuBar.composer.template.twoRowsDetail" = "Two stacked rows in one status item.";
+
+/* Explains that long text is cut short in the bar. Count is the character ceiling. */
+"menuBar.composer.text.limit" = "Blocks longer than %1$lld characters are cut short with an ellipsis in the bar.";
+
+/* Starting content of a newly added text block, before the user types over it. */
+"menuBar.composer.text.placeholder" = "Label";
+
+/* Shown on a block whose colour or rule points at a quota that is not being returned. */
+"menuBar.composer.warning.degraded" = "This block still draws, but a colour or a rule on it points at a quota that is not being returned right now.";
+
+/* Lists the quotas that are not answering. Fields is a comma-separated list of quota names. */
+"menuBar.composer.warning.missing" = "Not answering right now: %1$@";
+
+/* Shown on a block whose quota is not being returned. */
+"menuBar.composer.warning.silent" = "This quota is not being returned right now, so this block draws nothing. It stays here and comes back on its own.";
+
+/* Type weight choice. */
+"menuBar.composer.weight.medium" = "Medium";
+
+/* Type weight choice. */
+"menuBar.composer.weight.regular" = "Regular";
+
+/* Type weight choice. */
+"menuBar.composer.weight.semibold" = "Semibold";
+
+/* One quota's projection spoken aloud. */
+"menuBar.spoken.forecast" = "%1$@ forecast %2$@ left at reset";
+
+/* One quota's pace spoken aloud; value is a signed percentage. */
+"menuBar.spoken.pace" = "%1$@ pace %2$@";
+
+/* One quota spoken aloud, remaining rather than used. */
+"menuBar.spoken.remaining" = "%1$@ %2$@ remaining";
+
+/* One quota's refill time spoken aloud. */
+"menuBar.spoken.resetAt" = "%1$@ resets at %2$@";
+
+/* One quota's refill countdown spoken aloud. */
+"menuBar.spoken.resetsIn" = "%1$@ resets in %2$@";
+
+/* One quota's exhaustion countdown spoken aloud. */
+"menuBar.spoken.runsOutIn" = "%1$@ runs out in %2$@";
+
+/* Accessibility label for the status item when nothing is being shown. Kind names the item. */
+"menuBar.spoken.title" = "%1$@ quota";
+
+/* Accessibility label and tooltip for the status item. Body lists each quota in words. */
+"menuBar.spoken.titleBody" = "%1$@ quota: %2$@";
+
+/* One quota spoken aloud. Label is the quota's name, value an already-formatted percentage. */
+"menuBar.spoken.used" = "%1$@ %2$@ used";
+
 /* Button that folds a provider's credential form away */
 "onboarding.apiKeys.hide" = "Hide";
 

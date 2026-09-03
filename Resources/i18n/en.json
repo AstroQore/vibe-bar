@@ -598,6 +598,393 @@
     "comment": "QuotaError: unclassified failure; reason is the underlying message, untranslated",
     "value": "Error: {reason}"
   },
+  "menuBar.composer.action.duplicate": {
+    "comment": "Button copying the selected block.",
+    "value": "Duplicate"
+  },
+  "menuBar.composer.action.remove": {
+    "comment": "Button deleting the selected block.",
+    "value": "Remove"
+  },
+  "menuBar.composer.appIcon.detail": {
+    "comment": "What the app-icon block shows.",
+    "value": "Vibe Bar's own icon — what the Icon Only layout shows."
+  },
+  "menuBar.composer.block.appIcon": {
+    "comment": "A block showing the app's own icon.",
+    "value": "Vibe Bar icon"
+  },
+  "menuBar.composer.block.emptyText": {
+    "comment": "Chip label for a text block with nothing typed in it.",
+    "value": "Empty text"
+  },
+  "menuBar.composer.block.gap": {
+    "comment": "Chip label for a separator block with nothing typed in it.",
+    "value": "Gap"
+  },
+  "menuBar.composer.block.logo": {
+    "comment": "A block showing a provider's brand mark.",
+    "value": "Logo"
+  },
+  "menuBar.composer.block.newRow": {
+    "comment": "A block that ends one row and starts the next.",
+    "value": "New row"
+  },
+  "menuBar.composer.block.quota": {
+    "comment": "A block showing a number read from a quota.",
+    "value": "Quota"
+  },
+  "menuBar.composer.block.separator": {
+    "comment": "A block that draws a divider the user chose.",
+    "value": "Separator"
+  },
+  "menuBar.composer.block.space": {
+    "comment": "A block that draws blank space.",
+    "value": "Space"
+  },
+  "menuBar.composer.block.structure": {
+    "comment": "Palette group holding spacing and row blocks.",
+    "value": "Structure"
+  },
+  "menuBar.composer.block.text": {
+    "comment": "A block showing words the user typed.",
+    "value": "Text"
+  },
+  "menuBar.composer.blocks": {
+    "comment": "Caption over the reorderable list of blocks.",
+    "value": "Blocks — drag to reorder"
+  },
+  "menuBar.composer.blocks.empty": {
+    "comment": "Shown when the strip has no blocks.",
+    "value": "No blocks yet. Add one from the palette below."
+  },
+  "menuBar.composer.colour.automatic": {
+    "comment": "Colour choice: whatever the strip would use on its own.",
+    "value": "Automatic"
+  },
+  "menuBar.composer.colour.brand": {
+    "comment": "Colour choice: a provider's brand colour.",
+    "value": "Brand"
+  },
+  "menuBar.composer.colour.fixed": {
+    "comment": "Colour choice: a colour the user picks. Opens a colour well.",
+    "value": "Custom…"
+  },
+  "menuBar.composer.colour.followsQuota": {
+    "comment": "Colour choice: track another quota's colour.",
+    "value": "Follow a quota"
+  },
+  "menuBar.composer.colour.forecast": {
+    "comment": "Colour choice: the quota's forecast verdict colour.",
+    "value": "Forecast"
+  },
+  "menuBar.composer.colour.primary": {
+    "comment": "Colour choice: the menu bar's ordinary text colour.",
+    "value": "Primary"
+  },
+  "menuBar.composer.colour.secondary": {
+    "comment": "Colour choice: a quieter text colour.",
+    "value": "Secondary"
+  },
+  "menuBar.composer.colour.tertiary": {
+    "comment": "Colour choice: the quietest text colour.",
+    "value": "Tertiary"
+  },
+  "menuBar.composer.field.colour": {
+    "comment": "Picker choosing a block's colour.",
+    "value": "Colour"
+  },
+  "menuBar.composer.field.monospacedDigits": {
+    "comment": "Toggle keeping digits the same width.",
+    "value": "Monospaced digits"
+  },
+  "menuBar.composer.field.monospacedDigitsHelp": {
+    "comment": "Why monospaced digits matter.",
+    "value": "Keeps a changing number from shifting the blocks beside it."
+  },
+  "menuBar.composer.field.offlineOption": {
+    "comment": "A quota in a picker that is not currently being returned. Title is the quota's name.",
+    "value": "{title} (offline)"
+  },
+  "menuBar.composer.field.provider": {
+    "comment": "Picker choosing which provider's logo a block shows.",
+    "value": "Provider"
+  },
+  "menuBar.composer.field.show": {
+    "comment": "Picker choosing when a block is on screen.",
+    "value": "Show"
+  },
+  "menuBar.composer.field.shows": {
+    "comment": "Picker choosing which number a quota block prints.",
+    "value": "Shows"
+  },
+  "menuBar.composer.field.size": {
+    "comment": "Picker choosing a block's type size.",
+    "value": "Size"
+  },
+  "menuBar.composer.field.verdicts": {
+    "comment": "Checkboxes choosing which forecast verdicts show a block.",
+    "value": "Verdicts"
+  },
+  "menuBar.composer.field.weight": {
+    "comment": "Picker choosing a block's type weight.",
+    "value": "Weight"
+  },
+  "menuBar.composer.metric.displayPercent": {
+    "comment": "Quota metric: whichever percentage the app-wide Used/Remaining setting selects.",
+    "value": "Percent (follows setting)"
+  },
+  "menuBar.composer.metric.forecastPercent": {
+    "comment": "Quota metric: the projected figure when the quota refills.",
+    "value": "Forecast at reset"
+  },
+  "menuBar.composer.metric.label": {
+    "comment": "Quota metric: the quota's own name.",
+    "value": "Name"
+  },
+  "menuBar.composer.metric.pace": {
+    "comment": "Quota metric: distance from the linear expectation.",
+    "value": "Pace"
+  },
+  "menuBar.composer.metric.remainingPercent": {
+    "comment": "Quota metric: the remaining percentage.",
+    "value": "Remaining %"
+  },
+  "menuBar.composer.metric.resetAt": {
+    "comment": "Quota metric: the wall-clock time of the refill.",
+    "value": "Resets at"
+  },
+  "menuBar.composer.metric.resetsIn": {
+    "comment": "Quota metric: countdown to the refill.",
+    "value": "Resets in"
+  },
+  "menuBar.composer.metric.runsOutIn": {
+    "comment": "Quota metric: countdown to projected exhaustion.",
+    "value": "Runs out in"
+  },
+  "menuBar.composer.metric.usedPercent": {
+    "comment": "Quota metric: the used percentage.",
+    "value": "Used %"
+  },
+  "menuBar.composer.mode.custom": {
+    "comment": "Segment: the strip the user assembles out of blocks.",
+    "value": "Custom"
+  },
+  "menuBar.composer.mode.customCaption": {
+    "comment": "Caption under the mode picker while Custom is selected; reassures that switching back is not destructive.",
+    "value": "Switching back to Default keeps every block you built — you can return to Custom and find it exactly as you left it."
+  },
+  "menuBar.composer.mode.default": {
+    "comment": "Segment: the field-list strip the app has always drawn.",
+    "value": "Default"
+  },
+  "menuBar.composer.mode.defaultCaption": {
+    "comment": "Caption under the mode picker while Default is selected.",
+    "value": "Default shows the fields you tick below. Custom lets you build the strip out of blocks: logos, words, and any quota."
+  },
+  "menuBar.composer.mode.label": {
+    "comment": "Segmented control choosing how the menu-bar strip is built.",
+    "value": "Strip"
+  },
+  "menuBar.composer.newRow.capped": {
+    "comment": "Tooltip on the New row palette button once both rows are used.",
+    "value": "The menu bar can only draw two rows."
+  },
+  "menuBar.composer.newRow.detail": {
+    "comment": "What a new-row block does, and that it accepts a rule.",
+    "value": "Ends the first row and starts the second. Give it a rule below to split only when that quota says so."
+  },
+  "menuBar.composer.newRow.help": {
+    "comment": "Tooltip on the New row palette button when a second row is still available.",
+    "value": "Split the strip into a second row."
+  },
+  "menuBar.composer.palette": {
+    "comment": "Caption over the list of blocks that can be added.",
+    "value": "Add a block"
+  },
+  "menuBar.composer.preview": {
+    "comment": "Caption over the live preview of the composed strip.",
+    "value": "Preview"
+  },
+  "menuBar.composer.preview.dark": {
+    "comment": "Accessibility label for the dark-background preview.",
+    "value": "Dark menu bar preview"
+  },
+  "menuBar.composer.preview.empty": {
+    "comment": "Accessibility label for a preview with nothing to draw.",
+    "value": "Empty strip"
+  },
+  "menuBar.composer.preview.grounds": {
+    "comment": "Explains why the preview is shown twice.",
+    "value": "Light and dark menu bars, side by side — a fixed colour that reads well on one can vanish on the other."
+  },
+  "menuBar.composer.preview.light": {
+    "comment": "Accessibility label for the light-background preview.",
+    "value": "Light menu bar preview"
+  },
+  "menuBar.composer.preview.twoRowScaling": {
+    "comment": "Explains that a two-row strip is scaled to fit the menu bar's height.",
+    "value": "Two rows share the menu bar's height, so large sizes are scaled down to fit — the preview scales with them."
+  },
+  "menuBar.composer.removeTarget": {
+    "comment": "Drop target that deletes the dragged block.",
+    "value": "Drag here to remove"
+  },
+  "menuBar.composer.rule.always": {
+    "comment": "Visibility rule: the block is always shown.",
+    "value": "Always"
+  },
+  "menuBar.composer.rule.whenForecast": {
+    "comment": "Visibility rule: show only for chosen forecast verdicts.",
+    "value": "When the forecast says"
+  },
+  "menuBar.composer.rule.whenRemainingAtMost": {
+    "comment": "Visibility rule: show once a quota's remaining percentage falls to a threshold.",
+    "value": "When remaining is at most"
+  },
+  "menuBar.composer.rule.whenUsedAtLeast": {
+    "comment": "Visibility rule: show once a quota's used percentage reaches a threshold.",
+    "value": "When used is at least"
+  },
+  "menuBar.composer.selected": {
+    "comment": "Caption over the controls for the selected block.",
+    "value": "Selected block"
+  },
+  "menuBar.composer.size.large": {
+    "comment": "Type size choice.",
+    "value": "Large"
+  },
+  "menuBar.composer.size.regular": {
+    "comment": "Type size choice.",
+    "value": "Regular"
+  },
+  "menuBar.composer.size.small": {
+    "comment": "Type size choice.",
+    "value": "Small"
+  },
+  "menuBar.composer.space.detail": {
+    "comment": "What a space block does.",
+    "value": "A gap one space wide. Size changes how wide."
+  },
+  "menuBar.composer.startOver": {
+    "comment": "Button rebuilding every block from the default strip.",
+    "value": "Start over from the current strip…"
+  },
+  "menuBar.composer.startOver.confirm": {
+    "comment": "Destructive button in the confirmation dialog.",
+    "value": "Start over"
+  },
+  "menuBar.composer.startOver.confirmMessage": {
+    "comment": "Body of the confirmation dialog.",
+    "value": "Every block you arranged is discarded and rebuilt from the default strip."
+  },
+  "menuBar.composer.startOver.confirmTitle": {
+    "comment": "Title of the confirmation dialog.",
+    "value": "Replace your blocks?"
+  },
+  "menuBar.composer.startOver.detail": {
+    "comment": "Warns that starting over cannot be undone.",
+    "value": "Starting over replaces every block with a fresh copy of the default strip. There is no undo."
+  },
+  "menuBar.composer.template": {
+    "comment": "Picker choosing a starting set of spacing and type sizes.",
+    "value": "Template"
+  },
+  "menuBar.composer.template.compact": {
+    "comment": "Template name.",
+    "value": "Compact"
+  },
+  "menuBar.composer.template.compactDetail": {
+    "comment": "What the Compact template does.",
+    "value": "Tight spacing and a slightly smaller face."
+  },
+  "menuBar.composer.template.roomy": {
+    "comment": "Template name.",
+    "value": "Roomy"
+  },
+  "menuBar.composer.template.roomyDetail": {
+    "comment": "What the Roomy template does.",
+    "value": "Today's size, with more air between blocks."
+  },
+  "menuBar.composer.template.twoRows": {
+    "comment": "Template name: two stacked rows.",
+    "value": "Two rows"
+  },
+  "menuBar.composer.template.twoRowsDetail": {
+    "comment": "What the Two rows template does.",
+    "value": "Two stacked rows in one status item."
+  },
+  "menuBar.composer.text.limit": {
+    "comment": "Explains that long text is cut short in the bar. Count is the character ceiling.",
+    "value": "Blocks longer than {count} characters are cut short with an ellipsis in the bar.",
+    "args": {
+      "count": "int"
+    }
+  },
+  "menuBar.composer.text.placeholder": {
+    "comment": "Starting content of a newly added text block, before the user types over it.",
+    "value": "Label"
+  },
+  "menuBar.composer.warning.degraded": {
+    "comment": "Shown on a block whose colour or rule points at a quota that is not being returned.",
+    "value": "This block still draws, but a colour or a rule on it points at a quota that is not being returned right now."
+  },
+  "menuBar.composer.warning.missing": {
+    "comment": "Lists the quotas that are not answering. Fields is a comma-separated list of quota names.",
+    "value": "Not answering right now: {fields}"
+  },
+  "menuBar.composer.warning.silent": {
+    "comment": "Shown on a block whose quota is not being returned.",
+    "value": "This quota is not being returned right now, so this block draws nothing. It stays here and comes back on its own."
+  },
+  "menuBar.composer.weight.medium": {
+    "comment": "Type weight choice.",
+    "value": "Medium"
+  },
+  "menuBar.composer.weight.regular": {
+    "comment": "Type weight choice.",
+    "value": "Regular"
+  },
+  "menuBar.composer.weight.semibold": {
+    "comment": "Type weight choice.",
+    "value": "Semibold"
+  },
+  "menuBar.spoken.forecast": {
+    "comment": "One quota's projection spoken aloud.",
+    "value": "{label} forecast {value} left at reset"
+  },
+  "menuBar.spoken.pace": {
+    "comment": "One quota's pace spoken aloud; value is a signed percentage.",
+    "value": "{label} pace {value}"
+  },
+  "menuBar.spoken.remaining": {
+    "comment": "One quota spoken aloud, remaining rather than used.",
+    "value": "{label} {value} remaining"
+  },
+  "menuBar.spoken.resetAt": {
+    "comment": "One quota's refill time spoken aloud.",
+    "value": "{label} resets at {value}"
+  },
+  "menuBar.spoken.resetsIn": {
+    "comment": "One quota's refill countdown spoken aloud.",
+    "value": "{label} resets in {value}"
+  },
+  "menuBar.spoken.runsOutIn": {
+    "comment": "One quota's exhaustion countdown spoken aloud.",
+    "value": "{label} runs out in {value}"
+  },
+  "menuBar.spoken.title": {
+    "comment": "Accessibility label for the status item when nothing is being shown. Kind names the item.",
+    "value": "{kind} quota"
+  },
+  "menuBar.spoken.titleBody": {
+    "comment": "Accessibility label and tooltip for the status item. Body lists each quota in words.",
+    "value": "{kind} quota: {body}"
+  },
+  "menuBar.spoken.used": {
+    "comment": "One quota spoken aloud. Label is the quota's name, value an already-formatted percentage.",
+    "value": "{label} {value} used"
+  },
   "onboarding.apiKeys.hide": {
     "comment": "Button that folds a provider's credential form away",
     "value": "Hide"

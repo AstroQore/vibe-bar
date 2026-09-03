@@ -17,7 +17,22 @@ enum MenuBarStripMetrics {
     static let twoRowLineSpacing: CGFloat = -2
     static let twoRowVerticalPadding: CGFloat = 1
     /// Past this it is the glyph, not the type, that sets the row height.
-    static let maximumGlyphSide: CGFloat = 12
+    static let maximumGlyphSide = CGFloat(MenuBarStripGeometry.maximumTwoRowGlyphSide)
+
+    /// The glyph box every drawing path asks for — the arithmetic lives in
+    /// `MenuBarStripGeometry` so it is one decision with tests, not three that
+    /// agree by coincidence.
+    static func glyphSide(fontSize: CGFloat, rowCount: Int) -> CGFloat {
+        CGFloat(MenuBarStripGeometry.glyphSide(fontSize: Double(fontSize), rowCount: rowCount))
+    }
+
+    static func singleRowGlyphSide(fontSize: CGFloat) -> CGFloat {
+        CGFloat(MenuBarStripGeometry.singleRowGlyphSide(fontSize: Double(fontSize)))
+    }
+
+    static func twoRowGlyphSide(fontSize: CGFloat) -> CGFloat {
+        CGFloat(MenuBarStripGeometry.twoRowGlyphSide(fontSize: Double(fontSize)))
+    }
     /// System text occupies roughly this much vertical space per point of
     /// font size. Only used to *estimate* the preview's height; the status
     /// item measures its real attributed strings.
@@ -368,6 +383,12 @@ struct MenuBarStripView: View {
     /// selection is visible in the preview too.
     var highlighted: UUID?
 
+    /// Rows the strip actually draws — the same count the status item uses to
+    /// pick its face and its glyph box.
+    private var drawnRowCount: Int {
+        plan.rows.reduce(0) { $0 + ($1.isEmpty ? 0 : 1) }
+    }
+
     var body: some View {
         let rows = plan.rows.filter { !$0.isEmpty }
         Group {
@@ -384,7 +405,11 @@ struct MenuBarStripView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(plan.spokenDescription.isEmpty ? "Empty strip" : plan.spokenDescription)
+        .accessibilityLabel(
+            plan.spokenDescription.isEmpty
+                ? L10n.MenuBar.composerPreviewEmpty
+                : plan.spokenDescription
+        )
     }
 
     private func rowView(_ row: MenuBarRenderRow) -> some View {
@@ -414,7 +439,12 @@ struct MenuBarStripView: View {
             if let glyph = token.glyph {
                 MenuBarStripGlyph(
                     glyph: glyph,
-                    side: min(size + 1, MenuBarStripMetrics.maximumGlyphSide),
+                    // Whatever the bar will use for this many rows, not a
+                    // preview-only cap.
+                    side: MenuBarStripMetrics.glyphSide(
+                        fontSize: size,
+                        rowCount: drawnRowCount
+                    ),
                     paint: paint
                 )
             } else if let text = token.text {
@@ -539,6 +569,8 @@ struct MenuBarStripPreview: View {
                 .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
         )
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(scheme == .dark ? "Dark menu bar preview" : "Light menu bar preview")
+        .accessibilityLabel(
+            scheme == .dark ? L10n.MenuBar.composerPreviewDark : L10n.MenuBar.composerPreviewLight
+        )
     }
 }

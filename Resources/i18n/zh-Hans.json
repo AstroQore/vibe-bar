@@ -413,6 +413,294 @@
   "error.unknownDetail": {
     "value": "错误：{reason}"
   },
+  "menuBar.composer.action.duplicate": {
+    "value": "复制"
+  },
+  "menuBar.composer.action.remove": {
+    "value": "移除"
+  },
+  "menuBar.composer.appIcon.detail": {
+    "value": "Vibe Bar 自身图标，即「仅图标」布局所显示的内容。"
+  },
+  "menuBar.composer.block.appIcon": {
+    "value": "Vibe Bar 图标"
+  },
+  "menuBar.composer.block.emptyText": {
+    "value": "空文字"
+  },
+  "menuBar.composer.block.gap": {
+    "value": "间隔"
+  },
+  "menuBar.composer.block.logo": {
+    "value": "图标"
+  },
+  "menuBar.composer.block.newRow": {
+    "value": "换行"
+  },
+  "menuBar.composer.block.quota": {
+    "value": "额度"
+  },
+  "menuBar.composer.block.separator": {
+    "value": "分隔符"
+  },
+  "menuBar.composer.block.space": {
+    "value": "空格"
+  },
+  "menuBar.composer.block.structure": {
+    "value": "结构"
+  },
+  "menuBar.composer.block.text": {
+    "value": "文字"
+  },
+  "menuBar.composer.blocks": {
+    "value": "积木 · 拖动可重新排序"
+  },
+  "menuBar.composer.blocks.empty": {
+    "value": "尚无积木。可从下方面板添加。"
+  },
+  "menuBar.composer.colour.automatic": {
+    "value": "自动"
+  },
+  "menuBar.composer.colour.brand": {
+    "value": "品牌色"
+  },
+  "menuBar.composer.colour.fixed": {
+    "value": "自定义…"
+  },
+  "menuBar.composer.colour.followsQuota": {
+    "value": "跟随某个额度"
+  },
+  "menuBar.composer.colour.forecast": {
+    "value": "预测"
+  },
+  "menuBar.composer.colour.primary": {
+    "value": "主要"
+  },
+  "menuBar.composer.colour.secondary": {
+    "value": "次要"
+  },
+  "menuBar.composer.colour.tertiary": {
+    "value": "第三级"
+  },
+  "menuBar.composer.field.colour": {
+    "value": "颜色"
+  },
+  "menuBar.composer.field.monospacedDigits": {
+    "value": "等宽数字"
+  },
+  "menuBar.composer.field.monospacedDigitsHelp": {
+    "value": "数字变化时不会挤动相邻积木。"
+  },
+  "menuBar.composer.field.offlineOption": {
+    "value": "{title}（未返回数据）"
+  },
+  "menuBar.composer.field.provider": {
+    "value": "厂商"
+  },
+  "menuBar.composer.field.show": {
+    "value": "显示条件"
+  },
+  "menuBar.composer.field.shows": {
+    "value": "显示内容"
+  },
+  "menuBar.composer.field.size": {
+    "value": "字号"
+  },
+  "menuBar.composer.field.verdicts": {
+    "value": "预测结论"
+  },
+  "menuBar.composer.field.weight": {
+    "value": "字重"
+  },
+  "menuBar.composer.metric.displayPercent": {
+    "value": "百分比（跟随设置）"
+  },
+  "menuBar.composer.metric.forecastPercent": {
+    "value": "重置时预测"
+  },
+  "menuBar.composer.metric.label": {
+    "value": "名称"
+  },
+  "menuBar.composer.metric.pace": {
+    "value": "消耗速度"
+  },
+  "menuBar.composer.metric.remainingPercent": {
+    "value": "剩余百分比"
+  },
+  "menuBar.composer.metric.resetAt": {
+    "value": "重置时刻"
+  },
+  "menuBar.composer.metric.resetsIn": {
+    "value": "重置倒计时"
+  },
+  "menuBar.composer.metric.runsOutIn": {
+    "value": "耗尽倒计时"
+  },
+  "menuBar.composer.metric.usedPercent": {
+    "value": "已用百分比"
+  },
+  "menuBar.composer.mode.custom": {
+    "value": "自定义"
+  },
+  "menuBar.composer.mode.customCaption": {
+    "value": "切回默认样式会保留已拼装的全部积木，再次切换到自定义时可原样恢复。"
+  },
+  "menuBar.composer.mode.default": {
+    "value": "默认"
+  },
+  "menuBar.composer.mode.defaultCaption": {
+    "value": "默认样式显示下方勾选的字段。自定义样式可用积木自行拼装：logo、文字与任意额度。"
+  },
+  "menuBar.composer.mode.label": {
+    "value": "样式"
+  },
+  "menuBar.composer.newRow.capped": {
+    "value": "菜单栏最多显示两行。"
+  },
+  "menuBar.composer.newRow.detail": {
+    "value": "结束第一行并开始第二行。可在下方设置条件，仅在该额度满足条件时换行。"
+  },
+  "menuBar.composer.newRow.help": {
+    "value": "将菜单栏内容拆成第二行。"
+  },
+  "menuBar.composer.palette": {
+    "value": "添加积木"
+  },
+  "menuBar.composer.preview": {
+    "value": "预览"
+  },
+  "menuBar.composer.preview.dark": {
+    "value": "深色菜单栏预览"
+  },
+  "menuBar.composer.preview.empty": {
+    "value": "空样式"
+  },
+  "menuBar.composer.preview.grounds": {
+    "value": "并排显示浅色与深色菜单栏：固定颜色在一种底色下清晰，在另一种下可能不可见。"
+  },
+  "menuBar.composer.preview.light": {
+    "value": "浅色菜单栏预览"
+  },
+  "menuBar.composer.preview.twoRowScaling": {
+    "value": "两行共用菜单栏高度，较大字号会等比缩小以适应，预览同步缩放。"
+  },
+  "menuBar.composer.removeTarget": {
+    "value": "拖到此处移除"
+  },
+  "menuBar.composer.rule.always": {
+    "value": "始终显示"
+  },
+  "menuBar.composer.rule.whenForecast": {
+    "value": "当预测结论为"
+  },
+  "menuBar.composer.rule.whenRemainingAtMost": {
+    "value": "剩余不高于"
+  },
+  "menuBar.composer.rule.whenUsedAtLeast": {
+    "value": "已用不低于"
+  },
+  "menuBar.composer.selected": {
+    "value": "已选积木"
+  },
+  "menuBar.composer.size.large": {
+    "value": "大"
+  },
+  "menuBar.composer.size.regular": {
+    "value": "标准"
+  },
+  "menuBar.composer.size.small": {
+    "value": "小"
+  },
+  "menuBar.composer.space.detail": {
+    "value": "宽度为一个空格的间隔。字号决定其宽度。"
+  },
+  "menuBar.composer.startOver": {
+    "value": "从当前样式重新开始…"
+  },
+  "menuBar.composer.startOver.confirm": {
+    "value": "重新开始"
+  },
+  "menuBar.composer.startOver.confirmMessage": {
+    "value": "已排列的全部积木将被丢弃，并按默认样式重新生成。"
+  },
+  "menuBar.composer.startOver.confirmTitle": {
+    "value": "替换已有积木？"
+  },
+  "menuBar.composer.startOver.detail": {
+    "value": "重新开始会用默认样式重新生成全部积木，且无法撤销。"
+  },
+  "menuBar.composer.template": {
+    "value": "模板"
+  },
+  "menuBar.composer.template.compact": {
+    "value": "紧凑"
+  },
+  "menuBar.composer.template.compactDetail": {
+    "value": "间距更紧，字号略小。"
+  },
+  "menuBar.composer.template.roomy": {
+    "value": "宽松"
+  },
+  "menuBar.composer.template.roomyDetail": {
+    "value": "保持当前字号，积木之间留白更多。"
+  },
+  "menuBar.composer.template.twoRows": {
+    "value": "两行"
+  },
+  "menuBar.composer.template.twoRowsDetail": {
+    "value": "在一个状态项中上下显示两行。"
+  },
+  "menuBar.composer.text.limit": {
+    "value": "超过 {count} 个字符的文字积木在菜单栏中会截断并以省略号结尾。"
+  },
+  "menuBar.composer.text.placeholder": {
+    "value": "标签"
+  },
+  "menuBar.composer.warning.degraded": {
+    "value": "此积木仍会显示，但其颜色或显示条件指向的额度当前未返回数据。"
+  },
+  "menuBar.composer.warning.missing": {
+    "value": "当前未返回数据：{fields}"
+  },
+  "menuBar.composer.warning.silent": {
+    "value": "该额度当前未返回数据，此积木暂不显示内容。积木会保留，数据恢复后自动显示。"
+  },
+  "menuBar.composer.weight.medium": {
+    "value": "中等"
+  },
+  "menuBar.composer.weight.regular": {
+    "value": "常规"
+  },
+  "menuBar.composer.weight.semibold": {
+    "value": "半粗"
+  },
+  "menuBar.spoken.forecast": {
+    "value": "{label} 预测重置时剩余 {value}"
+  },
+  "menuBar.spoken.pace": {
+    "value": "{label} 消耗速度 {value}"
+  },
+  "menuBar.spoken.remaining": {
+    "value": "{label} 剩余 {value}"
+  },
+  "menuBar.spoken.resetAt": {
+    "value": "{label} 于 {value} 重置"
+  },
+  "menuBar.spoken.resetsIn": {
+    "value": "{label} 距重置 {value}"
+  },
+  "menuBar.spoken.runsOutIn": {
+    "value": "{label} 距耗尽 {value}"
+  },
+  "menuBar.spoken.title": {
+    "value": "{kind} 额度"
+  },
+  "menuBar.spoken.titleBody": {
+    "value": "{kind} 额度：{body}"
+  },
+  "menuBar.spoken.used": {
+    "value": "{label} 已用 {value}"
+  },
   "onboarding.apiKeys.hide": {
     "value": "收起"
   },

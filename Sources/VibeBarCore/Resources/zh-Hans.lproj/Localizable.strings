@@ -407,6 +407,294 @@
 /* QuotaError: unclassified failure; reason is the underlying message, untranslated */
 "error.unknownDetail" = "错误：%1$@";
 
+/* Button copying the selected block. */
+"menuBar.composer.action.duplicate" = "复制";
+
+/* Button deleting the selected block. */
+"menuBar.composer.action.remove" = "移除";
+
+/* What the app-icon block shows. */
+"menuBar.composer.appIcon.detail" = "Vibe Bar 自身图标，即「仅图标」布局所显示的内容。";
+
+/* A block showing the app's own icon. */
+"menuBar.composer.block.appIcon" = "Vibe Bar 图标";
+
+/* Chip label for a text block with nothing typed in it. */
+"menuBar.composer.block.emptyText" = "空文字";
+
+/* Chip label for a separator block with nothing typed in it. */
+"menuBar.composer.block.gap" = "间隔";
+
+/* A block showing a provider's brand mark. */
+"menuBar.composer.block.logo" = "图标";
+
+/* A block that ends one row and starts the next. */
+"menuBar.composer.block.newRow" = "换行";
+
+/* A block showing a number read from a quota. */
+"menuBar.composer.block.quota" = "额度";
+
+/* A block that draws a divider the user chose. */
+"menuBar.composer.block.separator" = "分隔符";
+
+/* A block that draws blank space. */
+"menuBar.composer.block.space" = "空格";
+
+/* Palette group holding spacing and row blocks. */
+"menuBar.composer.block.structure" = "结构";
+
+/* A block showing words the user typed. */
+"menuBar.composer.block.text" = "文字";
+
+/* Caption over the reorderable list of blocks. */
+"menuBar.composer.blocks" = "积木 · 拖动可重新排序";
+
+/* Shown when the strip has no blocks. */
+"menuBar.composer.blocks.empty" = "尚无积木。可从下方面板添加。";
+
+/* Colour choice: whatever the strip would use on its own. */
+"menuBar.composer.colour.automatic" = "自动";
+
+/* Colour choice: a provider's brand colour. */
+"menuBar.composer.colour.brand" = "品牌色";
+
+/* Colour choice: a colour the user picks. Opens a colour well. */
+"menuBar.composer.colour.fixed" = "自定义…";
+
+/* Colour choice: track another quota's colour. */
+"menuBar.composer.colour.followsQuota" = "跟随某个额度";
+
+/* Colour choice: the quota's forecast verdict colour. */
+"menuBar.composer.colour.forecast" = "预测";
+
+/* Colour choice: the menu bar's ordinary text colour. */
+"menuBar.composer.colour.primary" = "主要";
+
+/* Colour choice: a quieter text colour. */
+"menuBar.composer.colour.secondary" = "次要";
+
+/* Colour choice: the quietest text colour. */
+"menuBar.composer.colour.tertiary" = "第三级";
+
+/* Picker choosing a block's colour. */
+"menuBar.composer.field.colour" = "颜色";
+
+/* Toggle keeping digits the same width. */
+"menuBar.composer.field.monospacedDigits" = "等宽数字";
+
+/* Why monospaced digits matter. */
+"menuBar.composer.field.monospacedDigitsHelp" = "数字变化时不会挤动相邻积木。";
+
+/* A quota in a picker that is not currently being returned. Title is the quota's name. */
+"menuBar.composer.field.offlineOption" = "%1$@（未返回数据）";
+
+/* Picker choosing which provider's logo a block shows. */
+"menuBar.composer.field.provider" = "厂商";
+
+/* Picker choosing when a block is on screen. */
+"menuBar.composer.field.show" = "显示条件";
+
+/* Picker choosing which number a quota block prints. */
+"menuBar.composer.field.shows" = "显示内容";
+
+/* Picker choosing a block's type size. */
+"menuBar.composer.field.size" = "字号";
+
+/* Checkboxes choosing which forecast verdicts show a block. */
+"menuBar.composer.field.verdicts" = "预测结论";
+
+/* Picker choosing a block's type weight. */
+"menuBar.composer.field.weight" = "字重";
+
+/* Quota metric: whichever percentage the app-wide Used/Remaining setting selects. */
+"menuBar.composer.metric.displayPercent" = "百分比（跟随设置）";
+
+/* Quota metric: the projected figure when the quota refills. */
+"menuBar.composer.metric.forecastPercent" = "重置时预测";
+
+/* Quota metric: the quota's own name. */
+"menuBar.composer.metric.label" = "名称";
+
+/* Quota metric: distance from the linear expectation. */
+"menuBar.composer.metric.pace" = "消耗速度";
+
+/* Quota metric: the remaining percentage. */
+"menuBar.composer.metric.remainingPercent" = "剩余百分比";
+
+/* Quota metric: the wall-clock time of the refill. */
+"menuBar.composer.metric.resetAt" = "重置时刻";
+
+/* Quota metric: countdown to the refill. */
+"menuBar.composer.metric.resetsIn" = "重置倒计时";
+
+/* Quota metric: countdown to projected exhaustion. */
+"menuBar.composer.metric.runsOutIn" = "耗尽倒计时";
+
+/* Quota metric: the used percentage. */
+"menuBar.composer.metric.usedPercent" = "已用百分比";
+
+/* Segment: the strip the user assembles out of blocks. */
+"menuBar.composer.mode.custom" = "自定义";
+
+/* Caption under the mode picker while Custom is selected; reassures that switching back is not destructive. */
+"menuBar.composer.mode.customCaption" = "切回默认样式会保留已拼装的全部积木，再次切换到自定义时可原样恢复。";
+
+/* Segment: the field-list strip the app has always drawn. */
+"menuBar.composer.mode.default" = "默认";
+
+/* Caption under the mode picker while Default is selected. */
+"menuBar.composer.mode.defaultCaption" = "默认样式显示下方勾选的字段。自定义样式可用积木自行拼装：logo、文字与任意额度。";
+
+/* Segmented control choosing how the menu-bar strip is built. */
+"menuBar.composer.mode.label" = "样式";
+
+/* Tooltip on the New row palette button once both rows are used. */
+"menuBar.composer.newRow.capped" = "菜单栏最多显示两行。";
+
+/* What a new-row block does, and that it accepts a rule. */
+"menuBar.composer.newRow.detail" = "结束第一行并开始第二行。可在下方设置条件，仅在该额度满足条件时换行。";
+
+/* Tooltip on the New row palette button when a second row is still available. */
+"menuBar.composer.newRow.help" = "将菜单栏内容拆成第二行。";
+
+/* Caption over the list of blocks that can be added. */
+"menuBar.composer.palette" = "添加积木";
+
+/* Caption over the live preview of the composed strip. */
+"menuBar.composer.preview" = "预览";
+
+/* Accessibility label for the dark-background preview. */
+"menuBar.composer.preview.dark" = "深色菜单栏预览";
+
+/* Accessibility label for a preview with nothing to draw. */
+"menuBar.composer.preview.empty" = "空样式";
+
+/* Explains why the preview is shown twice. */
+"menuBar.composer.preview.grounds" = "并排显示浅色与深色菜单栏：固定颜色在一种底色下清晰，在另一种下可能不可见。";
+
+/* Accessibility label for the light-background preview. */
+"menuBar.composer.preview.light" = "浅色菜单栏预览";
+
+/* Explains that a two-row strip is scaled to fit the menu bar's height. */
+"menuBar.composer.preview.twoRowScaling" = "两行共用菜单栏高度，较大字号会等比缩小以适应，预览同步缩放。";
+
+/* Drop target that deletes the dragged block. */
+"menuBar.composer.removeTarget" = "拖到此处移除";
+
+/* Visibility rule: the block is always shown. */
+"menuBar.composer.rule.always" = "始终显示";
+
+/* Visibility rule: show only for chosen forecast verdicts. */
+"menuBar.composer.rule.whenForecast" = "当预测结论为";
+
+/* Visibility rule: show once a quota's remaining percentage falls to a threshold. */
+"menuBar.composer.rule.whenRemainingAtMost" = "剩余不高于";
+
+/* Visibility rule: show once a quota's used percentage reaches a threshold. */
+"menuBar.composer.rule.whenUsedAtLeast" = "已用不低于";
+
+/* Caption over the controls for the selected block. */
+"menuBar.composer.selected" = "已选积木";
+
+/* Type size choice. */
+"menuBar.composer.size.large" = "大";
+
+/* Type size choice. */
+"menuBar.composer.size.regular" = "标准";
+
+/* Type size choice. */
+"menuBar.composer.size.small" = "小";
+
+/* What a space block does. */
+"menuBar.composer.space.detail" = "宽度为一个空格的间隔。字号决定其宽度。";
+
+/* Button rebuilding every block from the default strip. */
+"menuBar.composer.startOver" = "从当前样式重新开始…";
+
+/* Destructive button in the confirmation dialog. */
+"menuBar.composer.startOver.confirm" = "重新开始";
+
+/* Body of the confirmation dialog. */
+"menuBar.composer.startOver.confirmMessage" = "已排列的全部积木将被丢弃，并按默认样式重新生成。";
+
+/* Title of the confirmation dialog. */
+"menuBar.composer.startOver.confirmTitle" = "替换已有积木？";
+
+/* Warns that starting over cannot be undone. */
+"menuBar.composer.startOver.detail" = "重新开始会用默认样式重新生成全部积木，且无法撤销。";
+
+/* Picker choosing a starting set of spacing and type sizes. */
+"menuBar.composer.template" = "模板";
+
+/* Template name. */
+"menuBar.composer.template.compact" = "紧凑";
+
+/* What the Compact template does. */
+"menuBar.composer.template.compactDetail" = "间距更紧，字号略小。";
+
+/* Template name. */
+"menuBar.composer.template.roomy" = "宽松";
+
+/* What the Roomy template does. */
+"menuBar.composer.template.roomyDetail" = "保持当前字号，积木之间留白更多。";
+
+/* Template name: two stacked rows. */
+"menuBar.composer.template.twoRows" = "两行";
+
+/* What the Two rows template does. */
+"menuBar.composer.template.twoRowsDetail" = "在一个状态项中上下显示两行。";
+
+/* Explains that long text is cut short in the bar. Count is the character ceiling. */
+"menuBar.composer.text.limit" = "超过 %1$lld 个字符的文字积木在菜单栏中会截断并以省略号结尾。";
+
+/* Starting content of a newly added text block, before the user types over it. */
+"menuBar.composer.text.placeholder" = "标签";
+
+/* Shown on a block whose colour or rule points at a quota that is not being returned. */
+"menuBar.composer.warning.degraded" = "此积木仍会显示，但其颜色或显示条件指向的额度当前未返回数据。";
+
+/* Lists the quotas that are not answering. Fields is a comma-separated list of quota names. */
+"menuBar.composer.warning.missing" = "当前未返回数据：%1$@";
+
+/* Shown on a block whose quota is not being returned. */
+"menuBar.composer.warning.silent" = "该额度当前未返回数据，此积木暂不显示内容。积木会保留，数据恢复后自动显示。";
+
+/* Type weight choice. */
+"menuBar.composer.weight.medium" = "中等";
+
+/* Type weight choice. */
+"menuBar.composer.weight.regular" = "常规";
+
+/* Type weight choice. */
+"menuBar.composer.weight.semibold" = "半粗";
+
+/* One quota's projection spoken aloud. */
+"menuBar.spoken.forecast" = "%1$@ 预测重置时剩余 %2$@";
+
+/* One quota's pace spoken aloud; value is a signed percentage. */
+"menuBar.spoken.pace" = "%1$@ 消耗速度 %2$@";
+
+/* One quota spoken aloud, remaining rather than used. */
+"menuBar.spoken.remaining" = "%1$@ 剩余 %2$@";
+
+/* One quota's refill time spoken aloud. */
+"menuBar.spoken.resetAt" = "%1$@ 于 %2$@ 重置";
+
+/* One quota's refill countdown spoken aloud. */
+"menuBar.spoken.resetsIn" = "%1$@ 距重置 %2$@";
+
+/* One quota's exhaustion countdown spoken aloud. */
+"menuBar.spoken.runsOutIn" = "%1$@ 距耗尽 %2$@";
+
+/* Accessibility label for the status item when nothing is being shown. Kind names the item. */
+"menuBar.spoken.title" = "%1$@ 额度";
+
+/* Accessibility label and tooltip for the status item. Body lists each quota in words. */
+"menuBar.spoken.titleBody" = "%1$@ 额度：%2$@";
+
+/* One quota spoken aloud. Label is the quota's name, value an already-formatted percentage. */
+"menuBar.spoken.used" = "%1$@ 已用 %2$@";
+
 /* Button that folds a provider's credential form away */
 "onboarding.apiKeys.hide" = "收起";
 

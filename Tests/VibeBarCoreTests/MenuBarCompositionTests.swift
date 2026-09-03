@@ -1532,6 +1532,125 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(icon.tokens.map(\.kind), [.appIcon])
     }
 
+    // MARK: - A field edit never carries stale neighbours (review thread 2)
+
+    func testTwoFieldEditsInOneDebounceWindowBothSurvive() {
+        // The exact sequence: pick a colour, then change the threshold before
+        // the colour's queued write has landed. The queued write flushes
+        // first, and the threshold edit must be applied to the token *after*
+        // that flush — a whole-token replacement built beforehand would carry
+        // the old colour and silently undo it.
+        var composed = composition([
+            MenuBarToken(
+                kind: .quota(fieldId: "claude.weekly", metric: .displayPercent),
+                style: .init(color: .primary),
+                visibility: .whenUsedAtLeast(fieldId: "claude.weekly", percent: 80)
+            )
+        ])
+        let id = composed.tokens[0].id
+
+        // The queued colour write, expressed as the field it owns.
+        func edit(_ change: (inout MenuBarToken) -> Void) {
+            guard let index = composed.index(of: id) else { return XCTFail("token went missing") }
+            change(&composed.tokens[index])
+        }
+        edit { $0.style.color = .hex("#ff0000") }
+        // ...then the threshold, from a control that never saw the colour.
+        edit { $0.visibility = .whenUsedAtLeast(fieldId: "claude.weekly", percent: 40) }
+
+        XCTAssertEqual(composed.tokens[0].style.color, .fixed("#ff0000"), "the colour survived")
+        XCTAssertEqual(
+            composed.tokens[0].visibility,
+            .whenUsedAtLeast(fieldId: "claude.weekly", percent: 40),
+            "the threshold survived"
+        )
+    }
+
+    func testAWholeTokenReplacementIsWhatUsedToLoseTheEdit() {
+        // The shape of the old bug, kept as the reason the contract is
+        // field-level: a copy taken before the flush wins over what the flush
+        // wrote, so the colour is gone.
+        var composed = composition([
+            MenuBarToken(
+                kind: .quota(fieldId: "claude.weekly", metric: .displayPercent),
+                style: .init(color: .primary),
+                visibility: .whenUsedAtLeast(fieldId: "claude.weekly", percent: 80)
+            )
+        ])
+        let stale = composed.tokens[0]
+
+        composed.tokens[0].style.color = .hex("#ff0000")
+        var replacement = stale
+        replacement.visibility = .whenUsedAtLeast(fieldId: "claude.weekly", percent: 40)
+        composed.tokens[0] = replacement
+
+        XCTAssertEqual(composed.tokens[0].style.color, .primary, "this is the regression")
+    }
+
+    // MARK: - One glyph-sizing decision (review thread 3)
+
+    func testAOneRowGlyphGrowsWithItsTypeAndATwoRowGlyphIsCapped() {
+        // The single-row strip builds an uncapped attachment, so a Large block
+        // is a large glyph; the preview used to cap it at 12 and show a
+        // different icon from the one the bar drew.
+        XCTAssertEqual(MenuBarStripGeometry.glyphSide(fontSize: 13, rowCount: 1), 16)
+        XCTAssertEqual(MenuBarStripGeometry.singleRowGlyphSide(fontSize: 13), 16)
+        // A `.large` block on the 13pt face: still uncapped, still ~19.
+        XCTAssertEqual(MenuBarStripGeometry.glyphSide(fontSize: 13 * 1.2, rowCount: 1), 19)
+
+        // The two-row band is fixed, so the glyph is capped there.
+        XCTAssertEqual(MenuBarStripGeometry.glyphSide(fontSize: 9, rowCount: 2), 10)
+        XCTAssertEqual(
+            MenuBarStripGeometry.glyphSide(fontSize: 40, rowCount: 2),
+            MenuBarStripGeometry.maximumTwoRowGlyphSide
+        )
+    }
+
+    // MARK: - Localization register
+
+    func testEveryComposerStringIsInBothCatalogs() throws {
+        let (en, zh) = try Self.catalogs()
+        let keys = en.keys.filter { $0.hasPrefix("menuBar.") }
+        XCTAssertFalse(keys.isEmpty)
+        for key in keys {
+            XCTAssertNotNil(zh[key], "\(key) has no Simplified Chinese value")
+            XCTAssertFalse((zh[key] ?? "").isEmpty, "\(key) is empty in Simplified Chinese")
+        }
+    }
+
+    func testTheChineseComposerCopyKeepsTheWrittenRegister() throws {
+        let (_, zh) = try Self.catalogs()
+        // Second person, mood particles, exclamation marks and the banned
+        // colloquial rendering of "surplus" — all of which read as chat rather
+        // than as an interface.
+        let banned = ["你", "您", "吧", "呢", "啦", "！", "用不完"]
+        for (key, value) in zh where key.hasPrefix("menuBar.") {
+            for term in banned {
+                XCTAssertFalse(
+                    value.contains(term),
+                    "\(key) uses \(term), which the written register does not allow: \(value)"
+                )
+            }
+        }
+        // And the term the composer reuses from the forecast surfaces.
+        XCTAssertEqual(zh["quota.forecast.verdict.surplus"], "盈余")
+    }
+
+    /// The two catalogs as flat key → value maps.
+    private static func catalogs() throws -> ([String: String], [String: String]) {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources/i18n")
+        func load(_ name: String) throws -> [String: String] {
+            let data = try Data(contentsOf: root.appendingPathComponent(name))
+            let raw = try JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] ?? [:]
+            return raw.compactMapValues { $0["value"] as? String }
+        }
+        return (try load("en.json"), try load("zh-Hans.json"))
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {

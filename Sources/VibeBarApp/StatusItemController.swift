@@ -297,7 +297,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.lineBreakMode = .byClipping
         button.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         button.tag = statusItemTag(for: kind)
-        button.toolTip = "\(kind.label) quota"
+        button.toolTip = L10n.MenuBar.spokenTitle(kind: kind.label)
     }
 
     private func observeChanges() {
@@ -1023,7 +1023,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func percentText(_ percent: Double) -> String {
-        "\(Int(percent.rounded()))%"
+        L10n.Common.percent(value: Int(percent.rounded()))
     }
 
     // MARK: - Composed strip
@@ -1194,9 +1194,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 // 8pt mark: a `.large` logo in a composed row should grow with
                 // the words beside it. Capped at the row band so it cannot be
                 // the thing that overflows the canvas.
-                let side = min(
-                    composedFontSize(token, baseFontSize: baseFontSize) + 1,
-                    MenuBarStatusMetrics.twoRowMaximumGlyphSide
+                let side = MenuBarStripMetrics.twoRowGlyphSide(
+                    fontSize: composedFontSize(token, baseFontSize: baseFontSize)
                 )
                 if let image = glyphImage(
                     glyph,
@@ -1303,8 +1302,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         kind: MenuBarItemKind
     ) {
         let description = body.isEmpty
-            ? "\(kind.label) quota"
-            : "\(kind.label) quota: \(body)"
+            ? L10n.MenuBar.spokenTitle(kind: kind.label)
+            : L10n.MenuBar.spokenTitleBody(kind: kind.label, body: body)
         button.setAccessibilityLabel(description)
         if button.toolTip != description { button.toolTip = description }
     }
@@ -1583,7 +1582,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         tint: NSColor = .labelColor,
         tintKey: String = "label"
     ) -> NSAttributedString? {
-        let side: CGFloat = (fontSize + 3).rounded()
+        let side = MenuBarStripMetrics.singleRowGlyphSide(fontSize: fontSize)
         guard let image = brandImage(for: tool, side: side, tint: tint, tintKey: tintKey) else { return nil }
         return attachment(image: image, side: side, font: font)
     }
@@ -1612,7 +1611,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 for: tool, fontSize: fontSize, font: font, tint: tint, tintKey: tintKey
             )
         case .app:
-            let side: CGFloat = (fontSize + 3).rounded()
+            let side = MenuBarStripMetrics.singleRowGlyphSide(fontSize: fontSize)
             guard let image = appGlyphImage(side: side, tint: tint, tintKey: tintKey) else {
                 return nil
             }
@@ -1700,7 +1699,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // This layout draws no percentages, so it skips the piece walk (and
         // its per-bucket forecasts) entirely — which also means it must clear
         // any live description a previous layout left on the button.
-        let idleToolTip = "\(kind.label) quota"
+        let idleToolTip = L10n.MenuBar.spokenTitle(kind: kind.label)
         if button.toolTip != idleToolTip { button.toolTip = idleToolTip }
     }
 

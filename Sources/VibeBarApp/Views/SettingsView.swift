@@ -795,15 +795,15 @@ struct SettingsView: View {
 
             // The way back to the plain strip is the second control in the
             // section, not something to hunt for inside the composer.
-            Picker("Strip", selection: menuBarStripModeBinding(kind)) {
-                Text("Default").tag(false)
-                Text("Custom").tag(true)
+            Picker(L10n.MenuBar.composerModeLabel, selection: menuBarStripModeBinding(kind)) {
+                Text(L10n.MenuBar.composerModeDefault).tag(false)
+                Text(L10n.MenuBar.composerModeCustom).tag(true)
             }
             .pickerStyle(.segmented)
             Text(
                 isCustom
-                    ? "Switching back to Default keeps every block you built — you can return to Custom and find it exactly as you left it."
-                    : "Default shows the fields you tick below. Custom lets you build the strip out of blocks: logos, words, and any quota."
+                    ? L10n.MenuBar.composerModeCustomCaption
+                    : L10n.MenuBar.composerModeDefaultCaption
             )
             .font(.caption2)
             .foregroundStyle(.tertiary)
