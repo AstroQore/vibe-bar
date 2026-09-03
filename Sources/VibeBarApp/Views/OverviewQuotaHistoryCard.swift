@@ -76,6 +76,9 @@ private struct OverviewLaneBuild {
     var curve: OverviewQuotaCurve
     var segments: [[QuotaHistorySample]]
     var flat: [QuotaHistorySample]
+    /// The thinned copy the brush strip draws. Cached with the lane because it
+    /// depends only on the segments, never on the visible window.
+    var mini: [[QuotaHistorySample]]
 }
 
 /// Every recorded quota, from every provider and account, on one time axis.
@@ -90,8 +93,15 @@ private struct OverviewLaneBuild {
 /// A pull-down picks which curves are drawn, and the choice persists — see
 /// `AppSettings.overviewQuotaHistoryHiddenCurveIds`.
 ///
-/// Like `QuotaHistoryChartView`, this view reads no wall clock and no
-/// environment value, so it is safe under any re-proposal from above.
+/// Split in two. This half discovers the lanes, which means reading three
+/// environment objects; `OverviewQuotaChartBody` draws them and is `.equatable()`
+/// over plain values, so a `QuotaService` or `SettingsStore` publish that
+/// changes nothing the chart shows stops at that boundary instead of re-running
+/// the mark pipeline for every curve. The crosshair sits one level lower again,
+/// in `OverviewQuotaHoverOverlay`, so a pointer move invalidates neither.
+///
+/// Like `QuotaHistoryChartView`, neither half reads a wall clock, so both are
+/// safe under any re-proposal from above.
 struct OverviewQuotaHistoryCard: View {
     let density: Theme.Density
 
@@ -109,29 +119,54 @@ struct OverviewQuotaHistoryCard: View {
     /// order a binary search needs. Built with the series so a pointer move
     /// costs a search rather than a scan.
     @State private var flatByCurve: [String: [QuotaHistorySample]] = [:]
+    /// Each curve thinned for the brush strip. This used to be recomputed
+    /// inside the strip's `Path` builder, which put a full re-thin of every
+    /// curve on the main thread once per navigator frame — every frame of a pan
+    /// included. It depends on the segments alone and never on the window, so
+    /// it belongs with the rest of the per-data-change work.
+    @State private var miniByCurve: [String: [[QuotaHistorySample]]] = [:]
     @State private var window: ChartTimeWindow?
     @State private var windowKey: String?
     @State private var initialSpan: TimeInterval = OverviewQuotaHistoryCard.preferredInitialSpan
-    @State private var hoverDate: Date?
-    @State private var panBase: ChartTimeWindow?
-    @State private var magnifyBase: ChartTimeWindow?
+    /// Bumped once per `rebuild()`. It stands in for the three sample
+    /// dictionaries above in `OverviewQuotaChartBody`'s `==`: they are the
+    /// expensive half of that view's input, nothing but `rebuild()` writes them,
+    /// and comparing a counter is both cheaper and exactly as correct as walking
+    /// thirty lanes of samples.
+    @State private var seriesRevision = 0
+    /// Bumped when the picker or a range pill has to drop the crosshair. The
+    /// hover state itself lives in `OverviewQuotaHoverOverlay` so that a pointer
+    /// move cannot invalidate *this* view — which reads three environment
+    /// objects and, before the split, re-ran the whole mark pipeline whenever
+    /// any of them published.
+    @State private var hoverResetToken = 0
 
-    /// Shared across every visible curve, so a provider with nine quotas
-    /// cannot starve the rest of the chart of detail.
-    private static let visibleMarkBudget = 900
-    private static let minimumMarkBudget = 90
     private static let miniMarkLimit = 120
-    /// Past this many rows the tooltip stops being a readout and becomes a
-    /// second chart; the rest are counted instead. Safe to cap only because
-    /// the rows are sorted lowest-remaining first — the quotas that get folded
-    /// into "+N more" are the ones with the most headroom.
-    private static let tooltipRowLimit = 8
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             header
             if let window, window.domainSpan > 0, !visibleCurves.isEmpty {
-                chartBody(window: window)
+                // Everything below this line is a plain value and the drawing
+                // view is `.equatable()`. That barrier is the point: this card
+                // has to read `AccountStore`, `QuotaService` and `SettingsStore`
+                // to discover its lanes, an environment object invalidates its
+                // readers directly, and a refresh publishes repeatedly — so
+                // without it every unrelated publish re-ran clip → budget →
+                // thin → build for every curve.
+                OverviewQuotaChartBody(
+                    density: density,
+                    curves: visibleCurves,
+                    segmentsByCurve: segmentsByCurve,
+                    flatByCurve: flatByCurve,
+                    miniByCurve: miniByCurve,
+                    revision: seriesRevision,
+                    window: window,
+                    initialSpan: initialSpan,
+                    resetToken: hoverResetToken,
+                    setWindow: { self.window = $0 }
+                )
+                .equatable()
             } else if curves.isEmpty {
                 note("Quota history builds up as refreshes come in.")
             } else {
@@ -169,7 +204,9 @@ struct OverviewQuotaHistoryCard: View {
                 ChartRangePills(
                     window: rangeBinding,
                     fontSize: max(9, density.segmentedFontSize - 2),
-                    onSelect: { hoverDate = nil }
+                    // The crosshair lives in the overlay now, so a pill asks for
+                    // it to be dropped instead of clearing it directly.
+                    onSelect: { hoverResetToken &+= 1 }
                 )
             }
         }
@@ -251,7 +288,7 @@ struct OverviewQuotaHistoryCard: View {
     private func setHidden(_ hidden: Set<String>) {
         guard hidden != settingsStore.settings.overviewQuotaHistoryHiddenCurveIds else { return }
         settingsStore.settings.overviewQuotaHistoryHiddenCurveIds = hidden
-        hoverDate = nil
+        hoverResetToken &+= 1
     }
 
     /// Quick way back to a readable chart from a wall of curves: keep the ones
@@ -270,357 +307,6 @@ struct OverviewQuotaHistoryCard: View {
         guard let segment = segmentsByCurve[curve.id]?.last, segment.count > 1 else { return 0 }
         let values = segment.map(\.remainingPercent)
         return (values.max() ?? 0) - (values.min() ?? 0)
-    }
-
-    // MARK: - Chart
-
-    @ViewBuilder
-    private func chartBody(window: ChartTimeWindow) -> some View {
-        let visible = window.visibleRange
-        let shown = visibleCurves
-        // One budget per curve, split again across the segments that curve is
-        // drawn in — a five-hour quota over months of history is hundreds of
-        // small segments, and thinning each to the curve's budget would have
-        // meant multiplying it by their count.
-        let budget = max(Self.minimumMarkBudget, Self.visibleMarkBudget / max(1, shown.count))
-        let lines = shown.map { curve -> (OverviewQuotaCurve, [QuotaChartLinePoint], [QuotaChartLinePoint]) in
-            let segments = segmentsByCurve[curve.id] ?? []
-            return (
-                curve,
-                QuotaChartMarks.points(
-                    segments,
-                    kind: curve.id,
-                    range: visible,
-                    budget: budget,
-                    time: { $0.time },
-                    value: { $0.remainingPercent }
-                ),
-                QuotaChartMarks.bridges(
-                    segments,
-                    kind: curve.id,
-                    range: visible,
-                    time: { $0.time },
-                    value: { $0.remainingPercent }
-                )
-            )
-        }
-
-        VStack(alignment: .leading, spacing: 6) {
-            legend(shown)
-
-            Chart {
-                // Bridges first so a real observation always draws over the
-                // connector that leads into it.
-                ForEach(lines, id: \.0.id) { curve, _, bridges in
-                    ForEach(bridges) { point in
-                        LineMark(
-                            x: .value("Time", point.time),
-                            y: .value("Left", point.value),
-                            series: .value("Line", point.seriesKey)
-                        )
-                        .foregroundStyle(curve.color.opacity(QuotaChartMarks.bridgeOpacity))
-                        .lineStyle(QuotaChartMarks.bridgeStroke)
-                    }
-                }
-                ForEach(lines, id: \.0.id) { curve, points, _ in
-                    ForEach(points) { point in
-                        LineMark(
-                            x: .value("Time", point.time),
-                            y: .value("Left", point.value),
-                            series: .value("Line", point.seriesKey)
-                        )
-                        .foregroundStyle(curve.color)
-                        .lineStyle(
-                            StrokeStyle(
-                                lineWidth: 1.6,
-                                lineCap: .round,
-                                lineJoin: .round,
-                                dash: curve.dash
-                            )
-                        )
-                    }
-                }
-            }
-            .chartLegend(.hidden)
-            .chartXScale(domain: visible)
-            // Same clip as QuotaHistoryChartView: bridge marks deliberately
-            // carry endpoints outside the visible range, and unclipped they
-            // stroke across whatever sits left of the card.
-            .chartPlotStyle { plotArea in
-                plotArea.clipped()
-            }
-            .chartYScale(domain: 0...100)
-            .chartYAxis {
-                AxisMarks(position: .leading, values: [0, 25, 50, 75, 100]) { value in
-                    AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
-                    AxisValueLabel {
-                        if let raw = value.as(Double.self) {
-                            Text("\(Int(raw))%")
-                                .font(.system(size: 9, design: .rounded).monospacedDigit())
-                        }
-                    }
-                }
-            }
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                    AxisGridLine().foregroundStyle(.secondary.opacity(0.10))
-                    AxisValueLabel()
-                        .font(.system(size: 9))
-                }
-            }
-            .chartOverlay { proxy in
-                interactionOverlay(proxy: proxy, curves: shown)
-            }
-            .frame(height: density.overviewQuotaHistoryChartHeight)
-
-            ChartBrushNavigator(
-                window: rangeBinding,
-                accent: Color.secondary,
-                height: density.chartBrushHeight,
-                accessibilityDescription: "All-providers quota history range navigator"
-            ) { geometry in
-                miniPaths(shown, in: geometry)
-            }
-
-            Text(scopeNote(shown, window: window))
-                .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-        }
-    }
-
-    private func miniPaths(
-        _ shown: [OverviewQuotaCurve],
-        in geometry: ChartBrushGeometry
-    ) -> some View {
-        ZStack {
-            ForEach(shown) { curve in
-                Path { path in
-                    let strip = ChartMarkBudget.thinned(
-                        segmentsByCurve[curve.id] ?? [],
-                        budget: Self.miniMarkLimit
-                    )
-                    for segment in strip {
-                        guard let first = segment.first else { continue }
-                        path.move(to: miniPoint(first, in: geometry))
-                        for sample in segment.dropFirst() {
-                            path.addLine(to: miniPoint(sample, in: geometry))
-                        }
-                    }
-                }
-                .stroke(
-                    curve.color.opacity(0.6),
-                    style: StrokeStyle(lineWidth: 0.8, lineCap: .round, lineJoin: .round)
-                )
-            }
-        }
-    }
-
-    private func miniPoint(
-        _ sample: QuotaHistorySample,
-        in geometry: ChartBrushGeometry
-    ) -> CGPoint {
-        CGPoint(
-            x: geometry.x(for: sample.time),
-            y: geometry.y(forFraction: sample.remainingPercent / 100)
-        )
-    }
-
-    // MARK: - Legend
-
-    private func legend(_ shown: [OverviewQuotaCurve]) -> some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 138), spacing: 8)],
-            alignment: .leading,
-            spacing: 3
-        ) {
-            ForEach(shown) { curve in
-                HStack(spacing: 4) {
-                    swatch(curve)
-                    Text(curve.label)
-                        .font(.system(size: max(8, density.subtitleFontSize - 2)))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
-
-    private func swatch(_ curve: OverviewQuotaCurve) -> some View {
-        Path { path in
-            path.move(to: CGPoint(x: 0, y: 1))
-            path.addLine(to: CGPoint(x: 13, y: 1))
-        }
-        .stroke(curve.color, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: curve.dash))
-        .frame(width: 13, height: 2)
-    }
-
-    // MARK: - Hover + gestures
-
-    private func interactionOverlay(
-        proxy: ChartProxy,
-        curves shown: [OverviewQuotaCurve]
-    ) -> some View {
-        GeometryReader { geometry in
-            let plot = proxy.plotFrame.map { geometry[$0] }
-            let plotMinX = plot?.minX ?? 0
-            let plotWidth = plot?.width ?? geometry.size.width
-            ZStack(alignment: .topLeading) {
-                Rectangle()
-                    .fill(Color.clear)
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        switch phase {
-                        case .active(let location):
-                            let value = proxy.value(atX: location.x - plotMinX, as: Date.self)
-                            hoverDate = value.flatMap {
-                                window?.visibleRange.contains($0) == true ? $0 : nil
-                            }
-                        case .ended:
-                            hoverDate = nil
-                        }
-                    }
-                    .gesture(panGesture(plotWidth: plotWidth))
-                    .simultaneousGesture(magnifyGesture(proxy: proxy, plotMinX: plotMinX))
-                    .onTapGesture(count: 2) {
-                        window = window?.jumped(toSpan: initialSpan)
-                        hoverDate = nil
-                    }
-
-                if let hoverDate,
-                   let x = proxy.position(forX: hoverDate),
-                   let plot {
-                    let readings = hoverReadings(at: hoverDate, curves: shown)
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.22))
-                        .frame(width: 1, height: plot.height)
-                        .offset(x: plotMinX + x, y: plot.minY)
-                        .allowsHitTesting(false)
-                    tooltip(at: hoverDate, readings: readings)
-                        .offset(x: tooltipX(plotMinX: plotMinX, x: x, width: geometry.size.width))
-                        .allowsHitTesting(false)
-                }
-            }
-        }
-    }
-
-    private func panGesture(plotWidth: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 3)
-            .onChanged { value in
-                guard plotWidth > 0, let current = window else { return }
-                let base = panBase ?? current
-                if panBase == nil { panBase = base }
-                let secondsPerPoint = base.visibleSpan / TimeInterval(plotWidth)
-                window = base.panned(by: -TimeInterval(value.translation.width) * secondsPerPoint)
-            }
-            .onEnded { _ in panBase = nil }
-    }
-
-    private func magnifyGesture(proxy: ChartProxy, plotMinX: CGFloat) -> some Gesture {
-        MagnifyGesture(minimumScaleDelta: 0.01)
-            .onChanged { value in
-                guard let current = window else { return }
-                let base = magnifyBase ?? current
-                if magnifyBase == nil { magnifyBase = base }
-                let anchor = proxy.value(atX: value.startLocation.x - plotMinX, as: Date.self)
-                    ?? base.visibleMidpoint
-                window = base.zoomed(scale: value.magnification, around: anchor)
-            }
-            .onEnded { _ in magnifyBase = nil }
-    }
-
-    private static let tooltipWidth: CGFloat = 214
-
-    private func tooltipX(plotMinX: CGFloat, x: CGFloat, width: CGFloat) -> CGFloat {
-        min(max(plotMinX + x - Self.tooltipWidth / 2, 0), max(0, width - Self.tooltipWidth))
-    }
-
-    private func tooltip(at date: Date, readings: [OverviewHoverReading]) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(Self.tooltipFormatter.string(from: date))
-                .font(.system(size: 10, weight: .semibold))
-            if readings.isEmpty {
-                // Same wording as the per-group chart's empty row, and for the
-                // same reason: an absent sample says the app was not watching,
-                // not that the quota was between windows.
-                Text("No data recorded")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.white.opacity(0.7))
-            } else {
-                ForEach(readings.prefix(Self.tooltipRowLimit)) { reading in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Circle()
-                            .fill(reading.color)
-                            .frame(width: 5, height: 5)
-                        Text(reading.label)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 6)
-                        Text("\(Int(reading.value.rounded()))%")
-                            .font(
-                                .system(size: 9, weight: .semibold, design: .rounded)
-                                    .monospacedDigit()
-                            )
-                    }
-                }
-                if readings.count > Self.tooltipRowLimit {
-                    Text("+\(readings.count - Self.tooltipRowLimit) more")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.55))
-                }
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.87)))
-        .foregroundStyle(.white)
-        .frame(width: Self.tooltipWidth, alignment: .leading)
-    }
-
-    /// Nearest observation per curve, **lowest remaining first**.
-    ///
-    /// The order is the whole point of the card: the reader is looking for
-    /// whichever quota is closest to running out, and the tooltip caps its rows
-    /// — so sorting the fullest quotas to the top would have buried exactly the
-    /// curves this card exists to surface behind "+N more". Curves with no
-    /// coverage near the cursor are omitted rather than shown as zero.
-    ///
-    /// Resolved by binary search over each curve's flattened, time-sorted
-    /// samples, because this runs on every pointer move — and with a tolerance
-    /// resolved per curve, because this card exists to overlay quotas whose
-    /// windows (and therefore whose sampling rhythms) differ by orders of
-    /// magnitude.
-    private func hoverReadings(
-        at date: Date,
-        curves shown: [OverviewQuotaCurve]
-    ) -> [OverviewHoverReading] {
-        guard let window else { return [] }
-        var result: [OverviewHoverReading] = []
-        for curve in shown {
-            guard let sample = ChartSampleSearch.nearest(
-                in: flatByCurve[curve.id] ?? [],
-                to: date,
-                tolerance: ChartHoverTolerance.seconds(
-                    windowSeconds: curve.windowSeconds,
-                    visibleSpan: window.visibleSpan
-                ),
-                time: { $0.time }
-            ) else { continue }
-            result.append(
-                OverviewHoverReading(
-                    id: curve.id,
-                    label: curve.label,
-                    color: curve.color,
-                    value: sample.remainingPercent
-                )
-            )
-        }
-        return result.sorted { $0.value < $1.value }
     }
 
     // MARK: - Selection
@@ -737,8 +423,10 @@ struct OverviewQuotaHistoryCard: View {
             laneCache = [:]
             segmentsByCurve = [:]
             flatByCurve = [:]
+            miniByCurve = [:]
             window = nil
             windowKey = nil
+            seriesRevision &+= 1
             return
         }
 
@@ -753,6 +441,7 @@ struct OverviewQuotaHistoryCard: View {
         var built: [OverviewQuotaCurve] = []
         var series: [String: [[QuotaHistorySample]]] = [:]
         var flat: [String: [QuotaHistorySample]] = [:]
+        var mini: [String: [[QuotaHistorySample]]] = [:]
         var rebuiltCache: [String: OverviewLaneBuild] = [:]
         var indexPerTool: [ToolType: Int] = [:]
         for (account, bucket) in lanes {
@@ -774,6 +463,7 @@ struct OverviewQuotaHistoryCard: View {
                 built.append(cached.curve)
                 series[id] = cached.segments
                 flat[id] = cached.flat
+                mini[id] = cached.mini
                 rebuiltCache[id] = cached
                 continue
             }
@@ -796,16 +486,19 @@ struct OverviewQuotaHistoryCard: View {
                 range: domain
             ).actual
             let flattened = actual.flatMap { $0 }
+            let thinned = ChartMarkBudget.thinned(actual, budget: Self.miniMarkLimit)
             built.append(curve)
             series[id] = actual
             flat[id] = flattened
+            mini[id] = thinned
             rebuiltCache[id] = OverviewLaneBuild(
                 signature: signature,
                 variantIndex: index,
                 qualifier: qualifier,
                 curve: curve,
                 segments: actual,
-                flat: flattened
+                flat: flattened,
+                mini: thinned
             )
         }
 
@@ -813,6 +506,10 @@ struct OverviewQuotaHistoryCard: View {
         laneCache = rebuiltCache
         segmentsByCurve = series
         flatByCurve = flat
+        miniByCurve = mini
+        // Everything the drawing view memoizes has just been replaced, so
+        // invalidate it with one integer instead of a deep compare of every lane.
+        seriesRevision &+= 1
 
         let key = built.map(\.id).joined(separator: ",")
         let sameCurves = windowKey == key
@@ -909,14 +606,6 @@ struct OverviewQuotaHistoryCard: View {
         return masked.isEmpty ? String(account.id.suffix(4)) : masked
     }
 
-    private func scopeNote(_ shown: [OverviewQuotaCurve], window: ChartTimeWindow) -> String {
-        let providers = Set(shown.map(\.tool)).count
-        let curveWord = shown.count == 1 ? "curve" : "curves"
-        let providerWord = providers == 1 ? "provider" : "providers"
-        return "\(shown.count) \(curveWord) · \(providers) \(providerWord) · showing "
-            + "\(Self.spanLabel(window.visibleSpan)) of \(Self.spanLabel(window.domainSpan)) recorded"
-    }
-
     // MARK: - Palette
 
     /// One brand hue per provider, stepped in lightness (then in dash pattern)
@@ -961,11 +650,349 @@ struct OverviewQuotaHistoryCard: View {
         )
     }
 
+}
+
+/// The drawn half of the all-providers quota history card.
+///
+/// Split out of `OverviewQuotaHistoryCard` and made `Equatable` on purpose. That
+/// card has to read `AccountStore`, `QuotaService` and `SettingsStore` to
+/// discover which lanes exist, and an `@EnvironmentObject` invalidates the views
+/// that read it *directly* — so every publish from a refresh, and a refresh
+/// publishes repeatedly, re-ran the clip → budget → thin → build pipeline for
+/// every curve on the main thread. Here the inputs are plain values and the diff
+/// is a counter plus the window, so an unrelated publish stops at this boundary.
+///
+/// Like the card it came from, this view reads no wall clock and no environment
+/// value, so it is safe under any re-proposal from above.
+private struct OverviewQuotaChartBody: View, Equatable {
+    let density: Theme.Density
+    let curves: [OverviewQuotaCurve]
+    let segmentsByCurve: [String: [[QuotaHistorySample]]]
+    let flatByCurve: [String: [QuotaHistorySample]]
+    let miniByCurve: [String: [[QuotaHistorySample]]]
+    /// Stands in for the three dictionaries above; see the card's
+    /// `seriesRevision`.
+    let revision: Int
+    let window: ChartTimeWindow
+    let initialSpan: TimeInterval
+    let resetToken: Int
+    /// A plain setter rather than a `Binding`, so `==` never has to pull a
+    /// value back through a binding whose view may no longer be installed.
+    let setWindow: (ChartTimeWindow) -> Void
+
+    /// Curves are compared by id rather than by value on purpose. Everything
+    /// else about a curve — its hue, its dash, its label — is written by
+    /// `rebuild()`, which bumps `revision`, so the ids answer the only question
+    /// left: which curves the picker is currently showing. It also keeps the
+    /// diff off `Color` equality, whose result for an appearance-aware
+    /// `NSColor` is not something this comparison should depend on.
+    static func == (lhs: OverviewQuotaChartBody, rhs: OverviewQuotaChartBody) -> Bool {
+        lhs.revision == rhs.revision
+            && lhs.window == rhs.window
+            && lhs.density == rhs.density
+            && lhs.initialSpan == rhs.initialSpan
+            && lhs.resetToken == rhs.resetToken
+            && lhs.curves.elementsEqual(rhs.curves) { $0.id == $1.id }
+    }
+
+    /// Shared across every visible curve, so a provider with nine quotas
+    /// cannot starve the rest of the chart of detail. It is a *chart* budget:
+    /// each curve draws one thinned line, so the plot stays inside it up to ten
+    /// curves and thins every curve to the floor past that.
+    private static let visibleMarkBudget = 900
+    private static let minimumMarkBudget = 90
+
+    /// One curve's drawable marks. Also carries the stroke, so the `Chart`
+    /// closure never has to look a curve back up while laying marks out.
+    private struct CurveLines: Identifiable {
+        let id: String
+        let color: Color
+        let dash: [CGFloat]
+        let points: [QuotaChartLinePoint]
+        let bridges: [QuotaChartLinePoint]
+    }
+
+    private struct PlanKey: Equatable {
+        let revision: Int
+        let curveIds: [String]
+        let range: ClosedRange<Date>
+    }
+
+    /// Reference box, so a memo hit or update during `body` never dirties view
+    /// state; correctness comes from the key, not from invalidation timing.
+    /// Same pattern (and reasoning) as `UsageTrendChartView`.
+    private final class PlanCache {
+        var key: PlanKey?
+        var lines: [CurveLines]?
+    }
+
+    @State private var planCache = PlanCache()
+
+    private var lines: [CurveLines] {
+        let key = PlanKey(
+            revision: revision,
+            curveIds: curves.map(\.id),
+            range: window.visibleRange
+        )
+        if let cached = planCache.lines, planCache.key == key { return cached }
+        let built = Self.buildLines(
+            curves: curves,
+            segmentsByCurve: segmentsByCurve,
+            range: key.range
+        )
+        planCache.key = key
+        planCache.lines = built
+        return built
+    }
+
+    private static func buildLines(
+        curves: [OverviewQuotaCurve],
+        segmentsByCurve: [String: [[QuotaHistorySample]]],
+        range: ClosedRange<Date>
+    ) -> [CurveLines] {
+        // One budget per curve, split again across the segments that curve is
+        // drawn in — a five-hour quota over months of history is hundreds of
+        // small segments, and thinning each to the curve's budget would have
+        // meant multiplying it by their count.
+        let budget = max(minimumMarkBudget, visibleMarkBudget / max(1, curves.count))
+        return curves.map { curve in
+            let segments = segmentsByCurve[curve.id] ?? []
+            return CurveLines(
+                id: curve.id,
+                color: curve.color,
+                dash: curve.dash,
+                points: QuotaChartMarks.points(
+                    segments,
+                    kind: curve.id,
+                    range: range,
+                    budget: budget,
+                    time: { $0.time },
+                    value: { $0.remainingPercent }
+                ),
+                bridges: QuotaChartMarks.bridges(
+                    segments,
+                    kind: curve.id,
+                    range: range,
+                    time: { $0.time },
+                    value: { $0.remainingPercent }
+                )
+            )
+        }
+    }
+
+    var body: some View {
+        let binding = Binding<ChartTimeWindow>(get: { window }, set: setWindow)
+        // Memoized on (series revision, curves, visible range): a pan or a zoom
+        // is a genuine miss and rebuilds, every other re-proposal reuses what is
+        // already laid out.
+        let lines = self.lines
+
+        VStack(alignment: .leading, spacing: 6) {
+            legend
+
+            Chart {
+                // Bridges first so a real observation always draws over the
+                // connector that leads into it.
+                ForEach(lines) { line in
+                    ForEach(line.bridges) { point in
+                        LineMark(
+                            x: .value("Time", point.time),
+                            y: .value("Left", point.value),
+                            series: .value("Line", point.seriesKey)
+                        )
+                        .foregroundStyle(line.color.opacity(QuotaChartMarks.bridgeOpacity))
+                        .lineStyle(QuotaChartMarks.bridgeStroke)
+                    }
+                }
+                ForEach(lines) { line in
+                    ForEach(line.points) { point in
+                        LineMark(
+                            x: .value("Time", point.time),
+                            y: .value("Left", point.value),
+                            series: .value("Line", point.seriesKey)
+                        )
+                        .foregroundStyle(line.color)
+                        .lineStyle(
+                            StrokeStyle(
+                                lineWidth: 1.6,
+                                lineCap: .round,
+                                lineJoin: .round,
+                                dash: line.dash
+                            )
+                        )
+                    }
+                }
+            }
+            .chartLegend(.hidden)
+            .chartXScale(domain: window.visibleRange)
+            // Same clip as QuotaHistoryChartView: bridge marks deliberately
+            // carry endpoints outside the visible range, and unclipped they
+            // stroke across whatever sits left of the card.
+            .chartPlotStyle { plotArea in
+                plotArea.clipped()
+            }
+            .chartYScale(domain: 0...100)
+            .chartYAxis {
+                AxisMarks(position: .leading, values: [0, 25, 50, 75, 100]) { value in
+                    AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
+                    AxisValueLabel {
+                        if let raw = value.as(Double.self) {
+                            Text("\(Int(raw))%")
+                                .font(.system(size: 9, design: .rounded).monospacedDigit())
+                        }
+                    }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                    AxisGridLine().foregroundStyle(.secondary.opacity(0.10))
+                    AxisValueLabel()
+                        .font(.system(size: 9))
+                }
+            }
+            // A view of its own rather than a closure over this body, so a
+            // pointer move re-renders the crosshair and the tooltip and leaves
+            // the marks above untouched.
+            .chartOverlay { proxy in
+                OverviewQuotaHoverOverlay(
+                    proxy: proxy,
+                    curves: curves,
+                    flatByCurve: flatByCurve,
+                    initialSpan: initialSpan,
+                    resetToken: resetToken,
+                    window: binding
+                )
+            }
+            .frame(height: density.overviewQuotaHistoryChartHeight)
+
+            ChartBrushNavigator(
+                window: binding,
+                accent: Color.secondary,
+                height: density.chartBrushHeight,
+                accessibilityDescription: "All-providers quota history range navigator"
+            ) { geometry in
+                miniPaths(in: geometry)
+            }
+
+            Text(scopeNote)
+                .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+    }
+
+    // MARK: - Brush mini
+
+    private func miniPaths(in geometry: ChartBrushGeometry) -> some View {
+        ZStack {
+            ForEach(curves) { curve in
+                Path { path in
+                    // Already thinned when the lanes were built — this only
+                    // projects the samples into the strip's coordinate space.
+                    for segment in miniByCurve[curve.id] ?? [] {
+                        guard let first = segment.first else { continue }
+                        path.move(to: miniPoint(first, in: geometry))
+                        for sample in segment.dropFirst() {
+                            path.addLine(to: miniPoint(sample, in: geometry))
+                        }
+                    }
+                }
+                .stroke(
+                    curve.color.opacity(0.6),
+                    style: StrokeStyle(lineWidth: 0.8, lineCap: .round, lineJoin: .round)
+                )
+            }
+        }
+    }
+
+    private func miniPoint(
+        _ sample: QuotaHistorySample,
+        in geometry: ChartBrushGeometry
+    ) -> CGPoint {
+        CGPoint(
+            x: geometry.x(for: sample.time),
+            y: geometry.y(forFraction: sample.remainingPercent / 100)
+        )
+    }
+
+    // MARK: - Legend
+
+    private var legend: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 138), spacing: 8)],
+            alignment: .leading,
+            spacing: 3
+        ) {
+            ForEach(curves) { curve in
+                HStack(spacing: 4) {
+                    swatch(curve)
+                    Text(curve.label)
+                        .font(.system(size: max(8, density.subtitleFontSize - 2)))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    private func swatch(_ curve: OverviewQuotaCurve) -> some View {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 1))
+            path.addLine(to: CGPoint(x: 13, y: 1))
+        }
+        .stroke(curve.color, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: curve.dash))
+        .frame(width: 13, height: 2)
+    }
+
+    // MARK: - Footer
+
+    private var scopeNote: String {
+        let providers = Set(curves.map(\.tool)).count
+        let curveWord = curves.count == 1 ? "curve" : "curves"
+        let providerWord = providers == 1 ? "provider" : "providers"
+        return "\(curves.count) \(curveWord) · \(providers) \(providerWord) · showing "
+            + "\(Self.spanLabel(window.visibleSpan)) of \(Self.spanLabel(window.domainSpan)) recorded"
+    }
+
     private static func spanLabel(_ seconds: TimeInterval) -> String {
         if seconds < 90 * 60 { return "\(max(1, Int((seconds / 60).rounded())))m" }
         if seconds < 48 * 3_600 { return "\(Int((seconds / 3_600).rounded()))h" }
         return "\(Int((seconds / 86_400).rounded()))d"
     }
+}
+
+/// Crosshair, tooltip and the all-providers plot's pan / pinch / double-tap
+/// gestures.
+///
+/// A view of its own, with its own `@State`, for the same reason
+/// `QuotaChartHoverOverlay` is: `hoverDate` used to sit on the card, so every
+/// pointer move invalidated the card and re-ran the mark pipeline for every
+/// curve before the crosshair could move a pixel. Here a pointer move
+/// re-renders only this overlay, and the reading itself is one binary search per
+/// curve over an array flattened when the lanes were built.
+private struct OverviewQuotaHoverOverlay: View {
+    let proxy: ChartProxy
+    let curves: [OverviewQuotaCurve]
+    let flatByCurve: [String: [QuotaHistorySample]]
+    let initialSpan: TimeInterval
+    /// Incremented by the card when the picker or a range pill has to drop the
+    /// crosshair.
+    let resetToken: Int
+    @Binding var window: ChartTimeWindow
+
+    @State private var hoverDate: Date?
+    @State private var panBase: ChartTimeWindow?
+    @State private var magnifyBase: ChartTimeWindow?
+
+    private static let tooltipWidth: CGFloat = 214
+    /// Past this many rows the tooltip stops being a readout and becomes a
+    /// second chart; the rest are counted instead. Safe to cap only because
+    /// the rows are sorted lowest-remaining first — the quotas that get folded
+    /// into "+N more" are the ones with the most headroom.
+    private static let tooltipRowLimit = 8
 
     private static let tooltipFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -973,4 +1000,162 @@ struct OverviewQuotaHistoryCard: View {
         formatter.dateFormat = "MMM d · HH:mm"
         return formatter
     }()
+
+    var body: some View {
+        GeometryReader { geometry in
+            let plot = proxy.plotFrame.map { geometry[$0] }
+            let plotMinX = plot?.minX ?? 0
+            let plotWidth = plot?.width ?? geometry.size.width
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            let value = proxy.value(atX: location.x - plotMinX, as: Date.self)
+                            hoverDate = value.flatMap {
+                                window.visibleRange.contains($0) ? $0 : nil
+                            }
+                        case .ended:
+                            hoverDate = nil
+                        }
+                    }
+                    .gesture(panGesture(plotWidth: plotWidth))
+                    .simultaneousGesture(magnifyGesture(plotMinX: plotMinX))
+                    .onTapGesture(count: 2) {
+                        window = window.jumped(toSpan: initialSpan)
+                        hoverDate = nil
+                    }
+
+                if let hoverDate,
+                   let x = proxy.position(forX: hoverDate),
+                   let plot {
+                    let readings = hoverReadings(at: hoverDate)
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.22))
+                        .frame(width: 1, height: plot.height)
+                        .offset(x: plotMinX + x, y: plot.minY)
+                        .allowsHitTesting(false)
+                    tooltip(at: hoverDate, readings: readings)
+                        .offset(x: tooltipX(plotMinX: plotMinX, x: x, width: geometry.size.width))
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+        .onChange(of: resetToken) { _, _ in hoverDate = nil }
+    }
+
+    // MARK: - Gestures
+
+    private func panGesture(plotWidth: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 3)
+            .onChanged { value in
+                guard plotWidth > 0 else { return }
+                let base = panBase ?? window
+                if panBase == nil { panBase = base }
+                let secondsPerPoint = base.visibleSpan / TimeInterval(plotWidth)
+                window = base.panned(by: -TimeInterval(value.translation.width) * secondsPerPoint)
+            }
+            .onEnded { _ in panBase = nil }
+    }
+
+    private func magnifyGesture(plotMinX: CGFloat) -> some Gesture {
+        MagnifyGesture(minimumScaleDelta: 0.01)
+            .onChanged { value in
+                let base = magnifyBase ?? window
+                if magnifyBase == nil { magnifyBase = base }
+                let anchor = proxy.value(atX: value.startLocation.x - plotMinX, as: Date.self)
+                    ?? base.visibleMidpoint
+                window = base.zoomed(scale: value.magnification, around: anchor)
+            }
+            .onEnded { _ in magnifyBase = nil }
+    }
+
+    // MARK: - Tooltip
+
+    private func tooltipX(plotMinX: CGFloat, x: CGFloat, width: CGFloat) -> CGFloat {
+        min(max(plotMinX + x - Self.tooltipWidth / 2, 0), max(0, width - Self.tooltipWidth))
+    }
+
+    private func tooltip(at date: Date, readings: [OverviewHoverReading]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(Self.tooltipFormatter.string(from: date))
+                .font(.system(size: 10, weight: .semibold))
+            if readings.isEmpty {
+                // Same wording as the per-group chart's empty row, and for the
+                // same reason: an absent sample says the app was not watching,
+                // not that the quota was between windows.
+                Text("No data recorded")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white.opacity(0.7))
+            } else {
+                ForEach(readings.prefix(Self.tooltipRowLimit)) { reading in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Circle()
+                            .fill(reading.color)
+                            .frame(width: 5, height: 5)
+                        Text(reading.label)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.78))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 6)
+                        Text("\(Int(reading.value.rounded()))%")
+                            .font(
+                                .system(size: 9, weight: .semibold, design: .rounded)
+                                    .monospacedDigit()
+                            )
+                    }
+                }
+                if readings.count > Self.tooltipRowLimit {
+                    Text("+\(readings.count - Self.tooltipRowLimit) more")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.87)))
+        .foregroundStyle(.white)
+        .frame(width: Self.tooltipWidth, alignment: .leading)
+    }
+
+    /// Nearest observation per curve, **lowest remaining first**.
+    ///
+    /// The order is the whole point of the card: the reader is looking for
+    /// whichever quota is closest to running out, and the tooltip caps its rows
+    /// — so sorting the fullest quotas to the top would have buried exactly the
+    /// curves this card exists to surface behind "+N more". Curves with no
+    /// coverage near the cursor are omitted rather than shown as zero.
+    ///
+    /// Resolved by binary search over each curve's flattened, time-sorted
+    /// samples, because this runs on every pointer move — and with a tolerance
+    /// resolved per curve, because this card exists to overlay quotas whose
+    /// windows (and therefore whose sampling rhythms) differ by orders of
+    /// magnitude.
+    private func hoverReadings(at date: Date) -> [OverviewHoverReading] {
+        var result: [OverviewHoverReading] = []
+        for curve in curves {
+            guard let sample = ChartSampleSearch.nearest(
+                in: flatByCurve[curve.id] ?? [],
+                to: date,
+                tolerance: ChartHoverTolerance.seconds(
+                    windowSeconds: curve.windowSeconds,
+                    visibleSpan: window.visibleSpan
+                ),
+                time: { $0.time }
+            ) else { continue }
+            result.append(
+                OverviewHoverReading(
+                    id: curve.id,
+                    label: curve.label,
+                    color: curve.color,
+                    value: sample.remainingPercent
+                )
+            )
+        }
+        return result.sorted { $0.value < $1.value }
+    }
 }

@@ -217,8 +217,11 @@ struct MiniLedgerLayout: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            content(now: context.date)
+        // One clock for the layout, on the app-wide phase anchor: a moving
+        // `.now` anchor re-phased the tick on every body pass, so no two
+        // surfaces ever asked `QuotaService.paceForecast` the same question.
+        StableClock(interval: 30) { tickDate in
+            content(now: tickDate)
         }
         .frame(width: MiniLedgerMetrics.width)
     }
@@ -663,8 +666,8 @@ struct MiniFocusLayout: View {
     @State private var pageIndex = 0
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            content(now: context.date)
+        StableClock(interval: 30) { tickDate in
+            content(now: tickDate)
         }
         .frame(width: MiniFocusMetrics.size.width, height: MiniFocusMetrics.size.height)
     }
@@ -813,8 +816,8 @@ struct MiniRailLayout: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            content(now: context.date)
+        StableClock(interval: 60) { tickDate in
+            content(now: tickDate)
         }
         .frame(width: MiniRailMetrics.size.width, height: MiniRailMetrics.size.height)
     }

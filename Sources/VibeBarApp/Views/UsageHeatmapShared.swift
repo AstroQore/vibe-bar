@@ -17,6 +17,16 @@ struct HeatmapGridMetrics {
         min(2.5, max(1.5, cellSide * 0.16))
     }
 
+    /// Size of the 7 × 24 cell block — what the per-row `HStack`s used to
+    /// measure to on their own, now the frame of the single grid `Canvas`.
+    var gridWidth: CGFloat {
+        cellSide * 24 + cellSpacing * 23
+    }
+
+    var gridHeight: CGFloat {
+        cellSide * 7 + cellSpacing * 6
+    }
+
     /// Compute the metrics that fit `availableWidth`. A measured width of 0
     /// (first layout pass before GeometryReader has a real width) falls back
     /// to a conservative 520 pt so a nested popover cannot inflate itself
@@ -44,6 +54,22 @@ struct HeatmapGridWidthPreferenceKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
     }
+}
+
+/// Which cell a hover point lands on in a uniform `side + spacing` grid.
+///
+/// Both heatmaps draw their cells into a single `Canvas` rather than one view
+/// per cell, so the per-cell `.help()` tooltip is reproduced by hit-testing the
+/// hover location against the same geometry the canvas drew with. Returns `nil`
+/// in the gaps between cells, because the old per-cell tooltip only covered the
+/// filled square.
+func heatmapCellIndex(for offset: CGFloat, side: CGFloat, spacing: CGFloat, count: Int) -> Int? {
+    let step = side + spacing
+    guard step > 0, side > 0, offset >= 0 else { return nil }
+    let index = Int(offset / step)
+    guard index >= 0, index < count else { return nil }
+    guard offset - CGFloat(index) * step <= side else { return nil }
+    return index
 }
 
 /// Continuous faint-blue → warm-orange gradient. `intensity` is clamped to 0…1.
