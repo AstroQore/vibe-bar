@@ -391,7 +391,10 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// were computed from.
         public var isTruncated: Bool { windowCycleCount > cycles.count }
 
-        /// Full quota-axis name: company · SubProvider · group · bucket.
+        /// Full quota-axis name on one line: company · SubProvider · group ·
+        /// bucket. The tooltip and the screen-reader summary use this — both
+        /// are prose, with no column to line levels up in. The row itself uses
+        /// `subProvider` over `bucketLine` instead.
         public var label: String {
             var parts = [company, subProvider]
             if let groupTitle, !groupTitle.isEmpty { parts.append(groupTitle) }
@@ -400,11 +403,21 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             return parts.joined(separator: " · ")
         }
 
-        /// The row's own name: SubProvider / group / bucket, with the company
-        /// dropped because the heading above the group already carries it.
-        /// "Gemini Web / Weekly", "AntiGravity / Claude & GPT Models / Weekly".
-        public var labelWithoutCompany: String {
-            var parts = [subProvider]
+        /// Second line of the row label: the quota group and the bucket inside
+        /// the SubProvider, plus the account when the provider has more than
+        /// one of them.
+        ///
+        /// The row label is drawn as two *levels*, not as one string that
+        /// wraps: `subProvider` is line one and this is line two. Joined, they
+        /// read "ChatGPT Agentic · Weekly" and the break landed wherever the
+        /// column happened to run out, so no two rows agreed on where the
+        /// SubProvider ended and the bucket began.
+        ///
+        /// The group and the bucket *are* one level, so they stay joined here —
+        /// "GPT-5.3 Codex Spark · Weekly" is one answer to "which quota", not
+        /// two. A lane whose L3 is only a bucket gets just the bucket.
+        public var bucketLine: String {
+            var parts: [String] = []
             if let groupTitle, !groupTitle.isEmpty { parts.append(groupTitle) }
             if !bucketTitle.isEmpty, bucketTitle != groupTitle { parts.append(bucketTitle) }
             if let accountLabel, !accountLabel.isEmpty { parts.append(accountLabel) }
@@ -681,6 +694,39 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             totals: totals,
             verdict: verdict(lanes: ordered, totals: totals)
         )
+    }
+
+    // MARK: - Default window
+
+    /// A bar narrower than this is a hairline, not a bar. Twelve points of
+    /// bar plus the point-and-a-half of air `barRect` insets on each side.
+    public static let minimumComfortableColumnWidth: Double = 15
+
+    /// The window a card of this width should open on.
+    ///
+    /// The widest of the fixed steps whose columns still draw as bars. A card
+    /// half the popover wide and one filling the Workbench are the same module
+    /// with very different room, and a single hard-coded default left one of
+    /// them either sparse or crammed.
+    ///
+    /// `all` is never chosen for you: it is a deliberate "show me everything",
+    /// and on a lane with years of history it is exactly the choice that needs
+    /// to be made on purpose.
+    ///
+    /// One extra column is assumed for the cycle running now — the common case,
+    /// and guessing it wrong costs a slightly *wider* bar rather than a
+    /// narrower one.
+    public static func defaultWindow(
+        chartWidth: Double,
+        minimumColumnWidth: Double = minimumComfortableColumnWidth
+    ) -> Window {
+        for window in [Window.twelve, .eight, .four] {
+            guard let cycles = window.cycleLimit else { continue }
+            if chartWidth / Double(cycles + 1) >= minimumColumnWidth { return window }
+        }
+        // Fewer bars beats unreadable ones, so the narrowest step is the floor
+        // rather than an even narrower ad-hoc count.
+        return .four
     }
 
     // MARK: - Draw budget

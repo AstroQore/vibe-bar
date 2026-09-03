@@ -330,8 +330,28 @@ struct ResetHistoryCompareCard: View {
     /// history plus its cached quotas.
     @EnvironmentObject private var quotaService: QuotaService
 
-    @State private var window: ResetHistoryComparison.Window = .eight
+    /// The window the user picked, if they picked one. `nil` means "still on
+    /// the default", which is derived from how much room the card actually got
+    /// rather than hard-coded — a card half the popover wide and one filling
+    /// the Workbench are the same module with very different space.
+    ///
+    /// Session state, as before: an explicit choice sticks until the popover
+    /// closes, and only the *initial* value became width-derived.
+    @State private var chosenWindow: ResetHistoryComparison.Window?
+    /// The card's content width, updated only when it actually changes —
+    /// `onGeometryChange` fires on a new value, not on every layout pass.
+    ///
+    /// Measured rather than derived from `density.popoverWidth`: this card
+    /// sits in an Overview column, a provider page's wide column and a full
+    /// Workbench page, and only one of those is a function of the popover.
+    @State private var cardWidth: CGFloat = 0
     @State private var cache = ResetHistoryComparisonCache()
+
+    private var window: ResetHistoryComparison.Window {
+        chosenWindow ?? ResetHistoryComparison.defaultWindow(
+            chartWidth: Double(max(0, cardWidth - ResetHistoryCompareLayout.chartX(for: density)))
+        )
+    }
 
     /// Persisted, not `@State`: switching the Overview's copy switches the
     /// provider pages' and the Workbench's too, which is what a reader who
@@ -352,6 +372,14 @@ struct ResetHistoryCompareCard: View {
         CardShell(density: density, spacing: 8) {
             header
             summary(comparison)
+                // Inside the shell, so this is the card's *content* width —
+                // the shell's own width would include its padding and make
+                // every plot look wider than it is.
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.width
+                } action: { width in
+                    cardWidth = width
+                }
             if comparison.isEmpty {
                 Text("Nothing to compare yet — weekly and longer quotas appear here once a provider reports one.")
                     .font(.system(size: density.subtitleFontSize))
@@ -420,7 +448,7 @@ struct ResetHistoryCompareCard: View {
         HStack(spacing: 1) {
             ForEach(ResetHistoryComparison.Window.allCases, id: \.self) { option in
                 Button {
-                    window = option
+                    chosenWindow = option
                 } label: {
                     Text(option.shortTitle(for: axis))
                         .font(.system(size: max(8.5, density.segmentedFontSize - 1.5), weight: .semibold, design: .rounded))
@@ -486,9 +514,11 @@ struct ResetHistoryCompareLayout: Equatable {
     let titleFontSize: CGFloat
     let captionFontSize: CGFloat
     let titleLineHeight: CGFloat
-    /// Label lines every row reserves, so the grid stays even whether or not
-    /// a particular name needs the second one.
-    let titleLineLimit = 2
+    /// Label lines every row reserves. Exactly two, always: the SubProvider
+    /// on the first and the group/bucket on the second. A fixed count is what
+    /// keeps the caption under it on one line across the whole table — the
+    /// wrapped version moved it up or down per row.
+    let labelLineCount = 2
     let now: Date
     /// Which grid the bars sit on. Everything above this line — heading
     /// heights, label block, track height, row rhythm — is identical for both,
@@ -516,16 +546,11 @@ struct ResetHistoryCompareLayout: Equatable {
         // in full — the first version clipped every row at about twenty
         // characters, which is the complaint this layout exists to answer.
         switch density.profile {
-        case .compact:
-            trackHeight = 26
-            labelWidth = 176
-        case .regular:
-            trackHeight = 30
-            labelWidth = 202
-        case .spacious:
-            trackHeight = 36
-            labelWidth = 232
+        case .compact: trackHeight = 26
+        case .regular: trackHeight = 30
+        case .spacious: trackHeight = 36
         }
+        labelWidth = Self.labelWidth(for: density)
         titleFontSize = max(9, density.subtitleFontSize - 0.5)
         captionFontSize = max(8, density.subtitleFontSize - 2)
         titleLineHeight = titleFontSize + 3
@@ -535,7 +560,7 @@ struct ResetHistoryCompareLayout: Equatable {
         // Two label lines plus the caption, or the bar track, whichever is
         // taller. Uniform per density: this is a table, and a table's rows
         // line up.
-        let labelBlock = CGFloat(titleLineLimit) * titleLineHeight + captionFontSize + 4
+        let labelBlock = CGFloat(labelLineCount) * titleLineHeight + captionFontSize + 4
         let rowHeight = max(trackHeight, labelBlock) + markerBand + rowGap
         self.rowHeight = rowHeight
         headingHeight = max(16, titleFontSize + 8)
@@ -563,6 +588,21 @@ struct ResetHistoryCompareLayout: Equatable {
         self.rowTops = rowTops
         self.laneTops = laneTops
         rowsHeight = y
+    }
+
+    /// Width of the label column, resolved from density alone — the card asks
+    /// for it before there is a comparison to build a layout from.
+    static func labelWidth(for density: Theme.Density) -> CGFloat {
+        switch density.profile {
+        case .compact: 176
+        case .regular: 202
+        case .spacious: 232
+        }
+    }
+
+    /// Where the plot starts, for a card that has not been laid out yet.
+    static func chartX(for density: Theme.Density) -> CGFloat {
+        labelWidth(for: density) + CGFloat(10)
     }
 
     var totalHeight: CGFloat { rowsHeight + axisHeight }
@@ -965,11 +1005,19 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         )
     }
 
-    /// The row's name over its waste summary.
+    /// The row's name as two levels, over its waste summary.
     ///
-    /// The name wraps on its own separators rather than truncating: every row
-    /// reserves two lines, and the caption follows whatever the name actually
-    /// used, so a one-line row has no hole under it.
+    /// Line one is the SubProvider and line two is the quota inside it; they
+    /// are never joined and line one never wraps. The single wrapped string
+    /// this replaces broke wherever the column ran out — "ChatGPT Agentic ·
+    /// Weekly" on one row, "AntiGravity" over "Claude and GPT Models · Weekly"
+    /// on the next — so no two rows agreed on where the level boundary was.
+    /// Line two truncates rather than wrapping, because a third line would
+    /// push the caption out of the row every row it happened on.
+    ///
+    /// Weight and colour carry the hierarchy, not size: both lines are set at
+    /// `titleFontSize` so the reserved block height is exactly two lines
+    /// whatever the labels say.
     private func drawLabels(
         _ context: inout GraphicsContext,
         lane: ResetHistoryComparison.Lane,
@@ -977,24 +1025,40 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
     ) {
         let maxWidth = layout.labelWidth - layout.labelGap
         var y = layout.laneTop(index) + layout.markerBand - 2
-        let lines = wrapped(
-            context,
-            lane.labelWithoutCompany,
-            font: .system(size: layout.titleFontSize, weight: .semibold),
-            color: Color.primary.opacity(0.88),
-            maxWidth: maxWidth,
-            lineLimit: layout.titleLineLimit
+        context.draw(
+            truncated(
+                context,
+                lane.subProvider,
+                font: .system(size: layout.titleFontSize, weight: .semibold),
+                color: Color.primary.opacity(0.88),
+                maxWidth: maxWidth
+            ),
+            at: CGPoint(x: 0, y: y),
+            anchor: .topLeading
         )
-        for line in lines {
-            context.draw(line, at: CGPoint(x: 0, y: y), anchor: .topLeading)
-            y += layout.titleLineHeight
+        y += layout.titleLineHeight
+        // Empty only for a lane whose bucket nothing could name; the line is
+        // still reserved so the caption below stays put.
+        if !lane.bucketLine.isEmpty {
+            context.draw(
+                truncated(
+                    context,
+                    lane.bucketLine,
+                    font: .system(size: layout.titleFontSize),
+                    color: Color.primary.opacity(0.58),
+                    maxWidth: maxWidth
+                ),
+                at: CGPoint(x: 0, y: y),
+                anchor: .topLeading
+            )
         }
+        y += layout.titleLineHeight
         context.draw(
             truncated(
                 context,
                 lane.wasteSummary,
                 font: .system(size: layout.captionFontSize, design: .rounded),
-                color: Color.primary.opacity(0.5),
+                color: Color.primary.opacity(0.45),
                 maxWidth: maxWidth
             ),
             at: CGPoint(x: 0, y: y + 1),
@@ -1206,53 +1270,6 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
                 anchor: .topLeading
             )
         }
-    }
-
-    /// A name broken across at most `lineLimit` lines on its own " · "
-    /// separators, so "AntiGravity · Claude & GPT Models · Weekly" wraps where
-    /// a reader would break it instead of being cut at twenty characters.
-    /// The last line still truncates if even that will not fit.
-    private func wrapped(
-        _ context: GraphicsContext,
-        _ string: String,
-        font: Font,
-        color: Color,
-        maxWidth: CGFloat,
-        lineLimit: Int
-    ) -> [GraphicsContext.ResolvedText] {
-        let probe = CGSize(width: 10_000, height: 40)
-        func resolve(_ candidate: String) -> GraphicsContext.ResolvedText {
-            context.resolve(Text(candidate).font(font).foregroundStyle(color))
-        }
-        let full = resolve(string)
-        guard maxWidth > 0, full.measure(in: probe).width > maxWidth, lineLimit > 1 else {
-            return [truncated(context, string, font: font, color: color, maxWidth: maxWidth)]
-        }
-        let separator = " · "
-        let parts = string.components(separatedBy: separator)
-        guard parts.count > 1 else {
-            return [truncated(context, string, font: font, color: color, maxWidth: maxWidth)]
-        }
-        var lines: [String] = []
-        var current = ""
-        for part in parts {
-            let candidate = current.isEmpty ? part : current + separator + part
-            if current.isEmpty || resolve(candidate).measure(in: probe).width <= maxWidth {
-                current = candidate
-                continue
-            }
-            lines.append(current)
-            current = part
-        }
-        if !current.isEmpty { lines.append(current) }
-        if lines.count > lineLimit {
-            // Everything that did not fit joins the last allowed line, which
-            // then truncates — better a trailing ellipsis than a dropped
-            // bucket name.
-            let tail = lines[(lineLimit - 1)...].joined(separator: separator)
-            lines = Array(lines.prefix(lineLimit - 1)) + [tail]
-        }
-        return lines.map { truncated(context, $0, font: font, color: color, maxWidth: maxWidth) }
     }
 
     /// Single-line text that fits `maxWidth`, with an ellipsis when it does
