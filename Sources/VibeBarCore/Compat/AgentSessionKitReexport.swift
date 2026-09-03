@@ -69,13 +69,19 @@ extension MCPSocketServer {
     /// path — tests, the documented `VIBEBAR_MCP_SOCKET` override — must
     /// already have its directory, because chmod-ing someone else's is not
     /// this server's business.
+    ///
+    /// `idleTimeout` is passed through because the package cannot choose one:
+    /// it does not know whether its host's clients respawn after an EOF. Vibe
+    /// Bar does — see `MCPController.clientIdleTimeout`.
     public convenience init(
         server: MCPServer,
-        socketPath: String = MCPSocketServer.defaultSocketPath
+        socketPath: String = MCPSocketServer.defaultSocketPath,
+        idleTimeout: TimeInterval? = MCPSocketServer.defaultIdleTimeout
     ) {
         self.init(
             handler: server,
             socketPath: socketPath,
+            idleTimeout: idleTimeout,
             ensureDirectory: {
                 guard socketPath == MCPSocketServer.defaultSocketPath else { return }
                 try VibeBarLocalStore.ensureBaseDirectory()

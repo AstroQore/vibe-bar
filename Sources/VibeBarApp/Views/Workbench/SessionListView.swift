@@ -14,7 +14,14 @@ struct SessionListView: View {
     var body: some View {
         Group {
             if model.rows.isEmpty {
-                emptyState
+                // "No sessions match" is a verdict, and one frame of it while
+                // the off-main rows build is still running would be a wrong
+                // one. Hold the space instead.
+                if model.isPreparingRows {
+                    Color.clear
+                } else {
+                    emptyState
+                }
             } else {
                 // This is deliberately a plain scroll surface rather than a
                 // SwiftUI List: sessions are cards in a reading queue, not
@@ -38,6 +45,9 @@ struct SessionListView: View {
                             ForEach(model.rows) { row in
                                 rowView(row)
                             }
+                        }
+                        if model.isSummaryListCapped, model.searchText.isEmpty {
+                            capNotice
                         }
                     }
                     .padding(.horizontal, 4)
@@ -72,15 +82,35 @@ struct SessionListView: View {
         .onAppear {
             if row.id == model.rows.last?.id { model.loadMoreSummaries() }
         }
-        .contextMenu {
-            Button("Open in Terminal") { model.resumeInTerminal(row.summary) }
-                .disabled(model.resumeCommand(for: row.summary) == nil)
-            Button("Copy resume command") { model.copyResumeCommand(for: row.summary) }
-                .disabled(model.resumeCommand(for: row.summary) == nil)
-            Divider()
-            Button("Delete…", role: .destructive) { model.requestDelete([row.summary]) }
-                .disabled(!SessionManagerModel.isDeletable(row.summary))
-        }
+        .contextMenu { contextMenu(for: row) }
+    }
+
+    /// `resumeCommand(for:)` builds a whole shell invocation, and this asked
+    /// for it twice per menu — once per item — for the same answer.
+    @ViewBuilder
+    private func contextMenu(for row: SessionManagerModel.Row) -> some View {
+        let canResume = model.resumeCommand(for: row.summary) != nil
+        Button("Open in Terminal") { model.resumeInTerminal(row.summary) }
+            .disabled(!canResume)
+        Button("Copy resume command") { model.copyResumeCommand(for: row.summary) }
+            .disabled(!canResume)
+        Divider()
+        Button("Delete…", role: .destructive) { model.requestDelete([row.summary]) }
+            .disabled(!SessionManagerModel.isDeletable(row.summary))
+    }
+
+    /// The list stops at `maximumLoadedSummaries` because a `LazyVStack`
+    /// builds rows lazily and then keeps every one of them. Saying so beats
+    /// letting the scroll quietly end short of an 11 000-session index.
+    private var capNotice: some View {
+        Text("Showing the first \(SessionManagerModel.maximumLoadedSummaries) of "
+            + "\(model.totalSessionCount) sessions. Narrow the filters or search to reach the rest.")
+            .font(.system(size: max(10, density.resetCountdownFontSize)))
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
     }
 
     private var emptyState: some View {

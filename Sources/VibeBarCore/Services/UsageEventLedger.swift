@@ -70,6 +70,21 @@ public actor UsageEventLedger: CostUsageEventSink {
     private var contentRevisionValue: UInt64 = 0
     /// See `optimizeStorage`.
     private var didOptimizeStorage = false
+    /// Picker inputs the Usage Stats page re-asks for on every reload. Both
+    /// ignore the date range by design, so their only real input is the
+    /// ledger's content — which is exactly what `contentRevisionValue`
+    /// tracks. Keyed by the filter's tool/harness signature and dropped
+    /// whole whenever the revision moves.
+    private var pickerCacheRevision: UInt64?
+    private var availableModelsCache: [String: [String]] = [:]
+    private var earliestUsageCache: [String: Date?] = [:]
+    /// `tokenHeadlineTotals` groups the whole detail table by day and is
+    /// called on every popover open and every cost refresh. Same reasoning:
+    /// the answer can only move when the ledger does — plus the local day,
+    /// because "today" and "peak" are relative to it.
+    private var headlineCacheRevision: UInt64?
+    private var headlineCacheDay: String?
+    private var headlineCache: [String: UsageTokenHeadlineTotals] = [:]
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private let calendar: Calendar
     private let dayFormatter: DateFormatter
@@ -142,8 +157,8 @@ public actor UsageEventLedger: CostUsageEventSink {
     }
 
     /// One-time storage upkeep the query planner needs and correctness does
-    /// not: building the harness index on an established ledger, and
-    /// refreshing `sqlite_stat1`.
+    /// not: building the harness index on an established ledger, refreshing
+    /// `sqlite_stat1`, and returning freed pages to the filesystem.
     ///
     /// Deliberately outside `initialize`. That runs synchronously inside
     /// `init`, which `AppEnvironment` calls on the main thread before the
@@ -156,12 +171,53 @@ public actor UsageEventLedger: CostUsageEventSink {
         didOptimizeStorage = true
         _ = sqlite3_exec(database, Self.harnessIndexSQL, nil, nil, nil)
         Self.refreshStatisticsIfStale(database)
+        Self.reclaimFreePages(database)
+    }
+
+    /// Give freed pages back to the filesystem, in bounded steps.
+    ///
+    /// `rollupAndPrune` deletes the detail rows of every day older than 30,
+    /// and retention deletes whole rollups; without `auto_vacuum` those pages
+    /// stay in the file forever. New databases are created `INCREMENTAL` (see
+    /// `initialize`), which makes this a short, bounded `incremental_vacuum`.
+    ///
+    /// An older database was created with `auto_vacuum=NONE`, and the only
+    /// way to change that is a full `VACUUM` — which rewrites the whole file.
+    /// So it happens here, on the actor's executor rather than at launch,
+    /// once, and only when the freelist has grown large enough to be worth
+    /// it. A healthy ledger never takes that branch.
+    private static let vacuumConversionFreeByteThreshold = 32 * 1024 * 1024
+    /// ~8 MiB per pass at a 4 KiB page size. Enough to keep up with a day of
+    /// pruning without holding the actor for long.
+    private static let incrementalVacuumPages = 2_000
+
+    private static func reclaimFreePages(_ database: OpaquePointer) {
+        let mode = scalarInt(database, "PRAGMA auto_vacuum") ?? 0
+        if mode == 2 {
+            _ = sqlite3_exec(
+                database, "PRAGMA incremental_vacuum(\(incrementalVacuumPages))", nil, nil, nil
+            )
+            return
+        }
+        let pageSize = scalarInt(database, "PRAGMA page_size") ?? 4_096
+        let freeBytes = (scalarInt(database, "PRAGMA freelist_count") ?? 0) * pageSize
+        guard freeBytes >= vacuumConversionFreeByteThreshold else { return }
+        guard sqlite3_exec(database, "PRAGMA auto_vacuum=INCREMENTAL", nil, nil, nil) == SQLITE_OK else {
+            return
+        }
+        _ = sqlite3_exec(database, "VACUUM", nil, nil, nil)
     }
 
     // MARK: - Schema
 
     private static func initialize(_ database: OpaquePointer) throws {
+        // `auto_vacuum` first, and before `journal_mode`: it is written into
+        // the file header, and the header is fixed by the first statement
+        // that touches the file — setting WAL ahead of it measurably leaves
+        // the mode at NONE. On an established database this line is a no-op
+        // and the conversion happens in `optimizeStorage` instead.
         let preamble = """
+            PRAGMA auto_vacuum=INCREMENTAL;
             PRAGMA journal_mode=WAL;
             PRAGMA synchronous=NORMAL;
             CREATE TABLE IF NOT EXISTS ledger_meta (
@@ -1044,6 +1100,11 @@ public actor UsageEventLedger: CostUsageEventSink {
                 )
             }
             try execute("COMMIT")
+            // Rows moved between the two tables and retention may have
+            // dropped the oldest day outright: `earliestUsageDate`, the model
+            // picker and the token headlines can all have changed without a
+            // single new event arriving.
+            contentRevisionValue &+= 1
         } catch {
             try? execute("ROLLBACK")
             throw error
@@ -1098,33 +1159,58 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// the active model has linear, tier-independent pricing; ambiguous and
     /// already-priced rollups stay untouched because their request boundaries
     /// are no longer available.
+    ///
+    /// Chunked and `async` on purpose. This used to read every detail row
+    /// into memory and then update them one at a time inside a single
+    /// transaction: at 245 000 rows that is a quarter-million `RepricingRow`
+    /// values held at once and one write transaction that no other ledger
+    /// query can get past. It now walks the table by ascending `id` in
+    /// bounded runs, commits each run, and yields between them, so a pricing
+    /// refresh interleaves with the Workbench's reads instead of blocking
+    /// them. A run that is interrupted leaves the revision marker unwritten,
+    /// so the next launch simply reprices again — the calculation is
+    /// idempotent against the same price table.
     @discardableResult
-    public func prepareForPricingRevision(_ revision: String) throws -> Bool {
+    public func prepareForPricingRevision(_ revision: String) async throws -> Bool {
         let stored = try scalarText(
             "SELECT value FROM ledger_meta WHERE key = ?",
             [.text(Self.pricingRevisionKey)]
         )
         guard stored != revision else { return false }
 
-        let details = try detailRows()
+        var lastID: Int64 = 0
+        while true {
+            let chunk = try detailRows(after: lastID, limit: Self.repricingChunkSize)
+            guard let last = chunk.last else { break }
+            lastID = last.id
+            try execute("BEGIN IMMEDIATE")
+            do {
+                for row in chunk {
+                    // Cursor dashboard cents are authoritative provider facts,
+                    // not estimates from our price table. Source provenance
+                    // keeps repricing from overwriting them with catalog rates.
+                    if row.sourceKey?.hasPrefix("cursor-event-v1") == true { continue }
+                    let costBinding: Binding = if let micros = costMicros(for: row) {
+                        .integer(micros)
+                    } else {
+                        .null
+                    }
+                    try run(
+                        "UPDATE usage_events SET cost_micros = ? WHERE id = ?",
+                        [costBinding, .integer(row.id)]
+                    )
+                }
+                try execute("COMMIT")
+            } catch {
+                try? execute("ROLLBACK")
+                throw error
+            }
+            await Task.yield()
+        }
+
         let rollups = try fullyUnpricedRollupRows()
         try execute("BEGIN IMMEDIATE")
         do {
-            for row in details {
-                // Cursor dashboard cents are authoritative provider facts,
-                // not estimates from our price table. Source provenance keeps
-                // repricing from overwriting them with catalog rates.
-                if row.sourceKey?.hasPrefix("cursor-event-v1") == true { continue }
-                let costBinding: Binding = if let micros = costMicros(for: row) {
-                    .integer(micros)
-                } else {
-                    .null
-                }
-                try run(
-                    "UPDATE usage_events SET cost_micros = ? WHERE id = ?",
-                    [costBinding, .integer(row.id)]
-                )
-            }
             for row in rollups {
                 guard CostUsagePricing.canRepriceAggregate(tool: row.tool, model: row.model) else {
                     continue
@@ -1156,12 +1242,20 @@ public actor UsageEventLedger: CostUsageEventSink {
                 [.text(Self.pricingRevisionKey), .text(revision)]
             )
             try execute("COMMIT")
+            // Costs moved even though no row was added or removed, so every
+            // revision-keyed cache above this has to see a new number.
+            contentRevisionValue &+= 1
             return true
         } catch {
             try? execute("ROLLBACK")
             throw error
         }
     }
+
+    /// Detail rows per repricing transaction. Small enough that the write
+    /// lock is held for milliseconds, large enough that a 245k-row ledger is
+    /// under a hundred transactions.
+    private static let repricingChunkSize = 5_000
 
     private struct RepricingRow {
         let id: Int64
@@ -1180,15 +1274,18 @@ public actor UsageEventLedger: CostUsageEventSink {
         let sourceKey: String?
     }
 
-    private func detailRows() throws -> [RepricingRow] {
+    /// One bounded run of detail rows, keyset-paged by `id` so a chunk can
+    /// never overlap or skip a row the previous chunk already repriced.
+    private func detailRows(after lastID: Int64, limit: Int) throws -> [RepricingRow] {
         let statement = try prepare(
             """
             SELECT id, day, tool, model, fresh_input, output,
                    cache_read, cache_creation, service_tier, source_key
-              FROM usage_events
+              FROM usage_events WHERE id > ? ORDER BY id LIMIT ?
             """
         )
         defer { sqlite3_finalize(statement) }
+        bindAll([.integer(lastID), .integer(Int64(limit))], to: statement)
         var rows: [RepricingRow] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let day = columnText(statement, 1),
@@ -1423,6 +1520,22 @@ public actor UsageEventLedger: CostUsageEventSink {
                 peakDayTokens: 0, peakDay: nil
             )
         }
+        // Both halves are needed and neither can be dropped: `rollupAndPrune`
+        // moves a day's rows from `usage_events` into `usage_daily_rollups`
+        // once it is 30 days old, so all-time and peak live in the rollups
+        // *and* in the last month of detail. What can be avoided is repeating
+        // the pass — the answer only moves when the ledger does, or when the
+        // local day turns over.
+        let cacheKey = tools.map { $0.map(\.rawValue).joined(separator: ",") } ?? "*"
+        let today = calendar.startOfDay(for: now)
+        let todayKey = dayString(for: today)
+        if headlineCacheRevision != contentRevisionValue || headlineCacheDay != todayKey {
+            headlineCacheRevision = contentRevisionValue
+            headlineCacheDay = todayKey
+            headlineCache.removeAll(keepingCapacity: true)
+        }
+        if let cached = headlineCache[cacheKey] { return cached }
+
         var byDay: [Date: Int64] = [:]
         let clause = tools.map { " WHERE tool IN (\(placeholders($0.count)))" } ?? ""
         let bindings = tools?.map { Binding.text($0.rawValue) } ?? []
@@ -1456,14 +1569,13 @@ public actor UsageEventLedger: CostUsageEventSink {
         bindAll(bindings, to: rollups)
         consume(rollups)
 
-        let today = calendar.startOfDay(for: now)
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
         let weekStart = calendar.date(byAdding: .day, value: -6, to: today) ?? today
         let monthStart = calendar.date(byAdding: .day, value: -29, to: today) ?? today
         let peak = byDay.max { lhs, rhs in
             lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value < rhs.value
         }
-        return UsageTokenHeadlineTotals(
+        let totals = UsageTokenHeadlineTotals(
             allTimeTokens: byDay.values.reduce(0, +),
             todayTokens: byDay[today] ?? 0,
             yesterdayTokens: byDay[yesterday] ?? 0,
@@ -1476,6 +1588,8 @@ public actor UsageEventLedger: CostUsageEventSink {
             peakDayTokens: peak?.value ?? 0,
             peakDay: peak?.key
         )
+        headlineCache[cacheKey] = totals
+        return totals
     }
 
     /// Zero-filled series across the filter's range.
@@ -1960,6 +2074,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     ) throws -> [String] {
         if let tools, tools.isEmpty { return [] }
         if let harnesses, harnesses.isEmpty { return [] }
+        let key = Self.pickerCacheKey(tools: tools, harnesses: harnesses)
+        prunePickerCacheIfStale()
+        if let cached = availableModelsCache[key] { return cached }
         var clauses = ["TRIM(model) <> ''"]
         var bindings: [Binding] = []
         if let tools {
@@ -1985,7 +2102,24 @@ public actor UsageEventLedger: CostUsageEventSink {
         while sqlite3_step(statement) == SQLITE_ROW {
             if let model = columnText(statement, 0) { models.append(model) }
         }
+        availableModelsCache[key] = models
         return models
+    }
+
+    /// Cache key for the two range-independent picker queries. The date range
+    /// is deliberately absent: neither query looks at it.
+    private static func pickerCacheKey(tools: [ToolType]?, harnesses: [Harness]?) -> String {
+        let toolKey = tools.map { $0.map(\.rawValue).joined(separator: ",") } ?? "*"
+        let harnessKey = harnesses.map { $0.map(\.rawValue).joined(separator: ",") } ?? "*"
+        return toolKey + "|" + harnessKey
+    }
+
+    /// Drop the picker caches when the ledger's content has moved under them.
+    private func prunePickerCacheIfStale() {
+        guard pickerCacheRevision != contentRevisionValue else { return }
+        pickerCacheRevision = contentRevisionValue
+        availableModelsCache.removeAll(keepingCapacity: true)
+        earliestUsageCache.removeAll(keepingCapacity: true)
     }
 
     /// Earliest retained fact for an optional SubProvider filter. The All
@@ -1997,6 +2131,9 @@ public actor UsageEventLedger: CostUsageEventSink {
     ) throws -> Date? {
         if let tools, tools.isEmpty { return nil }
         if let harnesses, harnesses.isEmpty { return nil }
+        let key = Self.pickerCacheKey(tools: tools, harnesses: harnesses)
+        prunePickerCacheIfStale()
+        if let cached = earliestUsageCache[key] { return cached }
         var clauses: [String] = []
         var bindings: [Binding] = []
         if let tools {
@@ -2029,12 +2166,14 @@ public actor UsageEventLedger: CostUsageEventSink {
             nil
         }
 
-        switch (detailStart, rollupStart) {
-        case let (detail?, rollup?): return min(detail, rollup)
-        case let (detail?, nil): return detail
-        case let (nil, rollup?): return rollup
-        case (nil, nil): return nil
+        let earliest: Date? = switch (detailStart, rollupStart) {
+        case let (detail?, rollup?): min(detail, rollup)
+        case let (detail?, nil): detail
+        case let (nil, rollup?): rollup
+        case (nil, nil): nil
         }
+        earliestUsageCache[key] = earliest
+        return earliest
     }
 
     private func forEachGroup(
