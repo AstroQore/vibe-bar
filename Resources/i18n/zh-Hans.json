@@ -150,7 +150,7 @@
     "value": "{title} — 完整图表"
   },
   "cost.gemini.emptyDetail": {
-    "value": "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源都刷新不了时，缓存值会标记为已过期。"
+    "value": "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源均无法刷新时，缓存值将标记为已过期。"
   },
   "cost.gemini.emptyTitle": {
     "value": "暂未发现 Gemini 或 AntiGravity 的用量。"
@@ -183,10 +183,10 @@
     "value": "近 30 天 token"
   },
   "cost.metric.today": {
-    "value": "今天"
+    "value": "今日"
   },
   "cost.metric.todayTokens": {
-    "value": "今天 token"
+    "value": "今日 token"
   },
   "cost.metric.totalCost": {
     "value": "总花费"
@@ -195,10 +195,10 @@
     "value": "总 token"
   },
   "cost.metric.yesterday": {
-    "value": "昨天"
+    "value": "昨日"
   },
   "cost.metric.yesterdayTokens": {
-    "value": "昨天 token"
+    "value": "昨日 token"
   },
   "cost.modelRanking.allProvidersAllTime": {
     "value": "全部厂商 · 全部时间"
@@ -249,7 +249,7 @@
     "value": "30 天"
   },
   "cost.timeframe.today": {
-    "value": "今天"
+    "value": "今日"
   },
   "cost.timeframe.week": {
     "value": "7 天"
@@ -258,7 +258,7 @@
     "value": "7 天"
   },
   "cost.timeframe.yesterday": {
-    "value": "昨天"
+    "value": "昨日"
   },
   "cost.title": {
     "value": "花费"
@@ -306,7 +306,7 @@
     "value": "收起"
   },
   "onboarding.apiKeys.intro": {
-    "value": "这些套餐靠 API key 或控制台 cookie 跟踪，而不是 CLI 登录。勾选你有的那些 — 勾选后会在「其他厂商」页得到一张卡片 — 展开某一行即可现在填写凭据。密钥和 cookies 都会存进你的登录 Keychain。"
+    "value": "这些套餐通过 API key 或控制台 cookie 跟踪，而非 CLI 登录。勾选已持有的项 — 勾选后将在「其他厂商」页生成一张卡片 — 展开对应行即可填写凭据。密钥与 cookies 均存入登录 Keychain。"
   },
   "onboarding.apiKeys.setUp": {
     "value": "设置"
@@ -321,7 +321,7 @@
     "value": "下一步"
   },
   "onboarding.cookies.batchScope": {
-    "value": "这个按钮只覆盖上面四个套餐。下一步的控制台 cookie 套餐有各自的一键批量导入，在「设置 → 浏览器 Cookies」里。"
+    "value": "此按钮仅覆盖上述四个套餐。下一步的控制台 cookie 套餐另有一键批量导入，位于「设置 → 浏览器 Cookies」。"
   },
   "onboarding.cookies.importAll": {
     "value": "立即从所有浏览器导入"
@@ -339,7 +339,7 @@
     "value": "正在导入…"
   },
   "onboarding.cookies.intro": {
-    "value": "网页端额度 — 也就是厂商在自己网站上显示的那份 — 来自浏览器里已有的登录会话。Vibe Bar 会读取这台 Mac 上各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，只保留每个厂商真正需要的那几条，并存进你的登录 Keychain，绝不写入明文文件。首次读取浏览器的 cookie 密钥时，macOS 可能会要求授权一次。"
+    "value": "网页端额度 — 即厂商在其自有网站上展示的部分 — 来自浏览器中已有的登录会话。Vibe Bar 会读取本机各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，仅保留各厂商所需的少量 cookie，并存入登录 Keychain，不写入明文文件。首次读取浏览器 cookie 密钥时，macOS 可能要求授权一次。"
   },
   "onboarding.cookies.notImported": {
     "value": "尚未导入"
@@ -351,7 +351,7 @@
     "value": "cookies 已保存。"
   },
   "onboarding.cookies.signInFirst": {
-    "value": "请先在浏览器里登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已经存在的会话。没登录过的厂商不会有任何结果。"
+    "value": "请先在浏览器中登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已存在的会话；未登录的厂商不会返回任何结果。"
   },
   "onboarding.done.apiKeyProviders": {
     "value": "API key 厂商"
@@ -363,16 +363,16 @@
     "value": "已保存 {saved}/{total} 个厂商"
   },
   "onboarding.done.footer": {
-    "value": "这里的每一项在设置里都能改，向导本身也在「设置 → 系统」里一键可达。"
+    "value": "此处各项均可在设置中修改，向导亦可在「设置 → 系统」中一键打开。"
   },
   "onboarding.done.intro": {
-    "value": "菜单栏需要的都齐了。点「完成」会打开面板并显示当前已能读到的额度，其余的会在第一次刷新时补上。"
+    "value": "菜单栏所需配置已齐备。点击「完成」将打开面板并显示当前可读取的额度，其余部分在首次刷新时补全。"
   },
   "onboarding.done.launchAtLogin": {
     "value": "开机启动"
   },
   "onboarding.done.miscCount": {
-    "value": "「其他厂商」页有 {count} 个"
+    "value": "「其他厂商」页 {count} 个"
   },
   "onboarding.done.modelPricing": {
     "value": "模型价格"
@@ -399,7 +399,7 @@
     "value": "正在获取…"
   },
   "onboarding.pricing.footer": {
-    "value": "价格单位是每百万 token 的美元数。本地覆盖值在「设置 → 模型价格」里。"
+    "value": "价格单位为每百万 token 的美元数。本地覆盖值位于「设置 → 模型价格」。"
   },
   "onboarding.pricing.interval.hour": {
     "value": "小时"
@@ -408,7 +408,7 @@
     "value": "{hours} 小时"
   },
   "onboarding.pricing.intro": {
-    "value": "Token 花费完全在这台 Mac 上按 agent 的会话日志计算，价格来自若干公开价目表合并后的目录 — 同一个模型出现在多处时优先级高的胜出，你自己的覆盖值优先于全部，内置表是离线兜底。目录每 {interval}在后台刷新一次；现在抓一次能让第一批费用数字用上当前价格。"
+    "value": "Token 花费完全在本机依据 agent 的会话日志计算，价格取自若干公开价目表合并后的目录 — 同一模型出现在多个目录时以优先级高者为准，自定义覆盖值优先于全部，内置表为离线兜底。目录每 {interval}在后台刷新一次；此刻获取可使首批费用数字采用当前价格。"
   },
   "onboarding.pricing.merged": {
     "value": "{when}合并 · {count} 个模型"
@@ -444,25 +444,25 @@
     "value": "浏览器 cookies"
   },
   "onboarding.step.done.subtitle": {
-    "value": "这里的每一项在设置里也能改。"
+    "value": "此处各项均可在设置中修改。"
   },
   "onboarding.step.done.title": {
     "value": "完成"
   },
   "onboarding.step.pricing.subtitle": {
-    "value": "费用数字背后的 token 单价从哪来。"
+    "value": "费用数字背后的 token 单价来源。"
   },
   "onboarding.step.pricing.title": {
     "value": "模型价格"
   },
   "onboarding.step.subscriptions.subtitle": {
-    "value": "打开你付费的套餐。"
+    "value": "启用已订阅的套餐。"
   },
   "onboarding.step.subscriptions.title": {
     "value": "订阅"
   },
   "onboarding.step.welcome.subtitle": {
-    "value": "一段话讲清 Vibe Bar 能做什么。"
+    "value": "用一段话说明 Vibe Bar 的功能。"
   },
   "onboarding.step.welcome.title": {
     "value": "欢迎"
@@ -486,16 +486,16 @@
     "value": "已保存 ChatGPT 网页 cookies — 额度将从这里读取。"
   },
   "onboarding.subscriptions.gemini.hint": {
-    "value": "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，没有 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。"
+    "value": "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，无 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。"
   },
   "onboarding.subscriptions.grok.detected": {
     "value": "已检测到 ~/.grok/auth.json — 额度将从这里读取。"
   },
   "onboarding.subscriptions.grok.missing": {
-    "value": "还没有 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。"
+    "value": "尚未找到 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。"
   },
   "onboarding.subscriptions.intro": {
-    "value": "打开你在用的订阅。关掉的厂商不会出现在总览和菜单栏里；之后再关掉也不会丢失凭据和历史。"
+    "value": "启用正在使用的订阅。已关闭的厂商不会出现在总览与菜单栏；之后关闭亦不会删除其凭据与历史。"
   },
   "onboarding.subscriptions.productLine.claude": {
     "value": "Claude Code · claude.ai 网页"
@@ -522,31 +522,31 @@
     "value": "Token 花费"
   },
   "onboarding.welcome.footer": {
-    "value": "整个过程约两分钟。这里的每个选择之后都能在设置里改，向导本身也在「设置 → 系统」里一键可达。"
+    "value": "全程约两分钟。此处的每项选择均可稍后在设置中修改，向导亦可在「设置 → 系统」中一键打开。"
   },
   "onboarding.welcome.intro": {
-    "value": "Vibe Bar 常驻菜单栏，一眼就能看到每个 AI 订阅还剩多少、编码 agent 花了多少钱，以及这台 Mac 上有哪些会话和 skills。它读取 Codex、Claude Code、Gemini、Grok 这些 CLI 本就保存在本机的凭据，在你允许时再从浏览器 cookies 补上网页端额度，并且只会把这些数据发回它们各自的厂商。"
+    "value": "Vibe Bar 常驻菜单栏，可一览各 AI 订阅的剩余量、编码 agent 的支出，以及本机存有哪些会话与 skills。它读取 Codex、Claude Code、Gemini、Grok 等 CLI 已保存在本机的凭据，并在获得授权后从浏览器 cookies 补充网页端额度；所有数据仅发送至其来源厂商。"
   },
   "onboarding.welcome.mcp.detail": {
-    "value": "你的 agent 可以通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度和花费。"
+    "value": "agent 可通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度与花费。"
   },
   "onboarding.welcome.mcp.title": {
     "value": "本地 MCP 服务"
   },
   "onboarding.welcome.quotas.detail": {
-    "value": "Codex、Claude Code、Gemini、Grok，以及一排 API key 套餐，每个都带重置倒计时。"
+    "value": "Codex、Claude Code、Gemini、Grok，以及一系列 API key 套餐，均附带重置倒计时。"
   },
   "onboarding.welcome.quotas.title": {
     "value": "订阅额度"
   },
   "onboarding.welcome.sessions.detail": {
-    "value": "在 Workbench 里浏览、搜索和整理 agent 会话与共享 skills。"
+    "value": "在 Workbench 中浏览、搜索并整理 agent 会话与共享 skills。"
   },
   "onboarding.welcome.sessions.title": {
     "value": "会话与 skills"
   },
   "platform.macos.launchAtLogin.detail": {
-    "value": "Vibe Bar 是没有 Dock 图标的菜单栏应用。开机启动能让额度读数和本地 MCP 服务在你登录后立刻可用；首次启用时 macOS 可能会要求你在「系统设置」中批准这个登录项。"
+    "value": "Vibe Bar 是无 Dock 图标的菜单栏应用。开机启动可使额度读数与本地 MCP 服务在登录后即刻可用；首次启用时 macOS 可能要求在「系统设置」中批准该登录项。"
   },
   "platform.macos.launchAtLogin.enabled": {
     "value": "已在 macOS 登录项中启用。"
@@ -555,7 +555,7 @@
     "value": "已关闭。"
   },
   "platform.macos.launchAtLogin.subtitle": {
-    "value": "登录 Mac 后菜单栏立刻显示读数。"
+    "value": "登录 Mac 后菜单栏即刻显示读数。"
   },
   "platform.macos.launchAtLogin.title": {
     "value": "开机启动"
@@ -600,7 +600,7 @@
     "value": "距重置 {when}"
   },
   "quota.empty.needsLogin.detail": {
-    "value": "在终端里运行 `{command} login`，然后刷新。"
+    "value": "在终端中运行 `{command} login`，然后刷新。"
   },
   "quota.empty.needsLogin.headline": {
     "value": "需重新登录"
@@ -624,7 +624,7 @@
     "value": "响应格式已变化"
   },
   "quota.empty.rateLimited.detail": {
-    "value": "官方 API 要求稍候，请过一会儿再试。"
+    "value": "官方 API 要求稍候，请稍后重试。"
   },
   "quota.empty.rateLimited.headline": {
     "value": "请求过于频繁"
@@ -639,19 +639,19 @@
     "value": "中等置信度"
   },
   "quota.forecast.guidance.atRisk": {
-    "value": "放慢节奏，或把工作转到别的额度上"
+    "value": "降低使用速度，或将任务转移至其他额度"
   },
   "quota.forecast.guidance.available": {
     "value": "目标保留 {target}% · 约有 {unused}% 可用"
   },
   "quota.forecast.guidance.surplus": {
-    "value": "预计有约 {unused}% 会闲置，超出 {target}% 的安全余量"
+    "value": "预计约 {unused}% 将闲置，超出 {target}% 的安全余量"
   },
   "quota.forecast.guidance.usedAvailable": {
     "value": "目标用到 {target}% · 约有 {unused}% 额度可用"
   },
   "quota.forecast.guidance.usedSurplus": {
-    "value": "预计有约 {unused}% 的额度会剩下，超出 {target}% 的使用目标"
+    "value": "预计约 {unused}% 的额度将剩余，超出 {target}% 的使用目标"
   },
   "quota.forecast.guidance.usedWithinTarget": {
     "value": "仍在 {target}% 的使用目标之内"
@@ -663,22 +663,22 @@
     "value": "仍在 {target}% 的安全余量之内"
   },
   "quota.forecast.reset.atRisk": {
-    "value": "大概率在重置前用尽"
+    "value": "很可能在重置前耗尽"
   },
   "quota.forecast.reset.enough": {
     "value": "预计重置时剩余 {remaining}%"
   },
   "quota.forecast.reset.learning": {
-    "value": "正在学习你的使用规律 · 约剩余 {remaining}%"
+    "value": "正在学习使用规律 · 约剩余 {remaining}%"
   },
   "quota.forecast.reset.surplus": {
-    "value": "大概率有盈余 · 预计剩余 {remaining}%"
+    "value": "预计将有盈余 · 重置时剩余 {remaining}%"
   },
   "quota.forecast.reset.watch": {
-    "value": "可能不够用 · 预计剩余 {remaining}%"
+    "value": "可能不足 · 预计剩余 {remaining}%"
   },
   "quota.forecast.status.atRisk": {
-    "value": "有风险 · 大概率在重置前用尽"
+    "value": "有风险 · 很可能在重置前耗尽"
   },
   "quota.forecast.status.enough": {
     "value": "充足 · 预计重置时{value}"
@@ -693,19 +693,19 @@
     "value": "需关注 · 预计重置时{value}"
   },
   "quota.forecast.useUp.beforeReset": {
-    "value": "预计会在重置前用尽"
+    "value": "预计将在重置前耗尽"
   },
   "quota.forecast.useUp.couldRunOut": {
-    "value": "可能在 {countdown}后用尽"
+    "value": "可能在 {countdown}后耗尽"
   },
   "quota.forecast.useUp.estimated": {
-    "value": "预计 {countdown}后用尽"
+    "value": "预计 {countdown}后耗尽"
   },
   "quota.forecast.useUp.lastsUntilReset": {
     "value": "预计可用到重置"
   },
   "quota.forecast.useUp.uncertain": {
-    "value": "用尽时间不确定 · 可能在重置前不够用"
+    "value": "耗尽时间不确定 · 可能在重置前不足"
   },
   "quota.forecast.value.left": {
     "value": "剩余 {percent}%"
@@ -741,7 +741,7 @@
     "value": "{seconds} 秒"
   },
   "quota.freshness.dataAge": {
-    "value": "数据已 {age}"
+    "value": "数据已有 {age}"
   },
   "quota.freshness.defaultHelp": {
     "value": "实时额度未在预期间隔内刷新。"
@@ -777,7 +777,7 @@
     "value": "每月"
   },
   "quota.group.noUtilization": {
-    "value": "暂无使用数据 — 试试刷新。"
+    "value": "暂无使用数据 — 可尝试刷新"
   },
   "quota.group.other": {
     "value": "其他"
@@ -816,7 +816,7 @@
     "value": "可用到重置"
   },
   "quota.pace.runsOutIn": {
-    "value": "{countdown}后用尽"
+    "value": "{countdown}后耗尽"
   },
   "quota.perModelLimits": {
     "value": "{count, plural, other {# 个}}按模型的限额 · 打开 {provider} 查看详情"
@@ -894,7 +894,7 @@
     "value": "提前补额，下次重置时间不变"
   },
   "quota.resetHistory.reset.earlyUnclear": {
-    "value": "提前补额，切换到了别的节奏"
+    "value": "提前补额，重置节奏已改变"
   },
   "quota.resetHistory.spoken.allCycles": {
     "value": "全部已记录周期"
@@ -927,25 +927,25 @@
     "value": "已用 {used}% · 浪费 {wasted}% · {count, plural, other {# 个周期}}"
   },
   "quota.resetHistory.totals.none": {
-    "value": "该区间内没有完整周期"
+    "value": "该区间内无完整周期"
   },
   "quota.resetHistory.truncation": {
     "value": "仅显示最近 {shown} 个周期，共 {total} 个"
   },
   "quota.resetHistory.verdict.clean": {
-    "value": "没有明显浪费 — 补回的额度用掉了 {percent}%。"
+    "value": "无明显浪费 — 补回的额度已使用 {percent}%。"
   },
   "quota.resetHistory.verdict.leaky": {
-    "value": "{label} 在 {count, plural, other {# 个周期}}里平均有 {percent}% 没用掉。"
+    "value": "{label} 在 {count, plural, other {# 个周期}}中平均有 {percent}% 未使用。"
   },
   "quota.resetHistory.verdict.noCycles": {
     "value": "尚无完整周期 — 额度补满时才会记录一个周期。"
   },
   "quota.resetHistory.verdict.noQuota": {
-    "value": "目前还没有跟踪任何按周或更长周期的额度。"
+    "value": "尚未跟踪任何按周或更长周期的额度。"
   },
   "quota.resetHistory.verdict.wasteful": {
-    "value": "{label} 有 {count, plural, other {# 次}}补额时超过一半没用掉。"
+    "value": "{label} 有 {count, plural, other {# 次}}补额后超过一半未使用。"
   },
   "quota.resetHistory.window.all": {
     "value": "全部"
@@ -966,7 +966,7 @@
     "value": "+{hours} 小时"
   },
   "quota.upcoming.empty": {
-    "value": "未来 7 天内没有额度会补满。"
+    "value": "未来 7 天内无额度补满。"
   },
   "quota.upcoming.forecastAtReset": {
     "value": "预计重置时剩余 {percent}%"
@@ -1092,7 +1092,7 @@
     "value": "维护中"
   },
   "status.overview.needsAttention": {
-    "value": "需要处理"
+    "value": "需处理"
   },
   "status.overview.operational": {
     "value": "运行正常"
@@ -1206,13 +1206,13 @@
     "value": "{seconds} 秒"
   },
   "usage.harnessMix.activeCount": {
-    "value": "所选范围内有 {count, plural, other {# 个}} harness 在使用"
+    "value": "所选范围内 {count, plural, other {# 个}} harness 活跃"
   },
   "usage.harnessMix.byRealTokens": {
     "value": "按实际 token 计"
   },
   "usage.harnessMix.empty": {
-    "value": "所选范围内没有 harness 流量"
+    "value": "所选范围内无 harness 流量"
   },
   "usage.harnessMix.title": {
     "value": "Harness 分布"
@@ -1251,7 +1251,7 @@
     "value": "{count} 条未计价"
   },
   "usage.hero.unpricedHelp": {
-    "value": "{count, plural, other {# 条请求}}没有可用价格，计入 $0。"
+    "value": "{count, plural, other {# 条请求}}无可用价格，计入 $0。"
   },
   "usage.ledgerUnavailable.detail": {
     "value": "无法打开 ~/.vibebar 下的逐请求账本，本次会话只能显示实时费用卡片。"
@@ -1311,7 +1311,7 @@
     "value": "Token 流向"
   },
   "usage.noHarnessSelected.detail": {
-    "value": "「全部 harness」是一个开关：再点一次即可把所有 harness 放回查询。"
+    "value": "「全部 harness」是一个开关：再次点击即可将全部 harness 重新纳入查询。"
   },
   "usage.noHarnessSelected.title": {
     "value": "未选择任何 harness — 请在上方选择"
@@ -1518,13 +1518,13 @@
     "value": "Token 用量随时间变化"
   },
   "usage.whenYouUse.everything": {
-    "value": "你什么时候在用"
+    "value": "整体使用时段"
   },
   "usage.whenYouUse.googleAI": {
-    "value": "你什么时候用 Google AI"
+    "value": "Google AI 使用时段"
   },
   "usage.whenYouUse.spaceXAI": {
-    "value": "你什么时候用 SpaceXAI"
+    "value": "SpaceXAI 使用时段"
   },
   "workbench.appearance.useDark": {
     "value": "使用深色外观"

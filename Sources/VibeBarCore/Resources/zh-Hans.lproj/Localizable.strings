@@ -144,7 +144,7 @@
 "cost.fullCharts" = "%1$@ — 完整图表";
 
 /* Empty Google AI cost card body */
-"cost.gemini.emptyDetail" = "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源都刷新不了时，缓存值会标记为已过期。";
+"cost.gemini.emptyDetail" = "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源均无法刷新时，缓存值将标记为已过期。";
 
 /* Empty Google AI cost card headline */
 "cost.gemini.emptyTitle" = "暂未发现 Gemini 或 AntiGravity 的用量。";
@@ -177,10 +177,10 @@
 "cost.metric.thirtyDayTokens" = "近 30 天 token";
 
 /* All-caps metric label */
-"cost.metric.today" = "今天";
+"cost.metric.today" = "今日";
 
 /* All-caps metric label */
-"cost.metric.todayTokens" = "今天 token";
+"cost.metric.todayTokens" = "今日 token";
 
 /* All-caps metric label on the Overview cost card. English is set in caps by the copy; Chinese has no case. */
 "cost.metric.totalCost" = "总花费";
@@ -189,10 +189,10 @@
 "cost.metric.totalTokens" = "总 token";
 
 /* All-caps metric label */
-"cost.metric.yesterday" = "昨天";
+"cost.metric.yesterday" = "昨日";
 
 /* All-caps metric label */
-"cost.metric.yesterdayTokens" = "昨天 token";
+"cost.metric.yesterdayTokens" = "昨日 token";
 
 /* Scope subtitle on the Overview's combined Model Ranking card */
 "cost.modelRanking.allProvidersAllTime" = "全部厂商 · 全部时间";
@@ -243,7 +243,7 @@
 "cost.timeframe.monthShort" = "30 天";
 
 /* Cost timeframe label */
-"cost.timeframe.today" = "今天";
+"cost.timeframe.today" = "今日";
 
 /* Cost timeframe label, full form */
 "cost.timeframe.week" = "7 天";
@@ -252,7 +252,7 @@
 "cost.timeframe.weekShort" = "7 天";
 
 /* Cost timeframe label */
-"cost.timeframe.yesterday" = "昨天";
+"cost.timeframe.yesterday" = "昨日";
 
 /* Card title on a provider page */
 "cost.title" = "花费";
@@ -300,7 +300,7 @@
 "onboarding.apiKeys.hide" = "收起";
 
 /* Intro paragraph of the API-key providers step */
-"onboarding.apiKeys.intro" = "这些套餐靠 API key 或控制台 cookie 跟踪，而不是 CLI 登录。勾选你有的那些 — 勾选后会在「其他厂商」页得到一张卡片 — 展开某一行即可现在填写凭据。密钥和 cookies 都会存进你的登录 Keychain。";
+"onboarding.apiKeys.intro" = "这些套餐通过 API key 或控制台 cookie 跟踪，而非 CLI 登录。勾选已持有的项 — 勾选后将在「其他厂商」页生成一张卡片 — 展开对应行即可填写凭据。密钥与 cookies 均存入登录 Keychain。";
 
 /* Button that unfolds a provider's credential form */
 "onboarding.apiKeys.setUp" = "设置";
@@ -315,7 +315,7 @@
 "onboarding.continue" = "下一步";
 
 /* Caption under the batch import button */
-"onboarding.cookies.batchScope" = "这个按钮只覆盖上面四个套餐。下一步的控制台 cookie 套餐有各自的一键批量导入，在「设置 → 浏览器 Cookies」里。";
+"onboarding.cookies.batchScope" = "此按钮仅覆盖上述四个套餐。下一步的控制台 cookie 套餐另有一键批量导入，位于「设置 → 浏览器 Cookies」。";
 
 /* Batch import button in the setup assistant */
 "onboarding.cookies.importAll" = "立即从所有浏览器导入";
@@ -333,7 +333,7 @@
 "onboarding.cookies.importing" = "正在导入…";
 
 /* Intro paragraph of the browser-cookies step */
-"onboarding.cookies.intro" = "网页端额度 — 也就是厂商在自己网站上显示的那份 — 来自浏览器里已有的登录会话。Vibe Bar 会读取这台 Mac 上各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，只保留每个厂商真正需要的那几条，并存进你的登录 Keychain，绝不写入明文文件。首次读取浏览器的 cookie 密钥时，macOS 可能会要求授权一次。";
+"onboarding.cookies.intro" = "网页端额度 — 即厂商在其自有网站上展示的部分 — 来自浏览器中已有的登录会话。Vibe Bar 会读取本机各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，仅保留各厂商所需的少量 cookie，并存入登录 Keychain，不写入明文文件。首次读取浏览器 cookie 密钥时，macOS 可能要求授权一次。";
 
 /* Status line before any import */
 "onboarding.cookies.notImported" = "尚未导入";
@@ -345,7 +345,7 @@
 "onboarding.cookies.saved" = "cookies 已保存。";
 
 /* Caption under the batch import button */
-"onboarding.cookies.signInFirst" = "请先在浏览器里登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已经存在的会话。没登录过的厂商不会有任何结果。";
+"onboarding.cookies.signInFirst" = "请先在浏览器中登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已存在的会话；未登录的厂商不会返回任何结果。";
 
 /* Summary row label */
 "onboarding.done.apiKeyProviders" = "API key 厂商";
@@ -357,16 +357,16 @@
 "onboarding.done.cookieCount" = "已保存 %1$lld/%2$lld 个厂商";
 
 /* Closing line of the final step */
-"onboarding.done.footer" = "这里的每一项在设置里都能改，向导本身也在「设置 → 系统」里一键可达。";
+"onboarding.done.footer" = "此处各项均可在设置中修改，向导亦可在「设置 → 系统」中一键打开。";
 
 /* Intro line of the final step */
-"onboarding.done.intro" = "菜单栏需要的都齐了。点「完成」会打开面板并显示当前已能读到的额度，其余的会在第一次刷新时补上。";
+"onboarding.done.intro" = "菜单栏所需配置已齐备。点击「完成」将打开面板并显示当前可读取的额度，其余部分在首次刷新时补全。";
 
 /* Summary row label */
 "onboarding.done.launchAtLogin" = "开机启动";
 
 /* Summary value counting visible misc providers */
-"onboarding.done.miscCount" = "「其他厂商」页有 %1$lld 个";
+"onboarding.done.miscCount" = "「其他厂商」页 %1$lld 个";
 
 /* Summary row label */
 "onboarding.done.modelPricing" = "模型价格";
@@ -393,7 +393,7 @@
 "onboarding.pricing.fetching" = "正在获取…";
 
 /* Closing line of the pricing step */
-"onboarding.pricing.footer" = "价格单位是每百万 token 的美元数。本地覆盖值在「设置 → 模型价格」里。";
+"onboarding.pricing.footer" = "价格单位为每百万 token 的美元数。本地覆盖值位于「设置 → 模型价格」。";
 
 /* Refresh interval of exactly one hour, read inside a sentence */
 "onboarding.pricing.interval.hour" = "小时";
@@ -402,7 +402,7 @@
 "onboarding.pricing.interval.hours" = "%1$lld 小时";
 
 /* Intro paragraph of the pricing step; interval is a duration phrase */
-"onboarding.pricing.intro" = "Token 花费完全在这台 Mac 上按 agent 的会话日志计算，价格来自若干公开价目表合并后的目录 — 同一个模型出现在多处时优先级高的胜出，你自己的覆盖值优先于全部，内置表是离线兜底。目录每 %1$@在后台刷新一次；现在抓一次能让第一批费用数字用上当前价格。";
+"onboarding.pricing.intro" = "Token 花费完全在本机依据 agent 的会话日志计算，价格取自若干公开价目表合并后的目录 — 同一模型出现在多个目录时以优先级高者为准，自定义覆盖值优先于全部，内置表为离线兜底。目录每 %1$@在后台刷新一次；此刻获取可使首批费用数字采用当前价格。";
 
 /* Status line after a successful merge; when is an already-formatted date */
 "onboarding.pricing.merged" = "%1$@合并 · %2$lld 个模型";
@@ -438,25 +438,25 @@
 "onboarding.step.browserCookies.title" = "浏览器 cookies";
 
 /* Setup assistant step subtitle */
-"onboarding.step.done.subtitle" = "这里的每一项在设置里也能改。";
+"onboarding.step.done.subtitle" = "此处各项均可在设置中修改。";
 
 /* Setup assistant step name */
 "onboarding.step.done.title" = "完成";
 
 /* Setup assistant step subtitle */
-"onboarding.step.pricing.subtitle" = "费用数字背后的 token 单价从哪来。";
+"onboarding.step.pricing.subtitle" = "费用数字背后的 token 单价来源。";
 
 /* Setup assistant step name */
 "onboarding.step.pricing.title" = "模型价格";
 
 /* Setup assistant step subtitle */
-"onboarding.step.subscriptions.subtitle" = "打开你付费的套餐。";
+"onboarding.step.subscriptions.subtitle" = "启用已订阅的套餐。";
 
 /* Setup assistant step name */
 "onboarding.step.subscriptions.title" = "订阅";
 
 /* Setup assistant step subtitle */
-"onboarding.step.welcome.subtitle" = "一段话讲清 Vibe Bar 能做什么。";
+"onboarding.step.welcome.subtitle" = "用一段话说明 Vibe Bar 的功能。";
 
 /* Setup assistant step name in the rail */
 "onboarding.step.welcome.title" = "欢迎";
@@ -480,16 +480,16 @@
 "onboarding.subscriptions.codex.web" = "已保存 ChatGPT 网页 cookies — 额度将从这里读取。";
 
 /* Credential hint */
-"onboarding.subscriptions.gemini.hint" = "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，没有 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。";
+"onboarding.subscriptions.gemini.hint" = "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，无 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。";
 
 /* Credential hint; the path is never translated */
 "onboarding.subscriptions.grok.detected" = "已检测到 ~/.grok/auth.json — 额度将从这里读取。";
 
 /* Credential hint */
-"onboarding.subscriptions.grok.missing" = "还没有 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。";
+"onboarding.subscriptions.grok.missing" = "尚未找到 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。";
 
 /* Intro line of the subscriptions step */
-"onboarding.subscriptions.intro" = "打开你在用的订阅。关掉的厂商不会出现在总览和菜单栏里；之后再关掉也不会丢失凭据和历史。";
+"onboarding.subscriptions.intro" = "启用正在使用的订阅。已关闭的厂商不会出现在总览与菜单栏；之后关闭亦不会删除其凭据与历史。";
 
 /* Where this provider's quota can come from */
 "onboarding.subscriptions.productLine.claude" = "Claude Code · claude.ai 网页";
@@ -516,31 +516,31 @@
 "onboarding.welcome.cost.title" = "Token 花费";
 
 /* Closing line of the welcome step */
-"onboarding.welcome.footer" = "整个过程约两分钟。这里的每个选择之后都能在设置里改，向导本身也在「设置 → 系统」里一键可达。";
+"onboarding.welcome.footer" = "全程约两分钟。此处的每项选择均可稍后在设置中修改，向导亦可在「设置 → 系统」中一键打开。";
 
 /* Opening paragraph of the setup assistant */
-"onboarding.welcome.intro" = "Vibe Bar 常驻菜单栏，一眼就能看到每个 AI 订阅还剩多少、编码 agent 花了多少钱，以及这台 Mac 上有哪些会话和 skills。它读取 Codex、Claude Code、Gemini、Grok 这些 CLI 本就保存在本机的凭据，在你允许时再从浏览器 cookies 补上网页端额度，并且只会把这些数据发回它们各自的厂商。";
+"onboarding.welcome.intro" = "Vibe Bar 常驻菜单栏，可一览各 AI 订阅的剩余量、编码 agent 的支出，以及本机存有哪些会话与 skills。它读取 Codex、Claude Code、Gemini、Grok 等 CLI 已保存在本机的凭据，并在获得授权后从浏览器 cookies 补充网页端额度；所有数据仅发送至其来源厂商。";
 
 /* Feature row body */
-"onboarding.welcome.mcp.detail" = "你的 agent 可以通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度和花费。";
+"onboarding.welcome.mcp.detail" = "agent 可通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度与花费。";
 
 /* Feature row title */
 "onboarding.welcome.mcp.title" = "本地 MCP 服务";
 
 /* Feature row body */
-"onboarding.welcome.quotas.detail" = "Codex、Claude Code、Gemini、Grok，以及一排 API key 套餐，每个都带重置倒计时。";
+"onboarding.welcome.quotas.detail" = "Codex、Claude Code、Gemini、Grok，以及一系列 API key 套餐，均附带重置倒计时。";
 
 /* Feature row title */
 "onboarding.welcome.quotas.title" = "订阅额度";
 
 /* Feature row body */
-"onboarding.welcome.sessions.detail" = "在 Workbench 里浏览、搜索和整理 agent 会话与共享 skills。";
+"onboarding.welcome.sessions.detail" = "在 Workbench 中浏览、搜索并整理 agent 会话与共享 skills。";
 
 /* Feature row title */
 "onboarding.welcome.sessions.title" = "会话与 skills";
 
 /* Body of the launch-at-login step. macOS-only. */
-"platform.macos.launchAtLogin.detail" = "Vibe Bar 是没有 Dock 图标的菜单栏应用。开机启动能让额度读数和本地 MCP 服务在你登录后立刻可用；首次启用时 macOS 可能会要求你在「系统设置」中批准这个登录项。";
+"platform.macos.launchAtLogin.detail" = "Vibe Bar 是无 Dock 图标的菜单栏应用。开机启动可使额度读数与本地 MCP 服务在登录后即刻可用；首次启用时 macOS 可能要求在「系统设置」中批准该登录项。";
 
 /* Status line under the launch-at-login toggle. macOS-only. */
 "platform.macos.launchAtLogin.enabled" = "已在 macOS 登录项中启用。";
@@ -549,7 +549,7 @@
 "platform.macos.launchAtLogin.off" = "已关闭。";
 
 /* Setup assistant step subtitle. macOS-only. */
-"platform.macos.launchAtLogin.subtitle" = "登录 Mac 后菜单栏立刻显示读数。";
+"platform.macos.launchAtLogin.subtitle" = "登录 Mac 后菜单栏即刻显示读数。";
 
 /* Setup assistant step name. macOS-only: a login item has no counterpart on other clients. */
 "platform.macos.launchAtLogin.title" = "开机启动";
@@ -594,7 +594,7 @@
 "quota.bucket.resetsIn" = "距重置 %1$@";
 
 /* Empty state body; command is a CLI name such as codex or claude and is never translated */
-"quota.empty.needsLogin.detail" = "在终端里运行 `%1$@ login`，然后刷新。";
+"quota.empty.needsLogin.detail" = "在终端中运行 `%1$@ login`，然后刷新。";
 
 /* Empty state headline */
 "quota.empty.needsLogin.headline" = "需重新登录";
@@ -618,7 +618,7 @@
 "quota.empty.parseChanged.headline" = "响应格式已变化";
 
 /* Empty state body */
-"quota.empty.rateLimited.detail" = "官方 API 要求稍候，请过一会儿再试。";
+"quota.empty.rateLimited.detail" = "官方 API 要求稍候，请稍后重试。";
 
 /* Empty state headline */
 "quota.empty.rateLimited.headline" = "请求过于频繁";
@@ -633,19 +633,19 @@
 "quota.forecast.confidence.medium" = "中等置信度";
 
 /* What to do about an at-risk forecast */
-"quota.forecast.guidance.atRisk" = "放慢节奏，或把工作转到别的额度上";
+"quota.forecast.guidance.atRisk" = "降低使用速度，或将任务转移至其他额度";
 
 /* Remaining-mode guidance when there is headroom */
 "quota.forecast.guidance.available" = "目标保留 %1$lld%% · 约有 %2$lld%% 可用";
 
 /* Remaining-mode guidance for a surplus verdict */
-"quota.forecast.guidance.surplus" = "预计有约 %1$lld%% 会闲置，超出 %2$lld%% 的安全余量";
+"quota.forecast.guidance.surplus" = "预计约 %1$lld%% 将闲置，超出 %2$lld%% 的安全余量";
 
 /* Used-mode guidance when there is headroom */
 "quota.forecast.guidance.usedAvailable" = "目标用到 %1$lld%% · 约有 %2$lld%% 额度可用";
 
 /* Used-mode guidance for a surplus verdict */
-"quota.forecast.guidance.usedSurplus" = "预计有约 %1$lld%% 的额度会剩下，超出 %2$lld%% 的使用目标";
+"quota.forecast.guidance.usedSurplus" = "预计约 %1$lld%% 的额度将剩余，超出 %2$lld%% 的使用目标";
 
 /* Used-mode guidance when nothing needs saying */
 "quota.forecast.guidance.usedWithinTarget" = "仍在 %1$lld%% 的使用目标之内";
@@ -657,22 +657,22 @@
 "quota.forecast.guidance.withinTarget" = "仍在 %1$lld%% 的安全余量之内";
 
 /* One-line forecast summary */
-"quota.forecast.reset.atRisk" = "大概率在重置前用尽";
+"quota.forecast.reset.atRisk" = "很可能在重置前耗尽";
 
 /* One-line forecast summary */
 "quota.forecast.reset.enough" = "预计重置时剩余 %1$lld%%";
 
 /* One-line forecast summary */
-"quota.forecast.reset.learning" = "正在学习你的使用规律 · 约剩余 %1$lld%%";
+"quota.forecast.reset.learning" = "正在学习使用规律 · 约剩余 %1$lld%%";
 
 /* One-line forecast summary */
-"quota.forecast.reset.surplus" = "大概率有盈余 · 预计剩余 %1$lld%%";
+"quota.forecast.reset.surplus" = "预计将有盈余 · 重置时剩余 %1$lld%%";
 
 /* One-line forecast summary */
-"quota.forecast.reset.watch" = "可能不够用 · 预计剩余 %1$lld%%";
+"quota.forecast.reset.watch" = "可能不足 · 预计剩余 %1$lld%%";
 
 /* Status line under the quota bar */
-"quota.forecast.status.atRisk" = "有风险 · 大概率在重置前用尽";
+"quota.forecast.status.atRisk" = "有风险 · 很可能在重置前耗尽";
 
 /* Status line under the quota bar; value is the already-formatted forecast figure */
 "quota.forecast.status.enough" = "充足 · 预计重置时%1$@";
@@ -687,19 +687,19 @@
 "quota.forecast.status.watch" = "需关注 · 预计重置时%1$@";
 
 /* Use-up line for an at-risk verdict with no ETA */
-"quota.forecast.useUp.beforeReset" = "预计会在重置前用尽";
+"quota.forecast.useUp.beforeReset" = "预计将在重置前耗尽";
 
 /* Use-up ETA for a watch verdict, which is possible rather than certain */
-"quota.forecast.useUp.couldRunOut" = "可能在 %1$@后用尽";
+"quota.forecast.useUp.couldRunOut" = "可能在 %1$@后耗尽";
 
 /* Use-up ETA from the personal forecast */
-"quota.forecast.useUp.estimated" = "预计 %1$@后用尽";
+"quota.forecast.useUp.estimated" = "预计 %1$@后耗尽";
 
 /* Use-up line when the model does not predict exhaustion before the refill */
 "quota.forecast.useUp.lastsUntilReset" = "预计可用到重置";
 
 /* Use-up line when no ETA can be derived */
-"quota.forecast.useUp.uncertain" = "用尽时间不确定 · 可能在重置前不够用";
+"quota.forecast.useUp.uncertain" = "耗尽时间不确定 · 可能在重置前不足";
 
 /* The forecast figure in Remaining mode, used inside the status line */
 "quota.forecast.value.left" = "剩余 %1$lld%%";
@@ -735,7 +735,7 @@
 "quota.freshness.age.seconds" = "%1$lld 秒";
 
 /* Fragment inside the freshness badge saying how old the shown numbers are */
-"quota.freshness.dataAge" = "数据已 %1$@";
+"quota.freshness.dataAge" = "数据已有 %1$@";
 
 /* Tooltip on a stale freshness badge */
 "quota.freshness.defaultHelp" = "实时额度未在预期间隔内刷新。";
@@ -771,7 +771,7 @@
 "quota.group.monthly" = "每月";
 
 /* Empty state inside a quota group card */
-"quota.group.noUtilization" = "暂无使用数据 — 试试刷新。";
+"quota.group.noUtilization" = "暂无使用数据 — 可尝试刷新";
 
 /* Fallback group heading for a bucket with no group of its own */
 "quota.group.other" = "其他";
@@ -810,7 +810,7 @@
 "quota.pace.lastsUntilReset" = "可用到重置";
 
 /* Legacy elapsed-time pace ETA on a Misc provider card */
-"quota.pace.runsOutIn" = "%1$@后用尽";
+"quota.pace.runsOutIn" = "%1$@后耗尽";
 
 /* Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time */
 "quota.reset.in" = "距重置 %1$@";
@@ -879,7 +879,7 @@
 "quota.resetHistory.reset.earlyClockUnchanged" = "提前补额，下次重置时间不变";
 
 /* An early refill that matches neither shape */
-"quota.resetHistory.reset.earlyUnclear" = "提前补额，切换到了别的节奏";
+"quota.resetHistory.reset.earlyUnclear" = "提前补额，重置节奏已改变";
 
 /* Spoken window name */
 "quota.resetHistory.spoken.allCycles" = "全部已记录周期";
@@ -909,19 +909,19 @@
 "quota.resetHistory.title" = "重置历史";
 
 /* Header arithmetic when nothing has closed */
-"quota.resetHistory.totals.none" = "该区间内没有完整周期";
+"quota.resetHistory.totals.none" = "该区间内无完整周期";
 
 /* Caveat when the grid draws fewer cycles than the numbers describe */
 "quota.resetHistory.truncation" = "仅显示最近 %1$lld 个周期，共 %2$lld 个";
 
 /* Header sentence when everything is being spent */
-"quota.resetHistory.verdict.clean" = "没有明显浪费 — 补回的额度用掉了 %1$@%%。";
+"quota.resetHistory.verdict.clean" = "无明显浪费 — 补回的额度已使用 %1$@%%。";
 
 /* Header sentence: lanes exist but none has closed */
 "quota.resetHistory.verdict.noCycles" = "尚无完整周期 — 额度补满时才会记录一个周期。";
 
 /* Header sentence: nothing to compare */
-"quota.resetHistory.verdict.noQuota" = "目前还没有跟踪任何按周或更长周期的额度。";
+"quota.resetHistory.verdict.noQuota" = "尚未跟踪任何按周或更长周期的额度。";
 
 /* Compact window picker label covering every recorded cycle */
 "quota.resetHistory.window.all" = "全部";
@@ -942,7 +942,7 @@
 "quota.upcoming.axisHours" = "+%1$lld 小时";
 
 /* Empty state on the resets timeline */
-"quota.upcoming.empty" = "未来 7 天内没有额度会补满。";
+"quota.upcoming.empty" = "未来 7 天内无额度补满。";
 
 /* Row caption showing the forecast remaining quota at the refill */
 "quota.upcoming.forecastAtReset" = "预计重置时剩余 %1$lld%%";
@@ -1065,7 +1065,7 @@
 "status.overview.maintenance" = "维护中";
 
 /* Overview status tile detail */
-"status.overview.needsAttention" = "需要处理";
+"status.overview.needsAttention" = "需处理";
 
 /* Overview status tile detail */
 "status.overview.operational" = "运行正常";
@@ -1179,7 +1179,7 @@
 "usage.harnessMix.byRealTokens" = "按实际 token 计";
 
 /* Empty state inside the harness mix card */
-"usage.harnessMix.empty" = "所选范围内没有 harness 流量";
+"usage.harnessMix.empty" = "所选范围内无 harness 流量";
 
 /* All-caps card title. 'Harness' is the usage-axis unit and stays as spelled. */
 "usage.harnessMix.title" = "Harness 分布";
@@ -1272,7 +1272,7 @@
 "usage.mix.tokenFlow.title" = "Token 流向";
 
 /* Empty state body explaining the All chip */
-"usage.noHarnessSelected.detail" = "「全部 harness」是一个开关：再点一次即可把所有 harness 放回查询。";
+"usage.noHarnessSelected.detail" = "「全部 harness」是一个开关：再次点击即可将全部 harness 重新纳入查询。";
 
 /* Empty state when the harness filter excludes everything. 'harness' is the usage-axis unit and stays as spelled. */
 "usage.noHarnessSelected.title" = "未选择任何 harness — 请在上方选择";
@@ -1455,13 +1455,13 @@
 "usage.trend.tokensChartLabel" = "Token 用量随时间变化";
 
 /* Heatmap title on the Overview, covering every provider at once */
-"usage.whenYouUse.everything" = "你什么时候在用";
+"usage.whenYouUse.everything" = "整体使用时段";
 
 /* Heatmap title on the Google AI page */
-"usage.whenYouUse.googleAI" = "你什么时候用 Google AI";
+"usage.whenYouUse.googleAI" = "Google AI 使用时段";
 
 /* Heatmap title on the SpaceXAI page */
-"usage.whenYouUse.spaceXAI" = "你什么时候用 SpaceXAI";
+"usage.whenYouUse.spaceXAI" = "SpaceXAI 使用时段";
 
 /* Tooltip on the Workbench header button that switches the window to dark */
 "workbench.appearance.useDark" = "使用深色外观";

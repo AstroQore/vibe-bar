@@ -111,6 +111,49 @@ ARG_TYPES = {
     "int": {"swift": "Int", "spec": "lld", "value_type": "lld"},
 }
 
+# Register rules, per language. Vibe Bar's Chinese is written and terse —
+# the register of a spec, not of a chat message — and a catalog is exactly
+# the place that slips: one contributor writes `用不完` for "Surplus"
+# because it is what you would say out loud, and the app now has two
+# voices. These are the spoken- and internet-register words that have
+# actually turned up, plus the sentence-final mood particles and
+# exclamation marks that mark speech rather than writing.
+#
+# Substrings are only listed when they cannot appear inside a legitimate
+# written compound: `超` is absent because `超出` and `超过` are correct,
+# and `了` is absent because it is a perfectly good aspect marker — only
+# its sentence-final mood use is caught, by anchoring to the punctuation.
+REGISTER = {
+    "zh-Hans": {
+        "spoken or internet register": [
+            "用不完", "差不多", "搞定", "一会儿", "一下子", "大概率",
+            "不够用", "没用掉", "刷新不了", "试试", "咋", "干脆", "省得",
+            "别忘", "挺好", "超级", "东西", "一堆",
+        ],
+        "sentence-final mood particle": ["啦", "呀", "嘛", "吧。", "吧！", "呢。", "呢？"],
+        "exclamation": ["！"],
+        "formal-polite address": ["请您", "您"],
+    }
+}
+
+
+def check_register(language: str, entries: dict) -> None:
+    rules = REGISTER.get(language)
+    if not rules:
+        return
+    for key, entry in sorted(entries.items()):
+        for reason, words in rules.items():
+            for word in words:
+                if word in entry["value"]:
+                    raise Failure(
+                        f"{language}.json: {key} contains {word!r} — {reason}. "
+                        f"Vibe Bar's Chinese is written and terse: prefer the "
+                        f"precise term over the familiar one (盈余 not 用不完, "
+                        f"已用尽 not 没了, 约 not 差不多, 未配置 not 还没设置). "
+                        f"Value: {entry['value']}"
+                    )
+
+
 SWIFT_KEYWORDS = {
     "as", "associatedtype", "break", "case", "catch", "class", "continue",
     "default", "defer", "deinit", "do", "else", "enum", "extension", "fallthrough",
@@ -550,6 +593,7 @@ def main() -> None:
         entries = base if language == BASE else load(language)
         if language != BASE:
             check_translation(language, base, base_args, entries)
+        check_register(language, entries)
         outputs[RESOURCE_DIR / f"{language}.lproj/Localizable.strings"] = (
             render_strings(language, base, entries, base_args)
         )

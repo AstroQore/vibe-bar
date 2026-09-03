@@ -990,7 +990,7 @@ final class ResetHistoryComparisonTests: XCTestCase {
         L10n.languageOverride = .simplifiedChinese
         XCTAssertEqual(
             built.verdict,
-            "Anthropic · Claude · 每周 有 1 次补额时超过一半没用掉。"
+            "Anthropic · Claude · 每周 有 1 次补额后超过一半未使用。"
         )
         XCTAssertTrue(
             built.accessibilitySummary.contains("重置历史对比"),
