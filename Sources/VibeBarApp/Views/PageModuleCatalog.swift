@@ -321,8 +321,10 @@ enum PageModuleCatalog {
         settings: AppSettings
     ) -> [PageModuleDescriptor] {
         var result: [PageModuleDescriptor] = []
-        // Left column: one card per quota group, then service status — the
-        // hand-coded order the provider pages have always used.
+        // Left column: one card per quota group. Service status used to end it;
+        // it now closes the wide column instead — the narrow one is the quota
+        // column, and status was the shortest card on the page holding up the
+        // tallest. See `AGENTS.md` § 11.
         for module in quotaGroupModules(tool: tool, environment: environment) {
             result.append(
                 PageModuleDescriptor(
@@ -341,35 +343,32 @@ enum PageModuleCatalog {
                 )
             )
         }
-        result.append(
-            PageModuleDescriptor(
-                id: .status,
-                kind: .serviceStatus,
-                displayName: "Service Status",
-                defaultColumn: 0,
-                accent: .neutral,
-                masonryPhase: .quota,
-                fallbackHeight: FallbackHeight.status
-            )
-        )
-        // Right column, above the cost cards: a quota answer, and the reason
-        // the wide column no longer starts far below the narrow one. Appended
-        // before the no-cost-data early return so a provider with no local
-        // sessions still gets it.
-        result.append(
-            PageModuleDescriptor(
-                id: .custom("reset-history-compare:\(tool.rawValue)"),
-                kind: .resetHistoryCompare,
-                displayName: "Reset History Compare",
-                defaultColumn: 1,
-                accent: .provider(tool),
-                masonryPhase: .quota,
-                fallbackHeight: FallbackHeight.resetCompareProvider
-            )
-        )
 
-        // Right column: cost, then the analytics derived from it.
+        // Right column: cost, the analytics derived from it, the reset-history
+        // table, and service status last.
+        //
+        // Order here *is* the rendered order — `PageLayoutSegments` puts a
+        // provider page's modules in one segment, so `masonryPhase` never
+        // reorders them and the appends below are the layout.
         let costTitle = tool.vendorName
+        let resetHistory = PageModuleDescriptor(
+            id: .custom("reset-history-compare:\(tool.rawValue)"),
+            kind: .resetHistoryCompare,
+            displayName: "Reset History Compare",
+            defaultColumn: 1,
+            accent: .provider(tool),
+            masonryPhase: .auxiliary,
+            fallbackHeight: FallbackHeight.resetCompareProvider
+        )
+        let serviceStatus = PageModuleDescriptor(
+            id: .status,
+            kind: .serviceStatus,
+            displayName: "Service Status",
+            defaultColumn: 1,
+            accent: .neutral,
+            masonryPhase: .auxiliary,
+            fallbackHeight: FallbackHeight.status
+        )
         guard let snapshot = detailCostSnapshot(tool: tool, environment: environment),
               snapshot.jsonlFilesFound > 0
         else {
@@ -384,6 +383,9 @@ enum PageModuleCatalog {
                     fallbackHeight: FallbackHeight.placeholder
                 )
             )
+            // Neither card depends on cost data, so both still close the page.
+            result.append(resetHistory)
+            result.append(serviceStatus)
             return result
         }
         result.append(
@@ -419,6 +421,10 @@ enum PageModuleCatalog {
                 fallbackHeight: FallbackHeight.analytics
             )
         )
+        // After the ranking, not above the cost cards: the page's headline is
+        // what this provider costs, and the reset table is the retrospective
+        // under it.
+        result.append(resetHistory)
         result.append(
             PageModuleDescriptor(
                 id: .custom("heatmap-year:\(tool.rawValue)"),
@@ -441,6 +447,7 @@ enum PageModuleCatalog {
                 fallbackHeight: FallbackHeight.analytics
             )
         )
+        result.append(serviceStatus)
         return result
     }
 

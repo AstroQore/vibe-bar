@@ -1287,12 +1287,29 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   model-scoped limits such as Spark, Fable, Gemini Web, and AntiGravity must
   remain visible at the same time.
 - **Provider detail pages share one asymmetric layout.** Preserve the existing
-  column ratio with quota, Subscription Utilization, and service status in the
-  narrow left column. Put cost, cost history, model ranking, past year, and
-  when-you-use in the wide right column. ChatGPT, Claude, Gemini, and Grok must
-  use the same framework. Overview and provider pages also share the popover
-  shell's exact horizontal content inset; page-specific layouts must not add a
-  second outer inset or shrink away from the scroll view's available width.
+  column ratio. The narrow left column is the quota column: quota groups and
+  Subscription Utilization, nothing else. The wide right column runs cost, cost
+  history, model ranking, reset history, past year, when-you-use, and service
+  status last. ChatGPT, Claude, Gemini, and Grok must use the same framework.
+  Overview and provider pages also share the popover shell's exact horizontal
+  content inset; page-specific layouts must not add a second outer inset or
+  shrink away from the scroll view's available width.
+
+  Service status sat at the foot of the left column until 1.6.2. It was the
+  shortest card on the page holding up the tallest, and moving it to the end of
+  the right column is what let the two columns finish near each other — a
+  deliberate change to this rule, not a drift from it. `masonryPhase` does not
+  order a provider page: `PageLayoutSegments.defaultSegments` puts a non-overview
+  page's modules in a single segment, so the order the descriptors are appended
+  in `PageModuleCatalog.detailDescriptors` *is* the rendered order.
+
+  Moving a default position does not move the card for everyone. `PageLayoutResolver`
+  places only modules a saved config has never seen; a config that already names
+  the module keeps it where it is, and a config is materialized by picking a
+  width split or switching to Manual, not just by dragging. A re-homed card
+  therefore needs an entry in `PageLayoutDefaultsMigration` — matched on the old
+  default's exact signature, recorded once in `AppSettings.appliedLayoutMigrations`,
+  and never applied to a layout that has been arranged.
 - **Dense status history is one drawing surface, not hundreds of views.** Use
   `Canvas` (or an equivalent batched renderer) for uptime strips and avoid one
   Swift Charts instance per quota. These detail pages can display many status

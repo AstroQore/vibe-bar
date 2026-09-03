@@ -79,9 +79,16 @@ public struct ResetHistoryLaneInput: Equatable, Sendable, Identifiable {
     }
 }
 
-/// Every weekly-and-longer quota's reset history, side by side on one time
-/// axis, answering a single question: how much of what was paid for expired
-/// unused?
+/// Every weekly-and-longer quota's reset history, side by side as one table,
+/// answering a single question: how much of what was paid for expired unused?
+///
+/// The columns are cycle *ordinals*, not dates: the newest completed cycle of
+/// every quota sits in the same column, the one before it in the column to its
+/// left, and so on. Quotas refill on their own schedules, so a shared calendar
+/// axis scattered their bars and made two rows impossible to read against each
+/// other — which is the comparison the module exists for. A row with fewer
+/// recorded cycles is right-aligned to the newest column and simply starts
+/// further right.
 ///
 /// Five-hour lanes are deliberately excluded. They refill several times a day,
 /// so a bar per cycle would be noise at any width the module can occupy, and
@@ -107,18 +114,22 @@ public struct ResetHistoryComparison: Equatable, Sendable {
 
     // MARK: - Nested types
 
-    /// Visible span of the shared time axis.
+    /// How many cycles back the table reaches. Counted in cycles rather than
+    /// weeks, because the columns are ordinals: "last 8" means the same eight
+    /// columns for every row, however far apart one row's refills happen to
+    /// fall.
     public enum Window: String, CaseIterable, Hashable, Sendable, Codable {
-        case fourWeeks
-        case eightWeeks
-        case twelveWeeks
+        case four
+        case eight
+        case twelve
         case all
 
-        public var weeks: Int? {
+        /// `nil` for `all`, which is then bounded by `ColumnPlan.maximumColumns`.
+        public var cycleLimit: Int? {
             switch self {
-            case .fourWeeks: 4
-            case .eightWeeks: 8
-            case .twelveWeeks: 12
+            case .four: 4
+            case .eight: 8
+            case .twelve: 12
             case .all: nil
             }
         }
@@ -126,30 +137,78 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// Compact picker label.
         public var shortTitle: String {
             switch self {
-            case .fourWeeks: "4w"
-            case .eightWeeks: "8w"
-            case .twelveWeeks: "12w"
+            case .four: "4"
+            case .eight: "8"
+            case .twelve: "12"
             case .all: "All"
             }
         }
 
         public var spokenTitle: String {
             switch self {
-            case .fourWeeks: "last 4 weeks"
-            case .eightWeeks: "last 8 weeks"
-            case .twelveWeeks: "last 12 weeks"
-            case .all: "all recorded history"
+            case .four: "last 4 cycles"
+            case .eight: "last 8 cycles"
+            case .twelve: "last 12 cycles"
+            case .all: "every recorded cycle"
             }
         }
     }
 
-    /// Row order.
-    public enum Ordering: String, CaseIterable, Hashable, Sendable, Codable {
-        /// Most wasted first — the default, because the module exists to
-        /// answer "where am I throwing quota away".
-        case waste
-        /// Grouped by L1 company, most wasted first inside each company.
-        case company
+    /// The shared column grid every row is drawn against.
+    ///
+    /// One column per cycle ordinal, oldest on the left, plus an optional
+    /// trailing column for the cycle running right now. Rows are right-aligned
+    /// into it: whatever a row's newest completed cycle is, it lands in the
+    /// last completed column, so reading straight down a column compares
+    /// like with like.
+    public struct ColumnPlan: Equatable, Sendable {
+        /// Hard ceiling on the number of *drawn* columns, so a year of weeklies
+        /// stays legible at the widths this module actually gets.
+        ///
+        /// A drawing budget only. Every statistic — the totals, each lane's
+        /// average and wasteful-cycle count, the verdict — is computed over
+        /// every cycle the window covers, because the picker says "All" and
+        /// a headline that quietly meant "the newest 52" would be a lie.
+        /// `ResetHistoryComparison.truncationNote` says so on screen when the
+        /// two numbers differ.
+        public static let maximumColumns = 52
+
+        public let completedColumnCount: Int
+        public let hasCurrentColumn: Bool
+
+        public init(completedColumnCount: Int, hasCurrentColumn: Bool) {
+            self.completedColumnCount = max(0, completedColumnCount)
+            self.hasCurrentColumn = hasCurrentColumn
+        }
+
+        public var totalColumnCount: Int {
+            completedColumnCount + (hasCurrentColumn ? 1 : 0)
+        }
+
+        public var isEmpty: Bool { totalColumnCount == 0 }
+
+        /// Where the in-progress bar goes, when there is one.
+        public var currentColumn: Int? {
+            hasCurrentColumn ? completedColumnCount : nil
+        }
+
+        /// The column a lane's `index`-th completed cycle occupies.
+        ///
+        /// Right-aligned, which is the whole trick: a lane with three cycles
+        /// and a lane with eight both put their newest in the last completed
+        /// column, and the shorter row simply begins further right instead of
+        /// pretending its oldest cycle is contemporary with the other's.
+        public func column(ofCycleAt index: Int, inLaneWithCycleCount count: Int) -> Int {
+            completedColumnCount - count + index
+        }
+
+        /// Axis caption for a column: how many cycles back it is, and `now`
+        /// for the live one. `nil` where the axis should stay quiet.
+        public func axisLabel(forColumn column: Int) -> String? {
+            if column == currentColumn { return "now" }
+            guard column >= 0, column < completedColumnCount else { return nil }
+            return "−\(completedColumnCount - column)"
+        }
     }
 
     /// One bar: a subscription cycle placed on the shared axis.
@@ -157,12 +216,18 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         public let id: String
         public let start: Date
         public let end: Date
-        /// Peak used percent — the bar's height.
+        /// Peak used percent over the cycle. The bar draws `wastedPercent`,
+        /// the complement — see there.
         public let usedPercent: Double
         public let isCompleted: Bool
         public let resetKind: SubscriptionWindowSample.ResetKind?
 
-        /// The muted remainder above the fill: quota that expired unused.
+        /// What was left when the window refilled — and the bar's height.
+        ///
+        /// The module answers "am I wasting quota", so the quantity it draws
+        /// is the waste itself: a tall bar is a cycle that expired mostly
+        /// unused, an empty slot is one that was spent. For the in-progress
+        /// cycle the same arithmetic reads as "remaining right now".
         public var wastedPercent: Double { max(0, 100 - usedPercent) }
 
         /// Did this window refill before it said it would? Same question, and
@@ -215,7 +280,9 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// The lane's own window length, in seconds. Always at least
         /// `minimumWindowSeconds`.
         public let windowSeconds: Int
-        /// Completed cycles inside the visible span, oldest first.
+        /// Completed cycles the grid draws, oldest first. Capped at
+        /// `ColumnPlan.maximumColumns`; `windowCycleCount` is how many the
+        /// window actually covers.
         public let cycles: [Cycle]
         /// The cycle running right now, if one is known.
         public let currentCycle: Cycle?
@@ -225,9 +292,19 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// How many cycles that average actually covers — the copy says so
         /// rather than promising "last 4" it does not have.
         public let averagedCycleCount: Int
-        /// Completed cycles in the span that refilled with more than half
-        /// unused.
+        /// Completed cycles in the window that refilled with more than half
+        /// unused. Counted over every cycle the window covers, not only the
+        /// drawn ones.
         public let wastefulCycleCount: Int
+
+        /// Completed cycles the window covers, before the drawing cap. Equal
+        /// to `cycles.count` unless the lane has more history than the grid
+        /// has columns.
+        public let windowCycleCount: Int
+
+        /// True when the grid is showing fewer cycles than the statistics
+        /// were computed from.
+        public var isTruncated: Bool { windowCycleCount > cycles.count }
 
         /// Full quota-axis name: company · SubProvider · group · bucket.
         public var label: String {
@@ -238,8 +315,9 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             return parts.joined(separator: " · ")
         }
 
-        /// The same name with the company dropped, for the company-grouped
-        /// ordering where the heading already carries it.
+        /// The row's own name: SubProvider / group / bucket, with the company
+        /// dropped because the heading above the group already carries it.
+        /// "Gemini Web / Weekly", "AntiGravity / Claude & GPT Models / Weekly".
         public var labelWithoutCompany: String {
             var parts = [subProvider]
             if let groupTitle, !groupTitle.isEmpty { parts.append(groupTitle) }
@@ -292,14 +370,15 @@ public struct ResetHistoryComparison: Equatable, Sendable {
     // MARK: - Value
 
     public let window: Window
-    public let ordering: Ordering
-    /// The clock the comparison was built against, so the view can draw its
-    /// "now" hairline without reading the wall clock inside a draw pass — a
-    /// value that changed under an otherwise-equal comparison would make the
-    /// drawing surface's `Equatable` short-circuit a lie.
+    /// The clock the comparison was built against, so the view never reads the
+    /// wall clock inside a draw pass — a value that changed under an
+    /// otherwise-equal comparison would make the drawing surface's `Equatable`
+    /// short-circuit a lie.
     public let now: Date
-    public let rangeStart: Date
-    public let rangeEnd: Date
+    /// The shared column grid every row is drawn against.
+    public let columns: ColumnPlan
+    /// Rows in hierarchy order: L1 company, then L2 SubProvider, then the L3
+    /// groups and buckets in the order the popover lists them.
     public let lanes: [Lane]
     public let totals: Totals
     /// One plain sentence generated from the data, never a template with a
@@ -307,6 +386,17 @@ public struct ResetHistoryComparison: Equatable, Sendable {
     public let verdict: String
 
     public var isEmpty: Bool { lanes.isEmpty }
+
+    /// What to say when the grid shows fewer cycles than the numbers describe.
+    ///
+    /// `All` on a three-year retention can reach past the column ceiling. The
+    /// statistics still cover everything — only the drawing is capped — and
+    /// this is the sentence that keeps the two honest with each other.
+    public var truncationNote: String? {
+        guard lanes.contains(where: \.isTruncated) else { return nil }
+        let deepest = lanes.map(\.windowCycleCount).max() ?? 0
+        return "showing the newest \(columns.completedColumnCount) of \(deepest) cycles"
+    }
 
     /// Whole-module screen-reader text. The lanes are a drawing surface, so
     /// this is the only thing VoiceOver gets to read.
@@ -321,7 +411,10 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             return "\(lane.label): \(Lane.percentText(wasted))% wasted on average over \(lane.averagedCycleCount) cycles"
         }.joined(separator: ". ")
         let more = lanes.count > 8 ? " And \(lanes.count - 8) more quotas." : ""
-        return "Reset history comparison over \(window.spokenTitle). \(totals.headline). \(verdict) \(laneText).\(more)"
+        // The note comes before the numbers on purpose: it is the caveat on
+        // them, not a footnote to the lane list.
+        let truncation = truncationNote.map { " Grid \($0); the figures cover every one." } ?? ""
+        return "Reset history comparison, \(window.spokenTitle), bar height is the quota remaining at reset.\(truncation) \(totals.headline). \(verdict) \(laneText).\(more)"
     }
 
     // MARK: - Building
@@ -329,8 +422,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
     /// Build the comparison. Pure: everything it needs is in `inputs`.
     public static func build(
         inputs: [ResetHistoryLaneInput],
-        window: Window = .eightWeeks,
-        ordering: Ordering = .waste,
+        window: Window = .eight,
         now: Date
     ) -> ResetHistoryComparison {
         // 1. Weekly and up, decided on the window length rather than a name.
@@ -341,26 +433,19 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             return (input, seconds)
         }
 
-        // 2. The visible span. A fixed window counts back from now; `all`
-        //    starts at the oldest cycle anything recorded.
-        var rangeStart: Date
-        if let weeks = window.weeks {
-            rangeStart = now.addingTimeInterval(-Double(weeks) * 7 * 86_400)
-        } else {
-            let earliest = qualifying.compactMap { entry in
-                entry.input.samples
-                    .map { cycleStart($0, windowSeconds: entry.windowSeconds) }
-                    .min()
-            }.min()
-            rangeStart = earliest ?? now.addingTimeInterval(-8 * 7 * 86_400)
-        }
-        if rangeStart >= now {
-            rangeStart = now.addingTimeInterval(-Double(minimumWindowSeconds))
-        }
-
-        // 3. One lane per qualifying quota.
+        // 2. One lane per qualifying quota.
+        //
+        //    Two limits, deliberately different. `retained` is what the window
+        //    means — the newest N cycles, or every recorded one for `all` — and
+        //    every statistic is computed from it. `drawable` is what the grid
+        //    has columns for. Capping the statistics at the drawing budget
+        //    would make "All" quietly mean "the newest 52" in the headline, the
+        //    verdict and the wasteful-cycle counts.
+        let statisticsLimit = window.cycleLimit ?? Int.max
+        let drawLimit = min(statisticsLimit, ColumnPlan.maximumColumns)
         var lanes: [Lane] = []
-        var latestEnd = now
+        var totalCycleCount = 0
+        var totalUsedSum: Double = 0
         for (input, windowSeconds) in qualifying {
             var completed: [Cycle] = []
             var open: Cycle?
@@ -372,8 +457,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                 let start = cycleStart(sample, windowSeconds: windowSeconds)
                 // A cycle ends when the refill was noticed, which is not always
                 // the boundary it advertised — an early refill genuinely ended
-                // sooner, and drawing it at the advertised end would put the
-                // bar where nothing happened.
+                // sooner, and the tooltip should say when it actually happened.
                 let end = sample.isCompleted ? (sample.completedAt ?? sample.windowEnd) : sample.windowEnd
                 let cycle = Cycle(
                     id: "\(input.id).\(end.timeIntervalSinceReferenceDate)",
@@ -384,14 +468,16 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                     resetKind: sample.resetKind
                 )
                 if sample.isCompleted {
-                    guard cycle.end >= rangeStart else { continue }
                     completed.append(cycle)
-                    latestEnd = max(latestEnd, cycle.end)
                 } else if hasCurrentCycle, open == nil || cycle.end > open!.end {
                     open = cycle
                 }
             }
             completed.sort { $0.end < $1.end }
+            let retained = Array(completed.suffix(statisticsLimit))
+            let drawable = Array(retained.suffix(drawLimit))
+            totalCycleCount += retained.count
+            totalUsedSum += retained.reduce(0) { $0 + $1.usedPercent }
 
             // The live quota is the fallback for the in-progress cycle: a lane
             // whose history holds only closed samples still has one running.
@@ -408,9 +494,8 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                     resetKind: nil
                 )
             }
-            if let open { latestEnd = max(latestEnd, min(open.end, now)) }
 
-            let averaged = Array(completed.suffix(averageCycleCount))
+            let averaged = Array(retained.suffix(averageCycleCount))
             let average = averaged.isEmpty
                 ? nil
                 : averaged.reduce(0) { $0 + $1.wastedPercent } / Double(averaged.count)
@@ -425,63 +510,38 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                     bucketTitle: input.bucketTitle,
                     accountLabel: input.accountLabel,
                     windowSeconds: windowSeconds,
-                    cycles: completed,
+                    cycles: drawable,
                     currentCycle: open,
                     averageWastedPercent: average,
                     averagedCycleCount: averaged.count,
-                    wastefulCycleCount: completed.count { $0.wastedPercent > wastefulCyclePercent }
+                    wastefulCycleCount: retained.count { $0.wastedPercent > wastefulCyclePercent },
+                    windowCycleCount: retained.count
                 )
             )
         }
 
-        // 4. Order.
-        let ordered = sorted(lanes, by: ordering, companyOrder: companyOrder(qualifying.map(\.input)))
+        // 3. Hierarchy order, then the grid every row shares.
+        let ordered = hierarchical(lanes, ranks: hierarchyRanks(qualifying.map(\.input)))
+        let columns = ColumnPlan(
+            completedColumnCount: ordered.map(\.cycles.count).max() ?? 0,
+            hasCurrentColumn: ordered.contains { $0.currentCycle != nil }
+        )
 
-        // 5. Header arithmetic and the sentence under it.
-        let allCycles = ordered.flatMap(\.cycles)
+        // 4. Header arithmetic and the sentence under it, over every cycle the
+        //    window covers — not only the ones that fit on the grid.
         let totals = Totals(
-            cycleCount: allCycles.count,
-            usedPercent: allCycles.isEmpty
-                ? 0
-                : allCycles.reduce(0) { $0 + $1.usedPercent } / Double(allCycles.count)
+            cycleCount: totalCycleCount,
+            usedPercent: totalCycleCount == 0 ? 0 : totalUsedSum / Double(totalCycleCount)
         )
 
         return ResetHistoryComparison(
             window: window,
-            ordering: ordering,
             now: now,
-            rangeStart: rangeStart,
-            rangeEnd: max(latestEnd, rangeStart.addingTimeInterval(Double(minimumWindowSeconds))),
+            columns: columns,
             lanes: ordered,
             totals: totals,
             verdict: verdict(lanes: ordered, totals: totals)
         )
-    }
-
-    // MARK: - Draw budget
-
-    /// Bars that actually get drawn when a lane has more cycles than the row
-    /// has pixels.
-    ///
-    /// Not uniform striding: this chart's whole point is the wasteful cycles,
-    /// and an even stride is exactly as likely to drop the worst one as any
-    /// other. Endpoints survive first (they anchor the axis), then the largest
-    /// waste, and the result comes back in time order.
-    public static func downsampled(_ cycles: [Cycle], limit: Int) -> [Cycle] {
-        guard limit > 0 else { return [] }
-        guard cycles.count > limit else { return cycles }
-        var keep: Set<Int> = []
-        if limit >= 1 { keep.insert(0) }
-        if limit >= 2 { keep.insert(cycles.count - 1) }
-        let byWaste = cycles.indices.sorted { lhs, rhs in
-            let left = cycles[lhs].wastedPercent
-            let right = cycles[rhs].wastedPercent
-            return left == right ? lhs < rhs : left > right
-        }
-        for index in byWaste where keep.count < limit {
-            keep.insert(index)
-        }
-        return keep.sorted().map { cycles[$0] }
     }
 
     // MARK: - Internals
@@ -512,47 +572,52 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         return end.addingTimeInterval(-Double(sample.rawWindowSeconds ?? windowSeconds))
     }
 
-    /// Companies in the order the caller discovered them, which is the app's
-    /// canonical provider order — not alphabetical, which would reshuffle the
-    /// page whenever a vendor renames itself.
-    private static func companyOrder(_ inputs: [ResetHistoryLaneInput]) -> [String: Int] {
-        var order: [String: Int] = [:]
-        for input in inputs where order[input.company] == nil {
-            order[input.company] = order.count
+    /// L1 and L2 ranks, taken from the order the caller discovered them in.
+    ///
+    /// That order is the app's canonical provider order and, inside a
+    /// provider, the order the popover lists the buckets in. Ranking by first
+    /// appearance rather than alphabetically is deliberate: a vendor renaming
+    /// itself must not reshuffle the table.
+    static func hierarchyRanks(
+        _ inputs: [ResetHistoryLaneInput]
+    ) -> (company: [String: Int], subProvider: [String: Int]) {
+        var company: [String: Int] = [:]
+        var subProvider: [String: Int] = [:]
+        for input in inputs {
+            if company[input.company] == nil { company[input.company] = company.count }
+            let key = subProviderKey(company: input.company, subProvider: input.subProvider)
+            if subProvider[key] == nil { subProvider[key] = subProvider.count }
         }
-        return order
+        return (company, subProvider)
     }
 
-    private static func sorted(
+    static func subProviderKey(company: String, subProvider: String) -> String {
+        "\(company)/\(subProvider)"
+    }
+
+    /// Company, then SubProvider, then discovery order for the groups and
+    /// buckets underneath — the same three levels the popover reads in.
+    ///
+    /// Sorted through the original offsets because `sort` is not stable, and
+    /// L3 order *is* the input order: losing it would scramble a SubProvider's
+    /// own buckets.
+    private static func hierarchical(
         _ lanes: [Lane],
-        by ordering: Ordering,
-        companyOrder: [String: Int]
+        ranks: (company: [String: Int], subProvider: [String: Int])
     ) -> [Lane] {
-        func wasteFirst(_ lhs: Lane, _ rhs: Lane) -> Bool {
-            // A lane with no completed cycle has no verdict to offer, so it
-            // sinks below every lane that does rather than sorting as 0% waste.
-            switch (lhs.averageWastedPercent, rhs.averageWastedPercent) {
-            case let (left?, right?) where left != right:
-                return left > right
-            case (nil, .some):
-                return false
-            case (.some, nil):
-                return true
-            default:
-                return lhs.label < rhs.label
-            }
-        }
-        switch ordering {
-        case .waste:
-            return lanes.sorted(by: wasteFirst)
-        case .company:
-            return lanes.sorted { lhs, rhs in
-                let left = companyOrder[lhs.company] ?? Int.max
-                let right = companyOrder[rhs.company] ?? Int.max
-                if left != right { return left < right }
-                return wasteFirst(lhs, rhs)
-            }
-        }
+        lanes.enumerated().sorted { lhs, rhs in
+            let leftCompany = ranks.company[lhs.element.company] ?? Int.max
+            let rightCompany = ranks.company[rhs.element.company] ?? Int.max
+            if leftCompany != rightCompany { return leftCompany < rightCompany }
+            let leftSub = ranks.subProvider[
+                subProviderKey(company: lhs.element.company, subProvider: lhs.element.subProvider)
+            ] ?? Int.max
+            let rightSub = ranks.subProvider[
+                subProviderKey(company: rhs.element.company, subProvider: rhs.element.subProvider)
+            ] ?? Int.max
+            if leftSub != rightSub { return leftSub < rightSub }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
     }
 
     /// The header sentence, in priority order:
