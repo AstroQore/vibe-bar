@@ -211,11 +211,7 @@ public enum MiscCookieResolver {
     public static func appendBrowserImport(for spec: Spec, instanceID: String) -> Resolution? {
         let settings = currentSettings(for: spec.tool, instanceID: instanceID)
         guard SlotFilter(settings: settings) != .none else { return nil }
-        guard let imported = importFromBrowsers(
-            spec: spec,
-            settings: settings,
-            allowKeychainPrompt: true
-        ) else {
+        guard let imported = attemptBrowserImport(spec: spec, settings: settings).session else {
             return nil
         }
         let slot = MiscCookieSlot(
@@ -234,6 +230,33 @@ public enum MiscCookieResolver {
             header: imported.header,
             sourceLabel: imported.sourceLabel
         )
+    }
+
+    /// `appendBrowserImport` with the reason attached when it fails.
+    ///
+    /// The Settings row uses this so a declined Keychain prompt reads as a
+    /// cooldown with a Retry-now button rather than as "no cookies found".
+    public static func appendBrowserImportOutcome(
+        for spec: Spec,
+        instanceID: String,
+        now: Date = Date()
+    ) -> BatchImportOutcome.Result {
+        let settings = currentSettings(for: spec.tool, instanceID: instanceID)
+        guard SlotFilter(settings: settings) != .none else { return .cookiesDisabled }
+        let attempt = attemptBrowserImport(spec: spec, settings: settings, now: now)
+        guard let imported = attempt.session else { return attempt.emptyOutcome }
+        let slot = MiscCookieSlot(
+            cookieHeader: imported.header,
+            sourceLabel: imported.sourceLabel,
+            importedAt: Date(),
+            origin: .browserImport
+        )
+        guard MiscCookieSlotStore.upsertBrowserImport(
+            slot,
+            for: spec.tool,
+            instanceID: instanceID
+        ) != nil else { return .saveFailed }
+        return .imported(sourceLabel: imported.sourceLabel)
     }
 
     /// Legacy alias for callers that haven't migrated to
@@ -269,6 +292,13 @@ public enum MiscCookieResolver {
             /// The browsers we were allowed to read had no usable
             /// session for this provider's domains.
             case noSessionFound
+            /// Every Chromium-family browser we would have read is inside
+            /// `BrowserCookieAccessGate`'s denial cooldown, so nothing was
+            /// read. Indistinguishable from `.noSessionFound` at the call
+            /// site — which is exactly why it needs its own case: telling
+            /// the user to sign in again cannot fix a declined Keychain
+            /// prompt.
+            case keychainCooldown(browser: String, until: Date)
             /// The provider's source mode bans cookies entirely, so we
             /// never looked.
             case cookiesDisabled
@@ -322,16 +352,19 @@ public enum MiscCookieResolver {
                     result: .cookiesDisabled
                 )
             }
-            guard let imported = importFromBrowsers(
+            let attempt = attemptBrowserImport(
                 spec: target.spec,
                 settings: settings,
-                allowKeychainPrompt: true,
                 context: context
-            ) else {
+            )
+            guard let imported = attempt.session else {
                 return BatchImportOutcome(
                     tool: target.tool,
                     instanceID: target.instanceID,
-                    result: .noSessionFound
+                    // Per target, not per batch: one provider blocked by a
+                    // Chromium cooldown says nothing about the next one,
+                    // which may not read cookie jars at all.
+                    result: attempt.emptyOutcome
                 )
             }
             let slot = MiscCookieSlot(
@@ -544,19 +577,57 @@ public enum MiscCookieResolver {
         return fresh
     }
 
-    private static func importFromBrowsers(
+    /// What one user-initiated import actually did.
+    ///
+    /// `blockedByCooldown` is scoped to *this* attempt: the browsers this
+    /// walk was refused by or skipped over, never the process-wide denial
+    /// map. That distinction is the whole point — a Kimi import reads
+    /// Chromium localStorage and never touches the Keychain gate, so an
+    /// unrelated Chrome cooldown must not turn its empty result into
+    /// "Chrome Keychain access was declined".
+    struct AttemptedImport {
+        let session: BrowserImportResult?
+        let blockedByCooldown: [BrowserCookieAccessGate.Cooldown]
+
+        /// How to report an attempt that stored nothing.
+        var emptyOutcome: BatchImportOutcome.Result {
+            guard let blocked = blockedByCooldown.min(by: { $0.until < $1.until }) else {
+                return .noSessionFound
+            }
+            return .keychainCooldown(browser: blocked.browserName, until: blocked.until)
+        }
+    }
+
+    /// Mutable scratch for one walk. A plain class because the walk is
+    /// synchronous and single-threaded; it never escapes the call.
+    final class BrowserImportAttempt {
+        private(set) var blocked: [BrowserCookieAccessGate.Cooldown] = []
+
+        func record(_ cooldown: BrowserCookieAccessGate.Cooldown) {
+            guard !blocked.contains(where: { $0.browserName == cooldown.browserName }) else { return }
+            blocked.append(cooldown)
+        }
+    }
+
+    /// Run one user-initiated import and report both the session it found
+    /// and what got in the way, without touching the slot store.
+    static func attemptBrowserImport(
         spec: Spec,
         settings: MiscProviderSettings,
-        allowKeychainPrompt: Bool = false,
-        context: BrowserImportContext = BrowserImportContext()
-    ) -> BrowserImportResult? {
-        browserSessions(
+        context: BrowserImportContext = BrowserImportContext(),
+        now: Date = Date()
+    ) -> AttemptedImport {
+        let attempt = BrowserImportAttempt()
+        let session = browserSessions(
             spec: spec,
             settings: settings,
-            allowKeychainPrompt: allowKeychainPrompt,
+            allowKeychainPrompt: true,
             context: context,
-            maxSessions: 1
+            maxSessions: 1,
+            attempt: attempt,
+            now: now
         ).first
+        return AttemptedImport(session: session, blockedByCooldown: attempt.blocked)
     }
 
     /// Walk the candidate browsers and return every usable session for
@@ -572,7 +643,9 @@ public enum MiscCookieResolver {
         settings: MiscProviderSettings,
         allowKeychainPrompt: Bool,
         context: BrowserImportContext,
-        maxSessions: Int?
+        maxSessions: Int?,
+        attempt: BrowserImportAttempt = BrowserImportAttempt(),
+        now: Date = Date()
     ) -> [BrowserImportResult] {
         let preferred: [Browser]
         if let kind = settings.preferredBrowser {
@@ -588,7 +661,9 @@ public enum MiscCookieResolver {
                 preferred: preferred,
                 allowKeychainPrompt: allowKeychainPrompt,
                 context: context,
-                maxSessions: maxSessions
+                maxSessions: maxSessions,
+                attempt: attempt,
+                now: now
             )
         case let .chromiumLocalStorage(credential):
             return chromiumLocalStorageBrowserSessions(
@@ -636,15 +711,65 @@ public enum MiscCookieResolver {
         }
     }
 
+    /// Split a preference list into the browsers a *prompting* import may
+    /// read right now and the ones the denial cooldown is holding back.
+    ///
+    /// "The user clicked Import" is permission to show a Keychain prompt;
+    /// it is not permission to show the same prompt again for a browser
+    /// whose prompt the user just declined — which is what the card means
+    /// when it says Vibe Bar will not ask again until a stated time. The
+    /// only way past a live cooldown is the explicit "Retry now" / "Reset
+    /// browser-cookie cooldown" control, which clears the gate first.
+    ///
+    /// Filtering happens on the preference list rather than after
+    /// `cookieImportCandidates`, so its one-Chromium-browser-per-click cap
+    /// lands on the first browser we can actually read. A cooled-down
+    /// browser is only reported as blocking *this* attempt when it is
+    /// installed with usable cookie data — otherwise we would not have
+    /// read it either way.
+    static func cooldownPartition(
+        _ preferred: [Browser],
+        detection: BrowserDetection,
+        now: Date = Date()
+    ) -> (eligible: [Browser], blocked: [BrowserCookieAccessGate.Cooldown]) {
+        var blocked: [BrowserCookieAccessGate.Cooldown] = []
+        let eligible = preferred.filter { browser in
+            guard let until = BrowserCookieAccessGate.blockedUntil(browser, now: now) else {
+                return true
+            }
+            if detection.isCookieSourceAvailable(browser) {
+                blocked.append(
+                    BrowserCookieAccessGate.Cooldown(browserName: browser.displayName, until: until)
+                )
+            }
+            return false
+        }
+        return (eligible, blocked)
+    }
+
     private static func cookieBrowserSessions(
         spec: Spec,
         preferred: [Browser],
         allowKeychainPrompt: Bool,
         context: BrowserImportContext,
-        maxSessions: Int?
+        maxSessions: Int?,
+        attempt: BrowserImportAttempt = BrowserImportAttempt(),
+        now: Date = Date()
     ) -> [BrowserImportResult] {
         let warm = allowKeychainPrompt ? [] : warmKeychainBrowserIDs
-        let candidates = preferred.cookieImportCandidates(
+        // A silent read already consults the gate inside
+        // `cookieImportCandidates`; a prompting one used to bypass it
+        // entirely, so the prompt could reappear the moment the user
+        // clicked Import again.
+        let searchOrder: [Browser]
+        if allowKeychainPrompt {
+            let partition = cooldownPartition(preferred, detection: context.detection, now: now)
+            partition.blocked.forEach(attempt.record)
+            searchOrder = partition.eligible
+        } else {
+            searchOrder = preferred
+        }
+        let candidates = searchOrder.cookieImportCandidates(
             using: context.detection,
             allowKeychainPrompt: allowKeychainPrompt,
             warmKeychainBrowsers: warm
@@ -665,7 +790,11 @@ public enum MiscCookieResolver {
                     logger: nil
                 )
             } catch {
-                BrowserCookieAccessGate.recordIfNeeded(error)
+                // A refusal that lands *now* belongs to this attempt just
+                // as much as one carried over from an earlier click.
+                if let cooldown = BrowserCookieAccessGate.recordIfNeeded(error, now: now) {
+                    attempt.record(cooldown)
+                }
                 // A warm browser that suddenly refuses means the cached
                 // Safe Storage key is gone (keychain relocked, browser
                 // rotated it). Forget the warmth so we stop bypassing

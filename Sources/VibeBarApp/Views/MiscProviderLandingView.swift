@@ -14,6 +14,7 @@ struct MiscProviderLandingView: View {
 
     @State private var isImporting = false
     @State private var outcomes: [MiscCookieResolver.BatchImportOutcome] = []
+    @State private var cooldowns: [BrowserCookieAccessGate.Cooldown] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -63,6 +64,8 @@ struct MiscProviderLandingView: View {
                         }
                     }
                 }
+
+                cooldownControls
             }
 
             Divider()
@@ -75,7 +78,45 @@ struct MiscProviderLandingView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
+        .onAppear { cooldowns = BrowserCookieAccessGate.activeCooldowns() }
     }
+
+    /// Declining a Chromium "Safe Storage" prompt parks that browser for
+    /// six hours, and every import in the meantime honestly finds nothing —
+    /// which used to be reported as "no signed-in session found". Show the
+    /// suppression and the way out of it.
+    @ViewBuilder
+    private var cooldownControls: some View {
+        if !cooldowns.isEmpty {
+            Divider()
+                .padding(.vertical, 2)
+            ForEach(cooldowns, id: \.browserName) { cooldown in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "lock.slash")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .frame(width: 12)
+                    Text("macOS Keychain access for \(cooldown.browserName) was declined. Vibe Bar will not ask again until \(Self.timeFormatter.string(from: cooldown.until)).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 6)
+                }
+            }
+            Button("Reset browser-cookie cooldown") {
+                BrowserCookieAccessGate.reset()
+                cooldowns = []
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
 
     private var autoImportBinding: Binding<Bool> {
         Binding(
@@ -113,6 +154,7 @@ struct MiscProviderLandingView: View {
             DispatchQueue.main.async {
                 isImporting = false
                 outcomes = results
+                cooldowns = BrowserCookieAccessGate.activeCooldowns()
                 // One refresh for the whole batch rather than one per
                 // provider — the quota service fans out on its own.
                 environment.refreshAll()
@@ -143,18 +185,19 @@ private struct OutcomeRow: View {
 
     private var symbol: String {
         switch outcome {
-        case .imported:        return "checkmark.circle"
-        case .noSessionFound:  return "minus.circle"
-        case .cookiesDisabled: return "slash.circle"
-        case .saveFailed:      return "exclamationmark.triangle"
+        case .imported:         return "checkmark.circle"
+        case .noSessionFound:   return "minus.circle"
+        case .keychainCooldown: return "lock.slash"
+        case .cookiesDisabled:  return "slash.circle"
+        case .saveFailed:       return "exclamationmark.triangle"
         }
     }
 
     private var tint: Color {
         switch outcome {
-        case .imported:                        return .green
+        case .imported:                         return .green
         case .noSessionFound, .cookiesDisabled: return .secondary
-        case .saveFailed:                      return .orange
+        case .keychainCooldown, .saveFailed:    return .orange
         }
     }
 
@@ -164,10 +207,22 @@ private struct OutcomeRow: View {
             return "Imported from \(sourceLabel)"
         case .noSessionFound:
             return "No signed-in session found"
+        case let .keychainCooldown(browser, until):
+            return "\(browser) Keychain access declined until \(Self.timeFormatter.string(from: until))"
         case .cookiesDisabled:
-            return "Cookies disabled for this provider"
+            // Reachable only through a hand-edited settings.json: the
+            // source-mode fields have no UI and every instance is created
+            // with `automaticSourceSelection`.
+            return "Cookie sources turned off in settings.json"
         case .saveFailed:
             return "Could not save to Keychain"
         }
     }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
 }

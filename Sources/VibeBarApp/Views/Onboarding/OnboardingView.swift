@@ -19,7 +19,7 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
         case .welcome: "Welcome"
         case .subscriptions: "Subscriptions"
         case .browserCookies: "Browser cookies"
-        case .apiKeyProviders: "API-key providers"
+        case .apiKeyProviders: "Other plans"
         case .pricing: "Model pricing"
         case .launchAtLogin: "Launch at login"
         case .done: "All set"

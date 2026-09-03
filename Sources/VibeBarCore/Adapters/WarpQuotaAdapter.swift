@@ -201,7 +201,12 @@ public enum WarpResponseParser {
                 joined.lowercased().contains("unauthorized") {
                 throw QuotaError.needsLogin
             }
-            throw QuotaError.parseFailure(joined.isEmpty ? "Warp GraphQL error." : joined)
+            // Straight from the provider's response, so it is redacted at
+            // construction rather than only at the log / MCP sinks: a
+            // GraphQL error is free to name the account it refused.
+            throw QuotaError.parseFailure(
+                joined.isEmpty ? "Warp GraphQL error." : ProviderDiagnosticRedactor.redact(joined)
+            )
         }
 
         guard let dataObj = json["data"] as? [String: Any],
