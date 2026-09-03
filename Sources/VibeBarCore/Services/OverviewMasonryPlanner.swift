@@ -16,13 +16,20 @@ import Foundation
 /// which is the Overview's default segmentation and therefore the behaviour this
 /// planner has always had.
 public enum OverviewMasonryPlanner {
-    public enum Phase: Int, Sendable, Comparable {
+    public enum Phase: Int, Sendable, Comparable, CaseIterable {
         /// The Overview's header band: cards pinned to one shared height that
         /// read as a single row. Placed across the columns in declaration
         /// order rather than balanced, because a band whose cards are all the
         /// same height has nothing to balance.
         case summary
+        /// The provider quota cards, and nothing else. Kept narrow on purpose:
+        /// this is the band a reader scans for "how much is left", and the
+        /// cards that merely *relate* to quota — the refill horizon, the reset
+        /// history — crowded it out of being scannable.
         case quota
+        /// Retrospective and forward-looking quota answers: upcoming resets,
+        /// the all-providers quota history, the reset-history comparison.
+        case history
         case cost
         case auxiliary
 
@@ -110,6 +117,7 @@ public enum OverviewMasonryPlanner {
     ) {
         let summaries = group.filter { $0.phase == .summary }
         let quotas = group.filter { $0.phase == .quota }
+        let history = group.filter { $0.phase == .history }
         let costs = group.filter { $0.phase == .cost }
         let auxiliary = group.filter { $0.phase == .auxiliary }
 
@@ -141,6 +149,14 @@ public enum OverviewMasonryPlanner {
                 let column = shortestColumn(heights)
                 append(item, to: column, spacing: spacing, heights: &heights, positions: &positions)
             }
+        }
+
+        // The history band has no fixed count to enumerate over and no pairing
+        // invariant to preserve, so it takes the same deterministic
+        // shortest-column placement the auxiliary band does.
+        for item in history {
+            let column = shortestColumn(heights)
+            append(item, to: column, spacing: spacing, heights: &heights, positions: &positions)
         }
 
         // There are only five Cost cards, so exhaustive assignment is both
@@ -176,7 +192,7 @@ public enum OverviewMasonryPlanner {
         var heights = Array(repeating: 0.0, count: columnCount)
 
         for group in grouped(items, by: groups) {
-            for phase in [Phase.summary, .quota, .cost, .auxiliary] {
+            for phase in Phase.allCases {
                 for item in group where item.phase == phase {
                     let preferred = fixedColumns[item.id] ?? shortestColumn(heights)
                     let column = min(max(0, preferred), columnCount - 1)
@@ -201,7 +217,7 @@ public enum OverviewMasonryPlanner {
     /// phase, in phase order.
     private static func grouped(_ items: [Item], by groups: [[String]]) -> [[Item]] {
         guard !groups.isEmpty else {
-            return [Phase.summary, .quota, .cost, .auxiliary]
+            return Phase.allCases
                 .map { phase in items.filter { $0.phase == phase } }
                 .filter { !$0.isEmpty }
         }

@@ -3,7 +3,10 @@ import VibeBarCore
 
 enum OverviewMasonryPhase: Int {
     case summary
+    /// The provider quota cards only — see `OverviewMasonryPlanner.Phase`.
     case quota
+    /// Upcoming resets, quota history, the reset-history comparison.
+    case history
     case cost
     case auxiliary
 
@@ -11,6 +14,7 @@ enum OverviewMasonryPhase: Int {
         switch self {
         case .summary: .summary
         case .quota: .quota
+        case .history: .history
         case .cost: .cost
         case .auxiliary: .auxiliary
         }

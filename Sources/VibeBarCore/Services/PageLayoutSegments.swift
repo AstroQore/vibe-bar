@@ -43,15 +43,24 @@ public enum PageLayoutSegments {
     }
 
     /// Phases that share a segment in the Overview's default segmentation: the
-    /// pinned summary header, then the quota cards packed among themselves,
-    /// then cost together with the analytics derived from it.
+    /// pinned summary header, the provider quota cards packed among themselves,
+    /// the quota history and reset answers, then cost together with the
+    /// analytics derived from it.
     ///
     /// This is the answer to the complaint segments exist for — a user who
     /// picks Compact on the Overview gets a minimal-height quota block without
-    /// having to arrange anything.
+    /// having to arrange anything. The quota band grew to seven cards when the
+    /// refill horizon, the reset comparison, the usage mix and the
+    /// all-providers history all carried `.quota`, which is precisely the block
+    /// that has to stay scannable; `.history` is their band instead.
+    ///
+    /// Cost and its analytics stay one band. They read as a single block, and
+    /// splitting them would put an ordering constraint between a cost card and
+    /// the heatmap derived from it that nobody asked for.
     static let overviewPhaseGroups: [[OverviewMasonryPlanner.Phase]] = [
         [.summary],
         [.quota],
+        [.history],
         [.cost, .auxiliary]
     ]
 

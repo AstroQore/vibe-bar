@@ -1210,7 +1210,7 @@ final class PageLayoutTests: XCTestCase {
             .init(id: PageLayoutModuleID("overview-quota:claude"), phase: .quota),
             .init(id: PageLayoutModuleID("overview-quota:gemini"), phase: .quota),
             .init(id: PageLayoutModuleID("overview-quota:grok"), phase: .quota),
-            .init(id: .quotaHistoryAll, phase: .quota),
+            .init(id: .quotaHistoryAll, phase: .history),
             .init(id: .costAll, phase: .cost),
             .init(id: .cost(tool: .codex), phase: .cost),
             .init(id: PageLayoutModuleID("model-breakdown:all"), phase: .auxiliary),
@@ -1218,27 +1218,30 @@ final class PageLayoutTests: XCTestCase {
         ]
     }
 
-    func testOverviewDefaultsToSummaryThenQuotaThenEverythingElse() {
+    func testOverviewDefaultsToSummaryQuotaHistoryThenCostWithItsAnalytics() {
         let segments = PageLayoutSegments.defaultSegments(
             modules: overviewModules(),
             page: .overview
         )
 
-        XCTAssertEqual(segments.count, 3)
+        XCTAssertEqual(segments.count, 4)
         XCTAssertEqual(segments[0], [Self.summaryCost, Self.summaryStatus])
+        // The complaint this grouping answers: the quota band is the band a
+        // reader scans for "how much is left", so it holds the provider cards
+        // and nothing else.
         XCTAssertEqual(
             segments[1],
             [
                 PageLayoutModuleID("overview-quota:codex"),
                 PageLayoutModuleID("overview-quota:claude"),
                 PageLayoutModuleID("overview-quota:gemini"),
-                PageLayoutModuleID("overview-quota:grok"),
-                .quotaHistoryAll
+                PageLayoutModuleID("overview-quota:grok")
             ]
         )
-        // Cost and the analytics derived from it read as one block.
+        XCTAssertEqual(segments[2], [.quotaHistoryAll])
+        // Cost and the analytics derived from it still read as one block.
         XCTAssertEqual(
-            segments[2],
+            segments[3],
             [
                 .costAll,
                 .cost(tool: .codex),
@@ -1246,6 +1249,88 @@ final class PageLayoutTests: XCTestCase {
                 PageLayoutModuleID("heatmap-year:all")
             ]
         )
+    }
+
+    func testACompactOverviewKeepsTheMovedCardsOutOfItsStoredQuotaBand() {
+        // The shape a real Compact Overview stores: three bands materialized
+        // when it was packed, whose second band is already just the provider
+        // cards — and whose third holds the all-providers history, so the
+        // migration refuses it. What fixed the complaint for this layout is not
+        // the migration but the phase change: the three cards the stored bands
+        // have never seen are newcomers, and `resolve` sends a newcomer to the
+        // band its *current* phase points at, clamped into range.
+        let stored: [[PageLayoutModuleID]] = [
+            [Self.summaryCost, Self.summaryStatus],
+            [
+                PageLayoutModuleID("overview-quota:codex"),
+                PageLayoutModuleID("overview-quota:gemini"),
+                PageLayoutModuleID("overview-quota:claude"),
+                PageLayoutModuleID("overview-quota:grok")
+            ],
+            [.costAll, .cost(tool: .codex), .quotaHistoryAll]
+        ]
+        let modules: [PageLayoutSegments.Module] = [
+            .init(id: Self.summaryCost, phase: .summary),
+            .init(id: Self.summaryStatus, phase: .summary),
+            .init(id: PageLayoutModuleID("overview-upcoming-resets"), phase: .history),
+            .init(id: .quotaHistoryAll, phase: .history),
+            .init(id: PageLayoutModuleID("overview-reset-history-compare"), phase: .history),
+            .init(id: PageLayoutModuleID("overview-usage-mix"), phase: .cost),
+            .init(id: PageLayoutModuleID("overview-quota:codex"), phase: .quota),
+            .init(id: PageLayoutModuleID("overview-quota:gemini"), phase: .quota),
+            .init(id: PageLayoutModuleID("overview-quota:claude"), phase: .quota),
+            .init(id: PageLayoutModuleID("overview-quota:grok"), phase: .quota),
+            .init(id: .costAll, phase: .cost),
+            .init(id: .cost(tool: .codex), phase: .cost)
+        ]
+        let resolved = PageLayoutSegments.resolve(
+            stored: stored,
+            available: modules.map(\.id),
+            defaultSegments: PageLayoutSegments.defaultSegments(modules: modules, page: .overview)
+        )
+
+        XCTAssertEqual(resolved.count, 3)
+        // The band the maintainer looks at holds the four provider cards, and
+        // nothing that merely relates to quota.
+        XCTAssertEqual(
+            resolved[1],
+            [
+                PageLayoutModuleID("overview-quota:codex"),
+                PageLayoutModuleID("overview-quota:gemini"),
+                PageLayoutModuleID("overview-quota:claude"),
+                PageLayoutModuleID("overview-quota:grok")
+            ]
+        )
+        // The three newcomers land below it — history at its own index, the
+        // usage mix clamped down from the cost index this layout has no band for.
+        XCTAssertEqual(
+            Set(resolved[2]),
+            Set([
+                .costAll,
+                .cost(tool: .codex),
+                .quotaHistoryAll,
+                PageLayoutModuleID("overview-upcoming-resets"),
+                PageLayoutModuleID("overview-reset-history-compare"),
+                PageLayoutModuleID("overview-usage-mix")
+            ])
+        )
+    }
+
+    func testTheOverviewQuotaSegmentHoldsOnlyProviderQuotaCards() {
+        // Stated as an invariant rather than a list, so a card added to the
+        // Overview later cannot quietly rejoin the band.
+        let segments = PageLayoutSegments.defaultSegments(
+            modules: overviewModules(),
+            page: .overview
+        )
+        XCTAssertGreaterThan(segments.count, 1)
+        XCTAssertFalse(segments[1].isEmpty)
+        for moduleID in segments[1] {
+            XCTAssertTrue(
+                moduleID.rawValue.hasPrefix("overview-quota:"),
+                "\(moduleID.rawValue) does not belong in the quota segment"
+            )
+        }
     }
 
     func testAProviderPageDefaultsToASingleSegment() {
@@ -1535,22 +1620,22 @@ final class PageLayoutTests: XCTestCase {
             spacing: 12
         )
 
-        XCTAssertEqual(packed.count, 3)
+        XCTAssertEqual(packed.count, 4)
         XCTAssertEqual(Set(packed[0].flatMap { $0 }), [Self.summaryCost, Self.summaryStatus])
+        // Nothing from below leaks into the quota segment, which is exactly what
+        // the unsegmented packer was free to do.
         XCTAssertEqual(
             Set(packed[1].flatMap { $0 }),
             Set([
                 PageLayoutModuleID("overview-quota:codex"),
                 PageLayoutModuleID("overview-quota:claude"),
                 PageLayoutModuleID("overview-quota:gemini"),
-                PageLayoutModuleID("overview-quota:grok"),
-                .quotaHistoryAll
+                PageLayoutModuleID("overview-quota:grok")
             ])
         )
-        // Nothing from below leaks into the quota segment, which is exactly what
-        // the unsegmented packer was free to do.
+        XCTAssertEqual(Set(packed[2].flatMap { $0 }), [.quotaHistoryAll])
         XCTAssertEqual(
-            Set(packed[2].flatMap { $0 }),
+            Set(packed[3].flatMap { $0 }),
             Set([
                 .costAll,
                 .cost(tool: .codex),
