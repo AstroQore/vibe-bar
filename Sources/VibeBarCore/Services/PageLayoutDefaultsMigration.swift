@@ -35,17 +35,38 @@ public enum PageLayoutDefaultsMigration {
     /// column to close the wide one.
     public static let providerRightColumnIdentifier = "provider-right-column-v2"
 
-    // No entry for the Overview's split quota phase, deliberately. Its stored
-    // `columns` are a hand-draggable arrangement in *every* mode — the layout
-    // editor keeps them when the page is switched to Auto or Compact and back
-    // — so a phase-homogeneous three-band segmentation does not establish that
-    // the page is untouched, and clearing it would re-sort those columns under
-    // the new four-band default. Nothing needs the rewrite either: a stored
-    // segmentation has never seen the three moved cards, so
-    // `PageLayoutSegments.resolve` places them at
-    // `min(defaultIndex, count - 1)` and the quota band keeps only the
-    // provider cards. They share the cost band instead of getting their own,
-    // which is the right price for not overruling an arrangement.
+    /// 1.6.2: the Overview's quota phase kept only the provider cards, so the
+    /// four cards it used to also hold move out of a stored quota band.
+    public static let overviewQuotaBandIdentifier = "overview-quota-band-v1"
+
+    /// The cards 1.6.2 moved out of the Overview's `.quota` phase — three to a
+    /// history band of their own, Usage Mix to the cost band.
+    ///
+    /// A stored segmentation that *names* one of these keeps it wherever it is,
+    /// because `PageLayoutSegments.resolve` only places modules a saved
+    /// segmentation has never seen. Every release up to 1.6.1 put them in the
+    /// quota band, so anyone whose Overview segmentation was materialized by
+    /// one of those builds — opening the layout editor is enough — has them
+    /// pinned there, which is exactly the crowding this release set out to fix.
+    /// Family prefix of an Overview provider quota card. A literal because
+    /// `PageModuleCatalog` builds these ids from one too — and because a
+    /// migration is a frozen snapshot of a past release either way.
+    static let overviewQuotaFamily = "overview-quota"
+
+    static let movedOutOfOverviewQuotaBand: Set<PageLayoutModuleID> = [
+        PageLayoutModuleID(rawValue: "overview-upcoming-resets"),
+        PageLayoutModuleID(rawValue: "overview-reset-history-compare"),
+        PageLayoutModuleID(rawValue: "overview-usage-mix"),
+        .quotaHistoryAll
+    ]
+
+    // Note on what is deliberately *not* migrated: the whole segmentation.
+    // Clearing it so the new four-band default derives would re-sort the
+    // stored `columns` too, and those are a hand-draggable arrangement in
+    // every mode — the layout editor keeps them when a page is switched to
+    // Auto or Compact and back — so no property of a saved Overview
+    // establishes that nobody arranged it. Moving the named cards out of one
+    // named band is the narrow repair that does not need that proof.
 
     /// Module family the reset-history table is registered under.
     static let resetHistoryFamily = "reset-history-compare"
@@ -63,7 +84,60 @@ public enum PageLayoutDefaultsMigration {
         if applied.insert(providerRightColumnIdentifier).inserted {
             layouts = migratedProviderRightColumn(layouts)
         }
+        if applied.insert(overviewQuotaBandIdentifier).inserted {
+            layouts = migratedOverviewQuotaBand(layouts)
+        }
         return (layouts, applied)
+    }
+
+    /// Move the cards 1.6.2 re-homed out of a stored Overview quota band.
+    ///
+    /// Narrow on purpose. It touches only `segments`, only the band that holds
+    /// the provider quota cards, and only the four identifiers this release
+    /// moved; the destination is the band holding the cost cards, which is
+    /// where `PageLayoutSegments.resolve` sends them as newcomers anyway. A
+    /// card sitting anywhere else, a page with one band, and every other card
+    /// in the quota band are all left exactly as they are.
+    ///
+    /// `columns` need no edit: `PageLayoutSegments.sortedColumns` re-sorts each
+    /// column by segment rank at render time and its sort is stable, so the
+    /// order the user dragged *within* a band survives the move.
+    ///
+    /// The cost of being wrong is bounded and recoverable: someone who put
+    /// Usage Mix beside their quota cards on purpose has it moved once, and
+    /// dragging it back is honoured — `applied` records the migration whether
+    /// or not it found anything, so it never asks twice.
+    public static func migratedOverviewQuotaBand(
+        _ layouts: [PageLayoutPageID: StoredPageLayout]
+    ) -> [PageLayoutPageID: StoredPageLayout] {
+        var result = layouts
+        for (page, layout) in layouts where page.isOverview {
+            var segments = layout.segments
+            guard segments.count > 1,
+                  let quotaBand = segments.firstIndex(where: { band in
+                      band.contains { $0.family == overviewQuotaFamily }
+                  })
+            else { continue }
+            let strays = segments[quotaBand].filter(movedOutOfOverviewQuotaBand.contains)
+            guard !strays.isEmpty else { continue }
+            // The cost band, or the last one when a stored segmentation has no
+            // cost cards to point at — the same fallback `resolve` clamps to.
+            let destination = segments.firstIndex { band in
+                band.contains { $0.family == PageLayoutModuleID.Family.cost }
+                    || band.contains(.costAll)
+            } ?? segments.index(before: segments.endIndex)
+            guard destination != quotaBand else { continue }
+            segments[quotaBand].removeAll(where: strays.contains)
+            segments[destination].append(contentsOf: strays)
+            result[page] = StoredPageLayout(
+                mode: layout.mode,
+                ratio: layout.ratio,
+                columns: layout.columns,
+                segments: segments,
+                hidden: layout.hidden
+            )
+        }
+        return result
     }
 
     /// Move `status` and `reset-history-compare:<tool>` to their new homes on
