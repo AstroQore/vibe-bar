@@ -994,12 +994,11 @@ private struct OverviewQuotaHoverOverlay: View {
     /// into "+N more" are the ones with the most headroom.
     private static let tooltipRowLimit = 8
 
-    private static let tooltipFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d · HH:mm"
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var tooltipFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdHHmm")
+    }
 
     var body: some View {
         GeometryReader { geometry in

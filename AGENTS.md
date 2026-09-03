@@ -990,6 +990,16 @@ tooltips, empty states and error copy are translated. The awkward middle
 `QuotaGroupLabelLocalizer`, whose table is exhaustive rather than
 pattern-matched so that "Weekly Fable" cannot be half-renamed.
 
+That localizer has to be applied **wherever a displayed label is
+composed**, not only where a group heading is drawn. `Lane.label` builds
+"Anthropic · Claude · Weekly" out of four fields at three different
+levels: L1 company and L2 SubProvider are names and stay as their owners
+spell them, while the L3 group and bucket may be generic window words —
+and a verdict that reads "… Weekly 有 1 次補額後超過一半未使用" has an
+English word in the middle of a Chinese sentence. A bucket named after a
+model (`Sonnet`, `Fable`) is not in the table and comes back untouched,
+which is the whole point of the table being a list rather than a rule.
+
 `Scripts/lint_localization.py` holds the list of files that have been
 through the pass and fails on a user-facing literal in one of them that
 does not go through `L10n`; `LocalizationLintTests` runs it on every
@@ -1009,6 +1019,25 @@ enclosing call and the argument label, the label-producing helpers are
 `IDENTIFIER_ARGUMENTS` keeps `systemImage:` and `.tag()` out of it. A
 lint that is trusted and wrong is worse than no lint, so the scanner has
 its own fixture test (`--scan`).
+
+**Dates, times and numbers have no catalog — they have a locale.**
+Everything the user reads formats against `AppLocale.current`, which
+follows `AppSettings.language`. `Locale.current` is the *system's*
+language and is therefore wrong: a user reading the app in Chinese on an
+English Mac got "Merged May 9, 2026" in the middle of a Chinese line.
+Use `AppLocale.string(_:template:)` with a CLDR skeleton (`"MMMd"`, not
+`"MMM d"` — a fixed pattern hardcodes an English month name and word
+order), `AppLocale.string(_:dateStyle:timeStyle:)`,
+`AppLocale.relativeDateTimeFormatter()`, `AppLocale.number(_:)`, or
+`.locale(AppLocale.current)` on a `FormatStyle`. The lint fails a raw
+`DateFormatter()`, `RelativeDateTimeFormatter()`, `.formatted(date:)`,
+bare number style, or `Locale.current` in a migrated file.
+
+The opposite rule holds for anything that is *not* read by a person:
+wire formats, parsed payloads, cache keys and backup filenames stay
+pinned to `en_US_POSIX`. A date that changes shape with the user's
+language is a corrupt file, not a translated one. Core's adapters and
+stores already do this; do not "fix" them.
 
 **Never store a localized string.** Derive it. A `let` filled in at
 build time, or a `@State` seeded once, outlives a language change: the
@@ -1331,8 +1360,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   and an `int` argument is grouped by the locale, so a year renders
   "2,027" — years, versions and ids are strings. A localized string is
   also never *stored*: parked in a `let` or a `@State` it survives a
-  language change behind any cache key that only knows about data. Full
-  rules in § 7.2.
+  language change behind any cache key that only knows about data — and
+  that includes a `DateFormatter` in a `static let`, which keeps the
+  language it was built in. Format dates and numbers through `AppLocale`,
+  which memoizes on the resolved language so a change is a miss rather
+  than something to invalidate. Full rules in § 7.2.
 - **JSONL scanning must be O(n).** See
   `CostUsageScanner.forEachJSONLLine`. Use a moving cursor, not
   `removeSubrange`.

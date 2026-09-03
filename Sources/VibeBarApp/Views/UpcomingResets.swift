@@ -26,10 +26,14 @@ struct UpcomingResetEvent: Identifiable {
     /// "Claude · Fable · Weekly" — canonical quota-axis names, full words.
     var label: String {
         var base: String
+        // Same split as `ResetHistoryComparison.Lane.label`: the
+        // SubProvider is a name, the L3 group and bucket may be generic
+        // window words the reader should meet in their own language.
         if let groupTitle {
-            base = "\(subProviderName) · \(groupTitle) · \(bucketTitle)"
+            base = "\(subProviderName) · \(QuotaGroupLabelLocalizer.display(groupTitle))"
+                + " · \(QuotaGroupLabelLocalizer.display(bucketTitle))"
         } else {
-            base = "\(subProviderName) · \(bucketTitle)"
+            base = "\(subProviderName) · \(QuotaGroupLabelLocalizer.display(bucketTitle))"
         }
         if let accountLabel {
             base += " · \(accountLabel)"

@@ -341,17 +341,15 @@ struct FillTimelineChart: View {
         Self.dayFormatter.string(from: cycleDate(cycle))
     }
 
-    private static let timestampFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d 'at' HH:mm"
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var timestampFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdHHmm")
+    }
 
-    private static let dayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d"
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var dayFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMd")
+    }
 }

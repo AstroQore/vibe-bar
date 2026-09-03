@@ -867,13 +867,11 @@ struct UsageTrendChartView: View {
         return formatter.string(from: date)
     }
 
-    private static let hourFormatter = localizedFormatter("MMMd HH:mm")
-    private static let dayFormatter = localizedFormatter("EEEMMMd")
-
-    private static func localizedFormatter(_ template: String) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate(template)
-        return formatter
+    private static var hourFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdHHmm")
     }
+    private static var dayFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "EEEMMMd")
+    }
+
 }

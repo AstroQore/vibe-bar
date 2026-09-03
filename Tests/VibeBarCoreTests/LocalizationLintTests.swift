@@ -116,6 +116,19 @@ final class LocalizationLintTests: XCTestCase {
                 /* Text("In a block comment") */
                 let path = url.appendingPathComponent("Contents/Resources")
                 let flag = expanded(forGroupName: "Components")
+
+                // Display formatting that asks the process locale instead
+                // of the app's — the other half of what this lint guards.
+                Text(bad.formatted(date: .abbreviated, time: .shortened))
+                Text(count.formatted(.number.grouping(.automatic)))
+                let stale = DateFormatter()
+                let relative = RelativeDateTimeFormatter()
+                let wrong = Locale.current
+
+                // …and the same three done correctly, which must stay quiet.
+                Text(AppLocale.string(good, dateStyle: .medium, timeStyle: .short))
+                Text(count.formatted(.number.grouping(.automatic).locale(AppLocale.current)))
+                let right = AppLocale.dateFormatter(template: "MMMd")
             }
 
             private func sectionLabel(_ text: String) -> some View { Text(text) }
@@ -148,6 +161,22 @@ final class LocalizationLintTests: XCTestCase {
         ] {
             XCTAssertTrue(found.contains(expected), "the lint missed \(expected): \(found)")
         }
+        // The formatting rule reports a reason rather than a literal, so
+        // these are matched as substrings of the whole report.
+        for expected in [
+            ".formatted(date:time:)", "DateFormatter()",
+            "RelativeDateTimeFormatter()", "Locale.current",
+            "without .locale(AppLocale.current)",
+        ] {
+            XCTAssertTrue(
+                text.contains(expected),
+                "the lint missed the formatting shape \(expected)"
+            )
+        }
+        XCTAssertEqual(
+            text.components(separatedBy: "DateFormatter()").count - 1, 1,
+            "AppLocale.dateFormatter was flagged as a raw DateFormatter"
+        )
         for ignored in [
             "safari", "arrow.clockwise", "OpenAI", "·", "weekly", "a", "b",
             "In a line comment", "In a block comment",

@@ -35,7 +35,7 @@ struct UsageHeroCards: View {
             .frame(minWidth: 145, idealWidth: 185, maxWidth: 220, alignment: .leading)
             .padding(.horizontal, density.cardPadding)
             heroDivider
-            metricSection(label: L10n.Usage.heroRequests, value: summary.requests.formatted(.number.grouping(.automatic))) {
+            metricSection(label: L10n.Usage.heroRequests, value: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))) {
                 detailText(summary.requests == 0 ? L10n.Usage.heroNoTrafficInRange : L10n.Usage.heroInSelectedRange)
             }
             .frame(minWidth: 130, idealWidth: 170, maxWidth: 195, alignment: .leading)
@@ -56,7 +56,7 @@ struct UsageHeroCards: View {
                     else { detailText(summary.costMicros == nil ? L10n.Usage.heroNoPricedRequests : L10n.Usage.heroAllRequestsPriced) }
                 }
                 Divider().frame(height: 54)
-                metricSection(label: L10n.Usage.heroRequests, value: summary.requests.formatted(.number.grouping(.automatic))) {
+                metricSection(label: L10n.Usage.heroRequests, value: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))) {
                     detailText(summary.requests == 0 ? L10n.Usage.heroNoTrafficInRange : L10n.Usage.heroInSelectedRange)
                 }
                 Divider().frame(height: 54)

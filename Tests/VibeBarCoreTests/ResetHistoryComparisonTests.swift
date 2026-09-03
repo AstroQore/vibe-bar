@@ -990,7 +990,7 @@ final class ResetHistoryComparisonTests: XCTestCase {
         L10n.languageOverride = .simplifiedChinese
         XCTAssertEqual(
             built.verdict,
-            "Anthropic · Claude · Weekly 有 1 次补额时超过一半没用掉。"
+            "Anthropic · Claude · 每周 有 1 次补额时超过一半没用掉。"
         )
         XCTAssertTrue(
             built.accessibilitySummary.contains("重置历史对比"),
@@ -1029,9 +1029,61 @@ final class ResetHistoryComparisonTests: XCTestCase {
             built.lanes[0].wasteSummary.contains("平均浪费"),
             "lane summary stayed English: \(built.lanes[0].wasteSummary)"
         )
-        // The lane *label* is the quota axis — company, SubProvider, bucket —
-        // and must not move in either direction.
+        // The lane label mixes both kinds of name and has to keep them
+        // apart: `Anthropic` and `Claude` are quota-axis identifiers and
+        // stay as their owners spell them, while `Weekly` is a generic
+        // window word the reader should meet in their own language.
+        XCTAssertEqual(built.lanes[0].label, "Anthropic · Claude · 每周")
+        L10n.languageOverride = .english
         XCTAssertEqual(built.lanes[0].label, "Anthropic · Claude · Weekly")
+    }
+
+    /// The other half of the same rule, and the one that would do real
+    /// damage if it broke: a bucket named after a *model* is a name, not
+    /// copy. Renaming Sonnet in Chinese would make this app and Vibe Bar
+    /// Desktop disagree about what the reader is looking at.
+    func testAModelNamedBucketIsNeverTranslatedInALaneLabel() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = .simplifiedChinese
+
+        let built = ResetHistoryComparison.build(
+            inputs: [lane(
+                id: "weekly_sonnet",
+                group: "Weekly",
+                bucketTitle: "Sonnet",
+                samples: [
+                    sample(bucketId: "weekly_sonnet", endingDaysAgo: 7, used: 40),
+                    sample(bucketId: "weekly_sonnet", endingDaysAgo: 14, used: 50)
+                ]
+            )],
+            window: .all,
+            now: now
+        )
+        // The generic level translates, the model name does not.
+        XCTAssertEqual(built.lanes[0].label, "Anthropic · Claude · 每周 · Sonnet")
+        XCTAssertEqual(built.lanes[0].bucketLine, "每周 · Sonnet")
+    }
+
+    /// A bucket whose title only repeats its group must still print once,
+    /// and the de-duplication now has to happen on the *shown* strings —
+    /// two contract values that render to the same word would otherwise
+    /// appear twice.
+    func testAGroupAndBucketThatRenderTheSameArePrintedOnce() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = .simplifiedChinese
+
+        let built = ResetHistoryComparison.build(
+            inputs: [lane(
+                group: "Weekly",
+                bucketTitle: "weekly",
+                samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)]
+            )],
+            window: .all,
+            now: now
+        )
+        XCTAssertEqual(built.lanes[0].bucketLine, "每周")
     }
 
     func testANotableAverageIsQuotedWhenNoSingleCycleCrossesHalf() {

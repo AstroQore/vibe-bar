@@ -491,7 +491,7 @@ struct OnboardingPricingStep: View {
                 .disabled(environment.isRefreshingPricing)
                 if let date = environment.pricingRefreshStatus.mergedAt {
                     Text(L10n.Onboarding.pricingMerged(
-                        when: date.formatted(date: .abbreviated, time: .shortened),
+                        when: AppLocale.string(date, dateStyle: .medium, timeStyle: .short),
                         count: environment.pricingRefreshStatus.mergedModelCount
                     ))
                         .font(.caption2.monospacedDigit())
@@ -712,7 +712,7 @@ struct OnboardingDoneStep: View {
 
     private var pricingSummary: String {
         if let date = environment.pricingRefreshStatus.mergedAt {
-            return L10n.Onboarding.donePricingMerged(when: date.formatted(date: .abbreviated, time: .shortened))
+            return L10n.Onboarding.donePricingMerged(when: AppLocale.string(date, dateStyle: .medium, timeStyle: .short))
         }
         return L10n.Onboarding.donePricingBundled
     }

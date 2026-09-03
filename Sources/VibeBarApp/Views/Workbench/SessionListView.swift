@@ -321,11 +321,9 @@ private struct SessionRow: View {
         .foregroundStyle(.tertiary)
     }
 
-    private static let relative: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter
-    }()
+    private static var relative: RelativeDateTimeFormatter {
+        AppLocale.relativeDateTimeFormatter(unitsStyle: .abbreviated)
+    }
 }
 
 /// FTS5 hands back its snippet with `<b>` markers around the matched run.

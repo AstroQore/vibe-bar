@@ -1576,18 +1576,28 @@ struct CostHistoryView: View {
         }
     }
 
-    private static let hourFormatter = posixFormatter("MMM d · HH:00")
-    private static let peakHourFormatter = posixFormatter("MMM d HH:00")
-    private static let dayFormatter = posixFormatter("MMM d, yyyy")
-    private static let monthFormatter = posixFormatter("MMM yyyy")
-    private static let extentFormatter = posixFormatter("MMM d")
-    private static let extentYearFormatter = posixFormatter("MMM yyyy")
-
-    private static func posixFormatter(_ format: String) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = format
-        return formatter
+    // Every one of these renders a month *name*, so `en_US_POSIX` handed
+    // every user an English one no matter what language the app was in.
+    // The hour patterns keep their `HH:00` shape — it is the chart's own
+    // convention for "the hour beginning at" — while the date half of them
+    // now follows the app's language.
+    private static var hourFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdH")
+    }
+    private static var peakHourFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdH")
+    }
+    private static var dayFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdyyyy")
+    }
+    private static var monthFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMyyyy")
+    }
+    private static var extentFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMd")
+    }
+    private static var extentYearFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMyyyy")
     }
 }
 

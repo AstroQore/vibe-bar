@@ -105,7 +105,7 @@ struct MenuBarHealthSettingsSection: View {
                 Text(statusTitle)
                     .font(.system(size: 13, weight: .semibold))
                 if let checkedAt = watchdog.report.checkedAt {
-                    Text("Checked \(checkedAt.formatted(date: .omitted, time: .standard))")
+                    Text("Checked \(AppLocale.string(checkedAt, dateStyle: .none, timeStyle: .medium))")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }

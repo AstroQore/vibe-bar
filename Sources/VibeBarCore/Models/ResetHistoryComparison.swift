@@ -396,9 +396,16 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// are prose, with no column to line levels up in. The row itself uses
         /// `subProvider` over `bucketLine` instead.
         public var label: String {
+            // `company` and `subProvider` are L1/L2 quota-axis names —
+            // OpenAI, Anthropic, ChatGPT Agentic — and are never
+            // translated. The L3 group and bucket are the level where a
+            // generic window word lives, so they go through the
+            // localizer: without it a Chinese verdict reads "… Weekly 有 1
+            // 次補額後超過一半未使用", with an English word in the middle of
+            // a Chinese sentence. `Sonnet`, `Fable` and `Gemini Models`
+            // are not in its table and come back untouched.
             var parts = [company, subProvider]
-            if let groupTitle, !groupTitle.isEmpty { parts.append(groupTitle) }
-            if !bucketTitle.isEmpty, bucketTitle != groupTitle { parts.append(bucketTitle) }
+            parts.append(contentsOf: displayedGroupAndBucket)
             if let accountLabel, !accountLabel.isEmpty { parts.append(accountLabel) }
             return parts.joined(separator: " · ")
         }
@@ -417,11 +424,27 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// "GPT-5.3 Codex Spark · Weekly" is one answer to "which quota", not
         /// two. A lane whose L3 is only a bucket gets just the bucket.
         public var bucketLine: String {
-            var parts: [String] = []
-            if let groupTitle, !groupTitle.isEmpty { parts.append(groupTitle) }
-            if !bucketTitle.isEmpty, bucketTitle != groupTitle { parts.append(bucketTitle) }
+            var parts = displayedGroupAndBucket
             if let accountLabel, !accountLabel.isEmpty { parts.append(accountLabel) }
             return parts.joined(separator: " · ")
+        }
+
+        /// The L3 level as it is shown: the group, then the bucket when it
+        /// says something the group did not.
+        ///
+        /// The "is the bucket just the group again?" test is made on the
+        /// *displayed* strings rather than the stored ones. Two contract
+        /// values that render to the same word would otherwise print it
+        /// twice, which is the exact duplicate this check exists to stop.
+        private var displayedGroupAndBucket: [String] {
+            var parts: [String] = []
+            let group = groupTitle
+                .map(QuotaGroupLabelLocalizer.display)
+                .flatMap { $0.isEmpty ? nil : $0 }
+            if let group { parts.append(group) }
+            let bucket = QuotaGroupLabelLocalizer.display(bucketTitle)
+            if !bucket.isEmpty, bucket != group { parts.append(bucket) }
+            return parts
         }
 
         /// The line under the label. Says how many cycles it is averaging so a

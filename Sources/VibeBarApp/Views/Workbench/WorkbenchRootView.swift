@@ -159,10 +159,10 @@ struct WorkbenchRootView: View {
         switch page {
         case .usageStats:
             guard let updated = workbench.usageStats.lastUpdatedAt else { return "local ledger" }
-            return "updated " + updated.formatted(date: .omitted, time: .standard)
+            return "updated " + AppLocale.string(updated, dateStyle: .none, timeStyle: .medium)
         case .sessionManager:
             let count = workbench.sessions.totalSessionCount
-            return count == 0 ? "local index" : "\(count.formatted()) indexed"
+            return count == 0 ? "local index" : "\(AppLocale.number(count)) indexed"
         case .resets:
             let next = UpcomingResets.events(environment: environment, now: Date(), horizonDays: 7).first
             guard let next,
@@ -171,7 +171,7 @@ struct WorkbenchRootView: View {
             return "next refill \(countdown)"
         case .skillsManager:
             let count = workbench.skills.skills.count
-            return count == 0 ? "shared library" : "\(count.formatted()) installed"
+            return count == 0 ? "shared library" : "\(AppLocale.number(count)) installed"
         case .settings:
             return settingsDestination.title(settings: settingsStore.settings)
         }

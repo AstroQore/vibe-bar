@@ -111,12 +111,11 @@ struct MiscProviderLandingView: View {
         }
     }
 
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var timeFormatter: DateFormatter {
+        AppLocale.dateFormatter(dateStyle: .none, timeStyle: .short)
+    }
 
     private var autoImportBinding: Binding<Bool> {
         Binding(
@@ -219,10 +218,9 @@ private struct OutcomeRow: View {
         }
     }
 
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var timeFormatter: DateFormatter {
+        AppLocale.dateFormatter(dateStyle: .none, timeStyle: .short)
+    }
 }

@@ -419,6 +419,86 @@ def is_allowed(text: str, terms: set, path: str) -> bool:
 IDENTIFIER_RECEIVERS = {"L10n", "Bundle", "UserDefaults", "NSLocalizedString"}
 
 
+# Display formatting that asks the *process* locale instead of the app's.
+# `Locale.current` is the system's language, and `AppSettings.language` is
+# not; a date formatted against it drops "May 9, 2026" into the middle of a
+# Chinese sentence. Everything the user reads goes through `AppLocale`.
+FORMATTING = [
+    (re.compile(r"\bDateFormatter\(\)"), "DateFormatter() — use AppLocale.dateFormatter"),
+    (re.compile(r"\bRelativeDateTimeFormatter\(\)"),
+     "RelativeDateTimeFormatter() — use AppLocale.relativeDateTimeFormatter"),
+    (re.compile(r"\.formatted\(date:"), ".formatted(date:time:) — use AppLocale.string"),
+    (re.compile(r"\bLocale\.current\b"), "Locale.current — the system's language, not the app's"),
+]
+
+
+def strip_comments(line: str) -> str:
+    """Blank out a trailing `//` comment without touching one inside a string."""
+    in_string = False
+    index = 0
+    while index < len(line):
+        character = line[index]
+        if character == "\\" and in_string:
+            index += 2
+            continue
+        if character == '"':
+            in_string = not in_string
+        elif not in_string and line.startswith("//", index):
+            return line[:index]
+        index += 1
+    return line
+
+
+def formatting_findings(relative, source: str):
+    """Display formatting that bypasses `AppLocale`, outside comments."""
+    found = []
+    stripped = []
+    block = False
+    for line in source.splitlines():
+        if block:
+            if "*/" in line:
+                line, block = line.split("*/", 1)[1], False
+            else:
+                stripped.append("")
+                continue
+        if "/*" in line:
+            head, _, tail = line.partition("/*")
+            if "*/" in tail:
+                line = head + tail.split("*/", 1)[1]
+            else:
+                line, block = head, True
+        line = strip_comments(line)
+        stripped.append("" if line.lstrip().startswith("///") else line)
+    for number, line in enumerate(stripped, start=1):
+        for pattern, reason in FORMATTING:
+            if pattern.search(line):
+                found.append((number, reason))
+
+    # A number / percent / currency style needs `.locale(AppLocale.current)`
+    # somewhere in its own argument list. That span has to be found by
+    # walking the parentheses — a regex cannot balance them, and the first
+    # attempt reported a call that was already correct, which is exactly the
+    # kind of false positive that gets a lint switched off.
+    joined = "\n".join(stripped)
+    for match in re.finditer(r"\.formatted\(\s*\.(?:number|percent|currency)", joined):
+        start = joined.index("(", match.start() + len(".formatted") - 1)
+        depth, index = 0, start
+        while index < len(joined):
+            if joined[index] == "(":
+                depth += 1
+            elif joined[index] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            index += 1
+        if ".locale(" not in joined[start:index]:
+            found.append((
+                joined.count("\n", 0, match.start()) + 1,
+                "a number/percent/currency style without .locale(AppLocale.current)",
+            ))
+    return found
+
+
 def findings_for(relative, helpers: set, terms: set):
     path = _resolve(relative)
     source = path.read_text()
@@ -446,6 +526,8 @@ def findings_for(relative, helpers: set, terms: set):
             continue
         where = f"{callee or '?'}(" + (f"{literal.label}:" if literal.label else "") + "…)"
         found.append((literal.line, literal.text, where))
+    for line, reason in formatting_findings(relative, source):
+        found.append((line, reason, "display formatting"))
     return found
 
 

@@ -50,7 +50,7 @@ struct UsageCompositionCards: View {
                 HStack {
                     Text(L10n.Usage.harnessMixActiveCount(count: harnessRows.count))
                     Spacer(minLength: 8)
-                    Text(L10n.Usage.requestCount(count: summary.requests.formatted(.number.grouping(.automatic))))
+                    Text(L10n.Usage.requestCount(count: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))))
                 }
                 .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded).monospacedDigit())
                 .foregroundStyle(.tertiary)
@@ -78,7 +78,7 @@ struct UsageCompositionCards: View {
                 }
                 .lineLimit(1)
                 Spacer(minLength: 6)
-                Text(fraction.formatted(.percent.precision(.fractionLength(0))))
+                Text(fraction.formatted(.percent.precision(.fractionLength(0)).locale(AppLocale.current)))
                     .foregroundStyle(.secondary)
                 Text(UsageFormatting.compactTokens(row.totalTokens))
                     .fontWeight(.semibold)
