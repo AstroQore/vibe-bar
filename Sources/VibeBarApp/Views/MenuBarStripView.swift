@@ -305,8 +305,8 @@ struct MenuBarStripView: View {
             displayMode: displayMode
         )
         Group {
-            if let tool = token.logo {
-                MenuBarStripLogo(tool: tool, side: size + 1, paint: paint)
+            if let glyph = token.glyph {
+                MenuBarStripGlyph(glyph: glyph, side: size + 1, paint: paint)
             } else if let text = token.text {
                 Text(text)
                     .font(font(for: token, size: size))
@@ -335,26 +335,22 @@ struct MenuBarStripView: View {
     }
 }
 
-/// A brand mark inside the preview, tinted to match the block's paint and
-/// rasterized against the preview's own colour scheme rather than the app's —
-/// a light-menu-bar preview has to show the light-menu-bar glyph.
-private struct MenuBarStripLogo: View {
+/// A glyph inside the preview — a provider's brand mark or Vibe Bar's own —
+/// tinted to match the block's paint and rasterized against the preview's own
+/// colour scheme rather than the app's: a light-menu-bar preview has to show
+/// the light-menu-bar glyph.
+private struct MenuBarStripGlyph: View {
     @Environment(\.colorScheme) private var colorScheme
-    let tool: ToolType
+    let glyph: MenuBarRenderedToken.Glyph
     let side: CGFloat
     let paint: MenuBarStripPaint
 
     var body: some View {
         Group {
-            if let image = ProviderBrandIcon.image(
-                for: tool,
-                size: NSSize(width: side, height: side),
-                tint: MenuBarStripPalette.nsColor(paint),
-                appearance: NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
-            ) {
+            if let image {
                 Image(nsImage: image).resizable().scaledToFit()
             } else {
-                Image(systemName: ProviderBrandIcon.fallbackSystemImage(for: tool))
+                Image(systemName: fallbackSymbol)
                     .resizable()
                     .scaledToFit()
                     .foregroundStyle(MenuBarStripPalette.color(paint))
@@ -362,6 +358,27 @@ private struct MenuBarStripLogo: View {
         }
         .frame(width: side, height: side)
         .accessibilityHidden(true)
+    }
+
+    private var image: NSImage? {
+        let size = NSSize(width: side, height: side)
+        let tint = MenuBarStripPalette.nsColor(paint)
+        let appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
+        switch glyph {
+        case let .provider(tool):
+            return ProviderBrandIcon.image(for: tool, size: size, tint: tint, appearance: appearance)
+        case .app:
+            return ProviderBrandIcon.image(
+                for: MenuBarItemKind.compact, size: size, tint: tint, appearance: appearance
+            )
+        }
+    }
+
+    private var fallbackSymbol: String {
+        switch glyph {
+        case let .provider(tool): return ProviderBrandIcon.fallbackSystemImage(for: tool)
+        case .app: return ProviderBrandIcon.fallbackSystemImage(for: MenuBarItemKind.compact)
+        }
     }
 }
 

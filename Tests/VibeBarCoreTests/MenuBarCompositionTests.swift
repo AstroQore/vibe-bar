@@ -723,6 +723,263 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(rendered.rows[0].tokens[0].text, exact)
     }
 
+    // MARK: - Own-quota forecast colour (review thread 1)
+
+    func testForecastColourRequestsItsOwnBlocksForecastUnderEitherBasis() {
+        // `.forecast` names no field — it means "this block's own quota" — so
+        // the requirement walk has to attribute it, or the renderer supplies
+        // no verdict and the explicitly chosen forecast colour silently falls
+        // back to the percentage thresholds.
+        let composed = composition([
+            MenuBarToken(
+                kind: .quota(fieldId: "claude.five_hour", metric: .displayPercent),
+                style: .init(color: .forecast)
+            )
+        ])
+        let requirements = composed.quotaRequirements
+        XCTAssertEqual(requirements.count, 1)
+        XCTAssertEqual(requirements[0].fieldId, "claude.five_hour")
+        XCTAssertTrue(
+            requirements[0].needsForecast,
+            "a block asking for the forecast colour must get a forecast computed for it"
+        )
+
+        // And the resolved role is the forecast one whichever basis the app is
+        // set to — the block asked explicitly.
+        for basis in MenuBarColorBasis.allCases {
+            let rendered = composed.plan(
+                quotas: [quota()],
+                displayMode: .used,
+                colorBasis: basis,
+                now: reference
+            )
+            XCTAssertEqual(
+                rendered.rows[0].tokens[0].color,
+                .quota(fieldId: "claude.five_hour", basis: .forecast),
+                "basis \(basis)"
+            )
+        }
+    }
+
+    func testAutomaticColourDoesNotForceAForecastOfItsOwn() {
+        // `.automatic` follows the app-wide basis, which the renderer already
+        // resolves for every quota it draws; it must not add a forecast the
+        // plain field strip would never have computed.
+        let composed = composition([
+            MenuBarToken(
+                kind: .quota(fieldId: "claude.five_hour", metric: .displayPercent),
+                style: .percent
+            )
+        ])
+        XCTAssertEqual(composed.quotaRequirements[0].needsForecast, false)
+    }
+
+    func testForecastColourOnATextBlockAsksForNothing() {
+        // No own quota to follow, so it resolves to `.primary` and needs no
+        // forecast.
+        let composed = composition([
+            MenuBarToken(kind: .text("hi"), style: .init(color: .forecast))
+        ])
+        XCTAssertTrue(composed.quotaRequirements.isEmpty)
+    }
+
+    // MARK: - Countdown clock (review thread 2)
+
+    func testOnlyTimeBasedMetricsAskForAClock() {
+        for metric in MenuBarQuotaMetric.allCases {
+            let expected = [.resetsIn, .resetAt, .runsOutIn].contains(metric)
+            XCTAssertEqual(metric.isTimeBased, expected, "\(metric)")
+            let composed = composition([
+                MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: metric))
+            ])
+            XCTAssertEqual(composed.hasTimeBasedBlock, expected, "\(metric)")
+        }
+        // A strip of words and logos must not start a timer at all.
+        XCTAssertFalse(composition([
+            MenuBarToken(kind: .text("Claude")),
+            MenuBarToken(kind: .logo(.claude))
+        ]).hasTimeBasedBlock)
+    }
+
+    func testCountdownTicksAreMinuteAlignedAndStrictlyForward() {
+        let anchor = Date(timeIntervalSinceReferenceDate: 1_000_000)
+        // Mid-minute: the next tick is the following boundary.
+        let mid = anchor.addingTimeInterval(23.4)
+        let next = MenuBarCountdownClock.nextTick(after: mid, anchor: anchor)
+        XCTAssertEqual(next.timeIntervalSinceReferenceDate, 1_000_060, accuracy: 1e-9)
+
+        // Exactly on a boundary: strictly after, so a tick that fires a hair
+        // early cannot re-schedule itself for the instant it just handled.
+        let onGrid = anchor.addingTimeInterval(120)
+        XCTAssertEqual(
+            MenuBarCountdownClock.nextTick(after: onGrid, anchor: anchor)
+                .timeIntervalSinceReferenceDate,
+            1_000_180,
+            accuracy: 1e-9
+        )
+
+        // Every tick lands on the shared grid, so the menu bar and the popover
+        // never disagree about what "now" is.
+        var cursor = anchor.addingTimeInterval(7)
+        for _ in 0..<5 {
+            cursor = MenuBarCountdownClock.nextTick(after: cursor, anchor: anchor)
+            let offset = cursor.timeIntervalSince(anchor)
+            XCTAssertEqual(offset.truncatingRemainder(dividingBy: 60), 0, accuracy: 1e-9)
+        }
+    }
+
+    // MARK: - Seeding follows the layout (review thread 3)
+
+    private func layoutItem(_ layout: MenuBarLayout, fields: [String]? = nil) -> MenuBarItemSettings {
+        MenuBarItemSettings(
+            kind: .compact,
+            isVisible: true,
+            showTitle: false,
+            layout: layout,
+            selectedFieldIds: fields ?? [
+                "codex.five_hour", "codex.weekly", "claude.five_hour", "claude.weekly"
+            ]
+        )
+    }
+
+    func testIconOnlySeedsTheGlyphItActuallyShows() {
+        // The default item is `.iconOnly` while still carrying four selected
+        // fields. Expanding those would greet the user with a four-quota strip
+        // they have never seen.
+        let seeded = MenuBarComposition.seeded(
+            template: .matching(.iconOnly),
+            from: layoutItem(.iconOnly)
+        )
+        XCTAssertEqual(seeded.tokens.map(\.kind), [.appIcon])
+    }
+
+    func testTwoRowsSeedsTwoRowsSplitTheWayTheLayoutSplitsThem() {
+        let seeded = MenuBarComposition.seeded(
+            template: .matching(.twoRows),
+            from: layoutItem(.twoRows)
+        )
+        let rendered = seeded.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
+        )
+        XCTAssertEqual(rendered.rows.count, 2)
+        // The two-row layout packs entries into two-cell columns, so its top
+        // row reads entries 0, 2, … and its bottom row 1, 3, ….
+        let kinds = seeded.tokens.map(\.kind)
+        guard let breakIndex = kinds.firstIndex(of: .lineBreak) else {
+            return XCTFail("a two-row seed needs a row break")
+        }
+        let top = kinds[..<breakIndex].compactMap(quotaFieldId)
+        let bottom = kinds[(breakIndex + 1)...].compactMap(quotaFieldId)
+        XCTAssertEqual(top, ["codex.five_hour", "claude.five_hour"])
+        XCTAssertEqual(bottom, ["codex.weekly", "claude.weekly"])
+    }
+
+    func testCompactSeedsSpacesAndSingleLineSeedsDots() {
+        let compact = MenuBarComposition.seeded(
+            template: .matching(.compact),
+            from: layoutItem(.compact, fields: ["claude.five_hour", "claude.weekly"])
+        )
+        XCTAssertTrue(compact.tokens.contains { $0.kind == .space })
+        XCTAssertFalse(compact.tokens.contains { $0.kind == .separator(" · ") })
+
+        let single = MenuBarComposition.seeded(
+            template: .matching(.singleLine),
+            from: layoutItem(.singleLine, fields: ["claude.five_hour", "claude.weekly"])
+        )
+        XCTAssertTrue(single.tokens.contains { $0.kind == .separator(" · ") })
+        XCTAssertFalse(single.tokens.contains { $0.kind == .space })
+        XCTAssertFalse(single.tokens.contains { $0.kind == .lineBreak })
+    }
+
+    func testTemplateMatchesTheLayoutItSeedsFrom() {
+        XCTAssertEqual(MenuBarComposition.Template.matching(.twoRows), .twoColumn)
+        XCTAssertEqual(MenuBarComposition.Template.matching(.compact), .compact)
+        XCTAssertEqual(MenuBarComposition.Template.matching(.singleLine), .roomy)
+        XCTAssertEqual(MenuBarComposition.Template.matching(.iconOnly), .roomy)
+    }
+
+    func testTheAppGlyphRendersAsAGlyphAndIsSpoken() {
+        let rendered = plan([MenuBarToken(kind: .appIcon)], quotas: [])
+        XCTAssertEqual(rendered.rows[0].tokens[0].glyph, .app)
+        XCTAssertNil(rendered.rows[0].tokens[0].text)
+        XCTAssertEqual(rendered.spokenDescription, "Vibe Bar")
+    }
+
+    func testTheAppGlyphRoundTrips() throws {
+        let composed = composition([MenuBarToken(kind: .appIcon)])
+        let decoded = try JSONDecoder().decode(
+            MenuBarComposition.self,
+            from: try JSONEncoder().encode(composed)
+        )
+        XCTAssertEqual(decoded.tokens.map(\.kind), [.appIcon])
+    }
+
+    private func quotaFieldId(_ kind: MenuBarToken.Kind) -> String? {
+        if case let .quota(fieldId, _) = kind { return fieldId }
+        return nil
+    }
+
+    // MARK: - Two-row fit (review thread 4)
+
+    func testAStripThatAlreadyFitsIsNotShrunk() {
+        XCTAssertEqual(
+            MenuBarStripFit.scale(contentHeight: 16, availableHeight: 18),
+            1,
+            accuracy: 1e-9
+        )
+        // Degenerate inputs never produce a zero-size strip.
+        XCTAssertEqual(MenuBarStripFit.scale(contentHeight: 0, availableHeight: 18), 1)
+        XCTAssertEqual(MenuBarStripFit.scale(contentHeight: 20, availableHeight: 0), 1)
+    }
+
+    func testTwoLargeRowsAtTheTopScaleAreShrunkToFitRatherThanCropped() {
+        // The extreme the editor can actually produce: the composition's top
+        // font scale (1.6) times the `.large` step (1.2) on the 9pt two-row
+        // face, two rows tucked by the -2pt line spacing, in the ~18pt of
+        // canvas the status bar leaves after padding.
+        let composed = MenuBarComposition(
+            isEnabled: true,
+            template: .twoColumn,
+            tokens: [
+                MenuBarToken(kind: .text("top"), style: .init(size: .large)),
+                MenuBarToken(kind: .lineBreak),
+                MenuBarToken(kind: .text("bottom"), style: .init(size: .large))
+            ],
+            fontScale: 1.6
+        )
+        let rendered = composed.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
+        )
+        let tokenScale = rendered.rows[0].tokens[0].fontScale
+        XCTAssertEqual(tokenScale, 1.6 * 1.2, accuracy: 1e-9)
+
+        // Text is roughly 1.2x its point size tall, which is what makes two
+        // enlarged rows overflow.
+        let rowHeight = 9.0 * tokenScale * 1.2
+        let contentHeight = rowHeight * 2 - 2
+        let available = 18.0
+        XCTAssertGreaterThan(contentHeight, available, "the extreme must actually overflow")
+
+        let fit = MenuBarStripFit.scale(contentHeight: contentHeight, availableHeight: available)
+        XCTAssertLessThan(fit, 1)
+        XCTAssertGreaterThanOrEqual(fit, MenuBarStripFit.minimumScale)
+        // Shrinking by the returned factor brings it inside the canvas — or,
+        // when the floor bites, at least stops it growing.
+        XCTAssertLessThanOrEqual(
+            contentHeight * fit,
+            max(available, contentHeight * MenuBarStripFit.minimumScale) + 1e-9
+        )
+    }
+
+    func testTheShrinkFloorKeepsTypeLegible() {
+        // An absurd overflow is clamped rather than reduced to a smudge.
+        XCTAssertEqual(
+            MenuBarStripFit.scale(contentHeight: 400, availableHeight: 18),
+            MenuBarStripFit.minimumScale,
+            accuracy: 1e-9
+        )
+    }
+
     // MARK: - Persistence
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {

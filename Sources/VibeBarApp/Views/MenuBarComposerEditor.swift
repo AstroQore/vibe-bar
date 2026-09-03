@@ -109,6 +109,12 @@ struct MenuBarComposerEditor: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
+            if plan.rows.filter({ !$0.isEmpty }).count >= 2 {
+                Text("Two rows have to share the menu bar's height, so large sizes are scaled down to fit. The preview above shows the size you set, not the scaled one.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -246,6 +252,7 @@ struct MenuBarComposerEditor: View {
         case .space: return "space"
         case .separator: return "line.diagonal"
         case .lineBreak: return "return"
+        case .appIcon: return "menubar.rectangle"
         }
     }
 
@@ -266,6 +273,8 @@ struct MenuBarComposerEditor: View {
             return trimmed.isEmpty ? "Gap" : trimmed
         case .lineBreak:
             return "New row"
+        case .appIcon:
+            return "Vibe Bar icon"
         }
     }
 
@@ -287,6 +296,9 @@ struct MenuBarComposerEditor: View {
         VStack(alignment: .leading, spacing: 6) {
             caption("Add a block")
             paletteGroup("Logo") {
+                paletteButton(title: "Vibe Bar", icon: "menubar.rectangle") {
+                    add(MenuBarToken(kind: .appIcon, style: .label))
+                }
                 ForEach(paletteLogoTools, id: \.self) { tool in
                     paletteButton(title: tool.menuTitle, icon: nil, tool: tool) {
                         add(MenuBarToken(kind: .logo(tool), style: .label))
@@ -709,6 +721,10 @@ private struct MenuBarTokenInspector: View {
                 .foregroundStyle(.tertiary)
         case .lineBreak:
             Text("Ends the first row and starts the second.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        case .appIcon:
+            Text("Vibe Bar's own icon — what the Icon Only layout shows.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

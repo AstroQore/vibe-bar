@@ -114,6 +114,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Rendered brand-logo images keyed by tool, point size, and appearance —
     /// see `brandAttachment(for:fontSize:font:)`.
     private var brandAttachmentImages: [String: NSImage?] = [:]
+    /// One-shot, minute-aligned tick that keeps a composed countdown honest.
+    /// Nil whenever no visible item shows a time-based block — see
+    /// `updateCountdownClock`.
+    private var countdownTimer: Timer?
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -798,6 +802,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     func applicationWillTerminate() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
         miniWindowController.applicationWillTerminate()
         blockWatchdog?.stop()
     }
@@ -827,6 +833,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func renderMenuBar() {
         let settings = environment.settingsStore.settings
         let allHidden = MenuBarItemKind.allCases.allSatisfy { !settings.menuBarItem($0).isVisible }
+        // Set while walking the items, so the clock decision uses the same
+        // effective visibility the drawing does rather than a second copy of
+        // the rule.
+        var needsCountdownClock = false
+        defer { updateCountdownClock(needed: needsCountdownClock) }
         for kind in MenuBarItemKind.allCases {
             guard let item = statusItem(for: kind) else { continue }
             let itemSettings = settings.menuBarItem(kind)
@@ -841,6 +852,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             // owns its own rows, so it also supersedes `layout`. Everything
             // the field path stores stays untouched underneath it.
             if let composition = itemSettings.composition, composition.isEnabled {
+                if item.isVisible, composition.hasTimeBasedBlock { needsCountdownClock = true }
                 installComposedContent(
                     composition,
                     in: button,
@@ -877,6 +889,44 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 applyStatusDescription(pieces, to: button, kind: kind)
             }
         }
+    }
+
+    /// Keeps a composed countdown honest between refreshes.
+    ///
+    /// The render pipeline is driven by settings, quota, account, cost and
+    /// status publishers — none of which is a clock. A strip printing
+    /// `resets in 12m` therefore sat unchanged until the next refresh, which
+    /// on a 30-minute interval means the number is wrong for most of its life
+    /// and can outlive its own deadline.
+    ///
+    /// Armed only while a *visible* item draws a time-based block, so a strip
+    /// of percentages costs no wakeups at all (`AGENTS.md` § 7's idle-CPU
+    /// budget). One shot at a time rather than a repeating 60 s timer, and
+    /// phased on the same process-wide anchor the popover's clocks use — a
+    /// menu bar drifting a few seconds from the popover would show two
+    /// different countdowns for one quota.
+    private func updateCountdownClock(needed: Bool) {
+        guard needed else {
+            countdownTimer?.invalidate()
+            countdownTimer = nil
+            return
+        }
+        // Already armed for a future tick. Re-arming here would let a burst of
+        // quota publishes push the countdown out indefinitely.
+        if let existing = countdownTimer, existing.isValid, existing.fireDate > Date() { return }
+        countdownTimer?.invalidate()
+        let timer = Timer(
+            fire: MenuBarCountdownClock.nextTick(after: Date(), anchor: QuotaClockSchedule.anchor),
+            interval: 0,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in self?.renderMenuBar() }
+        }
+        // A minute-granularity number does not need sub-second accuracy; let
+        // the system coalesce the wakeup with whatever else it has queued.
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        countdownTimer = timer
     }
 
     /// Everything the three text layouts need for one render.
@@ -974,8 +1024,29 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let strip = composedStrip(composition, itemSettings: itemSettings, settings: settings)
         let rows = strip.plan.rows.filter { !$0.isEmpty }
         if rows.count >= 2 {
-            let cells = rows.prefix(MenuBarComposition.maximumRows).map {
-                composedCell(row: $0, strip: strip, settings: settings)
+            let capped = Array(rows.prefix(MenuBarComposition.maximumRows))
+            let base = MenuBarStatusMetrics.twoRowFontSize
+            var cells = capped.map {
+                composedCell(row: $0, strip: strip, settings: settings, baseFontSize: base)
+            }
+            // Two rows of `.large` blocks, or a composition scaled towards
+            // 1.6, are taller than the ~22pt status bar. The canvas used to be
+            // capped while the row heights were not, so the upper row was
+            // cropped or the rows overlapped. Shrink the type to fit instead:
+            // a smaller strip is honest, a cropped one is a bug.
+            let fit = MenuBarStripFit.scale(
+                contentHeight: Double(Self.twoRowContentHeight(cells)),
+                availableHeight: Double(Self.twoRowAvailableHeight())
+            )
+            if fit < 1 {
+                cells = capped.map {
+                    composedCell(
+                        row: $0,
+                        strip: strip,
+                        settings: settings,
+                        baseFontSize: base * CGFloat(fit)
+                    )
+                }
             }
             installTwoRowImageContent(
                 in: button,
@@ -1046,10 +1117,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             }
             let size = composedFontSize(token, baseFontSize: baseFontSize)
             let font = composedFont(token, size: size)
-            if let tool = token.logo {
+            if let glyph = token.glyph {
                 let paint = composedPaint(token.color, strip: strip, settings: settings)
-                if let attachment = brandAttachment(
-                    for: tool,
+                if let attachment = glyphAttachment(
+                    glyph,
                     fontSize: size,
                     font: font,
                     tint: MenuBarStripPalette.nsColor(paint),
@@ -1078,9 +1149,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func composedCell(
         row: MenuBarRenderRow,
         strip: ComposedStrip,
-        settings: AppSettings
+        settings: AppSettings,
+        baseFontSize: CGFloat
     ) -> TwoRowMenuCell {
-        let baseFontSize = MenuBarStatusMetrics.twoRowFontSize
         var runs: [TwoRowMenuCell.Run] = []
         var pending = NSMutableAttributedString()
         func flush() {
@@ -1093,11 +1164,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             if index > 0, let gap = composedGap(strip.plan, baseFontSize: baseFontSize) {
                 pending.append(gap)
             }
-            if let tool = token.logo {
+            if let glyph = token.glyph {
                 flush()
                 let paint = composedPaint(token.color, strip: strip, settings: settings)
-                if let image = brandLogoImage(
-                    for: tool,
+                if let image = glyphImage(
+                    glyph,
                     side: MenuBarStatusMetrics.twoRowLogoSide,
                     tint: MenuBarStripPalette.nsColor(paint),
                     tintKey: MenuBarStripPalette.cacheKey(paint)
@@ -1481,11 +1552,70 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     ) -> NSAttributedString? {
         let side: CGFloat = (fontSize + 3).rounded()
         guard let image = brandImage(for: tool, side: side, tint: tint, tintKey: tintKey) else { return nil }
+        return attachment(image: image, side: side, font: font)
+    }
+
+    /// One glyph run, vertically centered on the font's cap height.
+    private func attachment(image: NSImage, side: CGFloat, font: NSFont) -> NSAttributedString {
         let attachment = NSTextAttachment()
         attachment.image = image
         let yOffset = (font.capHeight - side) / 2
         attachment.bounds = CGRect(x: 0, y: yOffset, width: side, height: side)
         return NSAttributedString(attachment: attachment)
+    }
+
+    /// A composed glyph block as a text attachment: a provider's brand mark,
+    /// or Vibe Bar's own icon for a block seeded from the Icon Only layout.
+    private func glyphAttachment(
+        _ glyph: MenuBarRenderedToken.Glyph,
+        fontSize: CGFloat,
+        font: NSFont,
+        tint: NSColor,
+        tintKey: String
+    ) -> NSAttributedString? {
+        switch glyph {
+        case let .provider(tool):
+            return brandAttachment(
+                for: tool, fontSize: fontSize, font: font, tint: tint, tintKey: tintKey
+            )
+        case .app:
+            let side: CGFloat = (fontSize + 3).rounded()
+            guard let image = appGlyphImage(side: side, tint: tint, tintKey: tintKey) else {
+                return nil
+            }
+            return attachment(image: image, side: side, font: font)
+        }
+    }
+
+    /// The same glyph as a raw image, for the two-row rasterizer.
+    private func glyphImage(
+        _ glyph: MenuBarRenderedToken.Glyph,
+        side: CGFloat,
+        tint: NSColor,
+        tintKey: String
+    ) -> NSImage? {
+        switch glyph {
+        case let .provider(tool):
+            return brandLogoImage(for: tool, side: side, tint: tint, tintKey: tintKey)
+        case .app:
+            return appGlyphImage(side: side, tint: tint, tintKey: tintKey)
+        }
+    }
+
+    /// Vibe Bar's own mark, cached beside the provider marks on the same key
+    /// shape so the two never collide.
+    private func appGlyphImage(side: CGFloat, tint: NSColor, tintKey: String) -> NSImage? {
+        let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
+        let key = "vibebar.\(side).\(appearance.name.rawValue).\(tintKey)"
+        if let cached = brandAttachmentImages[key] { return cached }
+        let image = ProviderBrandIcon.image(
+            for: MenuBarItemKind.compact,
+            size: NSSize(width: side, height: side),
+            tint: tint,
+            appearance: appearance
+        )
+        brandAttachmentImages[key] = image
+        return image
     }
 
     /// Raw logo image for the two-row rasterizer's manual drawing — same
@@ -1582,6 +1712,19 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         if height == 0, sawLogo { return MenuBarStatusMetrics.twoRowLogoSide }
         return height
+    }
+
+    /// Stacked height of a set of row cells, including the deliberate
+    /// negative line spacing that tucks the two bands together.
+    nonisolated private static func twoRowContentHeight(_ cells: [TwoRowMenuCell]) -> CGFloat {
+        cells.reduce(0) { $0 + cellHeight($1) }
+            + MenuBarStatusMetrics.twoRowLineSpacing * CGFloat(max(0, cells.count - 1))
+    }
+
+    /// Height the rasterized image actually has for content, after padding.
+    nonisolated private static func twoRowAvailableHeight() -> CGFloat {
+        max(18, NSStatusBar.system.thickness - 2)
+            - MenuBarStatusMetrics.twoRowVerticalPadding * 2
     }
 
     private func twoRowImage(for columns: [TwoRowMenuColumn], appearance: NSAppearance) -> NSImage {

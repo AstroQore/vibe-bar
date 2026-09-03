@@ -67,6 +67,18 @@ public enum MenuBarQuotaMetric: String, Codable, CaseIterable, Sendable {
 
     /// Whether this metric needs the linear burn-rate pace for its bucket.
     var needsPace: Bool { self == .pace }
+
+    /// Whether the string this metric renders goes stale on its own, with no
+    /// new data — a countdown ticks down between refreshes, and an absolute
+    /// reset time re-words itself once it crosses a day boundary. A strip
+    /// containing one of these needs a clock; a strip without one must not
+    /// start a timer at all.
+    public var isTimeBased: Bool {
+        switch self {
+        case .resetsIn, .resetAt, .runsOutIn: return true
+        default: return false
+        }
+    }
 }
 
 // MARK: - Token
@@ -92,6 +104,11 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         case space
         /// A literal divider the user chose — `" · "`, `"/"`, `"|"`.
         case separator(String)
+        /// Vibe Bar's own glyph — what the Icon Only layout draws, and the
+        /// only mark on the strip that is not a provider's. Without it the
+        /// composer could not seed an Icon Only item with what the user is
+        /// actually looking at.
+        case appIcon
         /// Ends the current row and starts the next one. Never draws.
         case lineBreak
     }
@@ -340,6 +357,17 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         }
 
         var seedsSecondRow: Bool { self == .twoColumn }
+
+        /// The template whose proportions match a field-mode layout, so
+        /// seeding from that layout starts with matching spacing as well as
+        /// matching content.
+        public static func matching(_ layout: MenuBarLayout) -> Template {
+            switch layout {
+            case .twoRows: return .twoColumn
+            case .compact: return .compact
+            case .singleLine, .iconOnly: return .roomy
+            }
+        }
     }
 
     /// The status item is ~22pt tall: two rows is the most the rasterizer can
@@ -408,6 +436,11 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         for token in tokens {
             if let fieldId = token.quotaFieldId, let metric = token.metric {
                 requirement(fieldId, forecast: metric.needsForecast, pace: metric.needsPace)
+            }
+            // A colour that follows the block's own quota names no field, so
+            // it has to be attributed here or nobody ever asks for its verdict.
+            if token.style.color.followsOwnQuota, let fieldId = token.quotaFieldId {
+                requirement(fieldId, forecast: token.style.color.needsForecast, pace: false)
             }
             if let fieldId = token.style.color.fieldId {
                 requirement(fieldId, forecast: token.style.color.needsForecast, pace: false)
@@ -528,6 +561,15 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         public var isFullyAvailable: Bool { missingFieldIds.isEmpty }
     }
 
+    /// Whether any block prints something that goes stale on the clock.
+    ///
+    /// The renderer uses this to decide whether to run a countdown timer at
+    /// all: a strip of percentages redraws when a refresh lands and must not
+    /// cost a wakeup a minute for the rest of the day.
+    public var hasTimeBasedBlock: Bool {
+        tokens.contains { $0.metric?.isTimeBased == true }
+    }
+
     public func availability(liveFieldIds: Set<String>) -> Availability {
         var result = Availability()
         for token in tokens {
@@ -575,6 +617,32 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         registry: QuotaFieldRegistry = .empty,
         groupCatalogLabel: (String) -> String? = { _ in nil }
     ) -> MenuBarComposition {
+        MenuBarComposition(
+            isEnabled: false,
+            template: template,
+            tokens: seedTokens(
+                template: template,
+                item: item,
+                registry: registry,
+                groupCatalogLabel: groupCatalogLabel
+            )
+        )
+    }
+
+    private static func seedTokens(
+        template: Template,
+        item: MenuBarItemSettings,
+        registry: QuotaFieldRegistry,
+        groupCatalogLabel: (String) -> String?
+    ) -> [MenuBarToken] {
+        // Icon Only draws one glyph and nothing else — not the selected
+        // fields, which it ignores entirely. Expanding them here would greet
+        // the user with a four-quota strip they have never seen, which is the
+        // opposite of "start from what you already have".
+        if item.layout == .iconOnly {
+            return [MenuBarToken(kind: .appIcon, style: .label)]
+        }
+
         let fields = item.selectedFieldIds.compactMap {
             MenuBarFieldCatalog.field(id: $0, registry: registry)
         }
@@ -585,51 +653,82 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             tokens.append(MenuBarToken(kind: .text(item.kind.title), style: .label))
         }
 
-        // Where the second row starts for `.twoColumn`: the midpoint, so a
-        // seeded two-row strip is balanced rather than one long row plus one
-        // orphan.
-        let breakAfter = template.seedsSecondRow && runs.count > 1
-            ? (runs.count + 1) / 2
-            : Int.max
+        // The Compact layout butts its entries together with a plain space;
+        // Single line puts a dot between them. Seed whichever the user is
+        // looking at.
+        let separator: MenuBarToken.Kind = item.layout == .compact
+            ? .space
+            : .separator(" · ")
 
-        for (index, run) in runs.enumerated() {
-            if index > 0 {
-                tokens.append(
-                    index == breakAfter
-                        ? MenuBarToken(kind: .lineBreak)
-                        : MenuBarToken(kind: .separator(" · "), style: .divider)
-                )
-            }
-            let style = item.style(for: run.primary.id)
-            if style != .labelAndPercent {
-                tokens.append(MenuBarToken(kind: .logo(run.primary.tool), style: .label))
-            }
-            if style != .logoAndPercent {
-                let label = run.isMerged
-                    ? MenuBarFieldCatalog.mergedGroupLabel(
-                        for: run,
-                        customLabels: item.customLabels,
-                        groupCatalogLabel: groupCatalogLabel
-                    )
-                    : seedLabel(for: run.primary, customLabels: item.customLabels)
-                tokens.append(MenuBarToken(kind: .text(label), style: .label))
-            }
-            for (offset, field) in run.fields.enumerated() {
-                if offset > 0 {
-                    tokens.append(MenuBarToken(kind: .separator("/"), style: .divider))
+        for (rowIndex, row) in seedRows(runs, item: item, template: template).enumerated() {
+            if rowIndex > 0 { tokens.append(MenuBarToken(kind: .lineBreak)) }
+            for (index, run) in row.enumerated() {
+                if index > 0 {
+                    tokens.append(MenuBarToken(kind: separator, style: .divider))
                 }
-                tokens.append(MenuBarToken(
-                    kind: .quota(fieldId: field.id, metric: .displayPercent),
-                    style: .percent
+                tokens.append(contentsOf: seedRunTokens(
+                    run,
+                    item: item,
+                    groupCatalogLabel: groupCatalogLabel
                 ))
             }
         }
+        return tokens
+    }
 
-        return MenuBarComposition(
-            isEnabled: false,
-            template: template,
-            tokens: tokens
-        )
+    /// How the seed splits runs across rows.
+    ///
+    /// The Two rows layout packs entries into two-cell columns, so its top row
+    /// reads entries 0, 2, 4… and its bottom row 1, 3, 5…. Alternating here
+    /// reproduces the reading order the user already has rather than cutting
+    /// the list in half, which would move every entry.
+    private static func seedRows(
+        _ runs: [MenuBarFieldRun],
+        item: MenuBarItemSettings,
+        template: Template
+    ) -> [[MenuBarFieldRun]] {
+        let splits = item.layout == .twoRows || template.seedsSecondRow
+        guard splits, runs.count > 1 else { return [runs] }
+        var top: [MenuBarFieldRun] = []
+        var bottom: [MenuBarFieldRun] = []
+        for (index, run) in runs.enumerated() {
+            if index.isMultiple(of: 2) { top.append(run) } else { bottom.append(run) }
+        }
+        return [top, bottom]
+    }
+
+    /// One entry: its logo and label where the field style shows them, then a
+    /// percentage per window, slash-joined when the group is merged.
+    private static func seedRunTokens(
+        _ run: MenuBarFieldRun,
+        item: MenuBarItemSettings,
+        groupCatalogLabel: (String) -> String?
+    ) -> [MenuBarToken] {
+        var tokens: [MenuBarToken] = []
+        let style = item.style(for: run.primary.id)
+        if style != .labelAndPercent {
+            tokens.append(MenuBarToken(kind: .logo(run.primary.tool), style: .label))
+        }
+        if style != .logoAndPercent {
+            let label = run.isMerged
+                ? MenuBarFieldCatalog.mergedGroupLabel(
+                    for: run,
+                    customLabels: item.customLabels,
+                    groupCatalogLabel: groupCatalogLabel
+                )
+                : seedLabel(for: run.primary, customLabels: item.customLabels)
+            tokens.append(MenuBarToken(kind: .text(label), style: .label))
+        }
+        for (offset, field) in run.fields.enumerated() {
+            if offset > 0 {
+                tokens.append(MenuBarToken(kind: .separator("/"), style: .divider))
+            }
+            tokens.append(MenuBarToken(
+                kind: .quota(fieldId: field.id, metric: .displayPercent),
+                style: .percent
+            ))
+        }
+        return tokens
     }
 
     /// The catalog's default label, overridden by whatever the user renamed
@@ -791,12 +890,18 @@ public enum MenuBarTokenColorRole: Equatable, Sendable {
 
 /// One block, ready to draw.
 public struct MenuBarRenderedToken: Equatable, Sendable, Identifiable {
+    /// A mark rather than words: a provider's brand, or Vibe Bar's own icon.
+    public enum Glyph: Equatable, Sendable {
+        case provider(ToolType)
+        case app
+    }
+
     /// The source token's id, so stage 2's editor can map a hit test or a
     /// live preview back to the block the user is dragging.
     public var id: UUID
-    /// Nil only for a logo block.
+    /// Nil only for a glyph block.
     public var text: String?
-    public var logo: ToolType?
+    public var glyph: Glyph?
     public var color: MenuBarTokenColorRole
     /// Template scale × size step. The renderer multiplies its base font size
     /// by this.
@@ -810,7 +915,7 @@ public struct MenuBarRenderedToken: Equatable, Sendable, Identifiable {
     public init(
         id: UUID,
         text: String?,
-        logo: ToolType?,
+        glyph: Glyph?,
         color: MenuBarTokenColorRole,
         fontScale: Double,
         weight: MenuBarToken.Weight,
@@ -819,7 +924,7 @@ public struct MenuBarRenderedToken: Equatable, Sendable, Identifiable {
     ) {
         self.id = id
         self.text = text
-        self.logo = logo
+        self.glyph = glyph
         self.color = color
         self.fontScale = fontScale
         self.weight = weight
@@ -924,7 +1029,7 @@ public extension MenuBarComposition {
             rows[rows.count - 1].tokens.append(MenuBarRenderedToken(
                 id: token.id,
                 text: content.text,
-                logo: content.logo,
+                glyph: content.glyph,
                 color: color,
                 fontScale: scale * token.style.size.multiplier,
                 weight: token.style.weight,
@@ -976,7 +1081,7 @@ public extension MenuBarComposition {
 
     private struct TokenContent {
         var text: String?
-        var logo: ToolType?
+        var glyph: MenuBarRenderedToken.Glyph?
         var spoken: String?
     }
 
@@ -988,22 +1093,28 @@ public extension MenuBarComposition {
     ) -> TokenContent? {
         switch token.kind {
         case let .logo(tool):
-            return TokenContent(text: nil, logo: tool, spoken: tool.quotaSubProviderName())
+            return TokenContent(
+                text: nil,
+                glyph: .provider(tool),
+                spoken: tool.quotaSubProviderName()
+            )
+        case .appIcon:
+            return TokenContent(text: nil, glyph: .app, spoken: "Vibe Bar")
         case let .text(text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }
             return TokenContent(
                 text: MenuBarToken.truncated(text),
-                logo: nil,
+                glyph: nil,
                 // The full string, not the drawn one: a screen reader should
                 // hear what the user wrote.
                 spoken: trimmed.isEmpty ? nil : trimmed
             )
         case .space:
-            return TokenContent(text: " ", logo: nil, spoken: nil)
+            return TokenContent(text: " ", glyph: nil, spoken: nil)
         case let .separator(separator):
             guard !separator.isEmpty else { return nil }
-            return TokenContent(text: MenuBarToken.truncated(separator), logo: nil, spoken: nil)
+            return TokenContent(text: MenuBarToken.truncated(separator), glyph: nil, spoken: nil)
         case .lineBreak:
             return nil
         case let .quota(_, metric):
@@ -1013,7 +1124,7 @@ public extension MenuBarComposition {
             else { return nil }
             return TokenContent(
                 text: text,
-                logo: nil,
+                glyph: nil,
                 spoken: spokenClause(metric: metric, value: text, quota: quota, displayMode: displayMode)
             )
         }
@@ -1176,7 +1287,7 @@ extension MenuBarToken.Kind: Codable {
     }
 
     private enum Discriminator: String, Codable {
-        case logo, text, quota, space, separator, lineBreak
+        case logo, text, quota, space, separator, lineBreak, appIcon
     }
 
     public init(from decoder: Decoder) throws {
@@ -1199,6 +1310,8 @@ extension MenuBarToken.Kind: Codable {
             self = .separator(try c.decode(String.self, forKey: .text))
         case .lineBreak:
             self = .lineBreak
+        case .appIcon:
+            self = .appIcon
         }
     }
 
@@ -1222,6 +1335,8 @@ extension MenuBarToken.Kind: Codable {
             try c.encode(separator, forKey: .text)
         case .lineBreak:
             try c.encode(Discriminator.lineBreak, forKey: .type)
+        case .appIcon:
+            try c.encode(Discriminator.appIcon, forKey: .type)
         }
     }
 }
@@ -1314,6 +1429,21 @@ extension MenuBarToken.ColorSource: Codable {
         default: return false
         }
     }
+
+    /// Whether this source colours the block from the block's *own* quota —
+    /// the one field it never names, because naming it would be redundant.
+    ///
+    /// `quotaRequirements` has to special-case these: `.forecast` carries no
+    /// `fieldId`, so without this the requirement walk skipped it entirely and
+    /// a block that explicitly asked for the forecast colour got no verdict to
+    /// resolve against, silently falling back to the percentage thresholds
+    /// whenever the app-wide basis was `.actual`.
+    var followsOwnQuota: Bool {
+        switch self {
+        case .automatic, .forecast: return true
+        default: return false
+        }
+    }
 }
 
 extension MenuBarToken.Visibility: Codable {
@@ -1394,5 +1524,63 @@ extension MenuBarToken.Visibility: Codable {
 private extension Double {
     func clamped(to range: ClosedRange<Double>) -> Double {
         Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+
+/// The menu bar's countdown clock.
+///
+/// A composed strip can print `resets in 12m`, which is wrong a minute later
+/// with no new data behind it. The render pipeline is driven by settings,
+/// quota, account, cost and status publishers — none of which is a clock — so
+/// with a 30-minute refresh interval that countdown could sit unchanged past
+/// its own deadline.
+///
+/// Ticks are phase-aligned rather than free-running: the app already floors a
+/// process-wide anchor to a five-minute boundary so every surface asks for the
+/// same instant, and a menu-bar countdown that drifts a few seconds away from
+/// the popover's would show two different numbers for one quota.
+public enum MenuBarCountdownClock {
+    /// A minute: the finest granularity any menu-bar metric renders.
+    public static let interval: TimeInterval = 60
+
+    /// The next grid point strictly after `date`, on the phase grid anchored
+    /// at `anchor`. Strictly after, so a tick that fires a hair early cannot
+    /// schedule itself for the instant it just handled and spin.
+    public static func nextTick(
+        after date: Date,
+        anchor: Date,
+        interval: TimeInterval = MenuBarCountdownClock.interval
+    ) -> Date {
+        let step = max(1, interval)
+        let elapsed = date.timeIntervalSinceReferenceDate - anchor.timeIntervalSinceReferenceDate
+        let steps = (elapsed / step).rounded(.down) + 1
+        return Date(timeIntervalSinceReferenceDate: anchor.timeIntervalSinceReferenceDate + steps * step)
+    }
+}
+
+/// Fitting a composed strip into the height it actually has.
+///
+/// The status item is about 22 points tall. Two rows of `.large` blocks at the
+/// composition's top font scale do not fit, and the drawing code used to keep
+/// the full row heights while the canvas was capped — so the upper row was
+/// cropped or the two rows overlapped. Shrinking the type is the honest
+/// answer: the strip stays legible and nothing is silently cut off.
+public enum MenuBarStripFit {
+    /// Below this the type is too small to read, so the strip accepts being
+    /// tight rather than becoming a smudge.
+    public static let minimumScale: Double = 0.55
+
+    /// Uniform font scale that makes `contentHeight` fit `availableHeight`.
+    /// Returns 1 when it already fits.
+    public static func scale(
+        contentHeight: Double,
+        availableHeight: Double,
+        minimumScale: Double = MenuBarStripFit.minimumScale
+    ) -> Double {
+        guard contentHeight > 0, availableHeight > 0, contentHeight > availableHeight else {
+            return 1
+        }
+        return Swift.max(minimumScale, availableHeight / contentHeight)
     }
 }

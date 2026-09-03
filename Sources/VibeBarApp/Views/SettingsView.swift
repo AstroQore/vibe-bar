@@ -860,7 +860,9 @@ struct SettingsView: View {
                 var item = settingsStore.settings.menuBarItem(kind)
                 item.setComposedStripEnabled(
                     enabled,
-                    template: .roomy,
+                    // Match the layout the user is looking at, so the seed
+                    // starts with their spacing as well as their blocks.
+                    template: .matching(item.layout),
                     registry: quotaService.fieldRegistry,
                     groupCatalogLabel: MiniWindowGroupLabelCatalog.defaultLabel(for:)
                 )
