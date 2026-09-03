@@ -68,14 +68,20 @@ public enum BrowserCookieAccessGate {
 
     /// Record an explicit denial coming back from SweetCookieKit's
     /// own error path. Re-uses the same cooldown window.
-    public static func recordIfNeeded(_ error: Error, now: Date = Date()) {
-        guard let err = error as? BrowserCookieError else { return }
-        guard case .accessDenied = err else { return }
-        recordDenied(for: err.browser, now: now)
+    ///
+    /// Returns the cooldown it installed, so a caller that is classifying
+    /// one import attempt can tell "this browser refused us just now" from
+    /// "some browser is in a cooldown from an unrelated earlier import".
+    @discardableResult
+    public static func recordIfNeeded(_ error: Error, now: Date = Date()) -> Cooldown? {
+        guard let err = error as? BrowserCookieError else { return nil }
+        guard case .accessDenied = err else { return nil }
+        return recordDenied(for: err.browser, now: now)
     }
 
-    public static func recordDenied(for browser: Browser, now: Date = Date()) {
-        guard browser.usesKeychainForCookieDecryption else { return }
+    @discardableResult
+    public static func recordDenied(for browser: Browser, now: Date = Date()) -> Cooldown? {
+        guard browser.usesKeychainForCookieDecryption else { return nil }
         let blockedUntil = now.addingTimeInterval(cooldownInterval)
         lock.withLock { state in
             loadIfNeeded(&state)
@@ -83,6 +89,7 @@ public enum BrowserCookieAccessGate {
             persist(state)
         }
         SafeLog.info("Browser cookie access denied for \(browser.displayName); cooldown until \(blockedUntil)")
+        return Cooldown(browserName: browser.displayName, until: blockedUntil)
     }
 
     /// One browser currently inside its denial cooldown.
