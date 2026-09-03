@@ -2192,6 +2192,12 @@
 /* Confirmation dialog title */
 "settings.remote.disconnectTitle" = "是否断开与该工作区的连接？";
 
+/* Badge beside the Remote Core section title marking the feature as experimental. */
+"settings.remote.experimentalBadge" = "实验性";
+
+/* One-line explanation under the Remote Core section title, shown whether or not a workspace is connected. */
+"settings.remote.experimentalNote" = "远端机器为实验性功能：协议与本面板可能在版本之间变化；未连接工作区时，popover 不显示该标签页。";
+
 /* Button that writes this Mac's public identity to a file */
 "settings.remote.exportIdentity" = "导出 Core 身份…";
 

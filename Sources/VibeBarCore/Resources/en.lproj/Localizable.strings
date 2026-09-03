@@ -2192,6 +2192,12 @@
 /* Confirmation dialog title */
 "settings.remote.disconnectTitle" = "Disconnect from this workspace?";
 
+/* Badge beside the Remote Core section title marking the feature as experimental. */
+"settings.remote.experimentalBadge" = "Experimental";
+
+/* One-line explanation under the Remote Core section title, shown whether or not a workspace is connected. */
+"settings.remote.experimentalNote" = "Remote machines are experimental: the protocol and this pane can change between releases, and the popover tab stays hidden until a workspace is connected.";
+
 /* Button that writes this Mac's public identity to a file */
 "settings.remote.exportIdentity" = "Export Core Identity…";
 

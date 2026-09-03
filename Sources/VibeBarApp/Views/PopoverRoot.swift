@@ -72,7 +72,15 @@ struct PopoverRoot: View {
         .onAppear {
             if !hasAppliedInitialPage {
                 hasAppliedInitialPage = true
-                overviewPage = initialPage
+                // A caller can name a page the strip is not showing — demo
+                // mode restores one by raw value, and a workspace can be
+                // disconnected between opening the popover twice. Landing on
+                // a tab that is not in the strip leaves nothing selected.
+                let pages = OverviewPage.visiblePages(
+                    settings: settingsStore.settings,
+                    remoteConfigured: remoteProbeService.isConfigured
+                )
+                overviewPage = pages.contains(initialPage) ? initialPage : .overview
             }
             refreshStaleCacheForCurrentPage()
         }
@@ -258,10 +266,20 @@ enum OverviewPage: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// Tabs currently visible in the popover, in strip order.
-    static func visiblePages(settings: AppSettings) -> [OverviewPage] {
+    ///
+    /// Remote machines is experimental and appears only once a workspace is
+    /// connected. There is no separate opt-in switch because connecting one
+    /// *is* the opt-in — and an empty tab that every user carries is a worse
+    /// answer than no tab, since the strip's width is shared by every
+    /// provider the user actually has.
+    static func visiblePages(
+        settings: AppSettings,
+        remoteConfigured: Bool
+    ) -> [OverviewPage] {
         [.overview]
             + settings.visibleCoreProviderList.compactMap(OverviewPage.page(for:))
-            + [.machines, .misc]
+            + (remoteConfigured ? [.machines] : [])
+            + [.misc]
     }
 
     /// The layout-engine page this tab renders, or `nil` for tabs that are not
@@ -319,9 +337,13 @@ private struct OverviewPageSwitch: View {
     let density: Theme.Density
 
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var remoteProbeService: RemoteProbeService
 
     private var visiblePages: [OverviewPage] {
-        OverviewPage.visiblePages(settings: settingsStore.settings)
+        OverviewPage.visiblePages(
+            settings: settingsStore.settings,
+            remoteConfigured: remoteProbeService.isConfigured
+        )
     }
 
     var body: some View {
@@ -365,9 +387,18 @@ private struct OverviewPageSwitch: View {
                 )
         )
         .onChange(of: settingsStore.settings.visibleCoreProviders) { _, _ in
-            if !visiblePages.contains(selection) {
-                selection = .overview
-            }
+            fallBackIfSelectionVanished()
+        }
+        // Disconnecting a workspace removes a tab while the user is standing
+        // on it, so the same fallback has to watch configuration too.
+        .onChange(of: remoteProbeService.isConfigured) { _, _ in
+            fallBackIfSelectionVanished()
+        }
+    }
+
+    private func fallBackIfSelectionVanished() {
+        if !visiblePages.contains(selection) {
+            selection = .overview
         }
     }
 }

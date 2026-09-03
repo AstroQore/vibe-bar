@@ -1382,8 +1382,8 @@
   },
   "quota.forecast.metric.coverageValue": {
     "args": {
-      "observations": "int",
-      "history": "int"
+      "history": "int",
+      "observations": "int"
     },
     "comment": "Value of the coverage metric: observation and reset-history coverage",
     "value": "obs {observations}% · history {history}%"
@@ -1412,8 +1412,8 @@
   },
   "quota.forecast.metric.evidenceValue": {
     "args": {
-      "observations": "int",
-      "cycles": "int"
+      "cycles": "int",
+      "observations": "int"
     },
     "comment": "Value of the evidence metric: observations in this cycle and completed cycles behind it",
     "value": "{observations} obs · {cycles} cycles"
@@ -2127,16 +2127,16 @@
   },
   "quota.resetHistory.currentCycleCaption": {
     "args": {
-      "used": "int",
-      "left": "int"
+      "left": "int",
+      "used": "int"
     },
     "comment": "Caption for the cycle still running in the reset-history strip",
     "value": "Current cycle · {used}% used so far · {left}% left"
   },
   "quota.resetHistory.cycleCaption": {
     "args": {
-      "used": "int",
-      "left": "int"
+      "left": "int",
+      "used": "int"
     },
     "comment": "Caption for one completed cycle in the reset-history strip; time is the reset moment",
     "value": "{time} reset · {used}% used · {left}% left"
@@ -3294,6 +3294,14 @@
   "settings.remote.disconnectTitle": {
     "comment": "Confirmation dialog title",
     "value": "Disconnect from this workspace?"
+  },
+  "settings.remote.experimentalBadge": {
+    "comment": "Badge beside the Remote Core section title marking the feature as experimental.",
+    "value": "Experimental"
+  },
+  "settings.remote.experimentalNote": {
+    "comment": "One-line explanation under the Remote Core section title, shown whether or not a workspace is connected.",
+    "value": "Remote machines are experimental: the protocol and this pane can change between releases, and the popover tab stays hidden until a workspace is connected."
   },
   "settings.remote.exportIdentity": {
     "comment": "Button that writes this Mac's public identity to a file",
