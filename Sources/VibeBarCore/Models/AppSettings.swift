@@ -146,6 +146,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// built-in arrangement with no migration.
     public var pageLayouts: [PageLayoutPageID: StoredPageLayout]
 
+    /// One-time layout repairs already applied, by identifier.
+    ///
+    /// A shipped default position only moves cards on pages nobody arranged —
+    /// `PageLayoutResolver` keeps a saved config's own placements — so moving a
+    /// card for existing users needs a migration, and a migration that ran
+    /// every launch would undo a user who dragged the card back. Recording the
+    /// identifiers here makes each one exactly once-per-Mac. See
+    /// `PageLayoutDefaultsMigration`.
+    ///
+    /// Empty by default: a settings file written before this existed has never
+    /// had a migration applied, which is the correct starting state.
+    public var appliedLayoutMigrations: Set<String>
+
     /// Named arrangements the user saved for a page, keyed the same way as
     /// `pageLayouts`. Applying one writes it back into `pageLayouts`; the
     /// preset itself is never the live layout.
@@ -317,6 +330,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         overviewQuotaHistoryHiddenCurveIds: Set<String> = [],
         costChartMetric: String = "cost",
         pageLayouts: [PageLayoutPageID: StoredPageLayout] = [:],
+        appliedLayoutMigrations: Set<String> = [],
         pageLayoutPresets: [PageLayoutPageID: [StoredPageLayoutPreset]] = [:],
         miscCookieAutoImportEnabled: Bool = false,
         menuBarColorBasis: MenuBarColorBasis = .forecast,
@@ -367,6 +381,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.overviewQuotaHistoryHiddenCurveIds = overviewQuotaHistoryHiddenCurveIds
         self.costChartMetric = costChartMetric
         self.pageLayouts = pageLayouts
+        self.appliedLayoutMigrations = appliedLayoutMigrations
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(pageLayoutPresets)
         self.miscCookieAutoImportEnabled = miscCookieAutoImportEnabled
         self.menuBarColorBasis = menuBarColorBasis
@@ -431,6 +446,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case overviewQuotaHistoryHiddenCurveIds
         case costChartMetric
         case pageLayouts
+        case appliedLayoutMigrations
         case pageLayoutPresets
         case miscCookieAutoImportEnabled
         case menuBarColorBasis
@@ -591,6 +607,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // the user their card arrangement, not every other setting in the file.
         self.pageLayouts =
             (try? c.decodeIfPresent([PageLayoutPageID: StoredPageLayout].self, forKey: .pageLayouts)) ?? [:]
+        // Absent means "no layout migration has run on this Mac", which is
+        // what a file written before they existed should decode to: the
+        // migrations are then applied once, on this launch.
+        self.appliedLayoutMigrations =
+            try c.decodeIfPresent(Set<String>.self, forKey: .appliedLayoutMigrations) ?? []
         // Same `try?` reasoning: a mangled preset list costs the user their
         // saved arrangements, not the rest of the file.
         self.pageLayoutPresets = Self.normalizedPageLayoutPresets(
@@ -681,6 +702,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(overviewQuotaHistoryHiddenCurveIds, forKey: .overviewQuotaHistoryHiddenCurveIds)
         try c.encode(costChartMetric, forKey: .costChartMetric)
         try c.encode(pageLayouts, forKey: .pageLayouts)
+        try c.encode(appliedLayoutMigrations, forKey: .appliedLayoutMigrations)
         try c.encode(pageLayoutPresets, forKey: .pageLayoutPresets)
         try c.encode(miscCookieAutoImportEnabled, forKey: .miscCookieAutoImportEnabled)
         try c.encode(menuBarColorBasis, forKey: .menuBarColorBasis)

@@ -261,7 +261,6 @@ final class ResetHistoryComparisonCache {
     private struct Key: Equatable {
         let inputs: [ResetHistoryLaneInput]
         let window: ResetHistoryComparison.Window
-        let ordering: ResetHistoryComparison.Ordering
         let hour: Double
     }
 
@@ -271,20 +270,17 @@ final class ResetHistoryComparisonCache {
     func comparison(
         inputs: [ResetHistoryLaneInput],
         window: ResetHistoryComparison.Window,
-        ordering: ResetHistoryComparison.Ordering,
         now: Date = Date()
     ) -> ResetHistoryComparison {
-        // The visible span is anchored to now, so the clock is an input — but
-        // quantized to the hour. A weeks-wide axis does not move within one,
-        // and this module starts no timer of its own: the next quota refresh
-        // redraws it.
+        // The clock decides only whether a cycle has closed since the last
+        // build, so it is quantized to the hour. This module starts no timer
+        // of its own: the next quota refresh redraws it.
         let hour = (now.timeIntervalSinceReferenceDate / 3_600).rounded(.down) * 3_600
-        let candidate = Key(inputs: inputs, window: window, ordering: ordering, hour: hour)
+        let candidate = Key(inputs: inputs, window: window, hour: hour)
         if let key, key == candidate, let value { return value }
         let built = ResetHistoryComparison.build(
             inputs: inputs,
             window: window,
-            ordering: ordering,
             now: Date(timeIntervalSinceReferenceDate: hour)
         )
         key = candidate
@@ -295,19 +291,26 @@ final class ResetHistoryComparisonCache {
 
 // MARK: - Card
 
-/// Every weekly-and-longer quota's reset history, side by side on one time
-/// axis: where quota is being thrown away, and where it is being spent.
+/// Every weekly-and-longer quota's reset history as one table: how much of
+/// each refill expired unused, row by row, cycle by cycle.
 ///
-/// Same bar semantics as `FillTimelineChart`, which shows one lane inside its
-/// own quota card — height is the peak used percent, the muted remainder above
-/// it is what expired unused, a dashed outline is the cycle still running, and
-/// a dot over a bar means the window refilled before it said it would. The two
-/// surfaces are one system; changing a colour or a marker here means changing
-/// it there.
+/// Two decisions carry the design.
 ///
-/// Five-hour lanes are excluded by `ResetHistoryComparison` itself — see the
-/// note there for why, and why the cut is made on the window length rather
-/// than on a bucket name.
+/// **Columns are cycle ordinals, not dates.** Quotas refill on their own
+/// schedules, so a shared calendar axis put every row's bars in different
+/// places and made two rows impossible to read against each other. Here the
+/// newest completed cycle of every quota sits in the same column, the one
+/// before it in the column to its left; a row with less history is
+/// right-aligned into the grid and starts further right.
+///
+/// **The bar is what was left, not what was spent.** The question is "am I
+/// wasting quota", so a tall bar is a cycle that expired mostly unused and an
+/// empty slot is one that was spent to the last percent. The faint track keeps
+/// the empty slot visible.
+///
+/// Rows are grouped by company and ordered company → SubProvider → group /
+/// bucket, the same hierarchy the popover reads in (`AGENTS.md` § 7.1). There
+/// is no sort control: a table whose rows move around is not a table.
 struct ResetHistoryCompareCard: View {
     let density: Theme.Density
     /// Provider family this instance is scoped to. `nil` on the Overview and
@@ -321,15 +324,13 @@ struct ResetHistoryCompareCard: View {
     /// history plus its cached quotas.
     @EnvironmentObject private var quotaService: QuotaService
 
-    @State private var window: ResetHistoryComparison.Window = .eightWeeks
-    @State private var groupByCompany = false
+    @State private var window: ResetHistoryComparison.Window = .eight
     @State private var cache = ResetHistoryComparisonCache()
 
     var body: some View {
         let comparison = cache.comparison(
             inputs: ResetHistoryLanes.inputs(environment: environment, tools: tools),
-            window: window,
-            ordering: groupByCompany ? .company : .waste
+            window: window
         )
         CardShell(density: density, spacing: 8) {
             header
@@ -354,13 +355,16 @@ struct ResetHistoryCompareCard: View {
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 .lineLimit(1)
             Spacer(minLength: 6)
-            groupToggle
+            Text("cycles")
+                .font(.system(size: max(8, density.subtitleFontSize - 2.5)))
+                .foregroundStyle(.quaternary)
             windowPicker
         }
     }
 
-    /// Compact 4w / 8w / 12w / All. The same hand-drawn segment pill the cost
-    /// card's metric switch uses, so the two read as one control family.
+    /// How many cycles back the table reaches. The same hand-drawn segment
+    /// pill the cost card's metric switch uses, so the two read as one control
+    /// family.
     private var windowPicker: some View {
         HStack(spacing: 1) {
             ForEach(ResetHistoryComparison.Window.allCases, id: \.self) { option in
@@ -396,33 +400,6 @@ struct ResetHistoryCompareCard: View {
         )
     }
 
-    private var groupToggle: some View {
-        Button {
-            groupByCompany.toggle()
-        } label: {
-            Image(systemName: groupByCompany ? "rectangle.3.group.fill" : "arrow.down.right")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(groupByCompany ? Color.primary : Color.secondary)
-                .frame(width: 19, height: 17)
-                .contentShape(Rectangle())
-                .background {
-                    if groupByCompany {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(Color.primary.opacity(0.12))
-                    }
-                }
-        }
-        .buttonStyle(.vibeBar(cornerRadius: 5))
-        .help(
-            groupByCompany
-                ? "Grouped by company — switch back to most wasted first"
-                : "Sorted by most wasted — group by company instead"
-        )
-        .accessibilityLabel("Group quotas by company")
-        .accessibilityAddTraits(groupByCompany ? [.isSelected] : [])
-        .padding(.trailing, 2)
-    }
-
     /// The header's arithmetic and the one plain sentence under it.
     private func summary(_ comparison: ResetHistoryComparison) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -440,25 +417,30 @@ struct ResetHistoryCompareCard: View {
 
 // MARK: - Geometry
 
-/// Row metrics plus the time→x mapping, resolved once and shared by the
-/// drawing surface and the hit test — so the tooltip can never describe a bar
-/// the cursor is not actually over.
+/// Row metrics plus the column grid, resolved once and shared by the drawing
+/// surface and the hit test — so the tooltip can never describe a bar the
+/// cursor is not actually over.
 struct ResetHistoryCompareLayout: Equatable {
+    /// Height of the bar track. Fixed per density, never per row: the bar
+    /// encodes a percentage, so a taller row must not mean a taller bar.
+    let trackHeight: CGFloat
     let rowHeight: CGFloat
     let labelWidth: CGFloat
     /// Band above each track holding the early-refill dots.
     let markerBand: CGFloat = 5
     /// Gap under each track.
     let rowGap: CGFloat = 6
-    let labelGap: CGFloat = 8
+    let labelGap: CGFloat = 10
     let axisHeight: CGFloat = 13
     let titleFontSize: CGFloat
     let captionFontSize: CGFloat
-    let rangeStart: Date
-    let rangeEnd: Date
+    let titleLineHeight: CGFloat
+    /// Label lines every row reserves, so the grid stays even whether or not
+    /// a particular name needs the second one.
+    let titleLineLimit = 2
     let now: Date
-    /// Height of a company heading. Zero unless the rows are grouped, so the
-    /// ungrouped layout is byte-for-byte the one it always was.
+    let columns: ResetHistoryComparison.ColumnPlan
+    /// Height of a company heading.
     let headingHeight: CGFloat
     /// What the surface draws, top to bottom.
     let rows: [Row]
@@ -468,6 +450,7 @@ struct ResetHistoryCompareLayout: Equatable {
     /// headings push these down, which is the whole reason the geometry is
     /// resolved once and shared instead of derived from an index twice.
     let laneTops: [CGFloat]
+    let rowsHeight: CGFloat
 
     enum Row: Equatable {
         case heading(String)
@@ -475,40 +458,47 @@ struct ResetHistoryCompareLayout: Equatable {
     }
 
     init(density: Theme.Density, comparison: ResetHistoryComparison) {
-        // Two text lines and a bar per row. Deliberately tight: a dozen
-        // weekly-and-longer quotas have to fit on one screen, which is the
-        // whole point of the module.
+        // Wide enough that "AntiGravity · Claude & GPT Models · Weekly" reads
+        // in full — the first version clipped every row at about twenty
+        // characters, which is the complaint this layout exists to answer.
         switch density.profile {
         case .compact:
-            rowHeight = 38
-            labelWidth = 142
+            trackHeight = 26
+            labelWidth = 176
         case .regular:
-            rowHeight = 44
-            labelWidth = 164
+            trackHeight = 30
+            labelWidth = 202
         case .spacious:
-            rowHeight = 52
-            labelWidth = 190
+            trackHeight = 36
+            labelWidth = 232
         }
         titleFontSize = max(9, density.subtitleFontSize - 0.5)
         captionFontSize = max(8, density.subtitleFontSize - 2)
-        rangeStart = comparison.rangeStart
-        rangeEnd = comparison.rangeEnd
+        titleLineHeight = titleFontSize + 3
         now = comparison.now
+        columns = comparison.columns
 
-        let grouped = comparison.ordering == .company
-        let heading = grouped ? max(16, titleFontSize + 8) : 0
-        headingHeight = heading
+        // Two label lines plus the caption, or the bar track, whichever is
+        // taller. Uniform per density: this is a table, and a table's rows
+        // line up.
+        let labelBlock = CGFloat(titleLineLimit) * titleLineHeight + captionFontSize + 4
+        let rowHeight = max(trackHeight, labelBlock) + markerBand + rowGap
+        self.rowHeight = rowHeight
+        headingHeight = max(16, titleFontSize + 8)
+
         var rows: [Row] = []
         var rowTops: [CGFloat] = []
         var laneTops: [CGFloat] = []
         var y: CGFloat = 0
         var currentCompany: String?
         for (index, lane) in comparison.lanes.enumerated() {
-            if grouped, lane.company != currentCompany {
+            // One heading per company. The rows arrive grouped, so a change of
+            // company is the start of a band.
+            if lane.company != currentCompany {
                 currentCompany = lane.company
                 rows.append(.heading(lane.company))
                 rowTops.append(y)
-                y += heading
+                y += headingHeight
             }
             rows.append(.lane(index))
             rowTops.append(y)
@@ -521,9 +511,6 @@ struct ResetHistoryCompareLayout: Equatable {
         rowsHeight = y
     }
 
-    /// Total height of the rows, headings included.
-    let rowsHeight: CGFloat
-
     var totalHeight: CGFloat { rowsHeight + axisHeight }
     var chartX: CGFloat { labelWidth + labelGap }
 
@@ -532,11 +519,9 @@ struct ResetHistoryCompareLayout: Equatable {
         index >= 0 && index < laneTops.count ? laneTops[index] : 0
     }
     func trackTop(_ index: Int) -> CGFloat { laneTop(index) + markerBand }
-    func trackBottom(_ index: Int) -> CGFloat { laneTop(index) + rowHeight - rowGap }
+    func trackBottom(_ index: Int) -> CGFloat { trackTop(index) + trackHeight }
 
     /// The lane under a pointer, or `nil` over a heading, a gap, or the axis.
-    /// Never `y / rowHeight`: with headings in the stack that arithmetic is
-    /// off by one row per company.
     func laneIndex(atY y: CGFloat) -> Int? {
         for (index, top) in laneTops.enumerated() where y >= top && y < top + rowHeight {
             return index
@@ -544,56 +529,38 @@ struct ResetHistoryCompareLayout: Equatable {
         return nil
     }
 
-    /// Bars per lane the row has room for. Three points is already narrower
-    /// than a bar the eye can separate.
-    func drawBudget(in size: CGSize) -> Int { max(4, Int(chartWidth(in: size) / 3)) }
-
-    func x(for date: Date, in size: CGSize) -> CGFloat {
-        let span = max(1, rangeEnd.timeIntervalSince(rangeStart))
-        let fraction = date.timeIntervalSince(rangeStart) / span
-        return chartX + chartWidth(in: size) * CGFloat(fraction)
+    func columnWidth(in size: CGSize) -> CGFloat {
+        guard columns.totalColumnCount > 0 else { return 0 }
+        return chartWidth(in: size) / CGFloat(columns.totalColumnCount)
     }
 
-    /// One bar's rectangle, clamped to the visible axis. `nil` when the cycle
-    /// falls entirely outside it.
-    func barRect(
-        _ cycle: ResetHistoryComparison.Cycle,
-        laneIndex: Int,
-        in size: CGSize
-    ) -> CGRect? {
-        let left = x(for: cycle.start, in: size)
-        let right = x(for: cycle.end, in: size)
-        let minX = chartX
-        let maxX = chartX + chartWidth(in: size)
-        guard right > minX, left < maxX else { return nil }
-        let clampedLeft = max(minX, left)
-        let clampedRight = min(maxX, right)
-        // One point of air between neighbours, and never thinner than a bar
-        // the eye can find.
-        let width = max(2, clampedRight - clampedLeft - 1)
+    /// One bar's rectangle. Identical x for the same column on every row —
+    /// that identity is the alignment the table is built on.
+    func barRect(column: Int, laneIndex: Int, in size: CGSize) -> CGRect? {
+        guard column >= 0, column < columns.totalColumnCount else { return nil }
+        let width = columnWidth(in: size)
+        guard width > 0 else { return nil }
+        // A point of air on each side, but never at the cost of a bar the eye
+        // can find.
+        let inset = min(1.5, width / 6)
         let top = trackTop(laneIndex)
-        return CGRect(x: clampedLeft, y: top, width: width, height: trackBottom(laneIndex) - top)
-    }
-
-    /// Six evenly spaced dates across the visible span.
-    var ticks: [Date] {
-        let span = rangeEnd.timeIntervalSince(rangeStart)
-        guard span > 0 else { return [] }
-        let count = 5
-        return (0...count).map { index in
-            rangeStart.addingTimeInterval(span * Double(index) / Double(count))
-        }
+        return CGRect(
+            x: chartX + CGFloat(column) * width + inset,
+            y: top,
+            width: max(2, width - inset * 2),
+            height: trackHeight
+        )
     }
 }
 
 // MARK: - Small multiples
 
-/// Every lane on one shared time axis.
+/// Every lane as a row of the same column grid.
 ///
 /// The bars are a single `Canvas` (`AGENTS.md` § 11: dense status history is
 /// one drawing surface, not hundreds of views) held behind `.equatable()`, so
-/// moving the pointer across fifteen lanes re-renders the hover highlight and
-/// one tooltip — never the several hundred bars underneath them.
+/// moving the pointer across the table re-renders the hover highlight and one
+/// tooltip — never the several hundred bars underneath them.
 struct ResetHistoryCompareView: View {
     let comparison: ResetHistoryComparison
     let density: Theme.Density
@@ -603,6 +570,7 @@ struct ResetHistoryCompareView: View {
     private struct Hover: Equatable {
         let laneIndex: Int
         let cycleID: String
+        let column: Int
         let point: CGPoint
     }
 
@@ -614,8 +582,13 @@ struct ResetHistoryCompareView: View {
                 ZStack(alignment: .topLeading) {
                     ResetHistoryLanesCanvas(comparison: comparison, layout: layout)
                         .equatable()
-                    if let hover, let rect = hoveredRect(hover, in: proxy.size, layout: layout) {
-                        RoundedRectangle(cornerRadius: min(2.5, rect.width / 2) + 1, style: .continuous)
+                    if let hover,
+                       let rect = layout.barRect(
+                           column: hover.column,
+                           laneIndex: hover.laneIndex,
+                           in: proxy.size
+                       ) {
+                        RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                             .stroke(Color.primary.opacity(0.5), lineWidth: 1)
                             .frame(width: rect.width + 2, height: rect.height + 2)
                             .offset(x: rect.minX - 1, y: rect.minY - 1)
@@ -646,26 +619,25 @@ struct ResetHistoryCompareView: View {
 
     // MARK: Legend
 
-    /// One composite swatch rather than three abstractions of it: the reader
-    /// is being told how to read a bar, and the swatch *is* a bar.
+    /// The same marks the bars use, never a stand-in shape for them.
     private var legend: some View {
         HStack(spacing: 10) {
             HStack(spacing: 4) {
                 ZStack(alignment: .bottom) {
                     RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(Color.primary.opacity(0.12))
+                        .fill(Color.primary.opacity(0.07))
                         .frame(width: 6, height: 9)
                     RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                         .fill(Color.secondary)
-                        .frame(width: 6, height: 5)
+                        .frame(width: 6, height: 6)
                 }
-                Text("bar height = used, grey remainder = wasted")
+                Text("bar height = remaining at reset")
             }
             HStack(spacing: 4) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .stroke(Color.secondary, style: StrokeStyle(lineWidth: 0.8, dash: [2, 1.5]))
                     .frame(width: 6, height: 9)
-                Text("current")
+                Text("now")
             }
             HStack(spacing: 3) {
                 Circle()
@@ -686,24 +658,30 @@ struct ResetHistoryCompareView: View {
         in size: CGSize,
         layout: ResetHistoryCompareLayout
     ) -> Hover? {
+        // `>= chartX` matters: a pointer over the label column would otherwise
+        // truncate to column 0 and light up a bar it is nowhere near.
         guard let index = layout.laneIndex(atY: location.y),
-              index < comparison.lanes.count
+              index < comparison.lanes.count,
+              location.x >= layout.chartX,
+              layout.columnWidth(in: size) > 0
         else { return nil }
+        let column = Int((location.x - layout.chartX) / layout.columnWidth(in: size))
+        guard column >= 0, column < comparison.columns.totalColumnCount else { return nil }
         let lane = comparison.lanes[index]
-        var candidates = ResetHistoryComparison.downsampled(
-            lane.cycles,
-            limit: layout.drawBudget(in: size)
-        )
-        if let current = lane.currentCycle { candidates.append(current) }
-        // Reverse order matches the draw order: the current cycle is painted
-        // last and is therefore the one on top.
-        for cycle in candidates.reversed() {
-            guard let rect = layout.barRect(cycle, laneIndex: index, in: size) else { continue }
-            if location.x >= rect.minX - 1, location.x <= rect.maxX + 1 {
-                return Hover(laneIndex: index, cycleID: cycle.id, point: location)
-            }
+        if column == comparison.columns.currentColumn, let current = lane.currentCycle {
+            return Hover(laneIndex: index, cycleID: current.id, column: column, point: location)
         }
-        return nil
+        let offset = column - comparison.columns.column(
+            ofCycleAt: 0,
+            inLaneWithCycleCount: lane.cycles.count
+        )
+        guard offset >= 0, offset < lane.cycles.count else { return nil }
+        return Hover(
+            laneIndex: index,
+            cycleID: lane.cycles[offset].id,
+            column: column,
+            point: location
+        )
     }
 
     private func cycle(for hover: Hover) -> ResetHistoryComparison.Cycle? {
@@ -711,15 +689,6 @@ struct ResetHistoryCompareView: View {
         let lane = comparison.lanes[hover.laneIndex]
         if let match = lane.cycles.first(where: { $0.id == hover.cycleID }) { return match }
         return lane.currentCycle?.id == hover.cycleID ? lane.currentCycle : nil
-    }
-
-    private func hoveredRect(
-        _ hover: Hover,
-        in size: CGSize,
-        layout: ResetHistoryCompareLayout
-    ) -> CGRect? {
-        guard let cycle = cycle(for: hover) else { return nil }
-        return layout.barRect(cycle, laneIndex: hover.laneIndex, in: size)
     }
 
     private func tooltip(
@@ -731,18 +700,21 @@ struct ResetHistoryCompareView: View {
                 Circle()
                     .fill(Theme.providerAccent(for: lane.tool))
                     .frame(width: 5, height: 5)
+                // The full quota-axis name, company included: the row label
+                // drops the company because the heading carries it, and a
+                // tooltip has no heading above it.
                 Text(lane.label)
                     .font(.system(size: 9.5, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
             }
             Text(dateRange(cycle))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)
             Text(
                 cycle.isCompleted
-                    ? "\(Int(cycle.usedPercent.rounded()))% used · \(Int(cycle.wastedPercent.rounded()))% wasted"
-                    : "Current cycle · \(Int(cycle.usedPercent.rounded()))% used so far · \(Int(cycle.wastedPercent.rounded()))% left"
+                    ? "\(Int(cycle.wastedPercent.rounded()))% left at reset · \(Int(cycle.usedPercent.rounded()))% used"
+                    : "Current cycle · \(Int(cycle.wastedPercent.rounded()))% left now · \(Int(cycle.usedPercent.rounded()))% used so far"
             )
             .font(.system(size: 9, design: .rounded).monospacedDigit())
             .foregroundStyle(.primary.opacity(0.85))
@@ -760,13 +732,13 @@ struct ResetHistoryCompareView: View {
         .workbenchOverlaySurface(in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
-    private static let tooltipWidth: CGFloat = 236
+    private static let tooltipWidth: CGFloat = 244
 
     private func tooltipOffset(_ hover: Hover, in size: CGSize) -> CGSize {
         let x = min(max(0, hover.point.x - Self.tooltipWidth / 2), max(0, size.width - Self.tooltipWidth))
         // Above the hovered row when there is room for it, below otherwise.
-        let above = hover.point.y > 76
-        return CGSize(width: x, height: above ? hover.point.y - 74 : hover.point.y + 14)
+        let above = hover.point.y > 82
+        return CGSize(width: x, height: above ? hover.point.y - 80 : hover.point.y + 14)
     }
 
     private func dateRange(_ cycle: ResetHistoryComparison.Cycle) -> String {
@@ -778,8 +750,8 @@ struct ResetHistoryCompareView: View {
 
 // MARK: - The drawing surface
 
-/// The bars, the labels, the grid and the axis — one `Canvas`, no per-cell
-/// views and no `.help()` per bar.
+/// The bars, the labels, the company headings and the column axis — one
+/// `Canvas`, no per-cell views and no `.help()` per bar.
 ///
 /// `Equatable` so hover, which changes several times a second, cannot drag the
 /// whole surface through a redraw with it. The value is the comparison plus
@@ -798,13 +770,7 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
             for (row, top) in zip(layout.rows, layout.rowTops) {
                 switch row {
                 case let .heading(company):
-                    drawHeading(
-                        &context,
-                        company: company,
-                        top: top,
-                        isFirst: top == 0,
-                        size: size
-                    )
+                    drawHeading(&context, company: company, top: top, isFirst: top == 0, size: size)
                 case let .lane(index):
                     let lane = comparison.lanes[index]
                     drawLabels(&context, lane: lane, index: index)
@@ -815,29 +781,23 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         }
     }
 
-    /// Week gridlines behind every row, plus the *now* hairline — the same
-    /// "the leading hairline is now" idiom the refill-horizon lane uses.
+    /// Column separators behind every row, and the live column marked off from
+    /// the completed ones.
     private func drawGrid(_ context: inout GraphicsContext, size: CGSize) {
-        for tick in layout.ticks {
-            let tickX = layout.x(for: tick, in: size)
+        let width = layout.columnWidth(in: size)
+        guard width > 0 else { return }
+        for column in 1..<max(1, comparison.columns.totalColumnCount) {
+            let isCurrentBoundary = column == comparison.columns.currentColumn
             context.fill(
-                Path(CGRect(x: tickX, y: 0, width: 0.5, height: layout.rowsHeight)),
-                with: .color(Color.primary.opacity(0.07))
-            )
-        }
-        let nowX = layout.x(for: min(layout.rangeEnd, layout.now), in: size)
-        if nowX >= layout.chartX, nowX <= layout.chartX + layout.chartWidth(in: size) {
-            context.fill(
-                Path(CGRect(x: nowX - 0.5, y: 0, width: 1, height: layout.rowsHeight)),
-                with: .color(Color.primary.opacity(0.28))
+                Path(CGRect(x: layout.chartX + CGFloat(column) * width, y: 0, width: 0.5, height: layout.rowsHeight)),
+                with: .color(Color.primary.opacity(isCurrentBoundary ? 0.22 : 0.06))
             )
         }
     }
 
     /// One L1 company band: a rule across the full width and the company's
-    /// name over it. Without this the grouped ordering strips the company off
-    /// every row and puts it nowhere — "Gemini Web" and "AntiGravity" sitting
-    /// under no Google AI at all.
+    /// name over it. The rows below it drop the company from their own labels,
+    /// so this is where it lives.
     private func drawHeading(
         _ context: inout GraphicsContext,
         company: String,
@@ -865,27 +825,30 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         )
     }
 
+    /// The row's name over its waste summary.
+    ///
+    /// The name wraps on its own separators rather than truncating: every row
+    /// reserves two lines, and the caption follows whatever the name actually
+    /// used, so a one-line row has no hole under it.
     private func drawLabels(
         _ context: inout GraphicsContext,
         lane: ResetHistoryComparison.Lane,
         index: Int
     ) {
         let maxWidth = layout.labelWidth - layout.labelGap
-        let top = layout.laneTop(index) + layout.markerBand - 2
-        // Grouped by company, the heading carries the company; sorted by
-        // waste, each row has to name itself in full.
-        let title = comparison.ordering == .company ? lane.labelWithoutCompany : lane.label
-        context.draw(
-            truncated(
-                context,
-                title,
-                font: .system(size: layout.titleFontSize, weight: .semibold),
-                color: Color.primary.opacity(0.88),
-                maxWidth: maxWidth
-            ),
-            at: CGPoint(x: 0, y: top),
-            anchor: .topLeading
+        var y = layout.laneTop(index) + layout.markerBand - 2
+        let lines = wrapped(
+            context,
+            lane.labelWithoutCompany,
+            font: .system(size: layout.titleFontSize, weight: .semibold),
+            color: Color.primary.opacity(0.88),
+            maxWidth: maxWidth,
+            lineLimit: layout.titleLineLimit
         )
+        for line in lines {
+            context.draw(line, at: CGPoint(x: 0, y: y), anchor: .topLeading)
+            y += layout.titleLineHeight
+        }
         context.draw(
             truncated(
                 context,
@@ -894,7 +857,7 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
                 color: Color.primary.opacity(0.5),
                 maxWidth: maxWidth
             ),
-            at: CGPoint(x: 0, y: top + layout.titleFontSize + 4),
+            at: CGPoint(x: 0, y: y + 1),
             anchor: .topLeading
         )
     }
@@ -925,34 +888,40 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
             )
             return
         }
-        // Downsample before drawing: a lane can hold more cycles than the row
-        // has pixels, and the wasteful ones are exactly the ones that must
-        // survive the cut.
         let accent = Theme.providerAccent(for: lane.tool)
-        for cycle in ResetHistoryComparison.downsampled(lane.cycles, limit: layout.drawBudget(in: size)) {
-            drawBar(&context, cycle: cycle, laneIndex: index, accent: accent, size: size)
+        for (offset, cycle) in lane.cycles.enumerated() {
+            let column = comparison.columns.column(
+                ofCycleAt: offset,
+                inLaneWithCycleCount: lane.cycles.count
+            )
+            drawBar(&context, cycle: cycle, column: column, laneIndex: index, accent: accent, size: size)
         }
-        if let current = lane.currentCycle {
-            drawBar(&context, cycle: current, laneIndex: index, accent: accent, size: size)
+        if let current = lane.currentCycle, let column = comparison.columns.currentColumn {
+            drawBar(&context, cycle: current, column: column, laneIndex: index, accent: accent, size: size)
         }
     }
 
     private func drawBar(
         _ context: inout GraphicsContext,
         cycle: ResetHistoryComparison.Cycle,
+        column: Int,
         laneIndex: Int,
         accent: Color,
         size: CGSize
     ) {
-        guard let rect = layout.barRect(cycle, laneIndex: laneIndex, in: size) else { return }
+        guard let rect = layout.barRect(column: column, laneIndex: laneIndex, in: size) else { return }
         let radius = min(2.5, rect.width / 2)
-        // The track is the wasted remainder; the fill is what was spent. The
-        // same two-part bar `FillTimelineChart` draws for a single lane.
+        // The track is the whole quota; the fill is the part of it that was
+        // still there when the window refilled. A cycle spent to the last
+        // percent draws no fill at all, and the track is what keeps that
+        // visible as a deliberate empty slot rather than a missing bar.
         context.fill(
             Path(roundedRect: rect, cornerRadius: radius, style: .continuous),
             with: .color(Theme.barTrack.opacity(0.62))
         )
-        let fillHeight = cycle.usedPercent > 0 ? max(1, rect.height * cycle.usedPercent / 100) : 0
+        let fillHeight = cycle.wastedPercent > 0
+            ? max(1, rect.height * cycle.wastedPercent / 100)
+            : 0
         if fillHeight > 0 {
             let fillRect = CGRect(
                 x: rect.minX,
@@ -962,7 +931,7 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
             )
             context.fill(
                 Path(roundedRect: fillRect, cornerRadius: min(radius, fillHeight / 2), style: .continuous),
-                with: .color(accent.opacity(0.86))
+                with: .color(accent.opacity(cycle.isCompleted ? 0.86 : 0.5))
             )
         }
         if !cycle.isCompleted {
@@ -972,7 +941,7 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
                 style: StrokeStyle(lineWidth: 1, dash: [3, 2])
             )
         }
-        // Above the bar rather than inside it: a cycle that spent everything
+        // Above the bar rather than inside it: a cycle that expired untouched
         // fills its track to the top, where a marker would be the same colour
         // as the fill under it.
         if cycle.refilledEarly {
@@ -981,26 +950,98 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         }
     }
 
+    /// How many cycles back each column is, and `now` for the live one.
+    /// Deliberately not dates: the columns are ordinals, and each cycle's own
+    /// dates are in its tooltip.
     private func drawAxis(_ context: inout GraphicsContext, size: CGSize) {
         let y = layout.rowsHeight + 1
-        let chartWidth = layout.chartWidth(in: size)
-        for tick in layout.ticks {
-            let tickX = layout.x(for: tick, in: size)
-            guard tickX >= layout.chartX - 1, tickX <= layout.chartX + chartWidth else { continue }
-            let text = context.resolve(
-                Text(ResetHistoryCompareFormatters.axis.string(from: tick))
-                    .font(.system(size: max(7, layout.captionFontSize - 1), design: .rounded))
-                    .foregroundStyle(Color.primary.opacity(0.4))
+        let width = layout.columnWidth(in: size)
+        guard width > 0 else { return }
+        // The label column is free on the axis row, which is where the caveat
+        // belongs: the grid is capped, the numbers above it are not.
+        if let note = comparison.truncationNote {
+            context.draw(
+                truncated(
+                    context,
+                    note,
+                    font: .system(size: max(7, layout.captionFontSize - 1), design: .rounded),
+                    color: Color.primary.opacity(0.4),
+                    maxWidth: layout.labelWidth - layout.labelGap
+                ),
+                at: CGPoint(x: 0, y: y),
+                anchor: .topLeading
             )
-            let width = text.measure(in: CGSize(width: 80, height: 20)).width
-            // Keep the first and last labels inside the plot instead of
-            // letting them hang off either end.
+        }
+        let total = comparison.columns.totalColumnCount
+        // Label the ends and the live column, plus interior ordinals only
+        // while they still have room to be read.
+        let stride = max(1, Int((28 / max(width, 1)).rounded(.up)))
+        for column in 0..<total {
+            let isCurrent = column == comparison.columns.currentColumn
+            let isEdge = column == 0 || column == comparison.columns.completedColumnCount - 1
+            guard isCurrent || isEdge || column % stride == 0,
+                  let label = comparison.columns.axisLabel(forColumn: column)
+            else { continue }
+            let text = context.resolve(
+                Text(label)
+                    .font(.system(size: max(7, layout.captionFontSize - 1), design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(isCurrent ? 0.55 : 0.35))
+            )
+            let measured = text.measure(in: CGSize(width: 80, height: 20)).width
+            let centre = layout.chartX + (CGFloat(column) + 0.5) * width
             let clamped = min(
-                max(tickX - width / 2, layout.chartX),
-                layout.chartX + chartWidth - width
+                max(centre - measured / 2, layout.chartX),
+                layout.chartX + layout.chartWidth(in: size) - measured
             )
             context.draw(text, at: CGPoint(x: clamped, y: y), anchor: .topLeading)
         }
+    }
+
+    /// A name broken across at most `lineLimit` lines on its own " · "
+    /// separators, so "AntiGravity · Claude & GPT Models · Weekly" wraps where
+    /// a reader would break it instead of being cut at twenty characters.
+    /// The last line still truncates if even that will not fit.
+    private func wrapped(
+        _ context: GraphicsContext,
+        _ string: String,
+        font: Font,
+        color: Color,
+        maxWidth: CGFloat,
+        lineLimit: Int
+    ) -> [GraphicsContext.ResolvedText] {
+        let probe = CGSize(width: 10_000, height: 40)
+        func resolve(_ candidate: String) -> GraphicsContext.ResolvedText {
+            context.resolve(Text(candidate).font(font).foregroundStyle(color))
+        }
+        let full = resolve(string)
+        guard maxWidth > 0, full.measure(in: probe).width > maxWidth, lineLimit > 1 else {
+            return [truncated(context, string, font: font, color: color, maxWidth: maxWidth)]
+        }
+        let separator = " · "
+        let parts = string.components(separatedBy: separator)
+        guard parts.count > 1 else {
+            return [truncated(context, string, font: font, color: color, maxWidth: maxWidth)]
+        }
+        var lines: [String] = []
+        var current = ""
+        for part in parts {
+            let candidate = current.isEmpty ? part : current + separator + part
+            if current.isEmpty || resolve(candidate).measure(in: probe).width <= maxWidth {
+                current = candidate
+                continue
+            }
+            lines.append(current)
+            current = part
+        }
+        if !current.isEmpty { lines.append(current) }
+        if lines.count > lineLimit {
+            // Everything that did not fit joins the last allowed line, which
+            // then truncates — better a trailing ellipsis than a dropped
+            // bucket name.
+            let tail = lines[(lineLimit - 1)...].joined(separator: separator)
+            lines = Array(lines.prefix(lineLimit - 1)) + [tail]
+        }
+        return lines.map { truncated(context, $0, font: font, color: color, maxWidth: maxWidth) }
     }
 
     /// Single-line text that fits `maxWidth`, with an ellipsis when it does
@@ -1042,13 +1083,6 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
 }
 
 private enum ResetHistoryCompareFormatters {
-    static let axis: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d"
-        return formatter
-    }()
-
     static let tooltip: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

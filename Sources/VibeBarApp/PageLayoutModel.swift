@@ -77,12 +77,35 @@ final class PageLayoutModel: ObservableObject {
     init(settingsStore: SettingsStore, store: PageLayoutStore = .shared) {
         self.settingsStore = settingsStore
         self.store = store
+        applyPendingDefaultMigrations()
         Task { [weak self] in
             let loaded = await store.allMeasuredHeights()
             guard let self else { return }
             self.measured = loaded
             self.measurementsLoaded = true
         }
+    }
+
+    /// Run any one-time layout repair this Mac has not seen yet.
+    ///
+    /// Here rather than at a call site because this is the object that owns
+    /// `pageLayouts`, and because it must happen before the first page resolves
+    /// — a migration that landed after the popover drew would move cards under
+    /// the user. Writing the identifiers back even when no layout changed is
+    /// deliberate: the question is "has this migration run", not "did it find
+    /// anything", and asking again every launch is how a user who dragged a
+    /// card back gets corrected forever. See `PageLayoutDefaultsMigration`.
+    private func applyPendingDefaultMigrations() {
+        let settings = settingsStore.settings
+        let result = PageLayoutDefaultsMigration.migrate(
+            layouts: settings.pageLayouts,
+            applied: settings.appliedLayoutMigrations
+        )
+        guard result.applied != settings.appliedLayoutMigrations else { return }
+        var next = settings
+        next.pageLayouts = result.layouts
+        next.appliedLayoutMigrations = result.applied
+        settingsStore.settings = next
     }
 
     // MARK: - Reading

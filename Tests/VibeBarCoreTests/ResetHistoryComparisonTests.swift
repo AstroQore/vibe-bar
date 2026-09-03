@@ -113,20 +113,185 @@ final class ResetHistoryComparisonTests: XCTestCase {
         XCTAssertTrue(ResetHistoryComparison.build(inputs: [input], now: now).isEmpty)
     }
 
-    // MARK: - Visible span
+    // MARK: - Picker
 
-    func testTheFixedWindowDropsCyclesOlderThanIt() {
-        let input = lane(samples: [
-            sample(bucketId: "weekly", endingDaysAgo: 3, used: 90),
-            sample(bucketId: "weekly", endingDaysAgo: 40, used: 10)
-        ])
-        let fourWeeks = ResetHistoryComparison.build(inputs: [input], window: .fourWeeks, now: now)
-        XCTAssertEqual(fourWeeks.lanes[0].cycles.count, 1)
-        XCTAssertEqual(fourWeeks.totals.cycleCount, 1)
+    func testThePickerCountsCyclesAndKeepsTheNewestOnes() {
+        // Counted in cycles, not weeks: "last 4" must mean the same four
+        // columns for every row, however far apart its refills fall. A cycle
+        // a year old is in scope if it is one of the newest four.
+        var samples: [SubscriptionWindowSample] = []
+        for index in 0..<6 {
+            samples.append(
+                sample(bucketId: "weekly", endingDaysAgo: Double(7 * (index + 1)), used: Double(index * 10))
+            )
+        }
+        let input = lane(samples: samples)
+
+        let four = ResetHistoryComparison.build(inputs: [input], window: .four, now: now)
+        XCTAssertEqual(four.lanes[0].cycles.count, 4)
+        XCTAssertEqual(four.totals.cycleCount, 4)
+        // The four newest: the oldest two (used 50 and 40) are dropped.
+        XCTAssertEqual(four.lanes[0].cycles.map(\.usedPercent), [30, 20, 10, 0])
 
         let all = ResetHistoryComparison.build(inputs: [input], window: .all, now: now)
-        XCTAssertEqual(all.lanes[0].cycles.count, 2)
-        XCTAssertLessThanOrEqual(all.rangeStart, now.addingTimeInterval(-40 * 86_400))
+        XCTAssertEqual(all.lanes[0].cycles.count, 6)
+    }
+
+    func testAnAgeingCycleIsNotDroppedJustForBeingOld() {
+        // The time-axis version dropped anything outside a fixed number of
+        // weeks, which silently emptied a slow-refilling lane.
+        let input = lane(samples: [
+            sample(bucketId: "weekly", endingDaysAgo: 3, used: 90),
+            sample(bucketId: "weekly", endingDaysAgo: 400, used: 10)
+        ])
+        let result = ResetHistoryComparison.build(inputs: [input], window: .eight, now: now)
+        XCTAssertEqual(result.lanes[0].cycles.count, 2)
+    }
+
+    func testTheColumnCeilingCapsTheGridAndNotTheArithmetic() {
+        // "All" has to keep meaning all. The grid is capped so the bars stay
+        // legible, but the headline, the per-lane counts and the verdict are
+        // computed over every retained cycle — a total that quietly meant "the
+        // newest 52" under a picker that says All would simply be wrong.
+        let ceiling = ResetHistoryComparison.ColumnPlan.maximumColumns
+        let extra = 20
+        var samples: [SubscriptionWindowSample] = []
+        // The oldest `extra` cycles are the wasteful ones, so they can only
+        // reach the statistics by being counted past the drawing cap.
+        for index in 0..<(ceiling + extra) {
+            let isOldest = index >= ceiling
+            samples.append(
+                sample(
+                    bucketId: "weekly",
+                    endingDaysAgo: Double(7 * (index + 1)),
+                    used: isOldest ? 0 : 100
+                )
+            )
+        }
+        let result = ResetHistoryComparison.build(inputs: [lane(samples: samples)], window: .all, now: now)
+
+        // Drawing: capped.
+        XCTAssertEqual(result.columns.completedColumnCount, ceiling)
+        XCTAssertEqual(result.lanes[0].cycles.count, ceiling)
+
+        // Arithmetic: everything.
+        XCTAssertEqual(result.lanes[0].windowCycleCount, ceiling + extra)
+        XCTAssertTrue(result.lanes[0].isTruncated)
+        XCTAssertEqual(result.totals.cycleCount, ceiling + extra)
+        XCTAssertEqual(result.lanes[0].wastefulCycleCount, extra)
+        XCTAssertEqual(
+            result.totals.usedPercent,
+            100 * Double(ceiling) / Double(ceiling + extra),
+            accuracy: 0.001
+        )
+    }
+
+    func testATruncatedGridSaysSoOnScreenAndToAScreenReader() {
+        let ceiling = ResetHistoryComparison.ColumnPlan.maximumColumns
+        var samples: [SubscriptionWindowSample] = []
+        for index in 0..<(ceiling + 8) {
+            samples.append(sample(bucketId: "weekly", endingDaysAgo: Double(7 * (index + 1)), used: 50))
+        }
+        let result = ResetHistoryComparison.build(inputs: [lane(samples: samples)], window: .all, now: now)
+        XCTAssertEqual(
+            result.truncationNote,
+            "showing the newest \(ceiling) of \(ceiling + 8) cycles"
+        )
+        XCTAssertTrue(result.accessibilitySummary.contains("showing the newest \(ceiling)"))
+        XCTAssertTrue(result.accessibilitySummary.contains("the figures cover every one"))
+    }
+
+    func testAGridThatFitsSaysNothingAboutTruncation() {
+        let result = ResetHistoryComparison.build(
+            inputs: [lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)])],
+            window: .all,
+            now: now
+        )
+        XCTAssertNil(result.truncationNote)
+        XCTAssertFalse(result.lanes[0].isTruncated)
+        XCTAssertEqual(result.lanes[0].windowCycleCount, 1)
+    }
+
+    func testABoundedWindowIsNeverTruncatedByTheCeiling() {
+        // The ceiling only ever bites on `all`; "last 8" is already inside it,
+        // so its statistics and its grid are the same eight cycles.
+        var samples: [SubscriptionWindowSample] = []
+        for index in 0..<30 {
+            samples.append(sample(bucketId: "weekly", endingDaysAgo: Double(7 * (index + 1)), used: 50))
+        }
+        let result = ResetHistoryComparison.build(inputs: [lane(samples: samples)], window: .eight, now: now)
+        XCTAssertEqual(result.lanes[0].cycles.count, 8)
+        XCTAssertEqual(result.lanes[0].windowCycleCount, 8)
+        XCTAssertEqual(result.totals.cycleCount, 8)
+        XCTAssertNil(result.truncationNote)
+    }
+
+    // MARK: - Ordinal alignment
+
+    func testRowsWithFewerCyclesRightAlignToTheNewestColumn() {
+        // The alignment the whole redesign is for: whatever a row's newest
+        // cycle is, it sits in the last completed column, so reading down a
+        // column compares like with like.
+        let long = lane(id: "weekly", samples: [
+            sample(bucketId: "weekly", endingDaysAgo: 28, used: 10),
+            sample(bucketId: "weekly", endingDaysAgo: 21, used: 20),
+            sample(bucketId: "weekly", endingDaysAgo: 14, used: 30),
+            sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)
+        ])
+        let short = lane(id: "weekly_fable", group: "Fable", samples: [
+            sample(bucketId: "weekly_fable", endingDaysAgo: 7, used: 90)
+        ])
+        let result = ResetHistoryComparison.build(inputs: [long, short], window: .all, now: now)
+        let columns = result.columns
+        XCTAssertEqual(columns.completedColumnCount, 4)
+
+        // The four-cycle lane fills columns 0…3.
+        XCTAssertEqual(columns.column(ofCycleAt: 0, inLaneWithCycleCount: 4), 0)
+        XCTAssertEqual(columns.column(ofCycleAt: 3, inLaneWithCycleCount: 4), 3)
+        // The one-cycle lane starts at column 3 — beside the other's newest,
+        // not beside its oldest.
+        XCTAssertEqual(columns.column(ofCycleAt: 0, inLaneWithCycleCount: 1), 3)
+    }
+
+    func testTheCurrentCycleGetsATrailingColumnOfItsOwn() {
+        let live = lane(
+            currentUsed: 25,
+            currentResetAt: now.addingTimeInterval(3 * 86_400),
+            samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)]
+        )
+        let result = ResetHistoryComparison.build(inputs: [live], window: .all, now: now)
+        XCTAssertTrue(result.columns.hasCurrentColumn)
+        XCTAssertEqual(result.columns.completedColumnCount, 1)
+        XCTAssertEqual(result.columns.currentColumn, 1)
+        XCTAssertEqual(result.columns.totalColumnCount, 2)
+        XCTAssertEqual(result.columns.axisLabel(forColumn: 1), "now")
+        XCTAssertEqual(result.columns.axisLabel(forColumn: 0), "−1")
+    }
+
+    func testAGridOfOnlyRetiredLanesHasNoCurrentColumn() {
+        let retired = ResetHistoryLaneInput(
+            accountId: "acct",
+            tool: .claude,
+            bucketId: "weekly",
+            company: "Anthropic",
+            subProvider: "Claude",
+            bucketTitle: "Weekly",
+            liveWindowSeconds: nil,
+            isRetired: true,
+            samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)]
+        )
+        let result = ResetHistoryComparison.build(inputs: [retired], window: .all, now: now)
+        XCTAssertFalse(result.columns.hasCurrentColumn)
+        XCTAssertNil(result.columns.currentColumn)
+        XCTAssertEqual(result.columns.totalColumnCount, 1)
+    }
+
+    func testTheAxisCountsBackwardsFromTheNewestCycle() {
+        let plan = ResetHistoryComparison.ColumnPlan(completedColumnCount: 3, hasCurrentColumn: true)
+        XCTAssertEqual(plan.axisLabel(forColumn: 0), "−3")
+        XCTAssertEqual(plan.axisLabel(forColumn: 2), "−1")
+        XCTAssertEqual(plan.axisLabel(forColumn: 3), "now")
+        XCTAssertNil(plan.axisLabel(forColumn: 4))
     }
 
     func testCyclesComeBackOldestFirst() {
@@ -164,6 +329,24 @@ final class ResetHistoryComparisonTests: XCTestCase {
         // (100-30 + 100-10) / 2 = 80
         XCTAssertEqual(try XCTUnwrap(result.lanes[0].averageWastedPercent), 80, accuracy: 0.001)
         XCTAssertEqual(result.lanes[0].wasteSummary, "avg wasted 80% · last 2 cycles")
+    }
+
+    func testTheDrawnValueIsWhatWasLeftAtReset() {
+        // The bar height is the waste, not the spend: the module answers "am I
+        // wasting quota", so a cycle spent to the last percent must draw as an
+        // empty slot and one that expired untouched as a full bar.
+        let input = lane(
+            currentUsed: 10,
+            currentResetAt: now.addingTimeInterval(2 * 86_400),
+            samples: [
+                sample(bucketId: "weekly", endingDaysAgo: 14, used: 100),
+                sample(bucketId: "weekly", endingDaysAgo: 7, used: 0)
+            ]
+        )
+        let result = ResetHistoryComparison.build(inputs: [input], window: .all, now: now)
+        XCTAssertEqual(result.lanes[0].cycles.map(\.wastedPercent), [0, 100])
+        // And for the cycle still running, the same arithmetic is "left now".
+        XCTAssertEqual(result.lanes[0].currentCycle?.wastedPercent, 90)
     }
 
     func testALaneWithNoCompletedCyclesHasNoAverageAndSaysSo() {
@@ -355,10 +538,12 @@ final class ResetHistoryComparisonTests: XCTestCase {
         let live = lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 92)])
         let result = ResetHistoryComparison.build(inputs: [live, signedOut], window: .all, now: now)
 
-        XCTAssertEqual(result.lanes.map(\.id), ["former.weekly", "acct.weekly"])
-        XCTAssertEqual(result.lanes[0].label, "Anthropic · Claude · Weekly · Signed-out account")
-        XCTAssertEqual(result.lanes[0].cycles.count, 2)
-        XCTAssertNil(result.lanes[0].currentCycle)
+        // Hierarchy order, not waste order: both are Anthropic / Claude, so
+        // they keep the order they were discovered in.
+        XCTAssertEqual(result.lanes.map(\.id), ["acct.weekly", "former.weekly"])
+        XCTAssertEqual(result.lanes[1].label, "Anthropic · Claude · Weekly · Signed-out account")
+        XCTAssertEqual(result.lanes[1].cycles.count, 2)
+        XCTAssertNil(result.lanes[1].currentCycle)
         // Both accounts' cycles count toward the header arithmetic; hiding the
         // signed-out one is what made the totals disagree with the Workbench
         // reset calendar, which reads the same history directly.
@@ -386,53 +571,62 @@ final class ResetHistoryComparisonTests: XCTestCase {
 
     // MARK: - Ordering
 
-    func testLanesSortByAverageWasteDescendingAndEmptyLanesSinkToTheBottom() {
-        let leaky = lane(id: "weekly_fable", group: "Fable", samples: [
-            sample(bucketId: "weekly_fable", endingDaysAgo: 7, used: 10)
-        ])
-        let tight = lane(id: "weekly", samples: [
-            sample(bucketId: "weekly", endingDaysAgo: 7, used: 95)
-        ])
-        let unknown = lane(id: "gpt_reserve_weekly", group: "Reserve", samples: [])
-        let result = ResetHistoryComparison.build(inputs: [tight, unknown, leaky], now: now)
-        XCTAssertEqual(
-            result.lanes.map(\.id),
-            ["acct.weekly_fable", "acct.weekly", "acct.gpt_reserve_weekly"]
-        )
-    }
-
-    func testCompanyOrderingKeepsDiscoveryOrderAndSortsByWasteInside() {
-        // Discovery order is the app's canonical provider order; alphabetical
-        // would reshuffle the page whenever a vendor renames itself.
-        let openAITight = lane(
+    func testRowsAreOrderedByCompanyThenSubProviderThenDiscoveryOrder() {
+        // Hierarchy, not a sorted list. Discovery order is the app's canonical
+        // provider order and, inside a provider, the order the popover lists
+        // the buckets in — alphabetical would reshuffle the table whenever a
+        // vendor renamed itself, and a waste sort mixed the companies up.
+        let codexWeekly = lane(
             id: "codex_weekly", tool: .codex, company: "OpenAI", subProvider: "ChatGPT Agentic",
             samples: [sample(bucketId: "codex_weekly", endingDaysAgo: 7, used: 90)]
         )
-        let openAILeaky = lane(
+        let codexSpark = lane(
             id: "spark_weekly", tool: .codex, company: "OpenAI", subProvider: "ChatGPT Agentic",
             group: "Codex Spark",
             samples: [sample(bucketId: "spark_weekly", endingDaysAgo: 7, used: 5)]
         )
-        let anthropic = lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 1)])
+        let geminiWeb = lane(
+            id: "gemini_weekly", tool: .gemini, company: "Google AI", subProvider: "Gemini Web",
+            samples: [sample(bucketId: "gemini_weekly", endingDaysAgo: 7, used: 50)]
+        )
+        let antigravity = lane(
+            id: "claude_gpt_weekly", tool: .antigravity, company: "Google AI",
+            subProvider: "AntiGravity", group: "Claude & GPT Models",
+            samples: [sample(bucketId: "claude_gpt_weekly", endingDaysAgo: 7, used: 1)]
+        )
+        let claude = lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 99)])
+
         let result = ResetHistoryComparison.build(
-            inputs: [openAITight, openAILeaky, anthropic],
-            ordering: .company,
+            inputs: [codexWeekly, codexSpark, claude, geminiWeb, antigravity],
+            window: .all,
             now: now
         )
         XCTAssertEqual(
             result.lanes.map(\.id),
-            ["acct.spark_weekly", "acct.codex_weekly", "acct.weekly"]
+            [
+                "acct.codex_weekly",    // OpenAI, first discovered
+                "acct.spark_weekly",    // …its second bucket, in popover order
+                "acct.weekly",          // Anthropic
+                "acct.gemini_weekly",   // Google AI, Gemini Web first
+                "acct.claude_gpt_weekly" // …then AntiGravity
+            ]
         )
-        // …and by pure waste, Anthropic's 1%-used lane would have led.
-        let byWaste = ResetHistoryComparison.build(
-            inputs: [openAITight, openAILeaky, anthropic],
-            ordering: .waste,
-            now: now
-        )
-        XCTAssertEqual(byWaste.lanes.first?.id, "acct.weekly")
+        // Waste plays no part: the 1%-used AntiGravity lane is last, and the
+        // 99%-used Claude lane sits in the middle where its company puts it.
+        XCTAssertEqual(result.lanes.last?.subProvider, "AntiGravity")
     }
 
-    func testCompanyOrderingKeepsEachCompanyContiguous() {
+    func testALaneWithNoCompletedCyclesKeepsItsPlaceInTheHierarchy() {
+        // It has no waste figure to sort by, but it is still that company's
+        // quota and belongs under that company's heading.
+        let empty = lane(id: "gpt_reserve_weekly", group: "Reserve", samples: [])
+        let busy = lane(id: "weekly", samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 20)])
+        let result = ResetHistoryComparison.build(inputs: [empty, busy], now: now)
+        XCTAssertEqual(result.lanes.map(\.id), ["acct.gpt_reserve_weekly", "acct.weekly"])
+        XCTAssertNil(result.lanes[0].averageWastedPercent)
+    }
+
+    func testEachCompanyIsContiguousSoOneHeadingCoversIt() {
         // The drawing surface emits one heading per run of a company, so a
         // company appearing in two runs would render two headings for it.
         let openAI = lane(
@@ -447,9 +641,9 @@ final class ResetHistoryComparisonTests: XCTestCase {
             id: "weekly",
             samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 99)]
         )
+        // Interleaved on the way in, so only the ordering can group them.
         let result = ResetHistoryComparison.build(
-            inputs: [openAI, anthropicLeaky, anthropicTight],
-            ordering: .company,
+            inputs: [openAI, anthropicLeaky, openAI, anthropicTight],
             now: now
         )
         var runs: [String] = []
@@ -553,45 +747,12 @@ final class ResetHistoryComparisonTests: XCTestCase {
         )
     }
 
-    // MARK: - Draw budget
-
-    private func cycle(index: Int, used: Double) -> ResetHistoryComparison.Cycle {
-        let start: Date = now.addingTimeInterval(Double(index) * week)
-        let end: Date = start.addingTimeInterval(week)
-        return ResetHistoryComparison.Cycle(
-            id: "c\(index)",
-            start: start,
-            end: end,
-            usedPercent: used,
-            isCompleted: true
-        )
-    }
-
-    func testDownsamplingKeepsEndpointsAndTheWorstCyclesInTimeOrder() {
-        var cycles: [ResetHistoryComparison.Cycle] = []
-        for index in 0..<10 {
-            cycles.append(cycle(index: index, used: index == 5 ? 1 : 90))
-        }
-        let kept = ResetHistoryComparison.downsampled(cycles, limit: 3)
-        XCTAssertEqual(kept.map(\.id), ["c0", "c5", "c9"])
-    }
-
-    func testDownsamplingLeavesAShortLaneAlone() {
-        var cycles: [ResetHistoryComparison.Cycle] = []
-        for index in 0..<3 {
-            cycles.append(cycle(index: index, used: 50))
-        }
-        XCTAssertEqual(ResetHistoryComparison.downsampled(cycles, limit: 10).count, 3)
-        XCTAssertTrue(ResetHistoryComparison.downsampled(cycles, limit: 0).isEmpty)
-    }
-
     // MARK: - Caching contract
 
     func testTheBuildClockIsCarriedSoTheViewNeedNotReadItWhileDrawing() {
         let input = lane(samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)])
         let result = ResetHistoryComparison.build(inputs: [input], now: now)
         XCTAssertEqual(result.now, now)
-        XCTAssertGreaterThanOrEqual(result.rangeEnd, result.now)
     }
 
     func testEqualInputsProduceEqualComparisons() {
@@ -611,6 +772,7 @@ final class ResetHistoryComparisonTests: XCTestCase {
         let summary = ResetHistoryComparison.build(inputs: [input], now: now).accessibilitySummary
         XCTAssertTrue(summary.contains("Anthropic · Claude · Weekly"))
         XCTAssertTrue(summary.contains("60% wasted on average"))
-        XCTAssertTrue(summary.contains("last 8 weeks"))
+        XCTAssertTrue(summary.contains("last 8 cycles"))
+        XCTAssertTrue(summary.contains("remaining"))
     }
 }
