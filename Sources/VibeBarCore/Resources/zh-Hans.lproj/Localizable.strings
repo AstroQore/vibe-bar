@@ -2801,14 +2801,8 @@
 /* Usage Mix dimension: which working directory the tokens came from */
 "usage.mix.dimension.projects" = "项目";
 
-/* Usage Mix dimension: fresh input against cache and output */
-"usage.mix.dimension.tokenFlow" = "Token 流向";
-
 /* Unit under the total in the middle of a donut card. */
 "usage.mix.donutUnit" = "token";
-
-/* Usage Mix empty state when the range holds no local usage */
-"usage.mix.empty" = "所选范围内没有本机用量。";
 
 /* Token Flow slice: cached tokens */
 "usage.mix.flow.cache" = "缓存";
@@ -2843,9 +2837,6 @@
 /* Donut card on the Usage Stats distribution wall: tokens by model. */
 "usage.mix.model.title" = "模型分布";
 
-/* Detail on the Usage Mix slice that stands in for everything below the cut */
-"usage.mix.moreSlices" = "另有 %1$lld 项";
-
 /* Donut slice that collapses everything below the top five. */
 "usage.mix.other" = "其他";
 
@@ -2857,9 +2848,6 @@
 
 /* Donut card on the Usage Stats distribution wall: tokens by project directory. */
 "usage.mix.project.title" = "项目分布";
-
-/* Usage Mix empty state on the Projects dimension before a cost refresh has attributed anything */
-"usage.mix.projectsPending" = "项目归属会在下一次 Codex 或 Claude 花费刷新后出现。";
 
 /* Empty state inside the Provider Mix donut card. */
 "usage.mix.provider.empty" = "所选范围内没有厂商流量";
@@ -2881,9 +2869,6 @@
 
 /* Donut card on the Usage Stats distribution wall: tokens by kind. */
 "usage.mix.tokenFlow.title" = "Token 流向";
-
-/* Caption under the total in the middle of the Usage Mix donut */
-"usage.mix.tokensCaption" = "token";
 
 /* Empty state body explaining the All chip */
 "usage.noHarnessSelected.detail" = "「全部 harness」是一个开关：再次点击即可将全部 harness 重新纳入查询。";

@@ -2852,14 +2852,8 @@
   "usage.mix.dimension.projects": {
     "value": "项目"
   },
-  "usage.mix.dimension.tokenFlow": {
-    "value": "Token 流向"
-  },
   "usage.mix.donutUnit": {
     "value": "token"
-  },
-  "usage.mix.empty": {
-    "value": "所选范围内没有本机用量。"
   },
   "usage.mix.flow.cache": {
     "value": "缓存"
@@ -2894,9 +2888,6 @@
   "usage.mix.model.title": {
     "value": "模型分布"
   },
-  "usage.mix.moreSlices": {
-    "value": "另有 {count} 项"
-  },
   "usage.mix.other": {
     "value": "其他"
   },
@@ -2911,9 +2902,6 @@
   },
   "usage.mix.project.title": {
     "value": "项目分布"
-  },
-  "usage.mix.projectsPending": {
-    "value": "项目归属会在下一次 Codex 或 Claude 花费刷新后出现。"
   },
   "usage.mix.provider.empty": {
     "value": "所选范围内没有厂商流量"
@@ -2935,9 +2923,6 @@
   },
   "usage.mix.tokenFlow.title": {
     "value": "Token 流向"
-  },
-  "usage.mix.tokensCaption": {
-    "value": "token"
   },
   "usage.noHarnessSelected.detail": {
     "value": "「全部 harness」是一个开关：再次点击即可将全部 harness 重新纳入查询。"

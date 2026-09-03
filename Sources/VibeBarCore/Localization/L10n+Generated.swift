@@ -3843,17 +3843,9 @@ extension L10n {
         public static var mixDimensionProjects: String {
             L10n.string("usage.mix.dimension.projects")
         }
-        /// `usage.mix.dimension.tokenFlow` — Token Flow
-        public static var mixDimensionTokenFlow: String {
-            L10n.string("usage.mix.dimension.tokenFlow")
-        }
         /// `usage.mix.donutUnit` — tokens
         public static var mixDonutUnit: String {
             L10n.string("usage.mix.donutUnit")
-        }
-        /// `usage.mix.empty` — No local usage in this range.
-        public static var mixEmpty: String {
-            L10n.string("usage.mix.empty")
         }
         /// `usage.mix.flow.cache` — Cache
         public static var mixFlowCache: String {
@@ -3899,10 +3891,6 @@ extension L10n {
         public static var mixModelTitle: String {
             L10n.string("usage.mix.model.title")
         }
-        /// `usage.mix.moreSlices` — {count} more
-        public static func mixMoreSlices(count: Int) -> String {
-            L10n.string("usage.mix.moreSlices", count)
-        }
         /// `usage.mix.other` — Other
         public static var mixOther: String {
             L10n.string("usage.mix.other")
@@ -3922,10 +3910,6 @@ extension L10n {
         /// `usage.mix.project.title` — Project Mix
         public static var mixProjectTitle: String {
             L10n.string("usage.mix.project.title")
-        }
-        /// `usage.mix.projectsPending` — Project attribution appears after the next Codex or Claude cost refresh.
-        public static var mixProjectsPending: String {
-            L10n.string("usage.mix.projectsPending")
         }
         /// `usage.mix.provider.empty` — No provider traffic in this range
         public static var mixProviderEmpty: String {
@@ -3954,10 +3938,6 @@ extension L10n {
         /// `usage.mix.tokenFlow.title` — Token Flow
         public static var mixTokenFlowTitle: String {
             L10n.string("usage.mix.tokenFlow.title")
-        }
-        /// `usage.mix.tokensCaption` — tokens
-        public static var mixTokensCaption: String {
-            L10n.string("usage.mix.tokensCaption")
         }
         /// `usage.noHarnessSelected.detail` — The All harnesses chip is a switch: click it again to put every harness back in the query.
         public static var noHarnessSelectedDetail: String {
@@ -6620,9 +6600,7 @@ extension L10n {
         "usage.mix.dimension.harnesses",
         "usage.mix.dimension.models",
         "usage.mix.dimension.projects",
-        "usage.mix.dimension.tokenFlow",
         "usage.mix.donutUnit",
-        "usage.mix.empty",
         "usage.mix.flow.cache",
         "usage.mix.flow.cacheDetail",
         "usage.mix.flow.freshInput",
@@ -6634,13 +6612,11 @@ extension L10n {
         "usage.mix.model.empty",
         "usage.mix.model.subtitle",
         "usage.mix.model.title",
-        "usage.mix.moreSlices",
         "usage.mix.other",
         "usage.mix.otherCount",
         "usage.mix.project.empty",
         "usage.mix.project.subtitle",
         "usage.mix.project.title",
-        "usage.mix.projectsPending",
         "usage.mix.provider.empty",
         "usage.mix.provider.subtitle",
         "usage.mix.provider.title",
@@ -6648,7 +6624,6 @@ extension L10n {
         "usage.mix.tokenFlow.empty",
         "usage.mix.tokenFlow.subtitle",
         "usage.mix.tokenFlow.title",
-        "usage.mix.tokensCaption",
         "usage.noHarnessSelected.detail",
         "usage.noHarnessSelected.title",
         "usage.requestCount",

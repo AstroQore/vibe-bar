@@ -33,7 +33,7 @@ struct OverviewUsageMixCard: View {
             case .projects: L10n.Usage.mixDimensionProjects
             case .harnesses: L10n.Usage.mixDimensionHarnesses
             case .models: L10n.Usage.mixDimensionModels
-            case .flow: L10n.Usage.mixDimensionTokenFlow
+            case .flow: L10n.Usage.mixTokenFlowTitle
             }
         }
     }
@@ -178,7 +178,7 @@ struct OverviewUsageMixCard: View {
                         Text(UsageFormatting.compactTokens(total))
                             .font(.system(size: density.bucketTitleFontSize, weight: .bold,
                                           design: .rounded).monospacedDigit())
-                        Text(L10n.Usage.mixTokensCaption)
+                        Text(L10n.Usage.mixDonutUnit)
                             .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                             .foregroundStyle(.tertiary)
                     }
@@ -291,8 +291,8 @@ struct OverviewUsageMixCard: View {
         let tail = sorted.dropFirst(visibleCount)
         let other = Slice(
             id: "other:\(dimension.rawValue)",
-            label: L10n.Quota.groupOther,
-            detail: L10n.Usage.mixMoreSlices(count: tail.count),
+            label: L10n.Usage.mixOther,
+            detail: L10n.Usage.mixOtherCount(count: tail.count),
             tokens: tail.reduce(Int64(0)) { $0 + $1.tokens },
             costMicros: tail.reduce(Int64(0)) { $0 + $1.costMicros },
             color: Color.secondary.opacity(0.55)
@@ -309,10 +309,15 @@ struct OverviewUsageMixCard: View {
 
     private var emptyMessage: String {
         if loadFailed { return L10n.Usage.mixLedgerUnreadable }
-        if dimension == .projects {
-            return L10n.Usage.mixProjectsPending
+        // The Workbench's distribution dashboard says these four things
+        // already; a second wording of "nothing here" is how two screens
+        // start disagreeing about what empty means.
+        switch dimension {
+        case .projects: return L10n.Usage.mixProjectEmpty
+        case .harnesses: return L10n.Usage.harnessMixEmpty
+        case .models: return L10n.Usage.mixModelEmpty
+        case .flow: return L10n.Usage.mixTokenFlowEmpty
         }
-        return L10n.Usage.mixEmpty
     }
 
     @MainActor

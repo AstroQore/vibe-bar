@@ -4133,17 +4133,9 @@
     "comment": "Usage Mix dimension: which working directory the tokens came from",
     "value": "Projects"
   },
-  "usage.mix.dimension.tokenFlow": {
-    "comment": "Usage Mix dimension: fresh input against cache and output",
-    "value": "Token Flow"
-  },
   "usage.mix.donutUnit": {
     "comment": "Unit under the total in the middle of a donut card.",
     "value": "tokens"
-  },
-  "usage.mix.empty": {
-    "comment": "Usage Mix empty state when the range holds no local usage",
-    "value": "No local usage in this range."
   },
   "usage.mix.flow.cache": {
     "comment": "Token Flow slice: cached tokens",
@@ -4189,13 +4181,6 @@
     "comment": "Donut card on the Usage Stats distribution wall: tokens by model.",
     "value": "Model Mix"
   },
-  "usage.mix.moreSlices": {
-    "args": {
-      "count": "int"
-    },
-    "comment": "Detail on the Usage Mix slice that stands in for everything below the cut",
-    "value": "{count} more"
-  },
   "usage.mix.other": {
     "comment": "Donut slice that collapses everything below the top five.",
     "value": "Other"
@@ -4218,10 +4203,6 @@
   "usage.mix.project.title": {
     "comment": "Donut card on the Usage Stats distribution wall: tokens by project directory.",
     "value": "Project Mix"
-  },
-  "usage.mix.projectsPending": {
-    "comment": "Usage Mix empty state on the Projects dimension before a cost refresh has attributed anything",
-    "value": "Project attribution appears after the next Codex or Claude cost refresh."
   },
   "usage.mix.provider.empty": {
     "comment": "Empty state inside the Provider Mix donut card.",
@@ -4250,10 +4231,6 @@
   "usage.mix.tokenFlow.title": {
     "comment": "Donut card on the Usage Stats distribution wall: tokens by kind.",
     "value": "Token Flow"
-  },
-  "usage.mix.tokensCaption": {
-    "comment": "Caption under the total in the middle of the Usage Mix donut",
-    "value": "tokens"
   },
   "usage.noHarnessSelected.detail": {
     "comment": "Empty state body explaining the All chip",

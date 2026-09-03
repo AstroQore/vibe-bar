@@ -2801,14 +2801,8 @@
 /* Usage Mix dimension: which working directory the tokens came from */
 "usage.mix.dimension.projects" = "Projects";
 
-/* Usage Mix dimension: fresh input against cache and output */
-"usage.mix.dimension.tokenFlow" = "Token Flow";
-
 /* Unit under the total in the middle of a donut card. */
 "usage.mix.donutUnit" = "tokens";
-
-/* Usage Mix empty state when the range holds no local usage */
-"usage.mix.empty" = "No local usage in this range.";
 
 /* Token Flow slice: cached tokens */
 "usage.mix.flow.cache" = "Cache";
@@ -2843,9 +2837,6 @@
 /* Donut card on the Usage Stats distribution wall: tokens by model. */
 "usage.mix.model.title" = "Model Mix";
 
-/* Detail on the Usage Mix slice that stands in for everything below the cut */
-"usage.mix.moreSlices" = "%1$lld more";
-
 /* Donut slice that collapses everything below the top five. */
 "usage.mix.other" = "Other";
 
@@ -2857,9 +2848,6 @@
 
 /* Donut card on the Usage Stats distribution wall: tokens by project directory. */
 "usage.mix.project.title" = "Project Mix";
-
-/* Usage Mix empty state on the Projects dimension before a cost refresh has attributed anything */
-"usage.mix.projectsPending" = "Project attribution appears after the next Codex or Claude cost refresh.";
 
 /* Empty state inside the Provider Mix donut card. */
 "usage.mix.provider.empty" = "No provider traffic in this range";
@@ -2881,9 +2869,6 @@
 
 /* Donut card on the Usage Stats distribution wall: tokens by kind. */
 "usage.mix.tokenFlow.title" = "Token Flow";
-
-/* Caption under the total in the middle of the Usage Mix donut */
-"usage.mix.tokensCaption" = "tokens";
 
 /* Empty state body explaining the All chip */
 "usage.noHarnessSelected.detail" = "The All harnesses chip is a switch: click it again to put every harness back in the query.";
