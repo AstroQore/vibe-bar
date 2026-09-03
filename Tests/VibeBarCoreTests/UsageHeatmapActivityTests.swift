@@ -4,22 +4,65 @@ import XCTest
 final class UsageHeatmapActivityTests: XCTestCase {
     // MARK: - formatHourLabel
 
+    /// The label is a clock hour spelled the way the *app's* language spells
+    /// one, not a hardcoded English 12-hour string: an English reader gets
+    /// "3 PM", a Chinese reader "15时". Pinning the language is what makes
+    /// these assertions independent of the machine's own locale.
+    private func withLanguage(_ language: AppLanguage, _ body: () -> Void) {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = language
+        body()
+    }
+
+    /// English day periods are joined by U+202F NARROW NO-BREAK SPACE, not by
+    /// an ordinary space. Spelled as an escape rather than pasted in, because
+    /// an invisible character in a literal is a test nobody can debug.
+    private func englishHour(_ hour: String, _ period: String) -> String {
+        "\(hour)\u{202F}\(period)"
+    }
+
     func testFormatHourLabelMidnight() {
-        XCTAssertEqual(UsageHeatmap.formatHourLabel(0), "12am")
+        withLanguage(.english) {
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(0), englishHour("12", "AM"))
+        }
+        withLanguage(.simplifiedChinese) {
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(0), "0时")
+        }
     }
 
     func testFormatHourLabelNoon() {
-        XCTAssertEqual(UsageHeatmap.formatHourLabel(12), "12pm")
+        withLanguage(.english) {
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(12), englishHour("12", "PM"))
+        }
+        withLanguage(.simplifiedChinese) {
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(12), "12时")
+        }
     }
 
     func testFormatHourLabelMorning() {
-        XCTAssertEqual(UsageHeatmap.formatHourLabel(3), "3am")
-        XCTAssertEqual(UsageHeatmap.formatHourLabel(11), "11am")
+        withLanguage(.english) {
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(3), englishHour("3", "AM"))
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(11), englishHour("11", "AM"))
+        }
     }
 
     func testFormatHourLabelAfternoon() {
-        XCTAssertEqual(UsageHeatmap.formatHourLabel(15), "3pm")
-        XCTAssertEqual(UsageHeatmap.formatHourLabel(23), "11pm")
+        withLanguage(.english) {
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(15), englishHour("3", "PM"))
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(23), englishHour("11", "PM"))
+        }
+        withLanguage(.simplifiedChinese) {
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(15), "15时")
+        }
+    }
+
+    /// An hour outside 0...23 is clamped rather than rolling into the next day.
+    func testFormatHourLabelClampsOutOfRange() {
+        withLanguage(.english) {
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(-1), englishHour("12", "AM"))
+            XCTAssertEqual(UsageHeatmap.formatHourLabel(99), englishHour("11", "PM"))
+        }
     }
 
     // MARK: - hourTotals

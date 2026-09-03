@@ -103,6 +103,13 @@ public enum AppLocale {
         }
     }
 
+    /// Abbreviated weekday names, Sunday first, in the app's language —
+    /// "Sun" / "周日". The heatmaps index straight into this by a 0-based
+    /// weekday, which is the order `DateFormatter` uses.
+    public static var shortWeekdaySymbols: [String] {
+        dateFormatter(template: "EEE").shortWeekdaySymbols ?? []
+    }
+
     // MARK: - Numbers
 
     /// A grouped integer — "1,234" / "1,234" — in the app's language.
