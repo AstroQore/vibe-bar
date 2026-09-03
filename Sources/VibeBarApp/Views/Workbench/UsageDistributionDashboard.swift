@@ -40,37 +40,37 @@ struct UsageDistributionDashboard: View {
         ) {
             DistributionDonutCard(
                 density: density,
-                title: "Token Flow",
-                subtitle: "input · cache · output",
-                emptyMessage: "No token traffic in this range",
+                title: L10n.Usage.mixTokenFlowTitle,
+                subtitle: L10n.Usage.mixTokenFlowSubtitle,
+                emptyMessage: L10n.Usage.mixTokenFlowEmpty,
                 slices: collapsed(flowSlices)
             )
             DistributionDonutCard(
                 density: density,
-                title: "Harness Mix",
-                subtitle: "where requests ran",
-                emptyMessage: "No harness traffic in this range",
+                title: L10n.Usage.mixHarnessTitle,
+                subtitle: L10n.Usage.mixHarnessSubtitle,
+                emptyMessage: L10n.Usage.harnessMixEmpty,
                 slices: collapsed(harnessSlices)
             )
             DistributionDonutCard(
                 density: density,
-                title: "Provider Mix",
-                subtitle: "billing companies",
-                emptyMessage: "No provider traffic in this range",
+                title: L10n.Usage.mixProviderTitle,
+                subtitle: L10n.Usage.mixProviderSubtitle,
+                emptyMessage: L10n.Usage.mixProviderEmpty,
                 slices: collapsed(providerSlices)
             )
             DistributionDonutCard(
                 density: density,
-                title: "Project Mix",
-                subtitle: "Codex + Claude cwd · up to 30 d detail",
-                emptyMessage: "Project attribution appears after a Codex or Claude rescan",
+                title: L10n.Usage.mixProjectTitle,
+                subtitle: L10n.Usage.mixProjectSubtitle,
+                emptyMessage: L10n.Usage.mixProjectEmpty,
                 slices: collapsed(projectSlices)
             )
             DistributionDonutCard(
                 density: density,
-                title: "Model Mix",
-                subtitle: "canonical display names",
-                emptyMessage: "No model traffic in this range",
+                title: L10n.Usage.mixModelTitle,
+                subtitle: L10n.Usage.mixModelSubtitle,
+                emptyMessage: L10n.Usage.mixModelEmpty,
                 slices: collapsed(modelSlices)
             )
         }
@@ -78,16 +78,16 @@ struct UsageDistributionDashboard: View {
 
     private var flowSlices: [Slice] {
         [
-            Slice(id: "fresh", label: "Fresh input", detail: nil,
+            Slice(id: "fresh", label: L10n.Usage.tokensInput, detail: nil,
                   tokens: summary.freshInput, costMicros: nil,
                   color: Self.palette[0]),
-            Slice(id: "cache-read", label: "Cache read", detail: nil,
+            Slice(id: "cache-read", label: L10n.Usage.tokensCacheRead, detail: nil,
                   tokens: summary.cacheRead, costMicros: nil,
                   color: Self.palette[1]),
-            Slice(id: "cache-write", label: "Cache creation", detail: nil,
+            Slice(id: "cache-write", label: L10n.Usage.tokensCacheWrite, detail: nil,
                   tokens: summary.cacheCreation, costMicros: nil,
                   color: Self.palette[4]),
-            Slice(id: "output", label: "Output", detail: nil,
+            Slice(id: "output", label: L10n.Usage.tokensOutput, detail: nil,
                   tokens: summary.output, costMicros: nil,
                   color: Self.palette[2]),
         ].filter { $0.tokens > 0 }
@@ -152,8 +152,8 @@ struct UsageDistributionDashboard: View {
         return Array(sorted.prefix(visible)) + [
             Slice(
                 id: "other:\(sorted.first?.id ?? "empty")",
-                label: "Other",
-                detail: "\(tail.count) more",
+                label: L10n.Usage.mixOther,
+                detail: L10n.Usage.mixOtherCount(count: tail.count),
                 tokens: tail.reduce(0) { $0 + $1.tokens },
                 costMicros: tail.compactMap(\.costMicros).reduce(0, +),
                 color: Color.secondary.opacity(0.55)
@@ -232,7 +232,7 @@ private struct DistributionDonutCard: View {
                         Text(UsageFormatting.compactTokens(total))
                             .font(.system(size: density.bucketTitleFontSize, weight: .bold,
                                           design: .rounded).monospacedDigit())
-                        Text("tokens")
+                        Text(L10n.Usage.mixDonutUnit)
                             .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                             .foregroundStyle(.tertiary)
                     }
@@ -271,7 +271,11 @@ private struct DistributionDonutCard: View {
                             .font(.system(size: density.resetCountdownFontSize, weight: .semibold,
                                           design: .rounded).monospacedDigit())
                         HStack(spacing: 4) {
-                            Text(Double(slice.tokens) / Double(total), format: .percent.precision(.fractionLength(0)))
+                            Text(
+                                Double(slice.tokens) / Double(total),
+                                format: .percent.precision(.fractionLength(0))
+                                    .locale(AppLocale.current)
+                            )
                             if let cost = slice.costMicros {
                                 Text(UsageFormatting.compactUSD(cost))
                             }

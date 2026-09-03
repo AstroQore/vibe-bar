@@ -63,7 +63,7 @@ struct UsageFiltersBar: View {
         return Button {
             model.toggleAllHarnesses()
         } label: {
-            Text("All harnesses")
+            Text(L10n.Usage.filtersAllHarnesses)
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .foregroundStyle(selected ? .primary : .secondary)
                 .padding(.horizontal, 10)
@@ -71,8 +71,12 @@ struct UsageFiltersBar: View {
         }
         .buttonStyle(.vibeBar)
         .background(chipBackground(tint: .accentColor, selected: selected))
-        .help(selected ? "Click to select no harness" : "Click to include every harness")
-        .accessibilityLabel(selected ? "Select no harness" : "Show every harness")
+        .help(selected
+            ? L10n.Usage.filtersAllHarnessesHelpNone
+            : L10n.Usage.filtersAllHarnessesHelpEvery)
+        .accessibilityLabel(selected
+            ? L10n.Usage.filtersAllHarnessesSelectNone
+            : L10n.Usage.filtersAllHarnessesSelectEvery)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -101,7 +105,9 @@ struct UsageFiltersBar: View {
         .opacity(selected ? 1 : 0.65)
         .saturation(selected ? 1 : 0.50)
         .help(companyHelp(group))
-        .accessibilityLabel("\(group.company.vendorName), every harness")
+        .accessibilityLabel(
+            L10n.Usage.filtersCompanyHarnesses(company: group.company.vendorName)
+        )
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -135,7 +141,9 @@ struct UsageFiltersBar: View {
         // that a harness is in the query, so an off chip must not wear it.
         .opacity(selected ? 1 : 0.70)
         .saturation(selected ? 1 : 0.50)
-        .help("\(group.company.vendorName) · \(harness.displayName)\nClick to toggle · ⌥-click to solo")
+        .help(L10n.Usage.filtersHarnessHelp(
+            company: group.company.vendorName, harness: harness.displayName
+        ))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -169,13 +177,13 @@ struct UsageFiltersBar: View {
                     model.setSelectedTools(nil)
                     model.setSelectedModels(nil)
                 } label: {
-                    Label("Clear", systemImage: "xmark")
+                    Label(L10n.Common.clear, systemImage: "xmark")
                         .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(minHeight: 22)
                 }
                 .buttonStyle(WorkbenchPillButtonStyle())
-                .help("Clear harness, company, and model filters")
+                .help(L10n.Usage.filtersClearHelp)
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -192,7 +200,7 @@ struct UsageFiltersBar: View {
                 }
             }
             Divider()
-            Button("Edit custom range…") {
+            Button(L10n.Usage.filtersEditCustomRange) {
                 model.rangePreset = .custom
                 showsCustomRange = true
             }
@@ -210,27 +218,27 @@ struct UsageFiltersBar: View {
                 .vibeBarNoInitialFocus()
                 .vibeBarSystemControlFocus()
         }
-        .accessibilityLabel("Choose the date range")
+        .accessibilityLabel(L10n.Usage.filtersRangeMenu)
     }
 
     private var customRangeEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("CUSTOM RANGE")
+            Text(L10n.Usage.filtersCustomRangeTitle)
                 .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .tracking(0.4)
             DatePicker(
-                "From",
+                L10n.Usage.filtersCustomRangeFrom,
                 selection: $model.customStart,
                 in: ...Date(),
                 displayedComponents: [.date, .hourAndMinute]
             )
             DatePicker(
-                "To",
+                L10n.Usage.filtersCustomRangeTo,
                 selection: $model.customEnd,
                 displayedComponents: [.date, .hourAndMinute]
             )
-            Text("Choose hourly, daily, or weekly buckets from the chart toolbar.")
+            Text(L10n.Usage.filtersCustomRangeHint)
                 .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
         }
@@ -241,9 +249,9 @@ struct UsageFiltersBar: View {
 
     private var modelMenu: some View {
         Menu {
-            Button("All models") { model.setSelectedModels(nil) }
+            Button(L10n.Usage.filtersAllModels) { model.setSelectedModels(nil) }
             if model.availableModels.isEmpty {
-                Text("No models in range")
+                Text(L10n.Usage.filtersNoModelsInRange)
             } else {
                 Divider()
                 ForEach(model.availableModels, id: \.self) { name in
@@ -253,20 +261,26 @@ struct UsageFiltersBar: View {
                 }
             }
         } label: {
-            menuLabel(systemImage: "cpu", title: "Models", detail: modelSummary)
+            menuLabel(
+                systemImage: "cpu",
+                title: L10n.Usage.filtersModelsMenu,
+                detail: modelSummary
+            )
         }
         .menuStyle(.button)
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Choose which models to include")
+        .accessibilityLabel(L10n.Usage.filtersModelsMenuLabel)
     }
 
     private var refreshMenu: some View {
         Menu {
-            Picker("Auto refresh", selection: $model.refreshInterval) {
+            Picker(L10n.Usage.filtersAutoRefresh, selection: $model.refreshInterval) {
                 ForEach(UsageStatsViewModel.RefreshInterval.allCases) { interval in
-                    Text(interval == .off ? "Off" : "Every \(interval.rawValue)s")
+                    Text(interval == .off
+                        ? L10n.Common.off
+                        : L10n.Usage.filtersRefreshInterval(seconds: interval.rawValue))
                         .tag(interval)
                 }
             }
@@ -274,7 +288,7 @@ struct UsageFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: model.refreshInterval == .off ? "pause.circle" : "arrow.clockwise.circle",
-                title: "Auto",
+                title: L10n.Usage.filtersAutoMenu,
                 detail: model.refreshInterval.title
             )
         }
@@ -282,7 +296,7 @@ struct UsageFiltersBar: View {
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel("Choose how often the page re-queries")
+        .accessibilityLabel(L10n.Usage.filtersAutoMenuLabel)
     }
 
     // MARK: - Labels
@@ -318,14 +332,19 @@ struct UsageFiltersBar: View {
         let harnesses = group.harnesses.map(\.displayName).joined(separator: " + ")
         return harnesses.isEmpty
             ? group.company.vendorName
-            : "\(group.company.vendorName) · \(harnesses)"
+            : L10n.Usage.filtersCompanyHelp(
+                company: group.company.vendorName, harnesses: harnesses
+            )
     }
 
     private var rangeSummary: String {
-        if model.rangePreset == .all { return "All time" }
+        if model.rangePreset == .all { return L10n.Cost.modelRankingAllTime }
         let range = model.range
         let formatter = range.duration <= 86_400 ? Self.hourFormatter : Self.dayFormatter
-        return "\(formatter.string(from: range.start)) – \(formatter.string(from: range.end))"
+        return L10n.Usage.filtersRangeSpan(
+            start: formatter.string(from: range.start),
+            end: formatter.string(from: range.end)
+        )
     }
 
     private static var hourFormatter: DateFormatter {
@@ -337,11 +356,11 @@ struct UsageFiltersBar: View {
 
 
     private var modelSummary: String {
-        guard let selected = model.selectedModels else { return "All" }
+        guard let selected = model.selectedModels else { return L10n.Common.all }
         if selected.count == 1, let only = selected.first {
             return UsageModelNaming.canonicalDisplayName(only)
         }
-        return "\(selected.count) selected"
+        return L10n.Usage.filtersModelsSelected(count: selected.count)
     }
 
 }

@@ -7,7 +7,7 @@ private enum UsageChartMetric: String, CaseIterable, Identifiable {
     case cost
 
     var id: String { rawValue }
-    var title: String { self == .tokens ? "Tokens" : "Cost" }
+    var title: String { self == .tokens ? L10n.Usage.tokensTitle : L10n.Cost.title }
     var systemImage: String { self == .tokens ? "sum" : "dollarsign" }
 }
 
@@ -19,12 +19,14 @@ private enum UsageTokenComponent: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// The same four names the hero card's legend uses: one page, one
+    /// vocabulary for one number.
     var title: String {
         switch self {
-        case .input: "Input"
-        case .output: "Output"
-        case .cacheWrite: "Cache write"
-        case .cacheRead: "Cache read"
+        case .input: L10n.Usage.tokensInput
+        case .output: L10n.Usage.tokensOutput
+        case .cacheWrite: L10n.Usage.tokensCacheWrite
+        case .cacheRead: L10n.Usage.tokensCacheRead
         }
     }
 
@@ -247,7 +249,7 @@ struct UsageTrendChartView: View {
                     window: chartWindowBinding,
                     accent: .accentColor,
                     height: density.chartBrushHeight,
-                    accessibilityDescription: "Usage chart range navigator"
+                    accessibilityDescription: L10n.Usage.trendNavigatorLabel
                 ) { geometry in
                     miniProviderPaths(in: geometry)
                 }
@@ -273,7 +275,7 @@ struct UsageTrendChartView: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("USAGE OVER TIME")
+                    Text(L10n.Usage.trendTitle)
                         .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                         .foregroundStyle(.tertiary)
                         .tracking(0.4)
@@ -302,9 +304,9 @@ struct UsageTrendChartView: View {
 
     private var bucketSubtitle: String {
         switch series.bucket {
-        case .hour: "Hourly buckets"
-        case .day: "Local calendar days"
-        case .week: "Local calendar weeks"
+        case .hour: L10n.Usage.trendBucketHour
+        case .day: L10n.Usage.trendBucketDay
+        case .week: L10n.Usage.trendBucketWeek
         }
     }
 
@@ -347,7 +349,7 @@ struct UsageTrendChartView: View {
 
     private var granularitySelector: some View {
         Menu {
-            Picker("Granularity", selection: $model.trendGranularity) {
+            Picker(L10n.Usage.trendGranularity, selection: $model.trendGranularity) {
                 ForEach(Self.granularityOptions, id: \.self) { value in
                     Text(granularityTitle(value)).tag(value)
                         .disabled(!model.isTrendGranularityAvailable(value))
@@ -362,7 +364,7 @@ struct UsageTrendChartView: View {
         .menuIndicator(.hidden)
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .accessibilityLabel("Choose chart granularity")
+        .accessibilityLabel(L10n.Usage.trendGranularityLabel)
     }
 
     private var windowNavigator: some View {
@@ -371,18 +373,18 @@ struct UsageTrendChartView: View {
                 Image(systemName: "chevron.left")
             }
             .disabled(!model.canNavigateBackward)
-            .help("Previous window")
+            .help(L10n.Usage.trendPreviousWindow)
             Button { model.navigateWindow(by: 1) } label: {
                 Image(systemName: "chevron.right")
             }
             .disabled(!model.canNavigateForward)
-            .help("Next window")
+            .help(L10n.Usage.trendNextWindow)
             Button { model.resetWindow() } label: {
-                Label("Now", systemImage: "arrow.clockwise")
+                Label(L10n.Usage.trendNow, systemImage: "arrow.clockwise")
                     .labelStyle(.titleAndIcon)
             }
             .disabled(!model.canNavigateForward)
-            .help("Return to current window")
+            .help(L10n.Usage.trendNowHelp)
         }
         .font(.system(size: 10, weight: .semibold))
         .controlSize(.small)
@@ -412,7 +414,9 @@ struct UsageTrendChartView: View {
                 )
                 .opacity(visible ? 1 : 0.68)
                 .saturation(visible ? 1 : 0.45)
-                .help(visible ? "Hide \(provider.tool.displayName)" : "Show \(provider.tool.displayName)")
+                .help(visible
+                    ? L10n.Usage.trendHideProvider(provider: provider.tool.displayName)
+                    : L10n.Usage.trendShowProvider(provider: provider.tool.displayName))
                 .accessibilityAddTraits(visible ? [.isSelected] : [])
             }
         }
@@ -497,7 +501,7 @@ struct UsageTrendChartView: View {
             }
         }
         .frame(height: density.overviewCostChartHeight)
-        .accessibilityLabel("Token usage over time")
+        .accessibilityLabel(L10n.Usage.trendTokensChartLabel)
         .accessibilityValue(chartAccessibilityValue)
     }
 
@@ -578,7 +582,7 @@ struct UsageTrendChartView: View {
             }
         }
         .frame(height: density.overviewCostChartHeight)
-        .accessibilityLabel("Cost over time")
+        .accessibilityLabel(L10n.Usage.trendCostChartLabel)
         .accessibilityValue(chartAccessibilityValue)
     }
 
@@ -587,7 +591,7 @@ struct UsageTrendChartView: View {
             Image(systemName: "chart.xyaxis.line")
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("No usage recorded in this range")
+            Text(L10n.Usage.trendEmpty)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
         }
@@ -819,26 +823,28 @@ struct UsageTrendChartView: View {
 
     private var chartScopeRow: some View {
         HStack(spacing: 8) {
-            Text("Drag the navigator handles to focus this chart; filters and tables keep the full window.")
+            Text(L10n.Usage.trendScopeHint)
                 .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
             Spacer(minLength: 8)
             if !resolvedChartWindow.coversDomain {
-                Button("Fit") {
+                Button(L10n.Usage.trendFit) {
                     chartWindow = nil
                 }
                 .buttonStyle(.borderless)
                 .font(.system(size: 10, weight: .semibold))
-                .help("Show the full selected window")
+                .help(L10n.Usage.trendFitHelp)
             }
         }
     }
 
     private var chartAccessibilityValue: String {
-        "\(visibleProviders.count) providers, "
-            + "\(UsageFormatting.compactTokens(plan.visibleTokensTotal)) tokens, "
-            + "\(UsageFormatting.formatMicroUSD(plan.visibleCostTotal))"
+        L10n.Usage.trendAccessibilitySummary(
+            count: visibleProviders.count,
+            tokens: UsageFormatting.compactTokens(plan.visibleTokensTotal),
+            cost: UsageFormatting.formatMicroUSD(plan.visibleCostTotal)
+        )
     }
 
     /// Automatic first, then every explicit bucket.
@@ -847,18 +853,21 @@ struct UsageTrendChartView: View {
 
     private func granularityTitle(_ value: UsageTrendBucket?) -> String {
         switch value {
-        case .none: "Auto"
-        case .hour: "Hourly"
-        case .day: "Daily"
-        case .week: "Weekly"
+        case .none: L10n.Usage.trendGranularityAuto
+        case .hour: L10n.Usage.trendGranularityHourly
+        case .day: L10n.Usage.trendGranularityDaily
+        case .week: L10n.Usage.trendGranularityWeekly
         }
     }
 
+    /// The app's language, not the process locale. A bare `.dateTime` style
+    /// asks `Locale.current`, so a Chinese build on an English Mac drew "Aug
+    /// 17" along the axis of an otherwise translated page.
     private var axisFormat: Date.FormatStyle {
         switch series.bucket {
-        case .hour: .dateTime.hour()
-        case .day: .dateTime.month(.abbreviated).day()
-        case .week: .dateTime.month(.abbreviated).day()
+        case .hour: .dateTime.hour().locale(AppLocale.current)
+        case .day: .dateTime.month(.abbreviated).day().locale(AppLocale.current)
+        case .week: .dateTime.month(.abbreviated).day().locale(AppLocale.current)
         }
     }
 

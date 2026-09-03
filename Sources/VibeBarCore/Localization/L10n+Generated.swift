@@ -1515,6 +1515,138 @@ extension L10n {
     }
 
     public enum Usage {
+        /// `usage.breakdown.models` — Models
+        public static var breakdownModels: String {
+            L10n.string("usage.breakdown.models")
+        }
+        /// `usage.breakdown.periods` — Periods
+        public static var breakdownPeriods: String {
+            L10n.string("usage.breakdown.periods")
+        }
+        /// `usage.breakdown.projects` — Projects
+        public static var breakdownProjects: String {
+            L10n.string("usage.breakdown.projects")
+        }
+        /// `usage.breakdown.providers` — Providers
+        public static var breakdownProviders: String {
+            L10n.string("usage.breakdown.providers")
+        }
+        /// `usage.breakdown.requests` — Requests
+        public static var breakdownRequests: String {
+            L10n.string("usage.breakdown.requests")
+        }
+        /// `usage.filters.allHarnesses` — All harnesses
+        public static var filtersAllHarnesses: String {
+            L10n.string("usage.filters.allHarnesses")
+        }
+        /// `usage.filters.allHarnessesHelpEvery` — Click to include every harness
+        public static var filtersAllHarnessesHelpEvery: String {
+            L10n.string("usage.filters.allHarnessesHelpEvery")
+        }
+        /// `usage.filters.allHarnessesHelpNone` — Click to select no harness
+        public static var filtersAllHarnessesHelpNone: String {
+            L10n.string("usage.filters.allHarnessesHelpNone")
+        }
+        /// `usage.filters.allHarnessesSelectEvery` — Show every harness
+        public static var filtersAllHarnessesSelectEvery: String {
+            L10n.string("usage.filters.allHarnessesSelectEvery")
+        }
+        /// `usage.filters.allHarnessesSelectNone` — Select no harness
+        public static var filtersAllHarnessesSelectNone: String {
+            L10n.string("usage.filters.allHarnessesSelectNone")
+        }
+        /// `usage.filters.allModels` — All models
+        public static var filtersAllModels: String {
+            L10n.string("usage.filters.allModels")
+        }
+        /// `usage.filters.autoMenu` — Auto
+        public static var filtersAutoMenu: String {
+            L10n.string("usage.filters.autoMenu")
+        }
+        /// `usage.filters.autoMenuLabel` — Choose how often the page re-queries
+        public static var filtersAutoMenuLabel: String {
+            L10n.string("usage.filters.autoMenuLabel")
+        }
+        /// `usage.filters.autoRefresh` — Auto refresh
+        public static var filtersAutoRefresh: String {
+            L10n.string("usage.filters.autoRefresh")
+        }
+        /// `usage.filters.clearHelp` — Clear harness, company, and model filters
+        public static var filtersClearHelp: String {
+            L10n.string("usage.filters.clearHelp")
+        }
+        /// `usage.filters.companyHarnesses` — {company}, every harness
+        public static func filtersCompanyHarnesses(company: String) -> String {
+            L10n.string("usage.filters.companyHarnesses", company)
+        }
+        /// `usage.filters.companyHelp` — {company} · {harnesses}
+        public static func filtersCompanyHelp(company: String, harnesses: String) -> String {
+            L10n.string("usage.filters.companyHelp", company, harnesses)
+        }
+        /// `usage.filters.customRangeFrom` — From
+        public static var filtersCustomRangeFrom: String {
+            L10n.string("usage.filters.customRangeFrom")
+        }
+        /// `usage.filters.customRangeHint` — Choose hourly, daily, or weekly buckets from the chart toolbar.
+        public static var filtersCustomRangeHint: String {
+            L10n.string("usage.filters.customRangeHint")
+        }
+        /// `usage.filters.customRangeTitle` — CUSTOM RANGE
+        public static var filtersCustomRangeTitle: String {
+            L10n.string("usage.filters.customRangeTitle")
+        }
+        /// `usage.filters.customRangeTo` — To
+        public static var filtersCustomRangeTo: String {
+            L10n.string("usage.filters.customRangeTo")
+        }
+        /// `usage.filters.editCustomRange` — Edit custom range…
+        public static var filtersEditCustomRange: String {
+            L10n.string("usage.filters.editCustomRange")
+        }
+        /// `usage.filters.harnessHelp` — {company} · {harness}\nClick to toggle · ⌥-click to solo
+        public static func filtersHarnessHelp(company: String, harness: String) -> String {
+            L10n.string("usage.filters.harnessHelp", company, harness)
+        }
+        /// `usage.filters.modelsMenu` — Models
+        public static var filtersModelsMenu: String {
+            L10n.string("usage.filters.modelsMenu")
+        }
+        /// `usage.filters.modelsMenuLabel` — Choose which models to include
+        public static var filtersModelsMenuLabel: String {
+            L10n.string("usage.filters.modelsMenuLabel")
+        }
+        /// `usage.filters.modelsSelected` — {count, plural, one {1 selected} other {# selected}}
+        public static func filtersModelsSelected(count: Int) -> String {
+            L10n.string("usage.filters.modelsSelected", count)
+        }
+        /// `usage.filters.noModelsInRange` — No models in range
+        public static var filtersNoModelsInRange: String {
+            L10n.string("usage.filters.noModelsInRange")
+        }
+        /// `usage.filters.range14d` — 14d
+        public static var filtersRange14d: String {
+            L10n.string("usage.filters.range14d")
+        }
+        /// `usage.filters.range24h` — 24h
+        public static var filtersRange24h: String {
+            L10n.string("usage.filters.range24h")
+        }
+        /// `usage.filters.rangeCustom` — Custom
+        public static var filtersRangeCustom: String {
+            L10n.string("usage.filters.rangeCustom")
+        }
+        /// `usage.filters.rangeMenu` — Choose the date range
+        public static var filtersRangeMenu: String {
+            L10n.string("usage.filters.rangeMenu")
+        }
+        /// `usage.filters.rangeSpan` — {start} – {end}
+        public static func filtersRangeSpan(start: String, end: String) -> String {
+            L10n.string("usage.filters.rangeSpan", start, end)
+        }
+        /// `usage.filters.refreshInterval` — {seconds}s
+        public static func filtersRefreshInterval(seconds: Int) -> String {
+            L10n.string("usage.filters.refreshInterval", seconds)
+        }
         /// `usage.harnessMix.activeCount` — {count, plural, one {1 harness} other {# harnesses}} active in range
         public static func harnessMixActiveCount(count: Int) -> String {
             L10n.string("usage.harnessMix.activeCount", count)
@@ -1587,6 +1719,74 @@ extension L10n {
         public static var ledgerUnavailableTitle: String {
             L10n.string("usage.ledgerUnavailable.title")
         }
+        /// `usage.mix.donutUnit` — tokens
+        public static var mixDonutUnit: String {
+            L10n.string("usage.mix.donutUnit")
+        }
+        /// `usage.mix.harness.subtitle` — where requests ran
+        public static var mixHarnessSubtitle: String {
+            L10n.string("usage.mix.harness.subtitle")
+        }
+        /// `usage.mix.harness.title` — Harness Mix
+        public static var mixHarnessTitle: String {
+            L10n.string("usage.mix.harness.title")
+        }
+        /// `usage.mix.model.empty` — No model traffic in this range
+        public static var mixModelEmpty: String {
+            L10n.string("usage.mix.model.empty")
+        }
+        /// `usage.mix.model.subtitle` — canonical display names
+        public static var mixModelSubtitle: String {
+            L10n.string("usage.mix.model.subtitle")
+        }
+        /// `usage.mix.model.title` — Model Mix
+        public static var mixModelTitle: String {
+            L10n.string("usage.mix.model.title")
+        }
+        /// `usage.mix.other` — Other
+        public static var mixOther: String {
+            L10n.string("usage.mix.other")
+        }
+        /// `usage.mix.otherCount` — {count, plural, one {1 more} other {# more}}
+        public static func mixOtherCount(count: Int) -> String {
+            L10n.string("usage.mix.otherCount", count)
+        }
+        /// `usage.mix.project.empty` — Project attribution appears after a Codex or Claude rescan
+        public static var mixProjectEmpty: String {
+            L10n.string("usage.mix.project.empty")
+        }
+        /// `usage.mix.project.subtitle` — Codex + Claude cwd · up to 30 d detail
+        public static var mixProjectSubtitle: String {
+            L10n.string("usage.mix.project.subtitle")
+        }
+        /// `usage.mix.project.title` — Project Mix
+        public static var mixProjectTitle: String {
+            L10n.string("usage.mix.project.title")
+        }
+        /// `usage.mix.provider.empty` — No provider traffic in this range
+        public static var mixProviderEmpty: String {
+            L10n.string("usage.mix.provider.empty")
+        }
+        /// `usage.mix.provider.subtitle` — billing companies
+        public static var mixProviderSubtitle: String {
+            L10n.string("usage.mix.provider.subtitle")
+        }
+        /// `usage.mix.provider.title` — Provider Mix
+        public static var mixProviderTitle: String {
+            L10n.string("usage.mix.provider.title")
+        }
+        /// `usage.mix.tokenFlow.empty` — No token traffic in this range
+        public static var mixTokenFlowEmpty: String {
+            L10n.string("usage.mix.tokenFlow.empty")
+        }
+        /// `usage.mix.tokenFlow.subtitle` — input · cache · output
+        public static var mixTokenFlowSubtitle: String {
+            L10n.string("usage.mix.tokenFlow.subtitle")
+        }
+        /// `usage.mix.tokenFlow.title` — Token Flow
+        public static var mixTokenFlowTitle: String {
+            L10n.string("usage.mix.tokenFlow.title")
+        }
         /// `usage.noHarnessSelected.detail` — The All harnesses chip is a switch: click it again to put every harness back in the query.
         public static var noHarnessSelectedDetail: String {
             L10n.string("usage.noHarnessSelected.detail")
@@ -1598,6 +1798,154 @@ extension L10n {
         /// `usage.requestCount` — {count} requests
         public static func requestCount(count: String) -> String {
             L10n.string("usage.requestCount", count)
+        }
+        /// `usage.table.activeDays` — {count, plural, one {1 active day} other {# active days}}
+        public static func tableActiveDays(count: Int) -> String {
+            L10n.string("usage.table.activeDays", count)
+        }
+        /// `usage.table.activeHours` — {count, plural, one {1 active hour} other {# active hours}}
+        public static func tableActiveHours(count: Int) -> String {
+            L10n.string("usage.table.activeHours", count)
+        }
+        /// `usage.table.activeWeeks` — {count, plural, one {1 active week} other {# active weeks}}
+        public static func tableActiveWeeks(count: Int) -> String {
+            L10n.string("usage.table.activeWeeks", count)
+        }
+        /// `usage.table.cacheReadWrite` — R {read} · W {write}
+        public static func tableCacheReadWrite(read: String, write: String) -> String {
+            L10n.string("usage.table.cacheReadWrite", read, write)
+        }
+        /// `usage.table.column.average` — Avg/req
+        public static var tableColumnAverage: String {
+            L10n.string("usage.table.column.average")
+        }
+        /// `usage.table.column.cache` — Cache
+        public static var tableColumnCache: String {
+            L10n.string("usage.table.column.cache")
+        }
+        /// `usage.table.column.day` — Day
+        public static var tableColumnDay: String {
+            L10n.string("usage.table.column.day")
+        }
+        /// `usage.table.column.harness` — Harness
+        public static var tableColumnHarness: String {
+            L10n.string("usage.table.column.harness")
+        }
+        /// `usage.table.column.hour` — Hour
+        public static var tableColumnHour: String {
+            L10n.string("usage.table.column.hour")
+        }
+        /// `usage.table.column.input` — Input
+        public static var tableColumnInput: String {
+            L10n.string("usage.table.column.input")
+        }
+        /// `usage.table.column.model` — Model
+        public static var tableColumnModel: String {
+            L10n.string("usage.table.column.model")
+        }
+        /// `usage.table.column.output` — Output
+        public static var tableColumnOutput: String {
+            L10n.string("usage.table.column.output")
+        }
+        /// `usage.table.column.provider` — Provider
+        public static var tableColumnProvider: String {
+            L10n.string("usage.table.column.provider")
+        }
+        /// `usage.table.column.requests` — Requests
+        public static var tableColumnRequests: String {
+            L10n.string("usage.table.column.requests")
+        }
+        /// `usage.table.column.tier` — Tier
+        public static var tableColumnTier: String {
+            L10n.string("usage.table.column.tier")
+        }
+        /// `usage.table.column.time` — Time
+        public static var tableColumnTime: String {
+            L10n.string("usage.table.column.time")
+        }
+        /// `usage.table.column.weekOf` — Week of
+        public static var tableColumnWeekOf: String {
+            L10n.string("usage.table.column.weekOf")
+        }
+        /// `usage.table.companyCount` — {count, plural, one {1 company} other {# companies}}
+        public static func tableCompanyCount(count: Int) -> String {
+            L10n.string("usage.table.companyCount", count)
+        }
+        /// `usage.table.emptyModels` — No model totals in this range
+        public static var tableEmptyModels: String {
+            L10n.string("usage.table.emptyModels")
+        }
+        /// `usage.table.emptyPeriods` — No active periods in this range
+        public static var tableEmptyPeriods: String {
+            L10n.string("usage.table.emptyPeriods")
+        }
+        /// `usage.table.emptyProjects` — No project-attributed Codex or Claude usage in this range
+        public static var tableEmptyProjects: String {
+            L10n.string("usage.table.emptyProjects")
+        }
+        /// `usage.table.emptyProviders` — No provider totals in this range
+        public static var tableEmptyProviders: String {
+            L10n.string("usage.table.emptyProviders")
+        }
+        /// `usage.table.emptyRequests` — No request-level rows in this range
+        public static var tableEmptyRequests: String {
+            L10n.string("usage.table.emptyRequests")
+        }
+        /// `usage.table.harnessHelp` — {company} · {harness}
+        public static func tableHarnessHelp(company: String, harness: String) -> String {
+            L10n.string("usage.table.harnessHelp", company, harness)
+        }
+        /// `usage.table.inputHelp` — Fresh input: {input}\nCache read: {read}\nCache write: {write}
+        public static func tableInputHelp(input: String, read: String, write: String) -> String {
+            L10n.string("usage.table.inputHelp", input, read, write)
+        }
+        /// `usage.table.loadMore` — Load more ({remaining} remaining)
+        public static func tableLoadMore(remaining: Int) -> String {
+            L10n.string("usage.table.loadMore", remaining)
+        }
+        /// `usage.table.loadingMore` — Loading more requests…
+        public static var tableLoadingMore: String {
+            L10n.string("usage.table.loadingMore")
+        }
+        /// `usage.table.modelCount` — {count, plural, one {1 model} other {# models}}
+        public static func tableModelCount(count: Int) -> String {
+            L10n.string("usage.table.modelCount", count)
+        }
+        /// `usage.table.periodRow` — {period}, {tokens}, {cost}
+        public static func tablePeriodRow(period: String, tokens: String, cost: String) -> String {
+            L10n.string("usage.table.periodRow", period, tokens, cost)
+        }
+        /// `usage.table.projectCount` — {count, plural, one {1 project} other {# projects}} · up to 30 d detail
+        public static func tableProjectCount(count: Int) -> String {
+            L10n.string("usage.table.projectCount", count)
+        }
+        /// `usage.table.requestRow` — {time}, {harness}, {model}, {tokens}, {cost}
+        public static func tableRequestRow(time: String, harness: String, model: String, tokens: String, cost: String) -> String {
+            L10n.string("usage.table.requestRow", time, harness, model, tokens, cost)
+        }
+        /// `usage.table.requestsLabel` — Request usage table
+        public static var tableRequestsLabel: String {
+            L10n.string("usage.table.requestsLabel")
+        }
+        /// `usage.table.requestsLoaded` — {loaded} of {total} requests
+        public static func tableRequestsLoaded(loaded: Int, total: Int) -> String {
+            L10n.string("usage.table.requestsLoaded", loaded, total)
+        }
+        /// `usage.table.showMorePeriods` — Show {count} more of {total} periods
+        public static func tableShowMorePeriods(count: Int, total: Int) -> String {
+            L10n.string("usage.table.showMorePeriods", count, total)
+        }
+        /// `usage.table.statRow` — {name}, {requests, plural, one {1 request} other {# requests}}, {tokens}, {cost}
+        public static func tableStatRow(name: String, requests: Int, tokens: String, cost: String) -> String {
+            L10n.string("usage.table.statRow", name, requests, tokens, cost)
+        }
+        /// `usage.table.unpriced` — unpriced
+        public static var tableUnpriced: String {
+            L10n.string("usage.table.unpriced")
+        }
+        /// `usage.table.unpricedHelp` — No price was available for this request
+        public static var tableUnpricedHelp: String {
+            L10n.string("usage.table.unpricedHelp")
         }
         /// `usage.tokens.cacheRead` — Cache read
         public static var tokensCacheRead: String {
@@ -1614,6 +1962,106 @@ extension L10n {
         /// `usage.tokens.output` — Out
         public static var tokensOutput: String {
             L10n.string("usage.tokens.output")
+        }
+        /// `usage.tokens.title` — Tokens
+        public static var tokensTitle: String {
+            L10n.string("usage.tokens.title")
+        }
+        /// `usage.trend.accessibilitySummary` — {count, plural, one {1 provider} other {# providers}}, {tokens} tokens, {cost}
+        public static func trendAccessibilitySummary(count: Int, tokens: String, cost: String) -> String {
+            L10n.string("usage.trend.accessibilitySummary", count, tokens, cost)
+        }
+        /// `usage.trend.bucketDay` — Local calendar days
+        public static var trendBucketDay: String {
+            L10n.string("usage.trend.bucketDay")
+        }
+        /// `usage.trend.bucketHour` — Hourly buckets
+        public static var trendBucketHour: String {
+            L10n.string("usage.trend.bucketHour")
+        }
+        /// `usage.trend.bucketWeek` — Local calendar weeks
+        public static var trendBucketWeek: String {
+            L10n.string("usage.trend.bucketWeek")
+        }
+        /// `usage.trend.costChartLabel` — Cost over time
+        public static var trendCostChartLabel: String {
+            L10n.string("usage.trend.costChartLabel")
+        }
+        /// `usage.trend.empty` — No usage recorded in this range
+        public static var trendEmpty: String {
+            L10n.string("usage.trend.empty")
+        }
+        /// `usage.trend.fit` — Fit
+        public static var trendFit: String {
+            L10n.string("usage.trend.fit")
+        }
+        /// `usage.trend.fitHelp` — Show the full selected window
+        public static var trendFitHelp: String {
+            L10n.string("usage.trend.fitHelp")
+        }
+        /// `usage.trend.granularity` — Granularity
+        public static var trendGranularity: String {
+            L10n.string("usage.trend.granularity")
+        }
+        /// `usage.trend.granularityAuto` — Auto
+        public static var trendGranularityAuto: String {
+            L10n.string("usage.trend.granularityAuto")
+        }
+        /// `usage.trend.granularityDaily` — Daily
+        public static var trendGranularityDaily: String {
+            L10n.string("usage.trend.granularityDaily")
+        }
+        /// `usage.trend.granularityHourly` — Hourly
+        public static var trendGranularityHourly: String {
+            L10n.string("usage.trend.granularityHourly")
+        }
+        /// `usage.trend.granularityLabel` — Choose chart granularity
+        public static var trendGranularityLabel: String {
+            L10n.string("usage.trend.granularityLabel")
+        }
+        /// `usage.trend.granularityWeekly` — Weekly
+        public static var trendGranularityWeekly: String {
+            L10n.string("usage.trend.granularityWeekly")
+        }
+        /// `usage.trend.hideProvider` — Hide {provider}
+        public static func trendHideProvider(provider: String) -> String {
+            L10n.string("usage.trend.hideProvider", provider)
+        }
+        /// `usage.trend.navigatorLabel` — Usage chart range navigator
+        public static var trendNavigatorLabel: String {
+            L10n.string("usage.trend.navigatorLabel")
+        }
+        /// `usage.trend.nextWindow` — Next window
+        public static var trendNextWindow: String {
+            L10n.string("usage.trend.nextWindow")
+        }
+        /// `usage.trend.now` — Now
+        public static var trendNow: String {
+            L10n.string("usage.trend.now")
+        }
+        /// `usage.trend.nowHelp` — Return to current window
+        public static var trendNowHelp: String {
+            L10n.string("usage.trend.nowHelp")
+        }
+        /// `usage.trend.previousWindow` — Previous window
+        public static var trendPreviousWindow: String {
+            L10n.string("usage.trend.previousWindow")
+        }
+        /// `usage.trend.scopeHint` — Drag the navigator handles to focus this chart; filters and tables keep the full window.
+        public static var trendScopeHint: String {
+            L10n.string("usage.trend.scopeHint")
+        }
+        /// `usage.trend.showProvider` — Show {provider}
+        public static func trendShowProvider(provider: String) -> String {
+            L10n.string("usage.trend.showProvider", provider)
+        }
+        /// `usage.trend.title` — USAGE OVER TIME
+        public static var trendTitle: String {
+            L10n.string("usage.trend.title")
+        }
+        /// `usage.trend.tokensChartLabel` — Token usage over time
+        public static var trendTokensChartLabel: String {
+            L10n.string("usage.trend.tokensChartLabel")
         }
         /// `usage.whenYouUse.everything` — When you use everything
         public static var whenYouUseEverything: String {
@@ -3390,6 +3838,39 @@ extension L10n {
         "status.overview.partialOutage",
         "status.overview.refreshing",
         "status.overview.title",
+        "usage.breakdown.models",
+        "usage.breakdown.periods",
+        "usage.breakdown.projects",
+        "usage.breakdown.providers",
+        "usage.breakdown.requests",
+        "usage.filters.allHarnesses",
+        "usage.filters.allHarnessesHelpEvery",
+        "usage.filters.allHarnessesHelpNone",
+        "usage.filters.allHarnessesSelectEvery",
+        "usage.filters.allHarnessesSelectNone",
+        "usage.filters.allModels",
+        "usage.filters.autoMenu",
+        "usage.filters.autoMenuLabel",
+        "usage.filters.autoRefresh",
+        "usage.filters.clearHelp",
+        "usage.filters.companyHarnesses",
+        "usage.filters.companyHelp",
+        "usage.filters.customRangeFrom",
+        "usage.filters.customRangeHint",
+        "usage.filters.customRangeTitle",
+        "usage.filters.customRangeTo",
+        "usage.filters.editCustomRange",
+        "usage.filters.harnessHelp",
+        "usage.filters.modelsMenu",
+        "usage.filters.modelsMenuLabel",
+        "usage.filters.modelsSelected",
+        "usage.filters.noModelsInRange",
+        "usage.filters.range14d",
+        "usage.filters.range24h",
+        "usage.filters.rangeCustom",
+        "usage.filters.rangeMenu",
+        "usage.filters.rangeSpan",
+        "usage.filters.refreshInterval",
         "usage.harnessMix.activeCount",
         "usage.harnessMix.byRealTokens",
         "usage.harnessMix.empty",
@@ -3408,13 +3889,92 @@ extension L10n {
         "usage.hero.unpricedHelp",
         "usage.ledgerUnavailable.detail",
         "usage.ledgerUnavailable.title",
+        "usage.mix.donutUnit",
+        "usage.mix.harness.subtitle",
+        "usage.mix.harness.title",
+        "usage.mix.model.empty",
+        "usage.mix.model.subtitle",
+        "usage.mix.model.title",
+        "usage.mix.other",
+        "usage.mix.otherCount",
+        "usage.mix.project.empty",
+        "usage.mix.project.subtitle",
+        "usage.mix.project.title",
+        "usage.mix.provider.empty",
+        "usage.mix.provider.subtitle",
+        "usage.mix.provider.title",
+        "usage.mix.tokenFlow.empty",
+        "usage.mix.tokenFlow.subtitle",
+        "usage.mix.tokenFlow.title",
         "usage.noHarnessSelected.detail",
         "usage.noHarnessSelected.title",
         "usage.requestCount",
+        "usage.table.activeDays",
+        "usage.table.activeHours",
+        "usage.table.activeWeeks",
+        "usage.table.cacheReadWrite",
+        "usage.table.column.average",
+        "usage.table.column.cache",
+        "usage.table.column.day",
+        "usage.table.column.harness",
+        "usage.table.column.hour",
+        "usage.table.column.input",
+        "usage.table.column.model",
+        "usage.table.column.output",
+        "usage.table.column.provider",
+        "usage.table.column.requests",
+        "usage.table.column.tier",
+        "usage.table.column.time",
+        "usage.table.column.weekOf",
+        "usage.table.companyCount",
+        "usage.table.emptyModels",
+        "usage.table.emptyPeriods",
+        "usage.table.emptyProjects",
+        "usage.table.emptyProviders",
+        "usage.table.emptyRequests",
+        "usage.table.harnessHelp",
+        "usage.table.inputHelp",
+        "usage.table.loadMore",
+        "usage.table.loadingMore",
+        "usage.table.modelCount",
+        "usage.table.periodRow",
+        "usage.table.projectCount",
+        "usage.table.requestRow",
+        "usage.table.requestsLabel",
+        "usage.table.requestsLoaded",
+        "usage.table.showMorePeriods",
+        "usage.table.statRow",
+        "usage.table.unpriced",
+        "usage.table.unpricedHelp",
         "usage.tokens.cacheRead",
         "usage.tokens.cacheWrite",
         "usage.tokens.input",
         "usage.tokens.output",
+        "usage.tokens.title",
+        "usage.trend.accessibilitySummary",
+        "usage.trend.bucketDay",
+        "usage.trend.bucketHour",
+        "usage.trend.bucketWeek",
+        "usage.trend.costChartLabel",
+        "usage.trend.empty",
+        "usage.trend.fit",
+        "usage.trend.fitHelp",
+        "usage.trend.granularity",
+        "usage.trend.granularityAuto",
+        "usage.trend.granularityDaily",
+        "usage.trend.granularityHourly",
+        "usage.trend.granularityLabel",
+        "usage.trend.granularityWeekly",
+        "usage.trend.hideProvider",
+        "usage.trend.navigatorLabel",
+        "usage.trend.nextWindow",
+        "usage.trend.now",
+        "usage.trend.nowHelp",
+        "usage.trend.previousWindow",
+        "usage.trend.scopeHint",
+        "usage.trend.showProvider",
+        "usage.trend.title",
+        "usage.trend.tokensChartLabel",
         "usage.whenYouUse.everything",
         "usage.whenYouUse.googleAI",
         "usage.whenYouUse.spaceXAI",
@@ -3779,8 +4339,18 @@ extension L10n {
         "quota.resetHistory.verdict.leaky",
         "quota.resetHistory.verdict.wasteful",
         "status.card.componentCount",
+        "usage.filters.modelsSelected",
         "usage.harnessMix.activeCount",
         "usage.hero.unpricedHelp",
+        "usage.mix.otherCount",
+        "usage.table.activeDays",
+        "usage.table.activeHours",
+        "usage.table.activeWeeks",
+        "usage.table.companyCount",
+        "usage.table.modelCount",
+        "usage.table.projectCount",
+        "usage.table.statRow",
+        "usage.trend.accessibilitySummary",
         "workbench.sessions.count.sessions",
         "workbench.sessions.delete.confirm",
         "workbench.sessions.row.autoReviewsMerged",

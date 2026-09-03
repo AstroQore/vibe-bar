@@ -1659,6 +1659,144 @@
     "comment": "Card title on the Overview's service-status tile row",
     "value": "Status"
   },
+  "usage.breakdown.models": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per model.",
+    "value": "Models"
+  },
+  "usage.breakdown.periods": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per time bucket.",
+    "value": "Periods"
+  },
+  "usage.breakdown.projects": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per project directory.",
+    "value": "Projects"
+  },
+  "usage.breakdown.providers": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per L1 company.",
+    "value": "Providers"
+  },
+  "usage.breakdown.requests": {
+    "comment": "Tab over the Usage Stats breakdown table: one row per request. The all-caps hero metric of the same word is usage.hero.requests.",
+    "value": "Requests"
+  },
+  "usage.filters.allHarnesses": {
+    "comment": "Chip that puts every harness into the Usage Stats query; 'harness' is the usage-axis unit and stays as spelled.",
+    "value": "All harnesses"
+  },
+  "usage.filters.allHarnessesHelpEvery": {
+    "comment": "Tooltip on the All harnesses chip while the selection is partial or empty — clicking it selects everything.",
+    "value": "Click to include every harness"
+  },
+  "usage.filters.allHarnessesHelpNone": {
+    "comment": "Tooltip on the All harnesses chip while every harness is in the query — clicking it empties the selection.",
+    "value": "Click to select no harness"
+  },
+  "usage.filters.allHarnessesSelectEvery": {
+    "comment": "Screen-reader label for the All harnesses chip while the selection is partial or empty.",
+    "value": "Show every harness"
+  },
+  "usage.filters.allHarnessesSelectNone": {
+    "comment": "Screen-reader label for the All harnesses chip while every harness is in the query.",
+    "value": "Select no harness"
+  },
+  "usage.filters.allModels": {
+    "comment": "Menu item that clears the model filter on the Usage Stats page. Unrelated to the quota group of the same name, which is quota.group.allModels.",
+    "value": "All models"
+  },
+  "usage.filters.autoMenu": {
+    "comment": "Caption on the auto-refresh pill; the call site uppercases it.",
+    "value": "Auto"
+  },
+  "usage.filters.autoMenuLabel": {
+    "comment": "Screen-reader label for the auto-refresh menu button.",
+    "value": "Choose how often the page re-queries"
+  },
+  "usage.filters.autoRefresh": {
+    "comment": "Picker label inside the auto-refresh menu.",
+    "value": "Auto refresh"
+  },
+  "usage.filters.clearHelp": {
+    "comment": "Tooltip on the Clear button in the Usage Stats filter bar.",
+    "value": "Clear harness, company, and model filters"
+  },
+  "usage.filters.companyHarnesses": {
+    "comment": "Screen-reader label for a company section chip; company is an L1 company name and is never translated.",
+    "value": "{company}, every harness"
+  },
+  "usage.filters.companyHelp": {
+    "comment": "Tooltip on a company section chip, listing the harnesses it toggles. Both arguments are names and stay as spelled.",
+    "value": "{company} · {harnesses}"
+  },
+  "usage.filters.customRangeFrom": {
+    "comment": "Date picker label for the start of a custom range.",
+    "value": "From"
+  },
+  "usage.filters.customRangeHint": {
+    "comment": "Footnote in the custom date-range popover.",
+    "value": "Choose hourly, daily, or weekly buckets from the chart toolbar."
+  },
+  "usage.filters.customRangeTitle": {
+    "comment": "All-caps heading of the custom date-range popover. English sets it in caps by the copy; Chinese has no case and relies on weight and colour.",
+    "value": "CUSTOM RANGE"
+  },
+  "usage.filters.customRangeTo": {
+    "comment": "Date picker label for the end of a custom range.",
+    "value": "To"
+  },
+  "usage.filters.editCustomRange": {
+    "comment": "Menu item that opens the custom date-range editor.",
+    "value": "Edit custom range…"
+  },
+  "usage.filters.harnessHelp": {
+    "comment": "Tooltip on a harness chip. First line names the chip (company and harness names are never translated), second line explains the click and the ⌥-click.",
+    "value": "{company} · {harness}\nClick to toggle · ⌥-click to solo"
+  },
+  "usage.filters.modelsMenu": {
+    "comment": "Caption on the model filter pill; the call site uppercases it.",
+    "value": "Models"
+  },
+  "usage.filters.modelsMenuLabel": {
+    "comment": "Screen-reader label for the model filter menu button.",
+    "value": "Choose which models to include"
+  },
+  "usage.filters.modelsSelected": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Model filter pill value when several models are selected.",
+    "value": "{count, plural, one {1 selected} other {# selected}}"
+  },
+  "usage.filters.noModelsInRange": {
+    "comment": "Placeholder inside the model filter menu when the selected range recorded no model.",
+    "value": "No models in range"
+  },
+  "usage.filters.range14d": {
+    "comment": "Date-range preset: the last 14 local calendar days. The 7- and 30-day presets reuse cost.timeframe.weekShort / monthShort.",
+    "value": "14d"
+  },
+  "usage.filters.range24h": {
+    "comment": "Date-range preset: a rolling 24-hour window ending now.",
+    "value": "24h"
+  },
+  "usage.filters.rangeCustom": {
+    "comment": "Date-range preset: the hand-picked start and end.",
+    "value": "Custom"
+  },
+  "usage.filters.rangeMenu": {
+    "comment": "Screen-reader label for the date-range menu button.",
+    "value": "Choose the date range"
+  },
+  "usage.filters.rangeSpan": {
+    "comment": "Date-range pill value: two already-formatted dates around an en dash.",
+    "value": "{start} – {end}"
+  },
+  "usage.filters.refreshInterval": {
+    "args": {
+      "seconds": "int"
+    },
+    "comment": "A polling interval, read both as an option inside the auto-refresh menu and as the value on the pill that opens it. The off state is common.off.",
+    "value": "{seconds}s"
+  },
   "usage.harnessMix.activeCount": {
     "args": {
       "count": "int"
@@ -1740,6 +1878,77 @@
     "comment": "Empty state when the local per-request ledger could not be opened",
     "value": "Usage ledger unavailable"
   },
+  "usage.mix.donutUnit": {
+    "comment": "Unit under the total in the middle of a donut card.",
+    "value": "tokens"
+  },
+  "usage.mix.harness.subtitle": {
+    "comment": "Caption under the Harness Mix donut title.",
+    "value": "where requests ran"
+  },
+  "usage.mix.harness.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by harness. Title-case variant of the all-caps section label usage.harnessMix.title.",
+    "value": "Harness Mix"
+  },
+  "usage.mix.model.empty": {
+    "comment": "Empty state inside the Model Mix donut card.",
+    "value": "No model traffic in this range"
+  },
+  "usage.mix.model.subtitle": {
+    "comment": "Caption under the Model Mix donut title.",
+    "value": "canonical display names"
+  },
+  "usage.mix.model.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by model.",
+    "value": "Model Mix"
+  },
+  "usage.mix.other": {
+    "comment": "Donut slice that collapses everything below the top five.",
+    "value": "Other"
+  },
+  "usage.mix.otherCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Caption under the collapsed donut slice, counting what it folded in.",
+    "value": "{count, plural, one {1 more} other {# more}}"
+  },
+  "usage.mix.project.empty": {
+    "comment": "Empty state inside the Project Mix donut card; Codex and Claude are harness names and stay as spelled.",
+    "value": "Project attribution appears after a Codex or Claude rescan"
+  },
+  "usage.mix.project.subtitle": {
+    "comment": "Caption under the Project Mix donut title; Codex and Claude are harness names and stay as spelled.",
+    "value": "Codex + Claude cwd · up to 30 d detail"
+  },
+  "usage.mix.project.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by project directory.",
+    "value": "Project Mix"
+  },
+  "usage.mix.provider.empty": {
+    "comment": "Empty state inside the Provider Mix donut card.",
+    "value": "No provider traffic in this range"
+  },
+  "usage.mix.provider.subtitle": {
+    "comment": "Caption under the Provider Mix donut title.",
+    "value": "billing companies"
+  },
+  "usage.mix.provider.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by L1 company.",
+    "value": "Provider Mix"
+  },
+  "usage.mix.tokenFlow.empty": {
+    "comment": "Empty state inside the Token Flow donut card.",
+    "value": "No token traffic in this range"
+  },
+  "usage.mix.tokenFlow.subtitle": {
+    "comment": "Caption under the Token Flow donut title.",
+    "value": "input · cache · output"
+  },
+  "usage.mix.tokenFlow.title": {
+    "comment": "Donut card on the Usage Stats distribution wall: tokens by kind.",
+    "value": "Token Flow"
+  },
   "usage.noHarnessSelected.detail": {
     "comment": "Empty state body explaining the All chip",
     "value": "The All harnesses chip is a switch: click it again to put every harness back in the query."
@@ -1751,6 +1960,186 @@
   "usage.requestCount": {
     "comment": "Footer figure; count arrives already grouped by the number formatter",
     "value": "{count} requests"
+  },
+  "usage.table.activeDays": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Periods table when the series is bucketed by day.",
+    "value": "{count, plural, one {1 active day} other {# active days}}"
+  },
+  "usage.table.activeHours": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Periods table when the series is bucketed by hour.",
+    "value": "{count, plural, one {1 active hour} other {# active hours}}"
+  },
+  "usage.table.activeWeeks": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Periods table when the series is bucketed by week.",
+    "value": "{count, plural, one {1 active week} other {# active weeks}}"
+  },
+  "usage.table.cacheReadWrite": {
+    "comment": "Second line of a request row's input cell: cache read and cache write, both already formatted, e.g. 12.3k.",
+    "value": "R {read} · W {write}"
+  },
+  "usage.table.column.average": {
+    "comment": "Models table column header, average cost per request; the call site uppercases it.",
+    "value": "Avg/req"
+  },
+  "usage.table.column.cache": {
+    "comment": "Periods table column header, cache read plus cache write; the call site uppercases it.",
+    "value": "Cache"
+  },
+  "usage.table.column.day": {
+    "comment": "Periods table leading column header when the series is bucketed by day; the call site uppercases it.",
+    "value": "Day"
+  },
+  "usage.table.column.harness": {
+    "comment": "Requests table column header; the call site uppercases it. 'Harness' is the usage-axis unit and stays as spelled.",
+    "value": "Harness"
+  },
+  "usage.table.column.hour": {
+    "comment": "Periods table leading column header when the series is bucketed by hour; the call site uppercases it.",
+    "value": "Hour"
+  },
+  "usage.table.column.input": {
+    "comment": "Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.input.",
+    "value": "Input"
+  },
+  "usage.table.column.model": {
+    "comment": "Requests and Models table column header; the call site uppercases it.",
+    "value": "Model"
+  },
+  "usage.table.column.output": {
+    "comment": "Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.output.",
+    "value": "Output"
+  },
+  "usage.table.column.provider": {
+    "comment": "Providers and Projects table column header; the call site uppercases it.",
+    "value": "Provider"
+  },
+  "usage.table.column.requests": {
+    "comment": "Providers, Projects and Models table column header; the call site uppercases it.",
+    "value": "Requests"
+  },
+  "usage.table.column.tier": {
+    "comment": "Requests table column header, the service tier a request was billed at; the call site uppercases it.",
+    "value": "Tier"
+  },
+  "usage.table.column.time": {
+    "comment": "Requests table column header; the call site uppercases it.",
+    "value": "Time"
+  },
+  "usage.table.column.weekOf": {
+    "comment": "Periods table leading column header when the series is bucketed by week; the cell holds the week's first day.",
+    "value": "Week of"
+  },
+  "usage.table.companyCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Providers table; the rows are L1 companies.",
+    "value": "{count, plural, one {1 company} other {# companies}}"
+  },
+  "usage.table.emptyModels": {
+    "comment": "Empty state in place of the Models table.",
+    "value": "No model totals in this range"
+  },
+  "usage.table.emptyPeriods": {
+    "comment": "Empty state in place of the Periods table.",
+    "value": "No active periods in this range"
+  },
+  "usage.table.emptyProjects": {
+    "comment": "Empty state in place of the Projects table; Codex and Claude are harness names and stay as spelled.",
+    "value": "No project-attributed Codex or Claude usage in this range"
+  },
+  "usage.table.emptyProviders": {
+    "comment": "Empty state in place of the Providers table.",
+    "value": "No provider totals in this range"
+  },
+  "usage.table.emptyRequests": {
+    "comment": "Empty state in place of the Requests table.",
+    "value": "No request-level rows in this range"
+  },
+  "usage.table.harnessHelp": {
+    "comment": "Tooltip on a request row's harness cell; both arguments are names and are never translated.",
+    "value": "{company} · {harness}"
+  },
+  "usage.table.inputHelp": {
+    "comment": "Tooltip on a request row's input cell. One key rather than three: the three lines are one block and a translation may need to reorder them. All three counts arrive formatted.",
+    "value": "Fresh input: {input}\nCache read: {read}\nCache write: {write}"
+  },
+  "usage.table.loadMore": {
+    "args": {
+      "remaining": "int"
+    },
+    "comment": "Button that loads the next page of request rows.",
+    "value": "Load more ({remaining} remaining)"
+  },
+  "usage.table.loadingMore": {
+    "comment": "Button label and spinner label while another page of request rows is loading.",
+    "value": "Loading more requests…"
+  },
+  "usage.table.modelCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Models table.",
+    "value": "{count, plural, one {1 model} other {# models}}"
+  },
+  "usage.table.periodRow": {
+    "comment": "Screen-reader label for a Periods row; every argument arrives already formatted.",
+    "value": "{period}, {tokens}, {cost}"
+  },
+  "usage.table.projectCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Row count over the Projects table, with the retention window the attribution covers.",
+    "value": "{count, plural, one {1 project} other {# projects}} · up to 30 d detail"
+  },
+  "usage.table.requestRow": {
+    "comment": "Screen-reader label for a Requests row; time, model, tokens and cost arrive formatted and harness is a name.",
+    "value": "{time}, {harness}, {model}, {tokens}, {cost}"
+  },
+  "usage.table.requestsLabel": {
+    "comment": "Screen-reader label for the Requests table's scroll area.",
+    "value": "Request usage table"
+  },
+  "usage.table.requestsLoaded": {
+    "args": {
+      "loaded": "int",
+      "total": "int"
+    },
+    "comment": "Row count over the Requests table while more pages remain.",
+    "value": "{loaded} of {total} requests"
+  },
+  "usage.table.showMorePeriods": {
+    "args": {
+      "count": "int",
+      "total": "int"
+    },
+    "comment": "Button under a clamped Periods table that reveals the next page of rows.",
+    "value": "Show {count} more of {total} periods"
+  },
+  "usage.table.statRow": {
+    "args": {
+      "requests": "int"
+    },
+    "comment": "Screen-reader label for a Providers, Projects or Models row; name is a company, project or model name and tokens and cost arrive formatted.",
+    "value": "{name}, {requests, plural, one {1 request} other {# requests}}, {tokens}, {cost}"
+  },
+  "usage.table.unpriced": {
+    "comment": "Cost cell of a request no price could be resolved for.",
+    "value": "unpriced"
+  },
+  "usage.table.unpricedHelp": {
+    "comment": "Tooltip on the cost cell of a request no price could be resolved for.",
+    "value": "No price was available for this request"
   },
   "usage.tokens.cacheRead": {
     "comment": "Token composition legend: cache read tokens",
@@ -1767,6 +2156,109 @@
   "usage.tokens.output": {
     "comment": "Token composition legend: output tokens",
     "value": "Out"
+  },
+  "usage.tokens.title": {
+    "comment": "The token metric itself: the chart's Tokens toggle and the TOKENS table column.",
+    "value": "Tokens"
+  },
+  "usage.trend.accessibilitySummary": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Screen-reader value of the trend chart; tokens and cost arrive already formatted, e.g. 3.40M and $12.34.",
+    "value": "{count, plural, one {1 provider} other {# providers}}, {tokens} tokens, {cost}"
+  },
+  "usage.trend.bucketDay": {
+    "comment": "Subtitle under the trend chart title when the series is bucketed by local calendar day.",
+    "value": "Local calendar days"
+  },
+  "usage.trend.bucketHour": {
+    "comment": "Subtitle under the trend chart title when the series is bucketed by hour.",
+    "value": "Hourly buckets"
+  },
+  "usage.trend.bucketWeek": {
+    "comment": "Subtitle under the trend chart title when the series is bucketed by local calendar week.",
+    "value": "Local calendar weeks"
+  },
+  "usage.trend.costChartLabel": {
+    "comment": "Screen-reader label for the trend chart in cost mode.",
+    "value": "Cost over time"
+  },
+  "usage.trend.empty": {
+    "comment": "Empty state in place of the trend chart.",
+    "value": "No usage recorded in this range"
+  },
+  "usage.trend.fit": {
+    "comment": "Button that widens the chart back to the whole selected window.",
+    "value": "Fit"
+  },
+  "usage.trend.fitHelp": {
+    "comment": "Tooltip on the button that widens the chart back to the whole selected window.",
+    "value": "Show the full selected window"
+  },
+  "usage.trend.granularity": {
+    "comment": "Picker label inside the chart granularity menu.",
+    "value": "Granularity"
+  },
+  "usage.trend.granularityAuto": {
+    "comment": "Chart granularity option: let the range pick the bucket.",
+    "value": "Auto"
+  },
+  "usage.trend.granularityDaily": {
+    "comment": "Chart granularity option: one bucket per day. Unrelated to the quota window label quota.group.daily.",
+    "value": "Daily"
+  },
+  "usage.trend.granularityHourly": {
+    "comment": "Chart granularity option: one bucket per hour.",
+    "value": "Hourly"
+  },
+  "usage.trend.granularityLabel": {
+    "comment": "Screen-reader label for the chart granularity menu button.",
+    "value": "Choose chart granularity"
+  },
+  "usage.trend.granularityWeekly": {
+    "comment": "Chart granularity option: one bucket per week. Unrelated to the quota window label quota.group.weekly.",
+    "value": "Weekly"
+  },
+  "usage.trend.hideProvider": {
+    "comment": "Tooltip on a lit provider legend chip; provider is an L1 company name and is never translated.",
+    "value": "Hide {provider}"
+  },
+  "usage.trend.navigatorLabel": {
+    "comment": "Screen-reader description of the brush navigator under the trend chart.",
+    "value": "Usage chart range navigator"
+  },
+  "usage.trend.nextWindow": {
+    "comment": "Tooltip on the chart's step-forward button.",
+    "value": "Next window"
+  },
+  "usage.trend.now": {
+    "comment": "Button that returns the chart to the window ending now.",
+    "value": "Now"
+  },
+  "usage.trend.nowHelp": {
+    "comment": "Tooltip on the button that returns the chart to the window ending now.",
+    "value": "Return to current window"
+  },
+  "usage.trend.previousWindow": {
+    "comment": "Tooltip on the chart's step-backward button.",
+    "value": "Previous window"
+  },
+  "usage.trend.scopeHint": {
+    "comment": "Footnote under the trend chart's brush navigator.",
+    "value": "Drag the navigator handles to focus this chart; filters and tables keep the full window."
+  },
+  "usage.trend.showProvider": {
+    "comment": "Tooltip on an unlit provider legend chip; provider is an L1 company name and is never translated.",
+    "value": "Show {provider}"
+  },
+  "usage.trend.title": {
+    "comment": "All-caps card title over the Usage Stats trend chart. English sets it in caps by the copy; Chinese has no case and relies on weight and colour.",
+    "value": "USAGE OVER TIME"
+  },
+  "usage.trend.tokensChartLabel": {
+    "comment": "Screen-reader label for the trend chart in token mode.",
+    "value": "Token usage over time"
   },
   "usage.whenYouUse.everything": {
     "comment": "Heatmap title on the Overview, covering every provider at once",

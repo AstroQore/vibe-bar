@@ -1106,6 +1106,105 @@
   "status.overview.title": {
     "value": "状态"
   },
+  "usage.breakdown.models": {
+    "value": "模型"
+  },
+  "usage.breakdown.periods": {
+    "value": "周期"
+  },
+  "usage.breakdown.projects": {
+    "value": "项目"
+  },
+  "usage.breakdown.providers": {
+    "value": "厂商"
+  },
+  "usage.breakdown.requests": {
+    "value": "请求"
+  },
+  "usage.filters.allHarnesses": {
+    "value": "全部 harness"
+  },
+  "usage.filters.allHarnessesHelpEvery": {
+    "value": "点按可选中全部 harness"
+  },
+  "usage.filters.allHarnessesHelpNone": {
+    "value": "点按可清空 harness 选择"
+  },
+  "usage.filters.allHarnessesSelectEvery": {
+    "value": "显示全部 harness"
+  },
+  "usage.filters.allHarnessesSelectNone": {
+    "value": "不选择任何 harness"
+  },
+  "usage.filters.allModels": {
+    "value": "全部模型"
+  },
+  "usage.filters.autoMenu": {
+    "value": "自动"
+  },
+  "usage.filters.autoMenuLabel": {
+    "value": "选择页面重新查询的频率"
+  },
+  "usage.filters.autoRefresh": {
+    "value": "自动刷新"
+  },
+  "usage.filters.clearHelp": {
+    "value": "清除 harness、厂商与模型筛选"
+  },
+  "usage.filters.companyHarnesses": {
+    "value": "{company}，全部 harness"
+  },
+  "usage.filters.companyHelp": {
+    "value": "{company} · {harnesses}"
+  },
+  "usage.filters.customRangeFrom": {
+    "value": "开始"
+  },
+  "usage.filters.customRangeHint": {
+    "value": "小时、日或周的分桶粒度在图表工具栏中选择。"
+  },
+  "usage.filters.customRangeTitle": {
+    "value": "自定义区间"
+  },
+  "usage.filters.customRangeTo": {
+    "value": "结束"
+  },
+  "usage.filters.editCustomRange": {
+    "value": "编辑自定义区间…"
+  },
+  "usage.filters.harnessHelp": {
+    "value": "{company} · {harness}\n点按切换 · ⌥ 点按单独查看"
+  },
+  "usage.filters.modelsMenu": {
+    "value": "模型"
+  },
+  "usage.filters.modelsMenuLabel": {
+    "value": "选择要纳入的模型"
+  },
+  "usage.filters.modelsSelected": {
+    "value": "已选 {count, plural, other {# 个}}"
+  },
+  "usage.filters.noModelsInRange": {
+    "value": "所选范围内没有模型"
+  },
+  "usage.filters.range14d": {
+    "value": "14 天"
+  },
+  "usage.filters.range24h": {
+    "value": "24 小时"
+  },
+  "usage.filters.rangeCustom": {
+    "value": "自定义"
+  },
+  "usage.filters.rangeMenu": {
+    "value": "选择日期区间"
+  },
+  "usage.filters.rangeSpan": {
+    "value": "{start} – {end}"
+  },
+  "usage.filters.refreshInterval": {
+    "value": "{seconds} 秒"
+  },
   "usage.harnessMix.activeCount": {
     "value": "所选范围内有 {count, plural, other {# 个}} harness 在使用"
   },
@@ -1160,6 +1259,57 @@
   "usage.ledgerUnavailable.title": {
     "value": "用量账本不可用"
   },
+  "usage.mix.donutUnit": {
+    "value": "token"
+  },
+  "usage.mix.harness.subtitle": {
+    "value": "请求的运行位置"
+  },
+  "usage.mix.harness.title": {
+    "value": "Harness 分布"
+  },
+  "usage.mix.model.empty": {
+    "value": "所选范围内没有模型流量"
+  },
+  "usage.mix.model.subtitle": {
+    "value": "规范显示名"
+  },
+  "usage.mix.model.title": {
+    "value": "模型分布"
+  },
+  "usage.mix.other": {
+    "value": "其他"
+  },
+  "usage.mix.otherCount": {
+    "value": "另有 {count, plural, other {# 项}}"
+  },
+  "usage.mix.project.empty": {
+    "value": "重新扫描 Codex 或 Claude 后才会显示项目归属"
+  },
+  "usage.mix.project.subtitle": {
+    "value": "Codex + Claude 工作目录 · 最多 30 天明细"
+  },
+  "usage.mix.project.title": {
+    "value": "项目分布"
+  },
+  "usage.mix.provider.empty": {
+    "value": "所选范围内没有厂商流量"
+  },
+  "usage.mix.provider.subtitle": {
+    "value": "计费公司"
+  },
+  "usage.mix.provider.title": {
+    "value": "厂商分布"
+  },
+  "usage.mix.tokenFlow.empty": {
+    "value": "所选范围内没有 token 流量"
+  },
+  "usage.mix.tokenFlow.subtitle": {
+    "value": "输入 · 缓存 · 输出"
+  },
+  "usage.mix.tokenFlow.title": {
+    "value": "Token 流向"
+  },
   "usage.noHarnessSelected.detail": {
     "value": "「全部 harness」是一个开关：再点一次即可把所有 harness 放回查询。"
   },
@@ -1168,6 +1318,117 @@
   },
   "usage.requestCount": {
     "value": "{count} 条请求"
+  },
+  "usage.table.activeDays": {
+    "value": "{count, plural, other {# 个活跃日}}"
+  },
+  "usage.table.activeHours": {
+    "value": "{count, plural, other {# 个活跃小时}}"
+  },
+  "usage.table.activeWeeks": {
+    "value": "{count, plural, other {# 个活跃周}}"
+  },
+  "usage.table.cacheReadWrite": {
+    "value": "读 {read} · 写 {write}"
+  },
+  "usage.table.column.average": {
+    "value": "每请求均价"
+  },
+  "usage.table.column.cache": {
+    "value": "缓存"
+  },
+  "usage.table.column.day": {
+    "value": "日"
+  },
+  "usage.table.column.harness": {
+    "value": "Harness"
+  },
+  "usage.table.column.hour": {
+    "value": "小时"
+  },
+  "usage.table.column.input": {
+    "value": "输入"
+  },
+  "usage.table.column.model": {
+    "value": "模型"
+  },
+  "usage.table.column.output": {
+    "value": "输出"
+  },
+  "usage.table.column.provider": {
+    "value": "厂商"
+  },
+  "usage.table.column.requests": {
+    "value": "请求数"
+  },
+  "usage.table.column.tier": {
+    "value": "档位"
+  },
+  "usage.table.column.time": {
+    "value": "时间"
+  },
+  "usage.table.column.weekOf": {
+    "value": "周起始"
+  },
+  "usage.table.companyCount": {
+    "value": "{count, plural, other {# 家厂商}}"
+  },
+  "usage.table.emptyModels": {
+    "value": "所选范围内没有模型合计"
+  },
+  "usage.table.emptyPeriods": {
+    "value": "所选范围内没有活跃周期"
+  },
+  "usage.table.emptyProjects": {
+    "value": "所选范围内没有归属到项目的 Codex 或 Claude 用量"
+  },
+  "usage.table.emptyProviders": {
+    "value": "所选范围内没有厂商合计"
+  },
+  "usage.table.emptyRequests": {
+    "value": "所选范围内没有请求级记录"
+  },
+  "usage.table.harnessHelp": {
+    "value": "{company} · {harness}"
+  },
+  "usage.table.inputHelp": {
+    "value": "新增输入：{input}\n缓存读取：{read}\n缓存写入：{write}"
+  },
+  "usage.table.loadMore": {
+    "value": "加载更多（剩余 {remaining} 条）"
+  },
+  "usage.table.loadingMore": {
+    "value": "正在加载更多请求…"
+  },
+  "usage.table.modelCount": {
+    "value": "{count, plural, other {# 个模型}}"
+  },
+  "usage.table.periodRow": {
+    "value": "{period}，{tokens}，{cost}"
+  },
+  "usage.table.projectCount": {
+    "value": "{count, plural, other {# 个项目}} · 最多 30 天明细"
+  },
+  "usage.table.requestRow": {
+    "value": "{time}，{harness}，{model}，{tokens}，{cost}"
+  },
+  "usage.table.requestsLabel": {
+    "value": "请求用量表格"
+  },
+  "usage.table.requestsLoaded": {
+    "value": "已加载 {loaded} / {total} 条请求"
+  },
+  "usage.table.showMorePeriods": {
+    "value": "再显示 {count} 个，共 {total} 个周期"
+  },
+  "usage.table.statRow": {
+    "value": "{name}，{requests, plural, other {# 条请求}}，{tokens}，{cost}"
+  },
+  "usage.table.unpriced": {
+    "value": "未计价"
+  },
+  "usage.table.unpricedHelp": {
+    "value": "该请求没有可用价格"
   },
   "usage.tokens.cacheRead": {
     "value": "缓存读取"
@@ -1180,6 +1441,81 @@
   },
   "usage.tokens.output": {
     "value": "输出"
+  },
+  "usage.tokens.title": {
+    "value": "Token"
+  },
+  "usage.trend.accessibilitySummary": {
+    "value": "{count, plural, other {# 家厂商}}，{tokens} token，{cost}"
+  },
+  "usage.trend.bucketDay": {
+    "value": "按本地日历日"
+  },
+  "usage.trend.bucketHour": {
+    "value": "按小时分桶"
+  },
+  "usage.trend.bucketWeek": {
+    "value": "按本地日历周"
+  },
+  "usage.trend.costChartLabel": {
+    "value": "花费随时间变化"
+  },
+  "usage.trend.empty": {
+    "value": "所选范围内没有用量记录"
+  },
+  "usage.trend.fit": {
+    "value": "全览"
+  },
+  "usage.trend.fitHelp": {
+    "value": "显示完整的所选区间"
+  },
+  "usage.trend.granularity": {
+    "value": "粒度"
+  },
+  "usage.trend.granularityAuto": {
+    "value": "自动"
+  },
+  "usage.trend.granularityDaily": {
+    "value": "按日"
+  },
+  "usage.trend.granularityHourly": {
+    "value": "按小时"
+  },
+  "usage.trend.granularityLabel": {
+    "value": "选择图表粒度"
+  },
+  "usage.trend.granularityWeekly": {
+    "value": "按周"
+  },
+  "usage.trend.hideProvider": {
+    "value": "隐藏 {provider}"
+  },
+  "usage.trend.navigatorLabel": {
+    "value": "用量图表区间导航条"
+  },
+  "usage.trend.nextWindow": {
+    "value": "下一区间"
+  },
+  "usage.trend.now": {
+    "value": "现在"
+  },
+  "usage.trend.nowHelp": {
+    "value": "回到当前区间"
+  },
+  "usage.trend.previousWindow": {
+    "value": "上一区间"
+  },
+  "usage.trend.scopeHint": {
+    "value": "拖动导航条手柄可聚焦此图表；筛选与表格仍按完整区间统计。"
+  },
+  "usage.trend.showProvider": {
+    "value": "显示 {provider}"
+  },
+  "usage.trend.title": {
+    "value": "用量趋势"
+  },
+  "usage.trend.tokensChartLabel": {
+    "value": "Token 用量随时间变化"
   },
   "usage.whenYouUse.everything": {
     "value": "你什么时候在用"

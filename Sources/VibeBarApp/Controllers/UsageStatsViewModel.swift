@@ -33,13 +33,13 @@ final class UsageStatsViewModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .all:    "All"
-            case .today:  "Today"
-            case .day1:   "24 h"
-            case .day7:   "7 d"
-            case .day14:  "14 d"
-            case .day30:  "30 d"
-            case .custom: "Custom"
+            case .all:    L10n.Cost.timeframeAll
+            case .today:  L10n.Cost.timeframeToday
+            case .day1:   L10n.Usage.filtersRange24h
+            case .day7:   L10n.Cost.timeframeWeekShort
+            case .day14:  L10n.Usage.filtersRange14d
+            case .day30:  L10n.Cost.timeframeMonthShort
+            case .custom: L10n.Usage.filtersRangeCustom
             }
         }
 
@@ -76,11 +76,11 @@ final class UsageStatsViewModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .periods: "Periods"
-            case .requests: "Requests"
-            case .providers: "Providers"
-            case .projects: "Projects"
-            case .models: "Models"
+            case .periods: L10n.Usage.breakdownPeriods
+            case .requests: L10n.Usage.breakdownRequests
+            case .providers: L10n.Usage.breakdownProviders
+            case .projects: L10n.Usage.breakdownProjects
+            case .models: L10n.Usage.breakdownModels
             }
         }
     }
@@ -95,7 +95,9 @@ final class UsageStatsViewModel: ObservableObject {
         var id: Int { rawValue }
 
         var title: String {
-            self == .off ? "Off" : "\(rawValue)s"
+            self == .off
+                ? L10n.Common.off
+                : L10n.Usage.filtersRefreshInterval(seconds: rawValue)
         }
     }
 
