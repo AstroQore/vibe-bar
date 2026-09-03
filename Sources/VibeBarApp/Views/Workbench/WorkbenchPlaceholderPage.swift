@@ -1,4 +1,5 @@
 import SwiftUI
+import VibeBarCore
 
 /// Stand-in detail page for Workbench sections that have no content yet.
 struct WorkbenchPlaceholderPage: View {
@@ -27,15 +28,15 @@ struct WorkbenchPlaceholderPage: View {
     private var detail: String {
         switch page {
         case .usageStats:
-            "Full-window usage and cost analytics are on their way."
+            L10n.Workbench.placeholderUsageStats
         case .resets:
-            "Cycle, refill and forecast views are on their way."
+            L10n.Workbench.placeholderResets
         case .sessionManager:
-            "Browsing and searching local Codex and Claude Code sessions is on its way."
+            L10n.Workbench.placeholderSessionManager
         case .skillsManager:
-            "Reviewing and organizing installed agent skills is on its way."
+            L10n.Workbench.placeholderSkillsManager
         case .settings:
-            "Configure Vibe Bar and its connected providers."
+            L10n.Workbench.placeholderSettings
         }
     }
 }

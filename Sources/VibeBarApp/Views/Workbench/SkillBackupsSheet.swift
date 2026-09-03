@@ -137,11 +137,9 @@ struct SkillBackupsSheet: View {
         .padding(.vertical, 12)
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var dateFormatter: DateFormatter {
+        AppLocale.dateFormatter(dateStyle: .medium, timeStyle: .short)
+    }
 }

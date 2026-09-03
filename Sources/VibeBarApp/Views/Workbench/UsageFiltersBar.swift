@@ -328,15 +328,13 @@ struct UsageFiltersBar: View {
         return "\(formatter.string(from: range.start)) – \(formatter.string(from: range.end))"
     }
 
-    private static let hourFormatter = localizedFormatter("MMMd HH:mm")
-    private static let dayFormatter = localizedFormatter("MMMd")
-
-    private static func localizedFormatter(_ template: String) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate(template)
-        return formatter
+    private static var hourFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdHHmm")
     }
+    private static var dayFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMd")
+    }
+
 
     private var modelSummary: String {
         guard let selected = model.selectedModels else { return "All" }

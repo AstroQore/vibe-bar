@@ -12,14 +12,14 @@ struct ModelRankingList: View {
     let breakdowns: [CostSnapshot.ModelBreakdown]
     let density: Theme.Density
     var maxHeight: CGFloat = 180
-    /// Right-hand subtitle next to "Model Ranking". Defaults to "All time"; the
-    /// Overview's combined card overrides to "All providers · all time" so the
-    /// scope is unambiguous.
-    var subtitle: String = "All time"
+    /// Right-hand subtitle next to the card title. Defaults to the all-time
+    /// scope; the Overview's combined card overrides it with the
+    /// all-providers wording so the scope is unambiguous.
+    var subtitle: String = L10n.Cost.modelRankingAllTime
 
     @EnvironmentObject var environment: AppEnvironment
 
-    init(snapshot: CostSnapshot?, density: Theme.Density, maxHeight: CGFloat = 180, subtitle: String = "All time") {
+    init(snapshot: CostSnapshot?, density: Theme.Density, maxHeight: CGFloat = 180, subtitle: String = L10n.Cost.modelRankingAllTime) {
         self.breakdowns = snapshot?.modelBreakdowns ?? []
         self.density = density
         self.maxHeight = maxHeight
@@ -30,7 +30,7 @@ struct ModelRankingList: View {
         breakdowns: [CostSnapshot.ModelBreakdown],
         density: Theme.Density,
         maxHeight: CGFloat = 180,
-        subtitle: String = "All time"
+        subtitle: String = L10n.Cost.modelRankingAllTime
     ) {
         self.breakdowns = breakdowns
         self.density = density
@@ -46,7 +46,7 @@ struct ModelRankingList: View {
         if !models.isEmpty {
             VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Model Ranking")
+                    Text(L10n.Cost.modelRankingTitle)
                         .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     Spacer()
                     Text(subtitle)
@@ -111,7 +111,7 @@ struct ModelRankingList: View {
         let share = total > 0 ? (model.costUSD / total) * 100 : 0
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline) {
-                Text("#\(rank)")
+                Text(L10n.Cost.modelRankingRank(rank: rank))
                     .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(rankColor(rank))
                     .lineLimit(1)
@@ -126,7 +126,7 @@ struct ModelRankingList: View {
                 Text(formatCost(model.costUSD))
                     .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(.primary)
-                Text("\(Int(share.rounded()))%")
+                Text(L10n.Common.percent(value: Int(share.rounded())))
                     .font(.system(size: density.resetCountdownFontSize, design: .rounded).monospacedDigit())
                     .foregroundStyle(.tertiary)
                     .frame(width: 32, alignment: .trailing)

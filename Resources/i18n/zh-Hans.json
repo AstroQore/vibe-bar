@@ -1,0 +1,1184 @@
+{
+  "common.date.month.1": {
+    "value": "1月"
+  },
+  "common.date.month.10": {
+    "value": "10月"
+  },
+  "common.date.month.11": {
+    "value": "11月"
+  },
+  "common.date.month.12": {
+    "value": "12月"
+  },
+  "common.date.month.2": {
+    "value": "2月"
+  },
+  "common.date.month.3": {
+    "value": "3月"
+  },
+  "common.date.month.4": {
+    "value": "4月"
+  },
+  "common.date.month.5": {
+    "value": "5月"
+  },
+  "common.date.month.6": {
+    "value": "6月"
+  },
+  "common.date.month.7": {
+    "value": "7月"
+  },
+  "common.date.month.8": {
+    "value": "8月"
+  },
+  "common.date.month.9": {
+    "value": "9月"
+  },
+  "common.date.monthDayTime": {
+    "value": "{month}{day}日 {time}"
+  },
+  "common.date.monthDayYearTime": {
+    "value": "{year}年{month}{day}日 {time}"
+  },
+  "common.duration.days": {
+    "value": "{days} 天"
+  },
+  "common.duration.daysHours": {
+    "value": "{days} 天 {hours} 小时"
+  },
+  "common.duration.hours": {
+    "value": "{hours} 小时"
+  },
+  "common.duration.hoursMinutes": {
+    "value": "{hours} 小时 {minutes} 分钟"
+  },
+  "common.duration.lessThanMinute": {
+    "value": "<1 分钟"
+  },
+  "common.duration.minutes": {
+    "value": "{minutes} 分钟"
+  },
+  "common.duration.now": {
+    "value": "现在"
+  },
+  "common.off": {
+    "value": "已关闭"
+  },
+  "common.on": {
+    "value": "已开启"
+  },
+  "common.openSettings": {
+    "value": "打开设置"
+  },
+  "common.percent": {
+    "value": "{value}%"
+  },
+  "common.refresh": {
+    "value": "刷新"
+  },
+  "common.refreshSection": {
+    "value": "刷新此区块"
+  },
+  "common.retry": {
+    "value": "重试"
+  },
+  "common.updated.daysAgo": {
+    "value": "{days, plural, other {# 天}}前更新"
+  },
+  "common.updated.hoursAgo": {
+    "value": "{hours, plural, other {# 小时}}前更新"
+  },
+  "common.updated.justNow": {
+    "value": "刚刚更新"
+  },
+  "common.updated.minutesAgo": {
+    "value": "{minutes, plural, other {# 分钟}}前更新"
+  },
+  "common.updated.never": {
+    "value": "从未更新"
+  },
+  "common.updated.secondsAgo": {
+    "value": "{seconds} 秒前更新"
+  },
+  "cost.allProviders": {
+    "value": "全部厂商"
+  },
+  "cost.empty.antigravity": {
+    "value": "暂未发现 Antigravity 会话的 token 元数据。"
+  },
+  "cost.empty.claude": {
+    "value": "暂未发现 Claude CLI 会话。"
+  },
+  "cost.empty.codex": {
+    "value": "暂未发现 Codex CLI 会话。"
+  },
+  "cost.empty.gemini": {
+    "value": "暂未发现 Gemini CLI 或聊天历史的用量。"
+  },
+  "cost.empty.genericCLI": {
+    "value": "暂未发现 {provider} CLI 会话。"
+  },
+  "cost.empty.grok": {
+    "value": "暂未发现 Grok 会话的用量。"
+  },
+  "cost.fullCharts": {
+    "value": "{title} — 完整图表"
+  },
+  "cost.gemini.emptyDetail": {
+    "value": "Vibe Bar 会优先从 AntiGravity 桌面端读取实时额度，其次回退到本机安装的 agy CLI。两个本地来源都刷新不了时，缓存值会标记为已过期。"
+  },
+  "cost.gemini.emptyTitle": {
+    "value": "暂未发现 Gemini 或 AntiGravity 的用量。"
+  },
+  "cost.googleAI.empty": {
+    "value": "暂无 Gemini Web / AntiGravity 用量 — 登录 AntiGravity 或 agy 后刷新。"
+  },
+  "cost.googleAI.title": {
+    "value": "Google AI 花费"
+  },
+  "cost.history.allProviders": {
+    "value": "全部厂商花费历史"
+  },
+  "cost.metric.peakDay": {
+    "value": "单日最高"
+  },
+  "cost.metric.peakTokenDay": {
+    "value": "单日最多 token"
+  },
+  "cost.metric.sevenDay": {
+    "value": "近 7 天"
+  },
+  "cost.metric.sevenDayTokens": {
+    "value": "近 7 天 token"
+  },
+  "cost.metric.thirtyDay": {
+    "value": "近 30 天"
+  },
+  "cost.metric.thirtyDayTokens": {
+    "value": "近 30 天 token"
+  },
+  "cost.metric.today": {
+    "value": "今天"
+  },
+  "cost.metric.todayTokens": {
+    "value": "今天 token"
+  },
+  "cost.metric.totalCost": {
+    "value": "总花费"
+  },
+  "cost.metric.totalTokens": {
+    "value": "总 token"
+  },
+  "cost.metric.yesterday": {
+    "value": "昨天"
+  },
+  "cost.metric.yesterdayTokens": {
+    "value": "昨天 token"
+  },
+  "cost.modelRanking.allProvidersAllTime": {
+    "value": "全部厂商 · 全部时间"
+  },
+  "cost.modelRanking.allTime": {
+    "value": "全部时间"
+  },
+  "cost.modelRanking.rank": {
+    "value": "#{rank}"
+  },
+  "cost.modelRanking.title": {
+    "value": "模型排行"
+  },
+  "cost.noUsageYet": {
+    "value": "暂无用量"
+  },
+  "cost.notTracked": {
+    "value": "{provider} 不记录花费历史。"
+  },
+  "cost.openFullCharts": {
+    "value": "打开完整图表"
+  },
+  "cost.provider.title": {
+    "value": "{provider} 花费"
+  },
+  "cost.providerFullCharts": {
+    "value": "{provider} 花费 — 完整图表"
+  },
+  "cost.refreshData": {
+    "value": "刷新花费数据"
+  },
+  "cost.refreshProvider": {
+    "value": "刷新 {provider} 花费"
+  },
+  "cost.spaceXAI.empty": {
+    "value": "暂未发现 Grok 或 Cursor 的用量。"
+  },
+  "cost.spaceXAI.title": {
+    "value": "SpaceXAI 花费"
+  },
+  "cost.timeframe.all": {
+    "value": "全部"
+  },
+  "cost.timeframe.month": {
+    "value": "30 天"
+  },
+  "cost.timeframe.monthShort": {
+    "value": "30 天"
+  },
+  "cost.timeframe.today": {
+    "value": "今天"
+  },
+  "cost.timeframe.week": {
+    "value": "7 天"
+  },
+  "cost.timeframe.weekShort": {
+    "value": "7 天"
+  },
+  "cost.timeframe.yesterday": {
+    "value": "昨天"
+  },
+  "cost.title": {
+    "value": "花费"
+  },
+  "cost.topModel.share": {
+    "value": "占比 {percent}%"
+  },
+  "cost.topModel.title": {
+    "value": "最常用模型"
+  },
+  "cost.topModel.window": {
+    "value": "近 7 天"
+  },
+  "error.credentialRejected": {
+    "value": "凭据被拒绝"
+  },
+  "error.needsLogin": {
+    "value": "需重新登录"
+  },
+  "error.network": {
+    "value": "网络错误"
+  },
+  "error.networkDetail": {
+    "value": "网络错误：{reason}"
+  },
+  "error.noCredential": {
+    "value": "未找到账号"
+  },
+  "error.notImplemented": {
+    "value": "暂不支持"
+  },
+  "error.parseFailure": {
+    "value": "响应格式已变化"
+  },
+  "error.rateLimited": {
+    "value": "请求过于频繁，请稍后重试"
+  },
+  "error.unknown": {
+    "value": "错误"
+  },
+  "error.unknownDetail": {
+    "value": "错误：{reason}"
+  },
+  "onboarding.apiKeys.hide": {
+    "value": "收起"
+  },
+  "onboarding.apiKeys.intro": {
+    "value": "这些套餐靠 API key 或控制台 cookie 跟踪，而不是 CLI 登录。勾选你有的那些 — 勾选后会在「其他厂商」页得到一张卡片 — 展开某一行即可现在填写凭据。密钥和 cookies 都会存进你的登录 Keychain。"
+  },
+  "onboarding.apiKeys.setUp": {
+    "value": "设置"
+  },
+  "onboarding.apiKeys.showOnMiscPage": {
+    "value": "在「其他厂商」页显示 {provider}"
+  },
+  "onboarding.back": {
+    "value": "上一步"
+  },
+  "onboarding.continue": {
+    "value": "下一步"
+  },
+  "onboarding.cookies.batchScope": {
+    "value": "这个按钮只覆盖上面四个套餐。下一步的控制台 cookie 套餐有各自的一键批量导入，在「设置 → 浏览器 Cookies」里。"
+  },
+  "onboarding.cookies.importAll": {
+    "value": "立即从所有浏览器导入"
+  },
+  "onboarding.cookies.importFromBrowser": {
+    "value": "从浏览器导入"
+  },
+  "onboarding.cookies.importGemini": {
+    "value": "从浏览器导入 Gemini 的 cookies"
+  },
+  "onboarding.cookies.importGrok": {
+    "value": "从浏览器导入 Grok 的 cookies"
+  },
+  "onboarding.cookies.importing": {
+    "value": "正在导入…"
+  },
+  "onboarding.cookies.intro": {
+    "value": "网页端额度 — 也就是厂商在自己网站上显示的那份 — 来自浏览器里已有的登录会话。Vibe Bar 会读取这台 Mac 上各浏览器（Chrome 及其他 Chromium 浏览器、Safari、Firefox）的 cookie 存储，只保留每个厂商真正需要的那几条，并存进你的登录 Keychain，绝不写入明文文件。首次读取浏览器的 cookie 密钥时，macOS 可能会要求授权一次。"
+  },
+  "onboarding.cookies.notImported": {
+    "value": "尚未导入"
+  },
+  "onboarding.cookies.openWebViewLogin": {
+    "value": "打开内置登录窗口"
+  },
+  "onboarding.cookies.saved": {
+    "value": "cookies 已保存。"
+  },
+  "onboarding.cookies.signInFirst": {
+    "value": "请先在浏览器里登录 chatgpt.com、claude.ai、gemini.google.com 或 grok.com — 导入只能找到已经存在的会话。没登录过的厂商不会有任何结果。"
+  },
+  "onboarding.done.apiKeyProviders": {
+    "value": "API key 厂商"
+  },
+  "onboarding.done.browserCookies": {
+    "value": "浏览器 cookies"
+  },
+  "onboarding.done.cookieCount": {
+    "value": "已保存 {saved}/{total} 个厂商"
+  },
+  "onboarding.done.footer": {
+    "value": "这里的每一项在设置里都能改，向导本身也在「设置 → 系统」里一键可达。"
+  },
+  "onboarding.done.intro": {
+    "value": "菜单栏需要的都齐了。点「完成」会打开面板并显示当前已能读到的额度，其余的会在第一次刷新时补上。"
+  },
+  "onboarding.done.launchAtLogin": {
+    "value": "开机启动"
+  },
+  "onboarding.done.miscCount": {
+    "value": "「其他厂商」页有 {count} 个"
+  },
+  "onboarding.done.modelPricing": {
+    "value": "模型价格"
+  },
+  "onboarding.done.noneShown": {
+    "value": "未显示任何厂商"
+  },
+  "onboarding.done.pricingBundled": {
+    "value": "首次获取前使用内置价目表"
+  },
+  "onboarding.done.pricingMerged": {
+    "value": "{when}合并"
+  },
+  "onboarding.done.subscriptions": {
+    "value": "订阅"
+  },
+  "onboarding.finish": {
+    "value": "完成"
+  },
+  "onboarding.pricing.fetchNow": {
+    "value": "立即获取价格"
+  },
+  "onboarding.pricing.fetching": {
+    "value": "正在获取…"
+  },
+  "onboarding.pricing.footer": {
+    "value": "价格单位是每百万 token 的美元数。本地覆盖值在「设置 → 模型价格」里。"
+  },
+  "onboarding.pricing.interval.hour": {
+    "value": "小时"
+  },
+  "onboarding.pricing.interval.hours": {
+    "value": "{hours} 小时"
+  },
+  "onboarding.pricing.intro": {
+    "value": "Token 花费完全在这台 Mac 上按 agent 的会话日志计算，价格来自若干公开价目表合并后的目录 — 同一个模型出现在多处时优先级高的胜出，你自己的覆盖值优先于全部，内置表是离线兜底。目录每 {interval}在后台刷新一次；现在抓一次能让第一批费用数字用上当前价格。"
+  },
+  "onboarding.pricing.merged": {
+    "value": "{when}合并 · {count} 个模型"
+  },
+  "onboarding.pricing.notFetched": {
+    "value": "尚未获取 — 正在使用内置价目表。"
+  },
+  "onboarding.pricing.source.failed": {
+    "value": "缓存 {count} 个 · 刷新失败"
+  },
+  "onboarding.pricing.source.models": {
+    "value": "{count} 个模型"
+  },
+  "onboarding.pricing.source.notRefreshed": {
+    "value": "未刷新"
+  },
+  "onboarding.pricing.source.unchanged": {
+    "value": "{count} 个模型 · 无变化"
+  },
+  "onboarding.skip": {
+    "value": "暂时跳过"
+  },
+  "onboarding.step.apiKeyProviders.subtitle": {
+    "value": "用 API key 或控制台 cookie 跟踪的套餐。"
+  },
+  "onboarding.step.apiKeyProviders.title": {
+    "value": "其他套餐"
+  },
+  "onboarding.step.browserCookies.subtitle": {
+    "value": "网页端额度来自浏览器里已有的登录会话。"
+  },
+  "onboarding.step.browserCookies.title": {
+    "value": "浏览器 cookies"
+  },
+  "onboarding.step.done.subtitle": {
+    "value": "这里的每一项在设置里也能改。"
+  },
+  "onboarding.step.done.title": {
+    "value": "完成"
+  },
+  "onboarding.step.pricing.subtitle": {
+    "value": "费用数字背后的 token 单价从哪来。"
+  },
+  "onboarding.step.pricing.title": {
+    "value": "模型价格"
+  },
+  "onboarding.step.subscriptions.subtitle": {
+    "value": "打开你付费的套餐。"
+  },
+  "onboarding.step.subscriptions.title": {
+    "value": "订阅"
+  },
+  "onboarding.step.welcome.subtitle": {
+    "value": "一段话讲清 Vibe Bar 能做什么。"
+  },
+  "onboarding.step.welcome.title": {
+    "value": "欢迎"
+  },
+  "onboarding.subscriptions.claude.detected": {
+    "value": "已检测到 Claude Code 登录 — 额度将从这里读取。"
+  },
+  "onboarding.subscriptions.claude.missing": {
+    "value": "未找到 Claude Code 登录。运行 `claude login`，或在下方从浏览器导入 claude.ai 的 cookies。"
+  },
+  "onboarding.subscriptions.claude.web": {
+    "value": "已保存 claude.ai 的 cookies — 额度将从这里读取。"
+  },
+  "onboarding.subscriptions.codex.detected": {
+    "value": "已检测到 Codex CLI 登录 — 额度将从这里读取。"
+  },
+  "onboarding.subscriptions.codex.missing": {
+    "value": "未找到 Codex CLI 登录。运行 `codex login`，或在下方从浏览器导入 ChatGPT 的 cookies。"
+  },
+  "onboarding.subscriptions.codex.web": {
+    "value": "已保存 ChatGPT 网页 cookies — 额度将从这里读取。"
+  },
+  "onboarding.subscriptions.gemini.hint": {
+    "value": "Gemini 的额度只能从 gemini.google.com 的 cookies 读取，没有 CLI 登录或 WebView 途径。AntiGravity 在运行时会被本地探测。"
+  },
+  "onboarding.subscriptions.grok.detected": {
+    "value": "已检测到 ~/.grok/auth.json — 额度将从这里读取。"
+  },
+  "onboarding.subscriptions.grok.missing": {
+    "value": "还没有 ~/.grok/auth.json。运行 `grok login`，或在下方从浏览器导入 grok.com 的 cookies。"
+  },
+  "onboarding.subscriptions.intro": {
+    "value": "打开你在用的订阅。关掉的厂商不会出现在总览和菜单栏里；之后再关掉也不会丢失凭据和历史。"
+  },
+  "onboarding.subscriptions.productLine.claude": {
+    "value": "Claude Code · claude.ai 网页"
+  },
+  "onboarding.subscriptions.productLine.codex": {
+    "value": "Codex CLI · ChatGPT 网页"
+  },
+  "onboarding.subscriptions.productLine.gemini": {
+    "value": "Gemini 网页 · AntiGravity"
+  },
+  "onboarding.subscriptions.productLine.grok": {
+    "value": "Grok CLI · grok.com · Cursor"
+  },
+  "onboarding.subscriptions.showInOverview": {
+    "value": "在总览中显示"
+  },
+  "onboarding.title": {
+    "value": "设置向导"
+  },
+  "onboarding.welcome.cost.detail": {
+    "value": "完全在本机按 agent 自己的会话日志计价，对照合并后的模型价目表。"
+  },
+  "onboarding.welcome.cost.title": {
+    "value": "Token 花费"
+  },
+  "onboarding.welcome.footer": {
+    "value": "整个过程约两分钟。这里的每个选择之后都能在设置里改，向导本身也在「设置 → 系统」里一键可达。"
+  },
+  "onboarding.welcome.intro": {
+    "value": "Vibe Bar 常驻菜单栏，一眼就能看到每个 AI 订阅还剩多少、编码 agent 花了多少钱，以及这台 Mac 上有哪些会话和 skills。它读取 Codex、Claude Code、Gemini、Grok 这些 CLI 本就保存在本机的凭据，在你允许时再从浏览器 cookies 补上网页端额度，并且只会把这些数据发回它们各自的厂商。"
+  },
+  "onboarding.welcome.mcp.detail": {
+    "value": "你的 agent 可以通过 home 目录下的 Unix socket 向 Vibe Bar 查询额度和花费。"
+  },
+  "onboarding.welcome.mcp.title": {
+    "value": "本地 MCP 服务"
+  },
+  "onboarding.welcome.quotas.detail": {
+    "value": "Codex、Claude Code、Gemini、Grok，以及一排 API key 套餐，每个都带重置倒计时。"
+  },
+  "onboarding.welcome.quotas.title": {
+    "value": "订阅额度"
+  },
+  "onboarding.welcome.sessions.detail": {
+    "value": "在 Workbench 里浏览、搜索和整理 agent 会话与共享 skills。"
+  },
+  "onboarding.welcome.sessions.title": {
+    "value": "会话与 skills"
+  },
+  "platform.macos.launchAtLogin.detail": {
+    "value": "Vibe Bar 是没有 Dock 图标的菜单栏应用。开机启动能让额度读数和本地 MCP 服务在你登录后立刻可用；首次启用时 macOS 可能会要求你在「系统设置」中批准这个登录项。"
+  },
+  "platform.macos.launchAtLogin.enabled": {
+    "value": "已在 macOS 登录项中启用。"
+  },
+  "platform.macos.launchAtLogin.off": {
+    "value": "已关闭。"
+  },
+  "platform.macos.launchAtLogin.subtitle": {
+    "value": "登录 Mac 后菜单栏立刻显示读数。"
+  },
+  "platform.macos.launchAtLogin.title": {
+    "value": "开机启动"
+  },
+  "platform.macos.launchAtLogin.toggle": {
+    "value": "登录时启动 Vibe Bar"
+  },
+  "popover.header.machinesSubtitle": {
+    "value": "端到端加密的远程用量"
+  },
+  "popover.header.miscSubtitle": {
+    "value": "仅用量 · 登录或粘贴密钥"
+  },
+  "popover.header.overviewSubtitle": {
+    "value": "全部厂商 · 额度与花费"
+  },
+  "popover.refreshGoogleAI": {
+    "value": "刷新 Gemini Web + AntiGravity"
+  },
+  "popover.refreshSpaceXAI": {
+    "value": "刷新 Grok + Cursor"
+  },
+  "popover.showPage": {
+    "value": "显示{page}"
+  },
+  "popover.tab.machines": {
+    "value": "机器"
+  },
+  "popover.tab.misc": {
+    "value": "其他厂商"
+  },
+  "popover.tab.miscShort": {
+    "value": "其他"
+  },
+  "popover.tab.overview": {
+    "value": "总览"
+  },
+  "quota.bucket.noResetInfo": {
+    "value": "无重置信息"
+  },
+  "quota.bucket.resetsIn": {
+    "value": "距重置 {when}"
+  },
+  "quota.empty.needsLogin.detail": {
+    "value": "在终端里运行 `{command} login`，然后刷新。"
+  },
+  "quota.empty.needsLogin.headline": {
+    "value": "需重新登录"
+  },
+  "quota.empty.network.detail": {
+    "value": "无法连接官方 API，请检查网络后重试。"
+  },
+  "quota.empty.network.headline": {
+    "value": "网络错误"
+  },
+  "quota.empty.noAccount.detail": {
+    "value": "先在这台 Mac 上用官方 CLI 登录，然后刷新。"
+  },
+  "quota.empty.noAccount.headline": {
+    "value": "未找到账号"
+  },
+  "quota.empty.parseChanged.detail": {
+    "value": "官方 API 返回了预期之外的结构，请刷新或升级 Vibe Bar。"
+  },
+  "quota.empty.parseChanged.headline": {
+    "value": "响应格式已变化"
+  },
+  "quota.empty.rateLimited.detail": {
+    "value": "官方 API 要求稍候，请过一会儿再试。"
+  },
+  "quota.empty.rateLimited.headline": {
+    "value": "请求过于频繁"
+  },
+  "quota.forecast.confidence.high": {
+    "value": "高置信度"
+  },
+  "quota.forecast.confidence.learning": {
+    "value": "学习中"
+  },
+  "quota.forecast.confidence.medium": {
+    "value": "中等置信度"
+  },
+  "quota.forecast.guidance.atRisk": {
+    "value": "放慢节奏，或把工作转到别的额度上"
+  },
+  "quota.forecast.guidance.available": {
+    "value": "目标保留 {target}% · 约有 {unused}% 可用"
+  },
+  "quota.forecast.guidance.surplus": {
+    "value": "预计有约 {unused}% 会闲置，超出 {target}% 的安全余量"
+  },
+  "quota.forecast.guidance.usedAvailable": {
+    "value": "目标用到 {target}% · 约有 {unused}% 额度可用"
+  },
+  "quota.forecast.guidance.usedSurplus": {
+    "value": "预计有约 {unused}% 的额度会剩下，超出 {target}% 的使用目标"
+  },
+  "quota.forecast.guidance.usedWithinTarget": {
+    "value": "仍在 {target}% 的使用目标之内"
+  },
+  "quota.forecast.guidance.watch": {
+    "value": "近期用量高于安全区间"
+  },
+  "quota.forecast.guidance.withinTarget": {
+    "value": "仍在 {target}% 的安全余量之内"
+  },
+  "quota.forecast.reset.atRisk": {
+    "value": "大概率在重置前用尽"
+  },
+  "quota.forecast.reset.enough": {
+    "value": "预计重置时剩余 {remaining}%"
+  },
+  "quota.forecast.reset.learning": {
+    "value": "正在学习你的使用规律 · 约剩余 {remaining}%"
+  },
+  "quota.forecast.reset.surplus": {
+    "value": "大概率用不完 · 预计剩余 {remaining}%"
+  },
+  "quota.forecast.reset.watch": {
+    "value": "可能不够用 · 预计剩余 {remaining}%"
+  },
+  "quota.forecast.status.atRisk": {
+    "value": "有风险 · 大概率在重置前用尽"
+  },
+  "quota.forecast.status.enough": {
+    "value": "充足 · 预计重置时{value}"
+  },
+  "quota.forecast.status.learning": {
+    "value": "学习中 · 重置时约{value}"
+  },
+  "quota.forecast.status.surplus": {
+    "value": "用不完 · 预计重置时{value}"
+  },
+  "quota.forecast.status.watch": {
+    "value": "需留意 · 预计重置时{value}"
+  },
+  "quota.forecast.useUp.beforeReset": {
+    "value": "预计会在重置前用尽"
+  },
+  "quota.forecast.useUp.couldRunOut": {
+    "value": "可能在 {countdown}后用尽"
+  },
+  "quota.forecast.useUp.estimated": {
+    "value": "预计 {countdown}后用尽"
+  },
+  "quota.forecast.useUp.lastsUntilReset": {
+    "value": "预计可用到重置"
+  },
+  "quota.forecast.useUp.uncertain": {
+    "value": "用尽时间不确定 · 可能在重置前不够用"
+  },
+  "quota.forecast.value.left": {
+    "value": "剩余 {percent}%"
+  },
+  "quota.forecast.value.used": {
+    "value": "已用 {percent}%"
+  },
+  "quota.forecast.verdict.atRisk": {
+    "value": "有风险"
+  },
+  "quota.forecast.verdict.enough": {
+    "value": "充足"
+  },
+  "quota.forecast.verdict.learning": {
+    "value": "学习中"
+  },
+  "quota.forecast.verdict.surplus": {
+    "value": "用不完"
+  },
+  "quota.forecast.verdict.watch": {
+    "value": "需留意"
+  },
+  "quota.freshness.age.days": {
+    "value": "{days} 天"
+  },
+  "quota.freshness.age.hours": {
+    "value": "{hours} 小时"
+  },
+  "quota.freshness.age.minutes": {
+    "value": "{minutes} 分钟"
+  },
+  "quota.freshness.age.seconds": {
+    "value": "{seconds} 秒"
+  },
+  "quota.freshness.dataAge": {
+    "value": "数据已 {age}"
+  },
+  "quota.freshness.defaultHelp": {
+    "value": "实时额度未在预期间隔内刷新。"
+  },
+  "quota.freshness.line": {
+    "value": "{attempt} · {data} · {reason}"
+  },
+  "quota.freshness.noCachedData": {
+    "value": "无缓存数据"
+  },
+  "quota.freshness.refreshFailed": {
+    "value": "刷新失败"
+  },
+  "quota.freshness.refreshFailedAgo": {
+    "value": "{age}前刷新失败"
+  },
+  "quota.freshness.staleNeverUpdated": {
+    "value": "已过期 · 从未更新"
+  },
+  "quota.freshness.staleUpdatedAgo": {
+    "value": "已过期 · {age}前更新"
+  },
+  "quota.group.allModels": {
+    "value": "全部模型"
+  },
+  "quota.group.daily": {
+    "value": "每日"
+  },
+  "quota.group.fiveHours": {
+    "value": "5 小时"
+  },
+  "quota.group.monthly": {
+    "value": "每月"
+  },
+  "quota.group.noUtilization": {
+    "value": "暂无使用数据 — 试试刷新。"
+  },
+  "quota.group.other": {
+    "value": "其他"
+  },
+  "quota.group.otherModels": {
+    "value": "其他模型"
+  },
+  "quota.group.weekly": {
+    "value": "每周"
+  },
+  "quota.group.weeklyCredits": {
+    "value": "每周额度"
+  },
+  "quota.login.claude": {
+    "value": "运行 claude login，然后刷新。"
+  },
+  "quota.login.codex": {
+    "value": "运行 codex login，然后刷新。"
+  },
+  "quota.login.cursor": {
+    "value": "登录 Cursor.app，或导入 cursor.com 的 cookies，然后刷新。"
+  },
+  "quota.login.grok": {
+    "value": "运行 grok login，或导入 grok.com 的 cookies，然后刷新。"
+  },
+  "quota.login.misc": {
+    "value": "在「设置 → 其他厂商」中配置 {provider}。"
+  },
+  "quota.mode.remaining": {
+    "value": "剩余"
+  },
+  "quota.mode.used": {
+    "value": "已用"
+  },
+  "quota.pace.lastsUntilReset": {
+    "value": "可用到重置"
+  },
+  "quota.pace.runsOutIn": {
+    "value": "{countdown}后用尽"
+  },
+  "quota.perModelLimits": {
+    "value": "{count, plural, other {# 个}}按模型的限额 · 打开 {provider} 查看详情"
+  },
+  "quota.reset.in": {
+    "value": "距重置 {duration}"
+  },
+  "quota.reset.passed": {
+    "value": "重置时间已过"
+  },
+  "quota.reset.passedAt": {
+    "value": "重置时间已过 · {time}"
+  },
+  "quota.resetCredits.available": {
+    "value": "{count, plural, other {# 张}}可用重置券"
+  },
+  "quota.resetCredits.availableWithExpiry": {
+    "value": "{available} · 最近一张 {countdown}后过期"
+  },
+  "quota.resetCredits.count": {
+    "value": "{count}"
+  },
+  "quota.resetCredits.title": {
+    "value": "限额重置券"
+  },
+  "quota.resetHistory.a11y.empty": {
+    "value": "重置历史对比。{verdict}"
+  },
+  "quota.resetHistory.a11y.more": {
+    "value": " 另有 {count} 个额度。"
+  },
+  "quota.resetHistory.a11y.summary": {
+    "value": "重置历史对比，{window}，柱高表示重置时剩余的额度。{truncation} {headline}。{verdict} {lanes}。{more}"
+  },
+  "quota.resetHistory.a11y.truncation": {
+    "value": " 网格{note}；数据仍涵盖全部周期。"
+  },
+  "quota.resetHistory.axis.cycle": {
+    "value": "周期"
+  },
+  "quota.resetHistory.axis.cycleHelp": {
+    "value": "每个周期一列，各额度的最新周期对齐"
+  },
+  "quota.resetHistory.axis.time": {
+    "value": "时间"
+  },
+  "quota.resetHistory.axis.timeHelp": {
+    "value": "按实际发生时间排布在同一条日历上"
+  },
+  "quota.resetHistory.axisCyclesBack": {
+    "value": "−{count}"
+  },
+  "quota.resetHistory.axisNow": {
+    "value": "现在"
+  },
+  "quota.resetHistory.lane.emptyState": {
+    "value": "尚无完整周期 — 额度补满时才会记录一个周期"
+  },
+  "quota.resetHistory.lane.noCycles": {
+    "value": "尚无完整周期"
+  },
+  "quota.resetHistory.lane.spokenNoCycles": {
+    "value": "{label}：尚无完整周期"
+  },
+  "quota.resetHistory.lane.spokenWaste": {
+    "value": "{label}：{count} 个周期平均浪费 {percent}%"
+  },
+  "quota.resetHistory.lane.wasteSummary": {
+    "value": "平均浪费 {percent}% · 最近 {count, plural, other {# 个周期}}"
+  },
+  "quota.resetHistory.reset.earlyClockRestarted": {
+    "value": "提前补额，下一周期重新计时"
+  },
+  "quota.resetHistory.reset.earlyClockUnchanged": {
+    "value": "提前补额，下次重置时间不变"
+  },
+  "quota.resetHistory.reset.earlyUnclear": {
+    "value": "提前补额，切换到了别的节奏"
+  },
+  "quota.resetHistory.spoken.allCycles": {
+    "value": "全部已记录周期"
+  },
+  "quota.resetHistory.spoken.allTime": {
+    "value": "全部历史记录"
+  },
+  "quota.resetHistory.spoken.eightCycles": {
+    "value": "最近 8 个周期"
+  },
+  "quota.resetHistory.spoken.eightWeeks": {
+    "value": "最近 8 周"
+  },
+  "quota.resetHistory.spoken.fourCycles": {
+    "value": "最近 4 个周期"
+  },
+  "quota.resetHistory.spoken.fourWeeks": {
+    "value": "最近 4 周"
+  },
+  "quota.resetHistory.spoken.twelveCycles": {
+    "value": "最近 12 个周期"
+  },
+  "quota.resetHistory.spoken.twelveWeeks": {
+    "value": "最近 12 周"
+  },
+  "quota.resetHistory.title": {
+    "value": "重置历史"
+  },
+  "quota.resetHistory.totals.headline": {
+    "value": "已用 {used}% · 浪费 {wasted}% · {count, plural, other {# 个周期}}"
+  },
+  "quota.resetHistory.totals.none": {
+    "value": "该区间内没有完整周期"
+  },
+  "quota.resetHistory.truncation": {
+    "value": "仅显示最近 {shown} 个周期，共 {total} 个"
+  },
+  "quota.resetHistory.verdict.clean": {
+    "value": "没有明显浪费 — 补回的额度用掉了 {percent}%。"
+  },
+  "quota.resetHistory.verdict.leaky": {
+    "value": "{label} 在 {count, plural, other {# 个周期}}里平均有 {percent}% 没用掉。"
+  },
+  "quota.resetHistory.verdict.noCycles": {
+    "value": "尚无完整周期 — 额度补满时才会记录一个周期。"
+  },
+  "quota.resetHistory.verdict.noQuota": {
+    "value": "目前还没有跟踪任何按周或更长周期的额度。"
+  },
+  "quota.resetHistory.verdict.wasteful": {
+    "value": "{label} 有 {count, plural, other {# 次}}补额时超过一半没用掉。"
+  },
+  "quota.resetHistory.window.all": {
+    "value": "全部"
+  },
+  "quota.resetHistory.window.eightWeeks": {
+    "value": "8 周"
+  },
+  "quota.resetHistory.window.fourWeeks": {
+    "value": "4 周"
+  },
+  "quota.resetHistory.window.twelveWeeks": {
+    "value": "12 周"
+  },
+  "quota.upcoming.axisDays": {
+    "value": "+{days} 天"
+  },
+  "quota.upcoming.axisHours": {
+    "value": "+{hours} 小时"
+  },
+  "quota.upcoming.empty": {
+    "value": "未来 7 天内没有额度会补满。"
+  },
+  "quota.upcoming.forecastAtReset": {
+    "value": "预计重置时剩余 {percent}%"
+  },
+  "quota.upcoming.gain": {
+    "value": "+{gain}%"
+  },
+  "quota.upcoming.horizon": {
+    "value": "未来 7 天"
+  },
+  "quota.upcoming.leftAndGain": {
+    "value": "当前剩余 {remaining}% · 将补回 +{gain}%"
+  },
+  "quota.upcoming.markerHelp": {
+    "value": "{label} — 当前 {remaining}%，{countdown}后补回 +{gain}%"
+  },
+  "quota.upcoming.resetsAt": {
+    "value": "{countdown}后重置 · {absolute}"
+  },
+  "quota.upcoming.title": {
+    "value": "即将重置"
+  },
+  "quota.update.failed": {
+    "value": "更新失败：{reason}"
+  },
+  "settings.language.caption": {
+    "value": "Vibe Bar 默认跟随 macOS 语言，也可以在此单独指定。厂商、模型与 harness 名称保持原始拼写。"
+  },
+  "settings.language.system": {
+    "value": "跟随系统"
+  },
+  "settings.language.title": {
+    "value": "语言"
+  },
+  "status.card.componentCount": {
+    "value": "{count, plural, other {# 个组件}}"
+  },
+  "status.card.components": {
+    "value": "组件"
+  },
+  "status.card.noIncidents": {
+    "value": "最近 90 天无故障"
+  },
+  "status.card.openIncident": {
+    "value": "打开故障详情"
+  },
+  "status.card.openStatusPage": {
+    "value": "打开 {host}"
+  },
+  "status.card.refresh": {
+    "value": "刷新服务状态"
+  },
+  "status.card.statusPageFallback": {
+    "value": "状态页"
+  },
+  "status.card.title": {
+    "value": "服务状态"
+  },
+  "status.card.updatedHoursAgo": {
+    "value": "{hours} 小时前更新"
+  },
+  "status.card.updatedJustNow": {
+    "value": "刚刚更新"
+  },
+  "status.card.updatedMinutesAgo": {
+    "value": "{minutes} 分钟前更新"
+  },
+  "status.card.uptime": {
+    "value": "可用率 {percent}"
+  },
+  "status.card.uptimeStrip": {
+    "value": "最近 {days} 天的服务可用率"
+  },
+  "status.component.degraded": {
+    "value": "性能下降"
+  },
+  "status.component.maintenance": {
+    "value": "维护中"
+  },
+  "status.component.majorOutage": {
+    "value": "严重故障"
+  },
+  "status.component.operational": {
+    "value": "正常"
+  },
+  "status.component.other": {
+    "value": "其他"
+  },
+  "status.component.partialOutage": {
+    "value": "部分故障"
+  },
+  "status.indicator.critical": {
+    "value": "紧急"
+  },
+  "status.indicator.loading": {
+    "value": "加载中"
+  },
+  "status.indicator.maintenance": {
+    "value": "维护中"
+  },
+  "status.indicator.major": {
+    "value": "严重"
+  },
+  "status.indicator.minor": {
+    "value": "轻微"
+  },
+  "status.overview.checking": {
+    "value": "检查中"
+  },
+  "status.overview.degraded": {
+    "value": "性能下降"
+  },
+  "status.overview.down": {
+    "value": "不可用"
+  },
+  "status.overview.enableProvider": {
+    "value": "在设置中启用一个核心厂商后即可显示服务状态。"
+  },
+  "status.overview.fetchFailed": {
+    "value": "获取失败"
+  },
+  "status.overview.maintenance": {
+    "value": "维护中"
+  },
+  "status.overview.needsAttention": {
+    "value": "需要处理"
+  },
+  "status.overview.operational": {
+    "value": "运行正常"
+  },
+  "status.overview.partialOutage": {
+    "value": "部分故障"
+  },
+  "status.overview.refreshing": {
+    "value": "刷新中"
+  },
+  "status.overview.title": {
+    "value": "状态"
+  },
+  "usage.harnessMix.activeCount": {
+    "value": "所选范围内有 {count, plural, other {# 个}} harness 在使用"
+  },
+  "usage.harnessMix.byRealTokens": {
+    "value": "按实际 token 计"
+  },
+  "usage.harnessMix.empty": {
+    "value": "所选范围内没有 harness 流量"
+  },
+  "usage.harnessMix.title": {
+    "value": "Harness 分布"
+  },
+  "usage.hero.allRequestsPriced": {
+    "value": "全部请求已计价"
+  },
+  "usage.hero.cacheHit": {
+    "value": "缓存命中率"
+  },
+  "usage.hero.cacheRead": {
+    "value": "读取 {tokens}"
+  },
+  "usage.hero.inSelectedRange": {
+    "value": "所选范围内"
+  },
+  "usage.hero.noPricedRequests": {
+    "value": "无可计价请求"
+  },
+  "usage.hero.noTrafficInRange": {
+    "value": "所选范围内无流量"
+  },
+  "usage.hero.realTokens": {
+    "value": "实际 token · 所选范围"
+  },
+  "usage.hero.requests": {
+    "value": "请求数"
+  },
+  "usage.hero.tokenComposition": {
+    "value": "Token 构成"
+  },
+  "usage.hero.totalCost": {
+    "value": "总花费"
+  },
+  "usage.hero.unpricedBadge": {
+    "value": "{count} 条未计价"
+  },
+  "usage.hero.unpricedHelp": {
+    "value": "{count, plural, other {# 条请求}}没有可用价格，计入 $0。"
+  },
+  "usage.ledgerUnavailable.detail": {
+    "value": "无法打开 ~/.vibebar 下的逐请求账本，本次会话只能显示实时费用卡片。"
+  },
+  "usage.ledgerUnavailable.title": {
+    "value": "用量账本不可用"
+  },
+  "usage.noHarnessSelected.detail": {
+    "value": "「全部 harness」是一个开关：再点一次即可把所有 harness 放回查询。"
+  },
+  "usage.noHarnessSelected.title": {
+    "value": "未选择任何 harness — 请在上方选择"
+  },
+  "usage.requestCount": {
+    "value": "{count} 条请求"
+  },
+  "usage.tokens.cacheRead": {
+    "value": "缓存读取"
+  },
+  "usage.tokens.cacheWrite": {
+    "value": "缓存写入"
+  },
+  "usage.tokens.input": {
+    "value": "输入"
+  },
+  "usage.tokens.output": {
+    "value": "输出"
+  },
+  "usage.whenYouUse.everything": {
+    "value": "你什么时候在用"
+  },
+  "usage.whenYouUse.googleAI": {
+    "value": "你什么时候用 Google AI"
+  },
+  "usage.whenYouUse.spaceXAI": {
+    "value": "你什么时候用 SpaceXAI"
+  },
+  "workbench.placeholder.resets": {
+    "value": "周期、补额与预测视图即将上线。"
+  },
+  "workbench.placeholder.sessionManager": {
+    "value": "本地 Codex 与 Claude Code 会话的浏览和搜索即将上线。"
+  },
+  "workbench.placeholder.settings": {
+    "value": "配置 Vibe Bar 及已连接的厂商。"
+  },
+  "workbench.placeholder.skillsManager": {
+    "value": "已安装 agent skills 的查看与整理即将上线。"
+  },
+  "workbench.placeholder.usageStats": {
+    "value": "完整的用量与费用分析即将上线。"
+  }
+}

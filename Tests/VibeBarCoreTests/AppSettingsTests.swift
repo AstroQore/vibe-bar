@@ -179,6 +179,59 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(decoded.sessionBodyIndexingEnabled)
     }
 
+    func testLanguageDefaultsToSystemAndRoundTrips() throws {
+        // Every settings file written before the language override existed
+        // has to land on `.system`. Pinning an upgrading user to English
+        // because that is what they had been seeing would be a silent
+        // decision taken on their behalf.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertEqual(legacy.language, .system)
+        XCTAssertEqual(AppSettings.default.language, .system)
+
+        for language in AppLanguage.allCases {
+            var settings = AppSettings.default
+            settings.language = language
+            let decoded = try JSONDecoder().decode(
+                AppSettings.self,
+                from: try JSONEncoder().encode(settings)
+            )
+            XCTAssertEqual(decoded.language, language)
+        }
+    }
+
+    func testUnknownLanguageFallsBackWithoutFailingTheFile() throws {
+        // Same rule the terminal and color-basis pickers follow: a raw
+        // value from a newer build or a hand edit costs this one preference,
+        // not the rest of the document.
+        let settings = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining","language":"ja"}"#.utf8)
+        )
+        XCTAssertEqual(settings.language, .system)
+        XCTAssertEqual(settings.displayMode, .remaining)
+    }
+
+    /// The raw value of an explicit case is also the name of its `.lproj`
+    /// directory, which is what lets `L10n` resolve a bundle from it
+    /// without a second mapping table. A rename would be a silent
+    /// migration *and* a broken lookup.
+    func testLanguageRawValuesAreTheLprojNames() {
+        XCTAssertEqual(AppLanguage.system.rawValue, "system")
+        XCTAssertNil(AppLanguage.system.localizationCode)
+        XCTAssertEqual(AppLanguage.english.localizationCode, "en")
+        XCTAssertEqual(AppLanguage.simplifiedChinese.localizationCode, "zh-Hans")
+        for language in AppLanguage.allCases {
+            guard let code = language.localizationCode else { continue }
+            XCTAssertTrue(
+                L10n.supported.contains(code),
+                "\(code) is selectable but no catalog ships for it"
+            )
+        }
+    }
+
     func testUnknownPreferredTerminalFallsBackWithoutFailingTheFile() throws {
         // Same rule the color-basis picker follows: an unknown raw value
         // costs the user this one preference, not every other setting.

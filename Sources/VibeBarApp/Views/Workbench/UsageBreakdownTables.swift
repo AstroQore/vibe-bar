@@ -324,7 +324,7 @@ struct UsageBreakdownTables: View {
                 }
                 Text(model.isLoadingMore
                     ? "Loading more requests…"
-                    : "Load more (\(remaining.formatted(.number.grouping(.automatic))) remaining)")
+                    : "Load more (\(remaining.formatted(.number.grouping(.automatic).locale(AppLocale.current))) remaining)")
                     .font(.system(size: 11, weight: .medium))
             }
             .foregroundStyle(.secondary)
@@ -525,7 +525,7 @@ struct UsageBreakdownTables: View {
     }
 
     private func countCell(_ value: Int, _ column: UsageTableColumn) -> some View {
-        Text(value.formatted(.number.grouping(.automatic)))
+        Text(value.formatted(.number.grouping(.automatic).locale(AppLocale.current)))
             .font(numericFont)
             .frame(width: column.width, alignment: column.frameAlignment)
     }
@@ -645,33 +645,27 @@ struct UsageBreakdownTables: View {
     }
 
     /// Cached: request rows can be formatted while scrolling a long ledger.
-    private static let timestampFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("MMMd HH:mm:ss")
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var timestampFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdHHmmss")
+    }
 
-    private static let periodHourFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("EEEMMMdHHmm")
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var periodHourFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "EEEMMMdHHmm")
+    }
 
-    private static let periodDayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("EEEEMMMd")
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var periodDayFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "EEEEMMMd")
+    }
 
-    private static let periodWeekFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("MMMd")
-        return formatter
-    }()
+    private static var periodWeekFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMd")
+    }
 }
 
 /// A compact row with a restrained hover treatment. Keeping the divider with

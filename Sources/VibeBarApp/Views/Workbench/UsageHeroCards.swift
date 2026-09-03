@@ -25,18 +25,18 @@ struct UsageHeroCards: View {
                 .layoutPriority(2)
                 .padding(.trailing, density.cardPadding)
             heroDivider
-            metricSection(label: "TOTAL COST", value: costValue) {
+            metricSection(label: L10n.Usage.heroTotalCost, value: costValue) {
                 if summary.unpricedRequests > 0 {
                     unpricedBadge
                 } else {
-                    detailText(summary.costMicros == nil ? "no priced requests" : "all requests priced")
+                    detailText(summary.costMicros == nil ? L10n.Usage.heroNoPricedRequests : L10n.Usage.heroAllRequestsPriced)
                 }
             }
             .frame(minWidth: 145, idealWidth: 185, maxWidth: 220, alignment: .leading)
             .padding(.horizontal, density.cardPadding)
             heroDivider
-            metricSection(label: "REQUESTS", value: summary.requests.formatted(.number.grouping(.automatic))) {
-                detailText(summary.requests == 0 ? "no traffic in range" : "in selected range")
+            metricSection(label: L10n.Usage.heroRequests, value: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))) {
+                detailText(summary.requests == 0 ? L10n.Usage.heroNoTrafficInRange : L10n.Usage.heroInSelectedRange)
             }
             .frame(minWidth: 130, idealWidth: 170, maxWidth: 195, alignment: .leading)
             .padding(.horizontal, density.cardPadding)
@@ -51,13 +51,13 @@ struct UsageHeroCards: View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             tokensSection
             HStack(alignment: .top, spacing: density.cardSpacing) {
-                metricSection(label: "TOTAL COST", value: costValue) {
+                metricSection(label: L10n.Usage.heroTotalCost, value: costValue) {
                     if summary.unpricedRequests > 0 { unpricedBadge }
-                    else { detailText(summary.costMicros == nil ? "no priced requests" : "all requests priced") }
+                    else { detailText(summary.costMicros == nil ? L10n.Usage.heroNoPricedRequests : L10n.Usage.heroAllRequestsPriced) }
                 }
                 Divider().frame(height: 54)
-                metricSection(label: "REQUESTS", value: summary.requests.formatted(.number.grouping(.automatic))) {
-                    detailText(summary.requests == 0 ? "no traffic in range" : "in selected range")
+                metricSection(label: L10n.Usage.heroRequests, value: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))) {
+                    detailText(summary.requests == 0 ? L10n.Usage.heroNoTrafficInRange : L10n.Usage.heroInSelectedRange)
                 }
                 Divider().frame(height: 54)
                 cacheSection
@@ -67,7 +67,7 @@ struct UsageHeroCards: View {
 
     private var tokensSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("REAL TOKENS · SELECTED RANGE")
+            sectionLabel(L10n.Usage.heroRealTokens)
             Text(UsageFormatting.compactTokens(summary.realTotalTokens))
                 .font(.system(size: density.titleFontSize + 20, weight: .bold, design: .rounded).monospacedDigit())
                 .lineLimit(1)
@@ -79,10 +79,10 @@ struct UsageHeroCards: View {
 
     private var tokenLegend: some View {
         HStack(spacing: 12) {
-            tokenLegendItem("In", value: summary.freshInput, tint: .blue)
-            tokenLegendItem("Out", value: summary.output, tint: .green)
-            tokenLegendItem("Cache write", value: summary.cacheCreation, tint: .orange)
-            tokenLegendItem("Cache read", value: summary.cacheRead, tint: .purple)
+            tokenLegendItem(L10n.Usage.tokensInput, value: summary.freshInput, tint: .blue)
+            tokenLegendItem(L10n.Usage.tokensOutput, value: summary.output, tint: .green)
+            tokenLegendItem(L10n.Usage.tokensCacheWrite, value: summary.cacheCreation, tint: .orange)
+            tokenLegendItem(L10n.Usage.tokensCacheRead, value: summary.cacheRead, tint: .purple)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -100,7 +100,7 @@ struct UsageHeroCards: View {
             .background(Capsule().fill(Theme.barTrack))
         }
         .frame(height: max(8, density.bucketBarHeight - 1))
-        .accessibilityLabel("Token composition")
+        .accessibilityLabel(L10n.Usage.heroTokenComposition)
     }
 
     private func tokenSegment(_ value: Int64, total: Int64, tint: Color, width: CGFloat) -> some View {
@@ -143,10 +143,12 @@ struct UsageHeroCards: View {
         HStack(spacing: 11) {
             cacheRing
             VStack(alignment: .leading, spacing: 5) {
-                sectionLabel("CACHE HIT")
+                sectionLabel(L10n.Usage.heroCacheHit)
                 Text(UsageFormatting.formatPercent(summary.cacheHitRate))
                     .font(.system(size: density.titleFontSize, weight: .bold, design: .rounded).monospacedDigit())
-                detailText("\(UsageFormatting.compactTokens(summary.cacheRead)) read")
+                detailText(L10n.Usage.heroCacheRead(
+                    tokens: UsageFormatting.compactTokens(summary.cacheRead)
+                ))
             }
         }
     }
@@ -174,13 +176,13 @@ struct UsageHeroCards: View {
     }
 
     private var unpricedBadge: some View {
-        Text("\(summary.unpricedRequests) unpriced")
+        Text(L10n.Usage.heroUnpricedBadge(count: summary.unpricedRequests))
             .font(.system(size: max(8, density.resetCountdownFontSize - 2), weight: .semibold))
             .foregroundStyle(.orange)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Capsule().fill(Color.orange.opacity(0.13)))
-            .help("\(summary.unpricedRequests) request(s) had no usable price and contribute $0.")
+            .help(L10n.Usage.heroUnpricedHelp(count: summary.unpricedRequests))
     }
 
     private func sectionLabel(_ text: String) -> some View {

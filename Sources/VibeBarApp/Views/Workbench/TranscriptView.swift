@@ -748,13 +748,11 @@ struct SessionMetadataHeader: View {
         }
     }
 
-    private static let stamp: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var stamp: DateFormatter {
+        AppLocale.dateFormatter(dateStyle: .medium, timeStyle: .short)
+    }
 }
 
 /// One turn.
@@ -910,13 +908,11 @@ struct TranscriptMessageCard: View {
         }
     }
 
-    private static let time: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.dateStyle = .none
-        formatter.timeStyle = .medium
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var time: DateFormatter {
+        AppLocale.dateFormatter(dateStyle: .none, timeStyle: .medium)
+    }
 }
 
 /// The prompts in a session, as a jump list.

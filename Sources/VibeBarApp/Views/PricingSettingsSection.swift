@@ -64,7 +64,7 @@ struct PricingSettingsSection: View {
                     .disabled(environment.isRefreshingPricing)
 
                     if let date = environment.pricingRefreshStatus.mergedAt {
-                        Text("Merged \(date.formatted(date: .abbreviated, time: .shortened))")
+                        Text("Merged \(AppLocale.string(date, dateStyle: .medium, timeStyle: .short))")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

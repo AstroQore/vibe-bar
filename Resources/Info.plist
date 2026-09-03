@@ -4,6 +4,17 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<!-- Every language the bundle ships an .lproj for. This is what puts
+	     Vibe Bar in System Settings > General > Language & Region >
+	     Applications, so a per-app language can be chosen there as well as
+	     in Vibe Bar's own Settings; both land in Locale.preferredLanguages,
+	     which is what L10n resolves .system against. Kept in step with
+	     L10n.supported and Resources/i18n/ by LocalizationCatalogTests. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Vibe Bar</string>
 	<key>CFBundleExecutable</key>

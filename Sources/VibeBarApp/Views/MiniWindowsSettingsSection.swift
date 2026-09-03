@@ -509,12 +509,11 @@ struct MiniWindowsSettingsSection: View {
     // Static: this caption renders once per dimmed picker row, and the picker
     // re-renders on every settings or quota publish — a formatter per call is
     // the classic per-row allocation.
-    private static let lastSeenFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd"
-        formatter.timeZone = .autoupdatingCurrent
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var lastSeenFormatter: DateFormatter {
+        AppLocale.dateFormatter(dateStyle: .short, timeStyle: .short)
+    }
 
     private func lastSeenCaption(_ entry: PickerEntry) -> String {
         guard let discovered = entry.discovered else { return "not in current response" }

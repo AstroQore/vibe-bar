@@ -55,6 +55,23 @@ cp "$EXEC_PATH" "$APP_DIR/Contents/MacOS/VibeBar"
 # before falling back to Bundle.module for source builds and tests.
 cp -R "$CORE_RESOURCE_BUNDLE" \
     "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle"
+# Localized strings are packaged twice on purpose, and the two copies do
+# different jobs. The one inside the Core bundle is what `swift test`,
+# `swift run`, and any source build resolve through `Bundle.module`. The
+# one here, in the app's own Resources, is what an installed copy resolves
+# through `Bundle.main` and — together with CFBundleLocalizations — what
+# makes macOS list Vibe Bar in Language & Region > Applications at all.
+# SwiftPM lowercases a locale directory when it builds a resource bundle,
+# so the name is restored to the conventional spelling on the way in;
+# `L10n` matches case-insensitively so both copies answer either way.
+for lproj in "$CORE_RESOURCE_BUNDLE"/*.lproj; do
+    [[ -d "$lproj" ]] || continue
+    case "$(basename "$lproj")" in
+        zh-hans.lproj) canonical="zh-Hans.lproj" ;;
+        *)             canonical="$(basename "$lproj")" ;;
+    esac
+    cp -R "$lproj" "$APP_DIR/Contents/Resources/$canonical"
+done
 ditto "$SPARKLE_FRAMEWORK_SOURCE" "$SPARKLE_FRAMEWORK"
 cp "$ROOT/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 cp "$ROOT/THIRD_PARTY_NOTICES.md" \
@@ -79,6 +96,16 @@ if [[ ! -f "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle/pricing.json"
     echo "Packaged core resource bundle is incomplete." >&2
     exit 1
 fi
+for lang in en zh-Hans; do
+    if [[ ! -f "$APP_DIR/Contents/Resources/$lang.lproj/Localizable.strings" ]]; then
+        echo "Packaged localization for $lang is missing." >&2
+        exit 1
+    fi
+    if [[ ! -f "$APP_DIR/Contents/Resources/$lang.lproj/Localizable.stringsdict" ]]; then
+        echo "Packaged plural rules for $lang are missing." >&2
+        exit 1
+    fi
+done
 for license_name in CodexBar SweetCookieKit Sparkle; do
     if [[ ! -f "$APP_DIR/Contents/Resources/ThirdPartyLicenses/$license_name.txt" ]]; then
         echo "Packaged third-party license resources are incomplete." >&2

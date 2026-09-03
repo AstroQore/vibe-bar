@@ -326,19 +326,17 @@ struct ResetsPage: View {
         let isPast: Bool
     }
 
-    private static let monthTitleFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        formatter.timeZone = .autoupdatingCurrent
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var monthTitleFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMMyyyy")
+    }
 
-    private static let entryTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, HH:mm"
-        formatter.timeZone = .autoupdatingCurrent
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var entryTimeFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdHHmm")
+    }
 
     private func displayedMonthStart(now: Date) -> Date {
         let calendar = Calendar.current

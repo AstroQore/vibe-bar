@@ -87,7 +87,7 @@ struct EffectivePricingCatalogView: View {
             }
 
             if let mergedAt = environment.pricingRefreshStatus.mergedAt {
-                Text("Active catalog merged \(mergedAt.formatted(date: .abbreviated, time: .shortened))")
+                Text("Active catalog merged \(AppLocale.string(mergedAt, dateStyle: .medium, timeStyle: .short))")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -314,10 +314,10 @@ private struct EffectivePricingRowView: View {
                 rates.append("cache write \(Self.formatPrice(value))")
             }
             let suffix = rates.isEmpty ? "" : ": " + rates.joined(separator: " · ")
-            parts.append("Above \(threshold.formatted(.number.notation(.compactName))) tokens\(suffix)")
+            parts.append("Above \(threshold.formatted(.number.notation(.compactName).locale(AppLocale.current))) tokens\(suffix)")
         }
         if let multiplier = row.fastMultiplier, multiplier != 1 {
-            parts.append("Fast tier ×\(multiplier.formatted(.number.precision(.fractionLength(0...2))))")
+            parts.append("Fast tier ×\(multiplier.formatted(.number.precision(.fractionLength(0...2)).locale(AppLocale.current)))")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -327,6 +327,7 @@ private struct EffectivePricingRowView: View {
             .currency(code: "USD")
                 .precision(.fractionLength(0...6))
                 .presentation(.narrow)
+                .locale(AppLocale.current)
         )
     }
 }

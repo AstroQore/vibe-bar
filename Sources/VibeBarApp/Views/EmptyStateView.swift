@@ -53,39 +53,35 @@ struct EmptyStateView: View {
     }
     private var headline: String {
         switch kind {
-        case .noAccount: return "No account found"
-        case .needsLogin: return "Needs re-login"
-        case .network: return "Network error"
-        case .parseChanged: return "Response format changed"
-        case .rateLimited: return "Rate limited"
+        case .noAccount: return L10n.Quota.emptyNoAccountHeadline
+        case .needsLogin: return L10n.Quota.emptyNeedsLoginHeadline
+        case .network: return L10n.Quota.emptyNetworkHeadline
+        case .parseChanged: return L10n.Quota.emptyParseChangedHeadline
+        case .rateLimited: return L10n.Quota.emptyRateLimitedHeadline
         }
     }
     private var detail: String {
         switch kind {
         case .noAccount:
-            return "Log in with the official CLI on this Mac, then refresh."
+            return L10n.Quota.emptyNoAccountDetail
         case .needsLogin(let t):
-            return "Run `\(t == .codex ? "codex" : "claude") login` in your terminal, then refresh."
+            // The CLI's name is the command the user types. It is not copy.
+            return L10n.Quota.emptyNeedsLoginDetail(command: t == .codex ? "codex" : "claude")
         case .network:
-            return "Couldn't reach the official API. Check your internet connection and try again."
+            return L10n.Quota.emptyNetworkDetail
         case .parseChanged:
-            return "The official API returned an unexpected shape. Try refreshing or update Vibe Bar."
+            return L10n.Quota.emptyParseChangedDetail
         case .rateLimited:
-            return "The official API is asking us to wait. Try again in a moment."
+            return L10n.Quota.emptyRateLimitedDetail
         }
     }
     private var primaryTitle: String {
         switch kind {
-        case .noAccount: return "Refresh"
-        case .needsLogin: return "Refresh"
-        case .network, .rateLimited: return "Retry"
-        case .parseChanged: return "Refresh"
+        case .noAccount, .needsLogin, .parseChanged: return L10n.Common.refresh
+        case .network, .rateLimited: return L10n.Common.retry
         }
     }
     private var secondaryTitle: String {
-        switch kind {
-        case .noAccount: return "Open Settings"
-        default: return "Open Settings"
-        }
+        L10n.Common.openSettings
     }
 }

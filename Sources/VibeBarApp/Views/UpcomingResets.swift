@@ -26,10 +26,14 @@ struct UpcomingResetEvent: Identifiable {
     /// "Claude · Fable · Weekly" — canonical quota-axis names, full words.
     var label: String {
         var base: String
+        // Same split as `ResetHistoryComparison.Lane.label`: the
+        // SubProvider is a name, the L3 group and bucket may be generic
+        // window words the reader should meet in their own language.
         if let groupTitle {
-            base = "\(subProviderName) · \(groupTitle) · \(bucketTitle)"
+            base = "\(subProviderName) · \(QuotaGroupLabelLocalizer.display(groupTitle))"
+                + " · \(QuotaGroupLabelLocalizer.display(bucketTitle))"
         } else {
-            base = "\(subProviderName) · \(bucketTitle)"
+            base = "\(subProviderName) · \(QuotaGroupLabelLocalizer.display(bucketTitle))"
         }
         if let accountLabel {
             base += " · \(accountLabel)"
@@ -113,13 +117,6 @@ struct ResetLaneView: View {
 
     @State private var hoveredEventID: String?
 
-    private static let absoluteTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, HH:mm"
-        formatter.timeZone = .autoupdatingCurrent
-        return formatter
-    }()
-
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
@@ -135,8 +132,12 @@ struct ResetLaneView: View {
                 // Day ticks for multi-day horizons; hour ticks when the
                 // lane covers a single day (the sub-daily timeline).
                 let ticks: [(fraction: Double, label: String)] = horizonDays <= 1
-                    ? [0.25, 0.5, 0.75, 1].map { ($0, "+\(Int($0 * horizonDays * 24))h") }
-                    : (1...Int(horizonDays)).map { (Double($0) / horizonDays, "+\($0)d") }
+                    ? [0.25, 0.5, 0.75, 1].map {
+                        ($0, L10n.Quota.upcomingAxisHours(hours: Int($0 * horizonDays * 24)))
+                    }
+                    : (1...Int(horizonDays)).map {
+                        (Double($0) / horizonDays, L10n.Quota.upcomingAxisDays(days: $0))
+                    }
                 ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
                     let x = width * CGFloat(tick.fraction)
                     Rectangle()
@@ -179,14 +180,22 @@ struct ResetLaneView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            Text("resets \(ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—") · \(Self.absoluteTimeFormatter.string(from: event.resetAt))")
+            Text(L10n.Quota.upcomingResetsAt(
+                countdown: ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—",
+                // Same renderer as every other absolute reset time in the app,
+                // so the date reads as a date in whichever language is on.
+                absolute: ResetCountdownFormatter.absoluteTime(for: event.resetAt, now: now) ?? "—"
+            ))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)
-            Text("\(Int(event.remainingPercent.rounded()))% left now · +\(Int(event.gainPercent.rounded()))% comes back")
+            Text(L10n.Quota.upcomingLeftAndGain(
+                remaining: Int(event.remainingPercent.rounded()),
+                gain: Int(event.gainPercent.rounded())
+            ))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                 .foregroundStyle(Theme.barColor(percent: event.remainingPercent, mode: .remaining))
             if let projected = event.forecastRemainingAtResetPercent {
-                Text("forecast \(Int(projected.rounded()))% left at reset")
+                Text(L10n.Quota.upcomingForecastAtReset(percent: Int(projected.rounded())))
                     .font(.system(size: 9, design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -256,7 +265,12 @@ struct ResetLaneView: View {
                 hoveredEventID = nil
             }
         }
-        .help("\(event.label) — \(Int(event.remainingPercent.rounded()))% now, +\(Int(event.gainPercent.rounded()))% \(ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "")")
+        .help(L10n.Quota.upcomingMarkerHelp(
+            label: event.label,
+            remaining: Int(event.remainingPercent.rounded()),
+            gain: Int(event.gainPercent.rounded()),
+            countdown: ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? ""
+        ))
     }
 }
 
@@ -284,15 +298,15 @@ struct UpcomingResetsCard: View {
         let events = UpcomingResets.events(environment: environment, now: now)
         CardShell(density: density, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Upcoming Resets")
+                Text(L10n.Quota.upcomingTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer(minLength: 6)
-                Text("next 7 days")
+                Text(L10n.Quota.upcomingHorizon)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
             if events.isEmpty {
-                Text("Nothing refills in the next seven days.")
+                Text(L10n.Quota.upcomingEmpty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 12)
@@ -319,7 +333,7 @@ struct UpcomingResetsCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Spacer(minLength: 6)
-            Text("+\(Int(event.gainPercent.rounded()))%")
+            Text(L10n.Quota.upcomingGain(gain: Int(event.gainPercent.rounded())))
                 .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(Theme.barColor(percent: event.remainingPercent, mode: .remaining))
             Text(ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—")

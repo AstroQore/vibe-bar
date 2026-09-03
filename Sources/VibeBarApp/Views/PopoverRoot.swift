@@ -131,22 +131,24 @@ struct PopoverRoot: View {
 
     private var headerTitle: String {
         switch overviewPage {
-        case .overview: return "Overview"
+        // The four company names are quota-axis identifiers — AGENTS.md
+        // § 7.1 — and stay as their owners spell them in every language.
+        case .overview: return L10n.Popover.tabOverview
         case .openAI: return "OpenAI"
         case .claude: return "Anthropic"
         case .googleAI: return "Google AI"
         case .grok: return "SpaceXAI"
-        case .misc: return "Misc Providers"
-        case .machines: return "Machines"
+        case .misc: return L10n.Popover.tabMisc
+        case .machines: return L10n.Popover.tabMachines
         }
     }
 
     private var headerSubtitle: String? {
         switch overviewPage {
-        case .overview: return "All providers · quota & cost"
+        case .overview: return L10n.Popover.headerOverviewSubtitle
         case .openAI, .claude, .googleAI, .grok: return nil
-        case .misc: return "Usage-only · sign in or paste a key"
-        case .machines: return "End-to-end encrypted remote usage"
+        case .misc: return L10n.Popover.headerMiscSubtitle
+        case .machines: return L10n.Popover.headerMachinesSubtitle
         }
     }
 
@@ -281,13 +283,13 @@ enum OverviewPage: String, CaseIterable, Identifiable {
     /// so the tab strip and card header use one consistent level.
     var label: String {
         switch self {
-        case .overview: return "Overview"
+        case .overview: return L10n.Popover.tabOverview
         case .openAI:   return "OpenAI"
         case .claude:   return "Anthropic"
         case .googleAI: return "Google AI"
         case .grok:     return "SpaceXAI"
-        case .misc:     return "Misc"
-        case .machines: return "Machines"
+        case .misc:     return L10n.Popover.tabMiscShort
+        case .machines: return L10n.Popover.tabMachines
         }
     }
 
@@ -350,7 +352,7 @@ private struct OverviewPageSwitch: View {
                         }
                     }
                 }
-                .help("Show \(page.label)")
+                .help(L10n.Popover.showPage(page: page.label))
             }
         }
         .padding(3)
@@ -592,7 +594,7 @@ private struct OverviewWaterfall: View {
                 snapshot: context.combinedSnapshot,
                 density: density,
                 chartHeight: density.overviewCostChartHeight,
-                titleOverride: "All Providers Cost History"
+                titleOverride: L10n.Cost.historyAllProviders
             )
         case let .overviewCost(tool):
             if tool == .gemini {
@@ -606,20 +608,21 @@ private struct OverviewWaterfall: View {
                     tool: .antigravity,
                     density: density,
                     snapshotOverride: context.googleAISnapshot,
-                    titleOverride: "Google AI Cost",
-                    emptyMessageOverride: "No Gemini Web / AntiGravity usage yet — refresh after signing in to AntiGravity or agy.",
+                    titleOverride: L10n.Cost.googleAITitle,
+                    emptyMessageOverride: L10n.Cost.googleAIEmpty,
+                    // The tool name is a quota-axis company name, not copy.
                     toolNameOverride: "Google AI",
-                    heatmapTitleOverride: "When you use Google AI"
+                    heatmapTitleOverride: L10n.Usage.whenYouUseGoogleAI
                 )
             } else if tool == .grok {
                 OverviewCostCard(
                     tool: .grok,
                     density: density,
                     snapshotOverride: context.grokSnapshot,
-                    titleOverride: "SpaceXAI Cost",
-                    emptyMessageOverride: "No Grok or Cursor usage found yet.",
+                    titleOverride: L10n.Cost.spaceXAITitle,
+                    emptyMessageOverride: L10n.Cost.spaceXAIEmpty,
                     toolNameOverride: "SpaceXAI",
-                    heatmapTitleOverride: "When you use SpaceXAI"
+                    heatmapTitleOverride: L10n.Usage.whenYouUseSpaceXAI
                 )
             } else {
                 OverviewCostCard(tool: tool, density: density)
@@ -634,19 +637,19 @@ private struct OverviewWaterfall: View {
             ModelRankingList(
                 breakdowns: context.models,
                 density: density,
-                subtitle: "All providers · all time"
+                subtitle: L10n.Cost.modelRankingAllProvidersAllTime
             )
         case .overviewYearHeatmap:
             YearlyContributionHeatmapView(
                 history: context.history,
                 density: density,
-                toolName: "All providers"
+                toolName: L10n.Cost.allProviders
             )
         case .overviewActivityHeatmap:
             UsageActivityView(
                 heatmap: context.heatmap,
                 density: density,
-                titleOverride: "When you use everything"
+                titleOverride: L10n.Usage.whenYouUseEverything
             )
         case .quotaGroup, .serviceStatus, .resetHistoryCompare, .costHeader,
              .costHistory, .modelRanking, .yearHeatmap, .activityHeatmap,
@@ -727,7 +730,7 @@ private struct GeminiCombinedCard: View {
                 Spacer(minLength: 4)
                 BorderlessIconButton(
                     systemImage: "arrow.clockwise",
-                    help: "Refresh Gemini Web + AntiGravity"
+                    help: L10n.Popover.refreshGoogleAI
                 ) {
                     environment.refresh(.gemini)
                     environment.refresh(.antigravity)
@@ -866,7 +869,7 @@ private struct GrokCombinedCard: View {
                 Spacer(minLength: 4)
                 BorderlessIconButton(
                     systemImage: "arrow.clockwise",
-                    help: "Refresh Grok + Cursor"
+                    help: L10n.Popover.refreshSpaceXAI
                 ) {
                     environment.refresh(.grok)
                     environment.refresh(.cursor)
@@ -995,8 +998,8 @@ private struct GeminiCostEmptyCard: View {
             HStack(alignment: .center, spacing: 8) {
                 ProviderSectionTitle(
                     tool: .gemini,
-                    title: "\(ToolType.gemini.productName) Cost",
-                    subtitle: "No usage yet",
+                    title: L10n.Cost.providerTitle(provider: ToolType.gemini.productName),
+                    subtitle: L10n.Cost.noUsageYet,
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16,
@@ -1005,10 +1008,10 @@ private struct GeminiCostEmptyCard: View {
                 Spacer(minLength: 4)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("No Gemini or AntiGravity usage found yet.")
+                Text(L10n.Cost.geminiEmptyTitle)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
-                Text("Vibe Bar reads live AntiGravity quota from the desktop app when available, then falls back to the installed agy CLI. Cached values are marked stale when neither local source can refresh them.")
+                Text(L10n.Cost.geminiEmptyDetail)
                     .font(.system(size: max(10, density.subtitleFontSize - 1)))
                     .foregroundStyle(.tertiary)
                     .lineLimit(nil)
@@ -1064,7 +1067,7 @@ private struct OverviewCostSummaryCard: View {
             + "|\(costService.lastRefreshedAt?.timeIntervalSince1970 ?? 0)"
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Cost")
+                Text(L10n.Cost.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let lastRefreshed = costService.lastRefreshedAt {
@@ -1077,7 +1080,7 @@ private struct OverviewCostSummaryCard: View {
                         .controlSize(.small)
                         .frame(width: 12, height: 12)
                 }
-                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh cost data") {
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: L10n.Cost.refreshData) {
                     environment.refreshCostUsage()
                 }
                 .disabled(costService.isRefreshing)
@@ -1088,33 +1091,33 @@ private struct OverviewCostSummaryCard: View {
             // third row.
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 0) {
-                    metric(label: "TOTAL COST", value: formatCost(totals.allTimeCostUSD), highlight: true)
+                    metric(label: L10n.Cost.metricTotalCost, value: formatCost(totals.allTimeCostUSD), highlight: true)
                     divider
-                    metric(label: "TOTAL TOK", value: formatTokens(headlineTokens.allTimeTokens), highlight: true)
+                    metric(label: L10n.Cost.metricTotalTokens, value: formatTokens(headlineTokens.allTimeTokens), highlight: true)
                     divider
-                    metric(label: "PEAK DAY", value: formatCost(totals.peakDayCostUSD))
+                    metric(label: L10n.Cost.metricPeakDay, value: formatCost(totals.peakDayCostUSD))
                     divider
-                    metric(label: "PEAK TOK DAY", value: formatTokens(headlineTokens.peakDayTokens))
+                    metric(label: L10n.Cost.metricPeakTokenDay, value: formatTokens(headlineTokens.peakDayTokens))
                 }
                 Spacer(minLength: 8)
                 HStack(alignment: .top, spacing: 0) {
-                    metric(label: "TODAY", value: formatCost(totals.todayCostUSD))
+                    metric(label: L10n.Cost.metricToday, value: formatCost(totals.todayCostUSD))
                     divider
-                    metric(label: "YESTERDAY", value: formatCost(totals.yesterdayCostUSD))
+                    metric(label: L10n.Cost.metricYesterday, value: formatCost(totals.yesterdayCostUSD))
                     divider
-                    metric(label: "7-DAY", value: formatCost(totals.last7DaysCostUSD))
+                    metric(label: L10n.Cost.metricSevenDay, value: formatCost(totals.last7DaysCostUSD))
                     divider
-                    metric(label: "30-DAY", value: formatCost(totals.last30DaysCostUSD))
+                    metric(label: L10n.Cost.metricThirtyDay, value: formatCost(totals.last30DaysCostUSD))
                 }
                 Spacer(minLength: 8)
                 HStack(alignment: .top, spacing: 0) {
-                    metric(label: "TODAY TOK", value: formatTokens(headlineTokens.todayTokens))
+                    metric(label: L10n.Cost.metricTodayTokens, value: formatTokens(headlineTokens.todayTokens))
                     divider
-                    metric(label: "YESTERDAY TOK", value: formatTokens(headlineTokens.yesterdayTokens))
+                    metric(label: L10n.Cost.metricYesterdayTokens, value: formatTokens(headlineTokens.yesterdayTokens))
                     divider
-                    metric(label: "7-DAY TOK", value: formatTokens(headlineTokens.last7DaysTokens))
+                    metric(label: L10n.Cost.metricSevenDayTokens, value: formatTokens(headlineTokens.last7DaysTokens))
                     divider
-                    metric(label: "30-DAY TOK", value: formatTokens(headlineTokens.last30DaysTokens))
+                    metric(label: L10n.Cost.metricThirtyDayTokens, value: formatTokens(headlineTokens.last30DaysTokens))
                 }
             }
             .frame(maxHeight: .infinity)
@@ -1199,7 +1202,7 @@ private struct OverviewStatusSummaryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Status")
+                Text(L10n.Status.overviewTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let lastFetched = serviceStatus.lastFetched {
@@ -1212,13 +1215,13 @@ private struct OverviewStatusSummaryCard: View {
                         .controlSize(.small)
                         .frame(width: 12, height: 12)
                 }
-                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh service status") {
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: L10n.Status.cardRefresh) {
                     serviceStatus.refreshAll()
                 }
                 .disabled(!serviceStatus.inFlight.isEmpty)
             }
             if tools.isEmpty {
-                Text("Enable a core provider in Settings to show service status.")
+                Text(L10n.Status.overviewEnableProvider)
                     .font(.system(size: max(9, density.subtitleFontSize - 1)))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -1349,8 +1352,8 @@ private struct OverviewStatusSummaryCard: View {
         _ projection: ServiceStatusController.Projection,
         state: OverviewStatusState
     ) -> String {
-        if projection.isRefreshing { return "Refreshing" }
-        if projection.error != nil { return "Fetch failed" }
+        if projection.isRefreshing { return L10n.Status.overviewRefreshing }
+        if projection.error != nil { return L10n.Status.overviewFetchFailed }
         if let incident = projection.snapshot?.recentIncidents.first, !incident.isResolved {
             return incident.name
         }
@@ -1402,10 +1405,10 @@ private enum OverviewStatusState {
     var label: String {
         switch self {
         case .up:          return "Up"
-        case .degraded:    return "Degraded"
-        case .down:        return "Down"
-        case .checking:    return "Checking"
-        case .maintenance: return "Maintenance"
+        case .degraded:    return L10n.Status.overviewDegraded
+        case .down:        return L10n.Status.overviewDown
+        case .checking:    return L10n.Status.overviewChecking
+        case .maintenance: return L10n.Status.overviewMaintenance
         }
     }
 
@@ -1421,11 +1424,11 @@ private enum OverviewStatusState {
 
     var detail: String {
         switch self {
-        case .up:          return "Operational"
-        case .degraded:    return "Partial outage"
-        case .down:        return "Needs attention"
-        case .checking:    return "Checking"
-        case .maintenance: return "Maintenance"
+        case .up:          return L10n.Status.overviewOperational
+        case .degraded:    return L10n.Status.overviewPartialOutage
+        case .down:        return L10n.Status.overviewNeedsAttention
+        case .checking:    return L10n.Status.overviewChecking
+        case .maintenance: return L10n.Status.overviewMaintenance
         }
     }
 
@@ -1479,7 +1482,7 @@ private struct OverviewCostCard: View {
                         .controlSize(.small)
                         .frame(width: 12, height: 12)
                 }
-                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(toolName) cost") {
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: L10n.Cost.refreshProvider(provider: toolName)) {
                     environment.refreshCostUsage()
                 }
                 .disabled(costService.isRefreshing)
@@ -1492,13 +1495,13 @@ private struct OverviewCostCard: View {
                     }
                     .buttonStyle(.vibeBar)
                     .foregroundStyle(.secondary)
-                    .help("Open full charts")
+                    .help(L10n.Cost.openFullCharts)
                     .popover(isPresented: $detailPresented, arrowEdge: .trailing) {
                         CostDetailPopoverContent(
                             tool: tool,
                             density: density,
                             snapshotOverride: snapshot,
-                            titleOverride: "\(title) — Full Charts",
+                            titleOverride: L10n.Cost.fullCharts(title: title),
                             toolNameOverride: toolName,
                             heatmapTitleOverride: heatmapTitleOverride
                         )
@@ -1538,17 +1541,17 @@ private struct OverviewCostCard: View {
 
     private var emptyMessage: String {
         switch tool {
-        case .codex:  return "No Codex CLI sessions found yet."
-        case .claude: return "No Claude CLI sessions found yet."
-        case .gemini: return "No Gemini CLI or chat-history usage found yet."
-        case .antigravity: return "No Antigravity conversation token metadata found yet."
-        case .grok: return "No Grok session usage found yet."
+        case .codex:  return L10n.Cost.emptyCodex
+        case .claude: return L10n.Cost.emptyClaude
+        case .gemini: return L10n.Cost.emptyGemini
+        case .antigravity: return L10n.Cost.emptyAntigravity
+        case .grok: return L10n.Cost.emptyGrok
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
             // `tool.supportsTokenCost`), but render a graceful
             // fallback if it ever is.
-            return "Cost history isn't tracked for \(tool.menuTitle)."
+            return L10n.Cost.notTracked(provider: tool.menuTitle)
         }
     }
 }
@@ -1573,7 +1576,7 @@ private struct CostDetailPopoverContent: View {
                 HStack(alignment: .center) {
                     ProviderSectionTitle(
                         tool: tool,
-                        title: titleOverride ?? "\(tool.vendorName) Cost — Full Charts",
+                        title: titleOverride ?? L10n.Cost.providerFullCharts(provider: tool.vendorName),
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
                         iconSize: 15,
@@ -1705,7 +1708,7 @@ private struct ProviderPageContext {
     var costTool: ToolType { pageTool == .gemini ? .antigravity : pageTool }
     var costTitle: String? { "\(pageTool.vendorName) Cost" }
     var costToolName: String { pageTool.vendorName }
-    var activityHeatmapTitle: String? { pageTool == .gemini ? "When you use Google AI" : nil }
+    var activityHeatmapTitle: String? { pageTool == .gemini ? L10n.Usage.whenYouUseGoogleAI : nil }
 
     func group(id: String) -> QuotaGroupModule? {
         groups.first { $0.id == id }
@@ -1737,7 +1740,7 @@ private struct ProviderPageModule: View {
                         ? PageModuleCatalog.quotaRefreshTools(for: context.pageTool)
                         : [],
                     emptyMessage: group.rows.isEmpty
-                        ? "No utilization data — try refreshing."
+                        ? L10n.Quota.groupNoUtilization
                         : nil
                 )
             }
@@ -1750,7 +1753,7 @@ private struct ProviderPageModule: View {
             ResetHistoryCompareCard(
                 density: density,
                 tools: PageModuleCatalog.quotaRefreshTools(for: context.pageTool),
-                titleOverride: "Reset History"
+                titleOverride: L10n.Quota.resetHistoryTitle
             )
         case .costHeader:
             if let snapshot = context.snapshot {
@@ -1795,13 +1798,13 @@ private struct ProviderPageModule: View {
             if context.pageTool == .gemini {
                 GeminiCostEmptyCard(density: density)
             } else if context.pageTool == .grok {
-                Text("No Grok or Cursor usage found yet.")
+                Text(L10n.Cost.spaceXAIEmpty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 24)
                     .frame(maxWidth: .infinity)
             } else {
-                Text("No \(context.pageTool.menuTitle) CLI sessions found yet.")
+                Text(L10n.Cost.emptyGenericCLI(provider: context.pageTool.menuTitle))
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 24)
@@ -1870,7 +1873,7 @@ private struct CostHeaderCard: View {
             HStack(alignment: .center) {
                 ProviderSectionTitle(
                     tool: tool,
-                    title: titleOverride ?? "\(tool.vendorName) Cost",
+                    title: titleOverride ?? L10n.Cost.providerTitle(provider: tool.vendorName),
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 15,
@@ -1885,7 +1888,7 @@ private struct CostHeaderCard: View {
                         .controlSize(.small)
                         .frame(width: 12, height: 12)
                 }
-                BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh \(toolNameOverride ?? tool.menuTitle) cost") {
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: L10n.Cost.refreshProvider(provider: toolNameOverride ?? tool.menuTitle)) {
                     environment.refreshCostUsage()
                 }
                 .disabled(costService.isRefreshing)
@@ -1917,7 +1920,7 @@ private func groupExtraBuckets(_ buckets: [QuotaBucket]) -> [ExtraGroup] {
     var seen: [String: Int] = [:]
     var out: [ExtraGroup] = []
     for bucket in buckets {
-        let title = bucket.groupTitle ?? "Other"
+        let title = bucket.groupTitle.map(QuotaGroupLabelLocalizer.display) ?? L10n.Quota.groupOther
         if let idx = seen[title] {
             out[idx].buckets.append(bucket)
         } else {
@@ -1977,7 +1980,7 @@ struct ProviderQuotaCard: View {
                         badgeSize: 24
                     )
                     Spacer(minLength: 4)
-                    BorderlessIconButton(systemImage: "arrow.clockwise", help: "Refresh") {
+                    BorderlessIconButton(systemImage: "arrow.clockwise", help: L10n.Common.refresh) {
                         environment.refresh(tool)
                     }
                     .disabled(isProviderRefreshing)
@@ -2031,7 +2034,7 @@ struct ProviderQuotaCard: View {
                     ResetCreditsRow(credits: credits, density: density)
                 }
                 if let liveError = resolvedLiveError {
-                    messageRow(text: "Update failed: \(liveError.userFacingMessage)", color: .orange)
+                    messageRow(text: L10n.Quota.updateFailed(reason: liveError.userFacingMessage), color: .orange)
                 }
             } else if let liveError = resolvedLiveError {
                 messageRow(text: liveError.userFacingMessage, color: .orange)
@@ -2179,7 +2182,7 @@ struct ProviderQuotaCard: View {
                     }
                 }
             } else if compact, !extras.isEmpty {
-                Text("\(extras.count) per-model limit\(extras.count == 1 ? "" : "s") · open \(tool.menuTitle) for details")
+                Text(L10n.Quota.perModelLimits(count: extras.count, provider: tool.menuTitle))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
@@ -2188,16 +2191,16 @@ struct ProviderQuotaCard: View {
 
     private var emptyMessage: String {
         switch tool {
-        case .codex:  return "Run codex login, then refresh."
-        case .claude: return "Run claude login, then refresh."
-        case .grok: return "Run grok login or import grok.com cookies, then refresh."
-        case .cursor: return "Sign in to Cursor.app or import cursor.com cookies, then refresh."
+        case .codex:  return L10n.Quota.loginCodex
+        case .claude: return L10n.Quota.loginClaude
+        case .grok: return L10n.Quota.loginGrok
+        case .cursor: return L10n.Quota.loginCursor
         case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers route through the Misc page's per-card
             // setup CTA. This empty-message path is only reachable from
             // a primary-provider detail view, but cover misc cases
             // defensively in case a future change reuses the helper.
-            return "Configure \(tool.menuTitle) in Settings → Misc Providers."
+            return L10n.Quota.loginMisc(provider: tool.menuTitle)
         }
     }
 
@@ -2243,10 +2246,10 @@ private struct ResetCreditsRow: View {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.secondary)
-                Text("Limit reset credits")
+                Text(L10n.Quota.resetCreditsTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer(minLength: 6)
-                Text("\(credits.availableCount)")
+                Text(L10n.Quota.resetCreditsCount(count: credits.availableCount))
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.green)
             }
@@ -2257,12 +2260,14 @@ private struct ResetCreditsRow: View {
     }
 
     private var subtitle: String {
-        let noun = credits.availableCount == 1 ? "manual reset available" : "manual resets available"
+        let available = L10n.Quota.resetCreditsAvailable(count: credits.availableCount)
         if let expiry = credits.nextExpiresAt,
            let countdown = ResetCountdownFormatter.string(from: expiry, now: Date()) {
-            return "\(credits.availableCount) \(noun) · next expires in \(countdown)"
+            return L10n.Quota.resetCreditsAvailableWithExpiry(
+                available: available, countdown: countdown
+            )
         }
-        return "\(credits.availableCount) \(noun)"
+        return available
     }
 }
 
@@ -2312,7 +2317,7 @@ private struct ProviderBucketRow: View {
                         .layoutPriority(1)
                 }
                 Spacer(minLength: 6)
-                Text("\(Int(percent.rounded()))%")
+                Text(L10n.Common.percent(value: Int(percent.rounded())))
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(
                         isExpired

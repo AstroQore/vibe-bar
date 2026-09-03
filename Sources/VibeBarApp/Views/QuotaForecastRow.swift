@@ -62,18 +62,23 @@ struct QuotaForecastRow: View {
     private var primaryText: String {
         let left = Int(forecast.projectedRemainingPercent.rounded())
         let used = Int(forecast.projectedUsedPercent.rounded())
-        let forecastValue = displayMode == .remaining ? "\(left)% left" : "\(used)% used"
+        // One nested fragment rather than four sentences × two modes: the
+        // figure is the only part that changes between Remaining and Used,
+        // and both languages put it in the same slot.
+        let forecastValue = displayMode == .remaining
+            ? L10n.Quota.forecastValueLeft(percent: left)
+            : L10n.Quota.forecastValueUsed(percent: used)
         switch forecast.verdict {
         case .enough:
-            return "Enough · forecast \(forecastValue) at reset"
+            return L10n.Quota.forecastStatusEnough(value: forecastValue)
         case .surplus:
-            return "Surplus · forecast \(forecastValue) at reset"
+            return L10n.Quota.forecastStatusSurplus(value: forecastValue)
         case .watch:
-            return "Watch · forecast \(forecastValue) at reset"
+            return L10n.Quota.forecastStatusWatch(value: forecastValue)
         case .atRisk:
-            return "At risk · likely to run out before reset"
+            return L10n.Quota.forecastStatusAtRisk
         case .learning:
-            return "Learning · about \(forecastValue) at reset"
+            return L10n.Quota.forecastStatusLearning(value: forecastValue)
         }
     }
 
@@ -81,16 +86,16 @@ struct QuotaForecastRow: View {
         if let runOutAt = forecast.runOutAt,
            let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
             return forecast.verdict == .watch
-                ? "Could run out in \(countdown)"
-                : "Estimated to run out in \(countdown)"
+                ? L10n.Quota.forecastUseUpCouldRunOut(countdown: countdown)
+                : L10n.Quota.forecastUseUpEstimated(countdown: countdown)
         }
         switch forecast.verdict {
         case .watch:
-            return "Use-up time uncertain · may run short before reset"
+            return L10n.Quota.forecastUseUpUncertain
         case .atRisk:
-            return "Expected to run out before reset"
+            return L10n.Quota.forecastUseUpBeforeReset
         case .enough, .surplus, .learning:
-            return "Projected to last until reset"
+            return L10n.Quota.forecastUseUpLastsUntilReset
         }
     }
 
@@ -98,15 +103,15 @@ struct QuotaForecastRow: View {
         guard displayMode == .used else { return forecast.guidanceSummary }
         let usedTarget = Int((100 - forecast.targetRemainingPercent).rounded())
         let unused = Int(forecast.potentialUnusedPercent.rounded())
-        if forecast.verdict == .atRisk { return "Slow down or shift work to another quota" }
-        if forecast.verdict == .watch { return "Recent usage is above the safe range" }
+        if forecast.verdict == .atRisk { return L10n.Quota.forecastGuidanceAtRisk }
+        if forecast.verdict == .watch { return L10n.Quota.forecastGuidanceWatch }
         if forecast.verdict == .surplus {
-            return "About \(unused)% capacity may remain beyond the \(usedTarget)% used target"
+            return L10n.Quota.forecastGuidanceUsedSurplus(unused: unused, target: usedTarget)
         }
         if unused >= 3 {
-            return "Target \(usedTarget)% used · about \(unused)% capacity available"
+            return L10n.Quota.forecastGuidanceUsedAvailable(target: usedTarget, unused: unused)
         }
-        return "Within the \(usedTarget)% used target"
+        return L10n.Quota.forecastGuidanceUsedWithinTarget(target: usedTarget)
     }
 
 }

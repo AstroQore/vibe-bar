@@ -1,4 +1,5 @@
 import SwiftUI
+import VibeBarCore
 
 /// Small refresh affordance dropped into each provider-detail card's
 /// header so the user can refresh just that section instead of the
@@ -10,7 +11,7 @@ import SwiftUI
 struct SectionRefreshButton: View {
     let isRefreshing: Bool
     let action: () -> Void
-    var help: String = "Refresh this section"
+    var help: String = L10n.Common.refreshSection
 
     var body: some View {
         ZStack {

@@ -216,13 +216,11 @@ struct YearlyContributionHeatmapView: View {
         )
     }
 
-    private static let monthLabelFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM"
-        formatter.timeZone = .autoupdatingCurrent
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var monthLabelFormatter: DateFormatter {
+        AppLocale.dateFormatter(template: "MMM")
+    }
 
     private func makeColumns() -> [WeekColumn] {
         let calendar = Calendar.current
@@ -385,18 +383,16 @@ private struct YearlyHeatmapCanvas: View {
     }
 }
 
-// Static on purpose: the tooltip formatter used to be rebuilt per cell —
+// Memoized on purpose: the tooltip formatter used to be rebuilt per cell —
 // ~365 times per body pass — and a fresh `DateFormatter` per call is
-// milliseconds of pure allocation on every redraw of the card.
-private let yearlyTooltipFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "MMM d, yyyy"
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    // The app runs for weeks; a static formatter must follow a system
-    // time-zone change instead of keeping the one it was born with.
-    formatter.timeZone = .autoupdatingCurrent
-    return formatter
-}()
+// milliseconds of pure allocation on every redraw of the card. `AppLocale`
+// keeps that property while keying the cache on the app's language, so a
+// language change rebuilds it instead of leaving an English month name in
+// a Chinese tooltip. Its formatters use `.autoupdatingCurrent` for the time
+// zone, so a system change is still followed.
+private var yearlyTooltipFormatter: DateFormatter {
+    AppLocale.dateFormatter(template: "MMMdyyyy")
+}
 
 private func yearlyCellTooltip(for entry: DailyCostPoint) -> String {
     let cost: String = entry.costUSD < 0.01 ? "$0.00"

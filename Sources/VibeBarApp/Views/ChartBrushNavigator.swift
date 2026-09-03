@@ -131,8 +131,8 @@ struct ChartBrushNavigator<Mini: View>: View {
     }
 
     private var accessibilityRangeValue: String {
-        let start = window.visibleStart.formatted(date: .abbreviated, time: .shortened)
-        let end = window.visibleEnd.formatted(date: .abbreviated, time: .shortened)
+        let start = AppLocale.string(window.visibleStart, dateStyle: .medium, timeStyle: .short)
+        let end = AppLocale.string(window.visibleEnd, dateStyle: .medium, timeStyle: .short)
         return "\(start) to \(end)"
     }
 

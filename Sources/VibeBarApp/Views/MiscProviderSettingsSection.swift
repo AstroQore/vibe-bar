@@ -909,12 +909,11 @@ struct CookieSourceControls: View {
             "macOS Keychain access for \(browser) was declined. Vibe Bar will not ask again until \(Self.formatter.string(from: until))."
         }
 
-        private static let formatter: DateFormatter = {
-            let f = DateFormatter()
-            f.dateStyle = .none
-            f.timeStyle = .short
-            return f
-        }()
+        // Built per language rather than once per process: a formatter
+        // parked in a `static let` keeps the language it was created in.
+        private static var formatter: DateFormatter {
+            AppLocale.dateFormatter(dateStyle: .short, timeStyle: .short)
+        }
     }
 
     /// Which cookies to look for. Comes from `MiscCookieSpecCatalog`
@@ -1214,12 +1213,11 @@ private struct CookieSlotRow: View {
         }
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .short
-        f.timeStyle = .short
-        return f
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    private static var dateFormatter: DateFormatter {
+        AppLocale.dateFormatter(dateStyle: .medium, timeStyle: .short)
+    }
 }
 
 /// Region picker for Alibaba — international (ap-southeast-1) vs.

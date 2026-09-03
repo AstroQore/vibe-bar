@@ -79,17 +79,26 @@ Single SwiftPM package, two product targets and one test target:
 │       ├── Models/                # Plain data types (settings, quotas, cost)
 │       ├── Services/              # Cost scanner, quota refresh, status fetch
 │       ├── Storage/               # Local-store roots, caches, settings
+│       ├── Localization/          # L10n + the generated typed API (§ 7.2)
+│       ├── Resources/             # pricing.json + the <lang>.lproj catalogs
 │       ├── Utilities/             # Privacy helpers, formatters
 │       └── Vendored/
 ├── Tests/
 │   └── VibeBarCoreTests/          # `swift test` target (~90 tests)
 ├── Resources/
-│   ├── Info.plist                 # Bundle ID, version, LSUIElement
+│   ├── Info.plist                 # Bundle ID, version, LSUIElement, CFBundleLocalizations
 │   ├── VibeBar.entitlements       # Empty plist — vibe-bar runs unsandboxed (see § 6)
+│   ├── i18n/                      # Source of truth for every string (§ 7.2)
+│   │   ├── en.json / zh-Hans.json # Named placeholders, ICU plurals; no printf
+│   │   ├── _glossary.json         # The never-translate list, as data
+│   │   └── _schema.json           # What an entry may contain
 │   └── AppIcon.icns / AppIcon.png
 ├── Scripts/
 │   ├── build_app.sh               # App packaging + nested codesign
 │   ├── release_app.sh             # ZIP, checksum, signed Sparkle appcast
+│   ├── build_localizations.py     # i18n JSON → .strings/.stringsdict/Swift (§ 7.2)
+│   ├── lint_localization.py       # Fails on a hardcoded string in a migrated file
+│   ├── generate_quota_naming_contract.py # Regenerates docs/contracts/quota-naming-v1.json
 │   ├── demo_home.py               # Builds the demo home README screenshots run on (§ 6.5)
 │   ├── capture_demo_screenshots.sh# Captures every README surface from demo mode (§ 6.5)
 │   └── optimize_screenshots.py    # Palette-quantises the captures (optional, Pillow)
@@ -976,6 +985,159 @@ tooltip where the surface has one). The ledger and the pricing tables
 keep whatever the provider wrote, because rates are matched on those
 upstream labels — canonicalize the display, never the stored value.
 
+### 7.2 Localization
+
+Vibe Bar ships English and Simplified Chinese. **Runtime is Apple-native,
+authoring is JSON, and the app never reads the JSON.**
+
+```text
+Resources/i18n/en.json          ← hand-edited; the source of truth
+Resources/i18n/zh-Hans.json
+Resources/i18n/_glossary.json   ← the never-translate list, as data
+Resources/i18n/_schema.json     ← what an entry may contain
+          │  Scripts/build_localizations.py
+          ▼
+Sources/VibeBarCore/Resources/<lang>.lproj/Localizable.strings
+Sources/VibeBarCore/Resources/<lang>.lproj/Localizable.stringsdict
+Sources/VibeBarCore/Localization/L10n+Generated.swift
+```
+
+Everything below the arrow is **generated and checked in**. A build that
+needs Python to produce a resource is a build that breaks on a fresh
+machine, so `swift build` touches none of this;
+`LocalizationCatalogTests` re-runs the generator with `--check` and fails
+on a diff, the same way `QuotaNamingContractTests` guards the naming
+contract. After editing a catalog, run:
+
+```sh
+Scripts/build_localizations.py
+```
+
+**How a call site reaches a string.** Only through the generated typed
+API — `L10n.Quota.resetIn(duration:)`, `L10n.Common.refresh`.
+`L10n.string(_:)` is `internal` to `VibeBarCore` on purpose: a key that
+takes arguments must not be reachable as a bare format string, because
+the positional order is the generator's business and differs per
+language. Core itself uses the raw accessor for the handful of genuinely
+computed keys (a month index), which is reviewable in one place.
+
+**Placeholders are named, plurals are ICU.** In the JSON you write
+`{provider}`, `{days}`, and `{count, plural, one {…} other {…}}` — never
+`%@`, never `%1$lld`. The generator converts to positional specifiers on
+the way into `.strings`, and plurals into `.stringsdict`. Two rules that
+have already cost a debugging session:
+
+- A plural mixed with other arguments needs the variable positioned
+  (`%2$#@count@`). Without it Foundation feeds the plural whichever
+  argument came first — for "…​ refilled once", a quota's *name* — and
+  every count falls through to `other`.
+- `int` is rendered with the locale's grouping separator. That is right
+  for a count and wrong for an identifier: a year passed as `int`
+  renders "2,027". Years, versions and ids are `string`, formatted at
+  the call site. Decimals are too — there is no `double` type, because
+  number formatting belongs in one formatter, not in a catalog repeated
+  per language.
+
+**What is translated, and what is not.** § 7.1 governs it and
+`_glossary.json` encodes it. Company, SubProvider, harness, product and
+model names, MCP tool names, every JSON key and contract value, file
+paths and `SafeLog` output are **identifiers**: written exactly as that
+file spells them, in every language. Labels, captions, buttons,
+tooltips, empty states and error copy are translated. The awkward middle
+— "Weekly", "5 Hours", "All Models" — is resolved by keeping the
+*contract* value English and translating the *shown* label through
+`QuotaGroupLabelLocalizer`, whose table is exhaustive rather than
+pattern-matched so that "Weekly Fable" cannot be half-renamed.
+
+That localizer has to be applied **wherever a displayed label is
+composed**, not only where a group heading is drawn. `Lane.label` builds
+"Anthropic · Claude · Weekly" out of four fields at three different
+levels: L1 company and L2 SubProvider are names and stay as their owners
+spell them, while the L3 group and bucket may be generic window words —
+and a verdict that reads "… Weekly 有 1 次補額後超過一半未使用" has an
+English word in the middle of a Chinese sentence. A bucket named after a
+model (`Sonnet`, `Fable`) is not in the table and comes back untouched,
+which is the whole point of the table being a list rather than a rule.
+
+`Scripts/lint_localization.py` holds the list of files that have been
+through the pass and fails on a user-facing literal in one of them that
+does not go through `L10n`; `LocalizationLintTests` runs it on every
+`swift test`. **Add a file to that manifest when you migrate it**, and
+add a name to `_glossary.json` rather than inventing a per-file
+exception — `ALLOWED` is empty on purpose.
+
+It scans with a small Swift lexer, not with regexes over a line, and the
+difference is the whole point: a pattern anchored to "a literal
+immediately after a known initializer" misses a ternary inside the
+argument (`Label(busy ? "Importing…" : "Import now", …)`), a helper this
+codebase wrote itself (`sectionLabel("REAL TOKENS")`), and an argument
+that wrapped onto the next line — all three of which shipped past the
+first version while three files were declared clean. The lexer tracks the
+enclosing call and the argument label, the label-producing helpers are
+*derived from the source* so the list cannot go stale, and
+`IDENTIFIER_ARGUMENTS` keeps `systemImage:` and `.tag()` out of it. A
+lint that is trusted and wrong is worse than no lint, so the scanner has
+its own fixture test (`--scan`).
+
+**Dates, times and numbers have no catalog — they have a locale.**
+Everything the user reads formats against `AppLocale.current`, which
+follows `AppSettings.language`. `Locale.current` is the *system's*
+language and is therefore wrong: a user reading the app in Chinese on an
+English Mac got "Merged May 9, 2026" in the middle of a Chinese line.
+Use `AppLocale.string(_:template:)` with a CLDR skeleton (`"MMMd"`, not
+`"MMM d"` — a fixed pattern hardcodes an English month name and word
+order), `AppLocale.string(_:dateStyle:timeStyle:)`,
+`AppLocale.relativeDateTimeFormatter()`, `AppLocale.number(_:)`, or
+`.locale(AppLocale.current)` on a `FormatStyle`. The lint fails a raw
+`DateFormatter()`, `RelativeDateTimeFormatter()`, `.formatted(date:)`,
+bare number style, or `Locale.current` in a migrated file.
+
+The opposite rule holds for anything that is *not* read by a person:
+wire formats, parsed payloads, cache keys and backup filenames stay
+pinned to `en_US_POSIX`. A date that changes shape with the user's
+language is a corrupt file, not a translated one. Core's adapters and
+stores already do this; do not "fix" them.
+
+**Never store a localized string.** Derive it. A `let` filled in at
+build time, or a `@State` seeded once, outlives a language change: the
+reset-history verdict was cached behind a key made of the inputs, the
+axis, the window and the hour — none of which moves when the user picks
+another language — and stayed in the old language on screen until the
+data changed. The fix is a computed property, not a wider cache key: a
+memo that has to enumerate every global its value secretly depends on
+will miss the next one. Keep every localized string on a cached type
+computed and the memo only ever has to know about data.
+
+**Language selection.** `AppSettings.language` is `.system` (the
+default), `.english`, or `.simplifiedChinese`; the raw value of an
+explicit case is also its `.lproj` name. `SettingsStore` mirrors it into
+`L10n` on every assignment and once at load, so a change takes effect
+with no relaunch — the same assignment publishes to every `$settings`
+subscriber. The picker is `LanguageSettingsSection`, mounted in the
+System settings section and again at the head of the setup assistant's
+first step, before any prose the reader may not be able to read. `.system` is resolved by matching `Locale.preferredLanguages`
+on language *and script*, so a per-app choice in System Settings and
+`-AppleLanguages` both work, and a `zh-Hant` reader is deliberately not
+served `zh-Hans`.
+
+**Bundle plumbing.** `defaultLocalization: "en"` in `Package.swift`;
+the `.lproj` directories live in Core's resource bundle (the only target
+with a bundle of its own) and `Scripts/build_app.sh` also copies them
+into `Vibe Bar.app/Contents/Resources`, restoring the conventional
+`zh-Hans.lproj` spelling that SwiftPM lowercases. `CFBundleLocalizations`
+in `Resources/Info.plist` is what puts Vibe Bar in System Settings ›
+Language & Region › Applications. `L10n` looks in `Bundle.main` first and
+`Bundle.module` second, so a packaged app answers from its own resources
+and `swift test` / `swift run` answer from the SwiftPM bundle.
+
+**The catalog is going to move.** `Resources/i18n/` is shaped to be
+lifted, as a directory, into a repository shared with the cross-platform
+client the way `agent-session-kit` is shared today. That is why the
+placeholders are named, why the glossary is data rather than a paragraph
+here, why `platform.macos.*` exists for copy only one client can show,
+and why nothing but the generator reads the JSON.
+
+
 ## 8. Privacy & Source-Content Rules
 
 These apply regardless of who you commit as. The repo is public
@@ -1247,6 +1409,21 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   app was running, so "never seen" is not "never happens", and a bucket
   that changes behaviour should be described correctly without a code
   change. Classify per cycle from the observations.
+- **A localized string is not a format string you may hand-fill.** The
+  catalog spells its arguments by name (`{days}`); the *generated* API
+  (`L10n.Quota.resetIn(duration:)`) is the only way into it from the App
+  target, because the positional order Foundation wants differs per
+  language. Two traps that have already been paid for: a plural mixed
+  with other arguments must position its variable (`%2$#@count@`) or
+  Foundation counts the wrong argument and every count reads as plural,
+  and an `int` argument is grouped by the locale, so a year renders
+  "2,027" — years, versions and ids are strings. A localized string is
+  also never *stored*: parked in a `let` or a `@State` it survives a
+  language change behind any cache key that only knows about data — and
+  that includes a `DateFormatter` in a `static let`, which keeps the
+  language it was built in. Format dates and numbers through `AppLocale`,
+  which memoizes on the resolved language so a change is a miss rather
+  than something to invalidate. Full rules in § 7.2.
 - **JSONL scanning must be O(n).** See
   `CostUsageScanner.forEachJSONLLine`. Use a moving cursor, not
   `removeSubrange`.

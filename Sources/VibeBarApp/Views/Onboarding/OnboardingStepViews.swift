@@ -7,33 +7,39 @@ struct OnboardingWelcomeStep: View {
     let density: Theme.Density
 
     var body: some View {
+        // The language picker leads, before any prose the reader may not be
+        // able to read yet. This is the same view the System settings
+        // section mounts, writing the same `AppSettings.language`, so a
+        // choice made here is the choice that persists — and someone who
+        // skips the assistant still finds the control in Settings.
+        LanguageSettingsSection(density: density)
         CardShell(density: density) {
-            Text("Vibe Bar sits in your menu bar and shows, at a glance, how much of each AI subscription you have left, what your coding agents are spending, and which sessions and skills live on this Mac. It reads the credentials the Codex, Claude Code, Gemini and Grok CLIs already keep here, adds web quotas from your browser's cookies when you ask it to, and never sends any of it anywhere but the provider it came from.")
+            Text(L10n.Onboarding.welcomeIntro)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
             OnboardingFeatureRow(
                 systemImage: "gauge.with.dots.needle.33percent",
-                title: "Subscription quotas",
-                detail: "Codex, Claude Code, Gemini, Grok and a shelf of API-key plans, each with its reset countdown."
+                title: L10n.Onboarding.welcomeQuotasTitle,
+                detail: L10n.Onboarding.welcomeQuotasDetail
             )
             OnboardingFeatureRow(
                 systemImage: "dollarsign.circle",
-                title: "Token cost",
-                detail: "Priced locally from the agents' own session logs against a merged model price catalog."
+                title: L10n.Onboarding.welcomeCostTitle,
+                detail: L10n.Onboarding.welcomeCostDetail
             )
             OnboardingFeatureRow(
                 systemImage: "rectangle.stack",
-                title: "Sessions and skills",
-                detail: "Browse, search and tidy agent sessions and shared skills from the Workbench."
+                title: L10n.Onboarding.welcomeSessionsTitle,
+                detail: L10n.Onboarding.welcomeSessionsDetail
             )
             OnboardingFeatureRow(
                 systemImage: "point.3.connected.trianglepath.dotted",
-                title: "Local MCP server",
-                detail: "Your agents can ask Vibe Bar for quota and cost over a Unix socket in your home directory."
+                title: L10n.Onboarding.welcomeMcpTitle,
+                detail: L10n.Onboarding.welcomeMcpDetail
             )
         }
-        Text("This takes about two minutes. Every choice here can be changed later in Settings, and the assistant is one click away under Settings → System.")
+        Text(L10n.Onboarding.welcomeFooter)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -72,7 +78,7 @@ struct OnboardingSubscriptionsStep: View {
     @EnvironmentObject private var settingsStore: SettingsStore
 
     var body: some View {
-        Text("Turn on the subscriptions you use. A provider that is off stays out of the Overview and the menu bar; turning one off later keeps its credentials and history.")
+        Text(L10n.Onboarding.subscriptionsIntro)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -104,7 +110,7 @@ private struct OnboardingCoreProviderCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
-                Toggle("Show in Overview", isOn: visibilityBinding)
+                Toggle(L10n.Onboarding.subscriptionsShowInOverview, isOn: visibilityBinding)
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .font(.caption)
@@ -117,10 +123,10 @@ private struct OnboardingCoreProviderCard: View {
 
     private var productLine: String {
         switch tool {
-        case .codex: "Codex CLI · ChatGPT web"
-        case .claude: "Claude Code · claude.ai web"
-        case .gemini: "Gemini web · AntiGravity"
-        case .grok: "Grok CLI · grok.com · Cursor"
+        case .codex: L10n.Onboarding.subscriptionsProductLineCodex
+        case .claude: L10n.Onboarding.subscriptionsProductLineClaude
+        case .gemini: L10n.Onboarding.subscriptionsProductLineGemini
+        case .grok: L10n.Onboarding.subscriptionsProductLineGrok
         default: tool.subtitle
         }
     }
@@ -138,29 +144,29 @@ private struct OnboardingCoreProviderCard: View {
         case .codex:
             cliHint(
                 account: environment.account(for: .codex),
-                detected: "Codex CLI login detected — quota will come from it.",
-                web: "ChatGPT web cookies saved — quota will come from them.",
-                missing: "No Codex CLI login found. Run `codex login`, or import ChatGPT cookies from your browser below."
+                detected: L10n.Onboarding.subscriptionsCodexDetected,
+                web: L10n.Onboarding.subscriptionsCodexWeb,
+                missing: L10n.Onboarding.subscriptionsCodexMissing
             )
         case .claude:
             cliHint(
                 account: environment.account(for: .claude),
-                detected: "Claude Code login detected — quota will come from it.",
-                web: "claude.ai cookies saved — quota will come from them.",
-                missing: "No Claude Code login found. Run `claude login`, or import claude.ai cookies from your browser below."
+                detected: L10n.Onboarding.subscriptionsClaudeDetected,
+                web: L10n.Onboarding.subscriptionsClaudeWeb,
+                missing: L10n.Onboarding.subscriptionsClaudeMissing
             )
         case .gemini:
             hintLabel(
-                "Gemini quota is read from gemini.google.com cookies; there is no CLI login or WebView path. AntiGravity is probed locally when it is running.",
+                L10n.Onboarding.subscriptionsGeminiHint,
                 systemImage: "info.circle",
                 tint: .secondary
             )
         case .grok:
             if GrokCredentialsStore.hasCredentials() {
-                hintLabel("~/.grok/auth.json detected — quota will come from it.", systemImage: "checkmark.circle", tint: .green)
+                hintLabel(L10n.Onboarding.subscriptionsGrokDetected, systemImage: "checkmark.circle", tint: .green)
             } else {
                 hintLabel(
-                    "No ~/.grok/auth.json yet. Run `grok login`, or import grok.com cookies from your browser below.",
+                    L10n.Onboarding.subscriptionsGrokMissing,
                     systemImage: "exclamationmark.circle",
                     tint: .secondary
                 )
@@ -199,38 +205,38 @@ private struct OnboardingCoreProviderCard: View {
                 Button {
                     environment.importOpenAIBrowserCookies()
                 } label: {
-                    Label("Import from browser", systemImage: "safari")
+                    Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
                 }
                 .disabled(environment.isImportingOpenAIBrowserCookies)
                 Button {
                     environment.openOpenAIWebLogin()
                 } label: {
-                    Label("Open WebView login", systemImage: "person.crop.circle.badge.key")
+                    Label(L10n.Onboarding.cookiesOpenWebViewLogin, systemImage: "person.crop.circle.badge.key")
                 }
             case .claude:
                 Button {
                     environment.importClaudeBrowserCookies()
                 } label: {
-                    Label("Import from browser", systemImage: "safari")
+                    Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
                 }
                 .disabled(environment.isImportingClaudeBrowserCookies)
                 Button {
                     environment.openClaudeWebLogin()
                 } label: {
-                    Label("Open WebView login", systemImage: "person.crop.circle.badge.key")
+                    Label(L10n.Onboarding.cookiesOpenWebViewLogin, systemImage: "person.crop.circle.badge.key")
                 }
             case .gemini:
                 Button {
                     environment.importGeminiBrowserCookies()
                 } label: {
-                    Label("Import Gemini cookies from browser", systemImage: "safari")
+                    Label(L10n.Onboarding.cookiesImportGemini, systemImage: "safari")
                 }
                 .disabled(environment.isImportingGeminiBrowserCookies)
             case .grok:
                 Button {
                     environment.importGrokBrowserCookies()
                 } label: {
-                    Label("Import Grok cookies from browser", systemImage: "safari")
+                    Label(L10n.Onboarding.cookiesImportGrok, systemImage: "safari")
                 }
                 .disabled(environment.isImportingGrokBrowserCookies)
             default:
@@ -260,7 +266,7 @@ private struct OnboardingCoreProviderCard: View {
     private var statusLines: some View {
         let (saved, status) = cookieState
         if saved {
-            Text("Cookies saved.")
+            Text(L10n.Onboarding.cookiesSaved)
                 .font(.caption2)
                 .foregroundStyle(.green)
         }
@@ -288,7 +294,7 @@ struct OnboardingBrowserCookiesStep: View {
 
     var body: some View {
         CardShell(density: density) {
-            Text("Web quotas — the ones the provider shows on its own site — come from the session your browser already has. Vibe Bar reads the cookie stores of the browsers on this Mac (Chrome and other Chromium browsers, Safari, Firefox), keeps only the few cookies each provider needs, and stores them in your login Keychain, never in a plaintext file. macOS may ask once for permission to read a browser's cookie key.")
+            Text(L10n.Onboarding.cookiesIntro)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             Button {
@@ -297,7 +303,12 @@ struct OnboardingBrowserCookiesStep: View {
                 environment.importGeminiBrowserCookies()
                 environment.importGrokBrowserCookies()
             } label: {
-                Label(isImportingAny ? "Importing…" : "Import from all browsers now", systemImage: "safari")
+                Label(
+                    isImportingAny
+                        ? L10n.Onboarding.cookiesImporting
+                        : L10n.Onboarding.cookiesImportAll,
+                    systemImage: "safari"
+                )
             }
             .disabled(isImportingAny)
             Divider()
@@ -326,11 +337,11 @@ struct OnboardingBrowserCookiesStep: View {
                 status: environment.grokBrowserCookieImportStatus
             )
         }
-        Text("Sign in to chatgpt.com, claude.ai, gemini.google.com or grok.com in your browser first — an import can only find a session that exists. Providers you have not signed in to simply report nothing.")
+        Text(L10n.Onboarding.cookiesSignInFirst)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-        Text("This button covers the four plans above. The console-cookie plans on the next step have their own one-click batch import later, under Settings → Browser Cookies.")
+        Text(L10n.Onboarding.cookiesBatchScope)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -352,16 +363,16 @@ struct OnboardingBrowserCookiesStep: View {
     @ViewBuilder
     private func statusText(importing: Bool, saved: Bool, status: String?) -> some View {
         if importing {
-            Text("Importing…")
+            Text(L10n.Onboarding.cookiesImporting)
                 .foregroundStyle(.secondary)
         } else if let status {
             Text(status)
                 .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
         } else if saved {
-            Text("Cookies saved.")
+            Text(L10n.Onboarding.cookiesSaved)
                 .foregroundStyle(.green)
         } else {
-            Text("Not imported yet")
+            Text(L10n.Onboarding.cookiesNotImported)
                 .foregroundStyle(.tertiary)
         }
     }
@@ -379,7 +390,7 @@ struct OnboardingAPIKeyProvidersStep: View {
     @State private var expanded: Set<String> = []
 
     var body: some View {
-        Text("These plans are tracked with an API key or a console cookie rather than a CLI login. Tick the ones you have — a ticked provider gets a card on the Misc page — and unfold a row to enter its credential now. Keys and cookies go to your login Keychain.")
+        Text(L10n.Onboarding.apiKeysIntro)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -406,7 +417,7 @@ struct OnboardingAPIKeyProvidersStep: View {
                 }
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .help("Show \(instance.tool.menuTitle) on the Misc page")
+                .help(L10n.Onboarding.apiKeysShowOnMiscPage(provider: instance.tool.menuTitle))
                 ToolBrandBadge(tool: instance.tool, iconSize: 17, containerSize: 24)
                     .opacity(visible ? 1 : 0.55)
                 // `menuTitle` alone renders both Volcengine plans as
@@ -426,7 +437,10 @@ struct OnboardingAPIKeyProvidersStep: View {
                         expanded.insert(instance.id)
                     }
                 } label: {
-                    Label(unfolded ? "Hide" : "Set up", systemImage: unfolded ? "chevron.up" : "chevron.down")
+                    Label(
+                        unfolded ? L10n.Onboarding.apiKeysHide : L10n.Onboarding.apiKeysSetUp,
+                        systemImage: unfolded ? "chevron.up" : "chevron.down"
+                    )
                         .font(.caption)
                 }
                 .buttonStyle(WorkbenchPillButtonStyle())
@@ -460,23 +474,30 @@ struct OnboardingPricingStep: View {
 
     var body: some View {
         CardShell(density: density) {
-            Text("Token cost is computed on this Mac from your agents' session logs, priced with a catalog merged from several public price lists — higher-priority entries win when a model appears in more than one, your own overrides beat them all, and a bundled table is the offline floor. Catalogs refresh in the background every \(intervalLabel(settingsStore.settings.pricingRefreshIntervalSeconds)); fetching now gives the first cost numbers current prices.")
+            Text(L10n.Onboarding.pricingIntro(
+                interval: intervalLabel(settingsStore.settings.pricingRefreshIntervalSeconds)
+            ))
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Button(action: environment.refreshPricingNow) {
                     Label(
-                        environment.isRefreshingPricing ? "Fetching…" : "Fetch prices now",
+                        environment.isRefreshingPricing
+                            ? L10n.Onboarding.pricingFetching
+                            : L10n.Onboarding.pricingFetchNow,
                         systemImage: "arrow.triangle.2.circlepath"
                     )
                 }
                 .disabled(environment.isRefreshingPricing)
                 if let date = environment.pricingRefreshStatus.mergedAt {
-                    Text("Merged \(date.formatted(date: .abbreviated, time: .shortened)) · \(environment.pricingRefreshStatus.mergedModelCount) models")
+                    Text(L10n.Onboarding.pricingMerged(
+                        when: AppLocale.string(date, dateStyle: .medium, timeStyle: .short),
+                        count: environment.pricingRefreshStatus.mergedModelCount
+                    ))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Not fetched yet — the bundled table is in use.")
+                    Text(L10n.Onboarding.pricingNotFetched)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -486,7 +507,7 @@ struct OnboardingPricingStep: View {
                 sourceRow(source)
             }
         }
-        Text("Prices are USD per one million tokens. Local overrides live under Settings → Model Pricing.")
+        Text(L10n.Onboarding.pricingFooter)
             .font(.caption)
             .foregroundStyle(.secondary)
     }
@@ -507,12 +528,12 @@ struct OnboardingPricingStep: View {
     }
 
     private func sourceDetail(_ status: PricingSourceStatus?) -> String {
-        guard let status else { return "Not refreshed" }
+        guard let status else { return L10n.Onboarding.pricingSourceNotRefreshed }
         switch status.result {
-        case .ready: return "\(status.modelCount) models"
-        case .unchanged: return "\(status.modelCount) models · unchanged"
-        case .failed: return "Cached \(status.modelCount) · refresh failed"
-        case .never: return "Not refreshed"
+        case .ready: return L10n.Onboarding.pricingSourceModels(count: status.modelCount)
+        case .unchanged: return L10n.Onboarding.pricingSourceUnchanged(count: status.modelCount)
+        case .failed: return L10n.Onboarding.pricingSourceFailed(count: status.modelCount)
+        case .never: return L10n.Onboarding.pricingSourceNotRefreshed
         }
     }
 
@@ -526,7 +547,9 @@ struct OnboardingPricingStep: View {
 
     private func intervalLabel(_ seconds: Int) -> String {
         let hours = seconds / 3600
-        return hours == 1 ? "hour" : "\(hours) hours"
+        return hours == 1
+            ? L10n.Onboarding.pricingIntervalHour
+            : L10n.Onboarding.pricingIntervalHours(hours: hours)
     }
 }
 
@@ -537,13 +560,31 @@ struct OnboardingLaunchAtLoginStep: View {
 
     @EnvironmentObject private var settingsStore: SettingsStore
     // A demo launch registers nothing with the system and must not read the
-    // real login item either: the captured state is the settings file's.
-    @State private var statusText: String = DemoMode.isEnabled ? "Off." : LoginItemController.statusText
+    // real login item either, so this stays empty in demo mode and
+    // `statusText` derives the line from the settings file instead.
+    @State private var systemStatusText: String = DemoMode.isEnabled
+        ? ""
+        : LoginItemController.statusText
     @State private var errorText: String?
+
+    /// Derived rather than stored, for the same reason
+    /// `ResetHistoryComparison.verdict` is: a localized string parked in
+    /// `@State` is written once for the lifetime of the view's identity and
+    /// would still be in the old language after the picker two steps back
+    /// changed it. The system's own status line is not localized by this
+    /// build, so it stays in state where a system read belongs.
+    private var statusText: String {
+        guard !DemoMode.isEnabled else {
+            return settingsStore.settings.launchAtLogin
+                ? L10n.Platform.macosLaunchAtLoginEnabled
+                : L10n.Platform.macosLaunchAtLoginOff
+        }
+        return systemStatusText
+    }
 
     var body: some View {
         CardShell(density: density) {
-            Toggle("Launch Vibe Bar at login", isOn: binding)
+            Toggle(L10n.Platform.macosLaunchAtLoginToggle, isOn: binding)
                 .toggleStyle(.switch)
             Text(statusText)
                 .font(.caption2)
@@ -554,7 +595,7 @@ struct OnboardingLaunchAtLoginStep: View {
                     .foregroundStyle(.orange)
             }
             Divider()
-            Text("Vibe Bar is a menu-bar app with no Dock icon. Starting it at login keeps the quota readout and the local MCP server available from the moment you sign in; macOS may ask you to approve the login item in System Settings the first time.")
+            Text(L10n.Platform.macosLaunchAtLoginDetail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -567,8 +608,9 @@ struct OnboardingLaunchAtLoginStep: View {
             get: { settingsStore.settings.launchAtLogin },
             set: { enabled in
                 if DemoMode.isEnabled {
+                    // `statusText` reads this back, so there is nothing else
+                    // to keep in step.
                     settingsStore.settings.launchAtLogin = enabled
-                    statusText = enabled ? "Enabled in macOS Login Items." : "Off."
                     return
                 }
                 do {
@@ -595,7 +637,7 @@ struct OnboardingLaunchAtLoginStep: View {
         @unknown default:
             break
         }
-        statusText = LoginItemController.statusText
+        systemStatusText = LoginItemController.statusText
     }
 }
 
@@ -609,17 +651,26 @@ struct OnboardingDoneStep: View {
 
     var body: some View {
         CardShell(density: density) {
-            Text("That is everything the menu bar needs. Finish opens the popover with whatever quota is already readable; the rest fills in on the first refresh.")
+            Text(L10n.Onboarding.doneIntro)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
-            summaryRow("Subscriptions", value: visibleCoreProviders)
-            summaryRow("Browser cookies", value: "\(savedCookieCount) of 4 providers saved")
-            summaryRow("API-key providers", value: "\(visibleMiscCount) on the Misc page")
-            summaryRow("Model pricing", value: pricingSummary)
-            summaryRow("Launch at login", value: settingsStore.settings.launchAtLogin ? "On" : "Off")
+            summaryRow(L10n.Onboarding.doneSubscriptions, value: visibleCoreProviders)
+            summaryRow(
+                L10n.Onboarding.doneBrowserCookies,
+                value: L10n.Onboarding.doneCookieCount(saved: savedCookieCount, total: 4)
+            )
+            summaryRow(
+                L10n.Onboarding.doneApiKeyProviders,
+                value: L10n.Onboarding.doneMiscCount(count: visibleMiscCount)
+            )
+            summaryRow(L10n.Onboarding.doneModelPricing, value: pricingSummary)
+            summaryRow(
+                L10n.Onboarding.doneLaunchAtLogin,
+                value: settingsStore.settings.launchAtLogin ? L10n.Common.on : L10n.Common.off
+            )
         }
-        Text("Every one of these lives in Settings, and the assistant is one click away under Settings → System.")
+        Text(L10n.Onboarding.doneFooter)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -641,7 +692,7 @@ struct OnboardingDoneStep: View {
         let names = ToolType.coreProviderRepresentatives
             .filter { settingsStore.settings.isCoreProviderVisible($0) }
             .map(\.vendorName)
-        return names.isEmpty ? "None shown" : names.joined(separator: ", ")
+        return names.isEmpty ? L10n.Onboarding.doneNoneShown : names.joined(separator: ", ")
     }
 
     private var savedCookieCount: Int {
@@ -661,8 +712,8 @@ struct OnboardingDoneStep: View {
 
     private var pricingSummary: String {
         if let date = environment.pricingRefreshStatus.mergedAt {
-            return "Merged \(date.formatted(date: .abbreviated, time: .shortened))"
+            return L10n.Onboarding.donePricingMerged(when: AppLocale.string(date, dateStyle: .medium, timeStyle: .short))
         }
-        return "Bundled table until the first fetch"
+        return L10n.Onboarding.donePricingBundled
     }
 }

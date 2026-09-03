@@ -1311,17 +1311,15 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
 }
 
 private enum ResetHistoryCompareFormatters {
-    static let axis: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d"
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    static var axis: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMd")
+    }
 
-    static let tooltip: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d, HH:mm"
-        return formatter
-    }()
+    // Built per language rather than once per process: a formatter
+    // parked in a `static let` keeps the language it was created in.
+    static var tooltip: DateFormatter {
+        AppLocale.dateFormatter(template: "MMMdHHmm")
+    }
 }

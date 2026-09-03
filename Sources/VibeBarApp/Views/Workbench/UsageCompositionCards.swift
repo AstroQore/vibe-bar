@@ -26,18 +26,18 @@ struct UsageCompositionCards: View {
     var body: some View {
         CardShell(density: density, spacing: 11) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("HARNESS MIX")
+                Text(L10n.Usage.harnessMixTitle)
                     .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .tracking(0.7)
                 Spacer(minLength: 6)
-                Text("by real tokens")
+                Text(L10n.Usage.harnessMixByRealTokens)
                     .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
                     .foregroundStyle(.tertiary)
             }
 
             if harnessRows.isEmpty {
-                Text("No harness traffic in this range")
+                Text(L10n.Usage.harnessMixEmpty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 110, alignment: .center)
@@ -48,9 +48,9 @@ struct UsageCompositionCards: View {
                 Spacer(minLength: 0)
                 Divider().opacity(0.45)
                 HStack {
-                    Text("\(harnessRows.count) harness\(harnessRows.count == 1 ? "" : "es") active in range")
+                    Text(L10n.Usage.harnessMixActiveCount(count: harnessRows.count))
                     Spacer(minLength: 8)
-                    Text("\(summary.requests.formatted(.number.grouping(.automatic))) requests")
+                    Text(L10n.Usage.requestCount(count: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))))
                 }
                 .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded).monospacedDigit())
                 .foregroundStyle(.tertiary)
@@ -78,7 +78,7 @@ struct UsageCompositionCards: View {
                 }
                 .lineLimit(1)
                 Spacer(minLength: 6)
-                Text(fraction.formatted(.percent.precision(.fractionLength(0))))
+                Text(fraction.formatted(.percent.precision(.fractionLength(0)).locale(AppLocale.current)))
                     .foregroundStyle(.secondary)
                 Text(UsageFormatting.compactTokens(row.totalTokens))
                     .fontWeight(.semibold)

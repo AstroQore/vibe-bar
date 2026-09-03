@@ -960,6 +960,132 @@ final class ResetHistoryComparisonTests: XCTestCase {
         )
     }
 
+    /// The bug: `verdict` used to be a stored `let`, filled in at build
+    /// time. `ResetHistoryCompareView` memoizes a built comparison behind a
+    /// key made of the inputs, the axis, the window and the hour — none of
+    /// which changes when the user picks another language — so the sentence
+    /// stayed in the old language on screen, and inside the accessibility
+    /// summary that quotes it, until the data changed or the hour turned
+    /// over. Every localized string on this type is derived on access, so a
+    /// comparison built in one language reads correctly in the next.
+    func testAComparisonBuiltInOneLanguageReadsInTheNext() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+
+        L10n.languageOverride = .english
+        let built = ResetHistoryComparison.build(
+            inputs: [lane(samples: [
+                sample(bucketId: "weekly", endingDaysAgo: 7, used: 10),
+                sample(bucketId: "weekly", endingDaysAgo: 14, used: 95)
+            ])],
+            window: .all,
+            now: now
+        )
+        XCTAssertEqual(
+            built.verdict,
+            "Anthropic · Claude · Weekly refilled once with more than half unused."
+        )
+
+        // Same value, no rebuild — exactly what the view's memo hands back.
+        L10n.languageOverride = .simplifiedChinese
+        XCTAssertEqual(
+            built.verdict,
+            "Anthropic · Claude · 每周 有 1 次补额时超过一半没用掉。"
+        )
+        XCTAssertTrue(
+            built.accessibilitySummary.contains("重置历史对比"),
+            "the accessibility summary quotes the verdict and must follow it"
+        )
+        XCTAssertFalse(
+            built.accessibilitySummary.contains("refilled once"),
+            "an English fragment survived into the Chinese summary"
+        )
+    }
+
+    /// The lane and header text is derived too — same reason, and they sit
+    /// on the same cached value.
+    func testLaneAndTotalsTextFollowALanguageChangeOnACachedComparison() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+
+        L10n.languageOverride = .english
+        let built = ResetHistoryComparison.build(
+            inputs: [lane(samples: [
+                sample(bucketId: "weekly", endingDaysAgo: 7, used: 60),
+                sample(bucketId: "weekly", endingDaysAgo: 14, used: 60)
+            ])],
+            window: .all,
+            now: now
+        )
+        XCTAssertTrue(built.totals.headline.contains("used"))
+        XCTAssertTrue(built.lanes[0].wasteSummary.contains("avg wasted"))
+
+        L10n.languageOverride = .simplifiedChinese
+        XCTAssertTrue(
+            built.totals.headline.contains("已用"),
+            "totals headline stayed English: \(built.totals.headline)"
+        )
+        XCTAssertTrue(
+            built.lanes[0].wasteSummary.contains("平均浪费"),
+            "lane summary stayed English: \(built.lanes[0].wasteSummary)"
+        )
+        // The lane label mixes both kinds of name and has to keep them
+        // apart: `Anthropic` and `Claude` are quota-axis identifiers and
+        // stay as their owners spell them, while `Weekly` is a generic
+        // window word the reader should meet in their own language.
+        XCTAssertEqual(built.lanes[0].label, "Anthropic · Claude · 每周")
+        L10n.languageOverride = .english
+        XCTAssertEqual(built.lanes[0].label, "Anthropic · Claude · Weekly")
+    }
+
+    /// The other half of the same rule, and the one that would do real
+    /// damage if it broke: a bucket named after a *model* is a name, not
+    /// copy. Renaming Sonnet in Chinese would make this app and Vibe Bar
+    /// Desktop disagree about what the reader is looking at.
+    func testAModelNamedBucketIsNeverTranslatedInALaneLabel() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = .simplifiedChinese
+
+        let built = ResetHistoryComparison.build(
+            inputs: [lane(
+                id: "weekly_sonnet",
+                group: "Weekly",
+                bucketTitle: "Sonnet",
+                samples: [
+                    sample(bucketId: "weekly_sonnet", endingDaysAgo: 7, used: 40),
+                    sample(bucketId: "weekly_sonnet", endingDaysAgo: 14, used: 50)
+                ]
+            )],
+            window: .all,
+            now: now
+        )
+        // The generic level translates, the model name does not.
+        XCTAssertEqual(built.lanes[0].label, "Anthropic · Claude · 每周 · Sonnet")
+        XCTAssertEqual(built.lanes[0].bucketLine, "每周 · Sonnet")
+    }
+
+    /// A bucket whose title only repeats its group must still print once,
+    /// and the de-duplication now has to happen on the *shown* strings —
+    /// two contract values that render to the same word would otherwise
+    /// appear twice.
+    func testAGroupAndBucketThatRenderTheSameArePrintedOnce() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = .simplifiedChinese
+
+        let built = ResetHistoryComparison.build(
+            inputs: [lane(
+                group: "Weekly",
+                bucketTitle: "weekly",
+                samples: [sample(bucketId: "weekly", endingDaysAgo: 7, used: 40)]
+            )],
+            window: .all,
+            now: now
+        )
+        XCTAssertEqual(built.lanes[0].bucketLine, "每周")
+    }
+
     func testANotableAverageIsQuotedWhenNoSingleCycleCrossesHalf() {
         // 60% used every cycle: never more than half unused, but 40% average
         // waste is still worth a sentence.

@@ -108,7 +108,7 @@ struct RemoteSettingsSection: View {
 
     private var lastSyncText: String {
         guard let date = service.lastUpdated else { return "never" }
-        return date.formatted(date: .abbreviated, time: .shortened)
+        return AppLocale.string(date, dateStyle: .medium, timeStyle: .short)
     }
 
     // MARK: - Provisioning

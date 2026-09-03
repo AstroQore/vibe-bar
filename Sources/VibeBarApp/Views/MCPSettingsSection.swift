@@ -56,7 +56,7 @@ struct MCPSettingsSection: View {
 
     private var lastActivityText: String {
         guard let date = controller.lastClientActivityAt else { return "never" }
-        return date.formatted(date: .abbreviated, time: .shortened)
+        return AppLocale.string(date, dateStyle: .medium, timeStyle: .short)
     }
 
     // MARK: - Setup

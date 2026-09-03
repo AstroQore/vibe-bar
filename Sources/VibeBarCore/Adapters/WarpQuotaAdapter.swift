@@ -283,7 +283,7 @@ public enum WarpResponseParser {
             let bonusGroup: String
             if let expiry = snapshot.bonusNextExpiration,
                snapshot.bonusNextExpirationRemaining > 0 {
-                let dateText = expiry.formatted(date: .abbreviated, time: .omitted)
+                let dateText = AppLocale.string(expiry, dateStyle: .medium, timeStyle: .none)
                 bonusGroup = "\(snapshot.bonusCreditsRemaining) bonus left · expires \(dateText)"
             } else {
                 bonusGroup = "\(snapshot.bonusCreditsRemaining) bonus credits left"
