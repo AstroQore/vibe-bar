@@ -154,6 +154,10 @@
     "comment": "Field label for a user-chosen name",
     "value": "Name"
   },
+  "common.noData": {
+    "comment": "A chart tooltip row for a moment nothing was recorded — the app was not watching, rather than the value being zero",
+    "value": "No data recorded"
+  },
   "common.off": {
     "comment": "A toggle's state, read as a value in a summary row",
     "value": "Off"
@@ -245,6 +249,18 @@
     "comment": "Scope name for the combined cost card",
     "value": "All providers"
   },
+  "cost.chart.metricCostHelp": {
+    "comment": "Tooltip on the cost chart's dollar option",
+    "value": "Plot spend in dollars"
+  },
+  "cost.chart.metricTokens": {
+    "comment": "Segmented-control label that plots token volume instead of spend; the dollar option is the '$' sign and needs no key",
+    "value": "Tok"
+  },
+  "cost.chart.metricTokensHelp": {
+    "comment": "Tooltip on the cost chart's token option",
+    "value": "Plot token volume"
+  },
   "cost.empty.antigravity": {
     "comment": "Empty cost history",
     "value": "No Antigravity conversation token metadata found yet."
@@ -289,9 +305,108 @@
     "comment": "Card title; the company name is never translated",
     "value": "Google AI Cost"
   },
+  "cost.granularity.auto": {
+    "comment": "Cost chart bucket width that follows the visible span instead of being pinned",
+    "value": "Auto"
+  },
+  "cost.granularity.day": {
+    "comment": "Cost chart bucket width: one bar per day",
+    "value": "Day"
+  },
+  "cost.granularity.hour": {
+    "comment": "Cost chart bucket width: one bar per hour",
+    "value": "Hour"
+  },
+  "cost.granularity.month": {
+    "comment": "Cost chart bucket width: one bar per calendar month",
+    "value": "Month"
+  },
+  "cost.granularity.week": {
+    "comment": "Cost chart bucket width: one bar per week",
+    "value": "Week"
+  },
   "cost.history.allProviders": {
     "comment": "Card title on the Overview",
     "value": "All Providers Cost History"
+  },
+  "cost.history.building": {
+    "comment": "Empty state of the cost history chart before the first samples exist",
+    "value": "Building history…"
+  },
+  "cost.history.buildingDetail": {
+    "comment": "Second line of the cost history chart's empty state",
+    "value": "Cost samples appear after the next local scan."
+  },
+  "cost.history.clearModelSelection": {
+    "comment": "Tooltip on the button that closes the model breakdown panel",
+    "value": "Clear model selection"
+  },
+  "cost.history.emptyCost": {
+    "comment": "Overlay on the cost chart when the visible range holds no spend",
+    "value": "No cost recorded in this range."
+  },
+  "cost.history.emptyTokens": {
+    "comment": "Overlay on the cost chart when the visible range holds no tokens",
+    "value": "No tokens recorded in this range."
+  },
+  "cost.history.extentNote": {
+    "comment": "Caption naming the visible span of the cost chart and the dates at its ends",
+    "value": "{span} · {start} – {end}"
+  },
+  "cost.history.granularityDisabled": {
+    "comment": "Tooltip on a bucket-width button the current zoom level cannot draw",
+    "value": "{granularity} needs a different zoom level"
+  },
+  "cost.history.groupBy": {
+    "comment": "Tooltip on a bucket-width button in the cost chart",
+    "value": "Group cost history by {granularity}"
+  },
+  "cost.history.hourlyFallback": {
+    "comment": "Note under the cost chart when hourly buckets were asked for but only daily ones exist that far back",
+    "value": "hourly n/a · showing daily"
+  },
+  "cost.history.metricAverage": {
+    "comment": "Summary figure under the cost chart: the per-bucket average; granularity is the bucket width",
+    "value": "Avg/{granularity}"
+  },
+  "cost.history.metricPeak": {
+    "comment": "Summary figure under the cost chart: the largest single bucket",
+    "value": "Peak"
+  },
+  "cost.history.metricTotal": {
+    "comment": "Summary figure under the cost chart: the visible range's total",
+    "value": "Total"
+  },
+  "cost.history.modelDetailUnavailable": {
+    "comment": "Shown in the model breakdown panel for a bucket old enough that per-model rows were not kept",
+    "value": "Model detail is unavailable for this historical period."
+  },
+  "cost.history.modelsAt": {
+    "comment": "Heading of the model breakdown panel; when is the bucket the user clicked",
+    "value": "Models · {when}"
+  },
+  "cost.history.moreModels": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Last row of a cost-chart tooltip, standing in for the models it could not fit",
+    "value": "+{count} more · click to inspect"
+  },
+  "cost.history.navigator": {
+    "comment": "Accessibility label for the range navigator under the cost history chart",
+    "value": "Cost history range navigator"
+  },
+  "cost.history.title": {
+    "comment": "Title of the navigable cost history chart",
+    "value": "Cost History"
+  },
+  "cost.history.weekOf": {
+    "comment": "Cost chart tooltip heading for a weekly bucket; date is the week's first day",
+    "value": "Week of {date}"
+  },
+  "cost.history.weekShortOf": {
+    "comment": "Compact form of the weekly bucket label, used under the peak figure",
+    "value": "wk {date}"
   },
   "cost.metric.peakDay": {
     "comment": "All-caps metric label: the most expensive day on record",
@@ -949,13 +1064,33 @@
     "comment": "Subtitle under the Machines page header",
     "value": "End-to-end encrypted remote usage"
   },
+  "popover.header.mini": {
+    "comment": "Tooltip on the popover header button that opens the floating mini window",
+    "value": "Mini"
+  },
   "popover.header.miscSubtitle": {
     "comment": "Subtitle under the Misc Providers page header",
     "value": "Usage-only · sign in or paste a key"
   },
+  "popover.header.openWorkbench": {
+    "comment": "Tooltip on the popover header button that opens the Workbench window",
+    "value": "Open Workbench"
+  },
   "popover.header.overviewSubtitle": {
     "comment": "Subtitle under the Overview page header",
     "value": "All providers · quota & cost"
+  },
+  "popover.header.refreshing": {
+    "comment": "Popover header caption while a refresh is in flight",
+    "value": "Refreshing…"
+  },
+  "popover.header.settings": {
+    "comment": "Tooltip on the popover header's gear button",
+    "value": "Settings"
+  },
+  "popover.header.updatedLine": {
+    "comment": "Popover header caption: the page's own subtitle followed by how long ago the data was updated",
+    "value": "{subtitle} · {updated}"
   },
   "popover.machines.checking": {
     "comment": "Empty-state title while a sync is in flight",
@@ -1025,6 +1160,10 @@
     "comment": "Popover tab. The other tabs are company names (OpenAI, Anthropic, Google AI, SpaceXAI) and are never translated.",
     "value": "Overview"
   },
+  "quota.awaitingFirstObservation": {
+    "comment": "Placeholder inside an empty reset-history strip, before any quota reading has landed",
+    "value": "Waiting for the first quota observation"
+  },
   "quota.bucket.noResetInfo": {
     "comment": "Caption under a quota bar when the provider reported no reset time",
     "value": "No reset info"
@@ -1032,6 +1171,10 @@
   "quota.bucket.resetsIn": {
     "comment": "Caption under a quota bar; when is a countdown, sometimes with an absolute time",
     "value": "Resets in {when}"
+  },
+  "quota.cycleRecordedOnRefill": {
+    "comment": "Caption under an empty reset-history strip explaining when a cycle is recorded",
+    "value": "A cycle is recorded when the quota refills"
   },
   "quota.empty.needsLogin.detail": {
     "comment": "Empty state body; command is a CLI name such as codex or claude and is never translated",
@@ -1084,6 +1227,22 @@
   "quota.forecast.confidence.medium": {
     "comment": "Forecast confidence level",
     "value": "Medium confidence"
+  },
+  "quota.forecast.explain.footer": {
+    "comment": "Footnote under the forecast metric grid explaining what token history is and is not used for",
+    "value": "Quota observations drive consumption. Token history only weights when you tend to work; it is never converted into quota usage."
+  },
+  "quota.forecast.explain.hide": {
+    "comment": "Accessibility label on the disclosure button while the grid is open",
+    "value": "Hide forecast calculation"
+  },
+  "quota.forecast.explain.show": {
+    "comment": "Accessibility label on the disclosure button while the grid is closed",
+    "value": "Show forecast calculation"
+  },
+  "quota.forecast.explain.title": {
+    "comment": "Disclosure button that opens the forecast's metric grid",
+    "value": "How this forecast was calculated"
   },
   "quota.forecast.guidance.atRisk": {
     "comment": "What to do about an at-risk forecast",
@@ -1138,6 +1297,210 @@
     },
     "comment": "Remaining-mode guidance when nothing needs saying",
     "value": "Within the {target}% safety target"
+  },
+  "quota.forecast.legend.item": {
+    "comment": "One reference marker in the quota bar legend: its name followed by the figure it marks",
+    "value": "{label} {value}"
+  },
+  "quota.forecast.metric.aboveTarget": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Detail under the safety target metric when the forecast leaves capacity above it",
+    "value": "{percent}% capacity above target"
+  },
+  "quota.forecast.metric.activityFallback": {
+    "comment": "Detail under the activity timing metric before any habits exist",
+    "value": "wall-clock fallback until habits exist"
+  },
+  "quota.forecast.metric.activityTiming": {
+    "comment": "Forecast metric: how far through the window the user's own working rhythm says we are",
+    "value": "Activity timing"
+  },
+  "quota.forecast.metric.activityWeighted": {
+    "comment": "Detail under the activity timing metric when weekday and hour habits are known",
+    "value": "weekday and hour weighted"
+  },
+  "quota.forecast.metric.behaviorDetail": {
+    "comment": "Detail under the behavior fallback metric",
+    "value": "used when stronger evidence is sparse"
+  },
+  "quota.forecast.metric.behaviorFallback": {
+    "comment": "Forecast metric: the projection used when stronger inputs are missing",
+    "value": "Behavior fallback"
+  },
+  "quota.forecast.metric.comparableCycles": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Detail under the reset-history metric: how many past cycles were comparable",
+    "value": "{count, plural, one {1 comparable reset cycle} other {# comparable reset cycles}}"
+  },
+  "quota.forecast.metric.coverage": {
+    "comment": "Forecast metric: how completely each input covers the window",
+    "value": "Coverage"
+  },
+  "quota.forecast.metric.coverageDetail": {
+    "args": {
+      "fresh": "int",
+      "habits": "int"
+    },
+    "comment": "Detail under the coverage metric: freshness of the data and how well habits are known",
+    "value": "fresh {fresh}% · habits {habits}%"
+  },
+  "quota.forecast.metric.coverageValue": {
+    "args": {
+      "observations": "int",
+      "history": "int"
+    },
+    "comment": "Value of the coverage metric: observation and reset-history coverage",
+    "value": "obs {observations}% · history {history}%"
+  },
+  "quota.forecast.metric.cyclesPending": {
+    "comment": "Detail under the reset-history metric before any cycle has completed",
+    "value": "Completed cycles will appear here"
+  },
+  "quota.forecast.metric.elapsed": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Value of the activity timing metric: share of the window already behind us",
+    "value": "{percent}% elapsed"
+  },
+  "quota.forecast.metric.evidence": {
+    "comment": "Forecast metric: how much data the projection stands on",
+    "value": "Evidence"
+  },
+  "quota.forecast.metric.evidenceDetail": {
+    "args": {
+      "score": "int"
+    },
+    "comment": "Detail under the evidence metric; confidence is the forecast's own confidence label",
+    "value": "{confidence} · score {score}%"
+  },
+  "quota.forecast.metric.evidenceValue": {
+    "args": {
+      "observations": "int",
+      "cycles": "int"
+    },
+    "comment": "Value of the evidence metric: observations in this cycle and completed cycles behind it",
+    "value": "{observations} obs · {cycles} cycles"
+  },
+  "quota.forecast.metric.expectedLeft": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Detail under the forecast metric while the card shows used percentages",
+    "value": "{percent}% expected left"
+  },
+  "quota.forecast.metric.expectedUsed": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Detail under the forecast metric while the card shows remaining percentages",
+    "value": "{percent}% expected used"
+  },
+  "quota.forecast.metric.forecastAtReset": {
+    "comment": "Forecast metric and bar legend entry: the projected figure at the next reset",
+    "value": "Forecast at reset"
+  },
+  "quota.forecast.metric.forecastRange": {
+    "comment": "Forecast metric: the spread the projection considers plausible",
+    "value": "Forecast range"
+  },
+  "quota.forecast.metric.insideTarget": {
+    "comment": "Detail under the safety target metric when the forecast sits inside it",
+    "value": "inside the target range"
+  },
+  "quota.forecast.metric.noComparison": {
+    "comment": "Value of the reset-history metric before any cycle can be compared",
+    "value": "No comparison yet"
+  },
+  "quota.forecast.metric.plan": {
+    "comment": "Forecast metric: where the personal plan says usage should be right now",
+    "value": "Personal plan now"
+  },
+  "quota.forecast.metric.planDetail": {
+    "args": {
+      "target": "int"
+    },
+    "comment": "Detail under the personal plan metric: what the plan is built from",
+    "value": "activity timing + {target}% safety target"
+  },
+  "quota.forecast.metric.rangeLeft": {
+    "args": {
+      "lower": "int",
+      "upper": "int"
+    },
+    "comment": "Value of the forecast range metric in Remaining mode",
+    "value": "{lower}–{upper}% left"
+  },
+  "quota.forecast.metric.rangeUsed": {
+    "args": {
+      "lower": "int",
+      "upper": "int"
+    },
+    "comment": "Value of the forecast range metric in Used mode",
+    "value": "{lower}–{upper}% used"
+  },
+  "quota.forecast.metric.recentBurn": {
+    "comment": "Forecast metric: the projection from the most recent intervals alone",
+    "value": "Recent burn"
+  },
+  "quota.forecast.metric.recentIntervals": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Detail under the recent burn metric: how many recent observation intervals fed it",
+    "value": "{count, plural, one {1 recent interval} other {# recent intervals}}"
+  },
+  "quota.forecast.metric.recentMissing": {
+    "comment": "Detail under the recent burn metric when there is not enough recent data",
+    "value": "Needs at least two useful observations"
+  },
+  "quota.forecast.metric.recentTrend": {
+    "comment": "Forecast metric: whether recent activity is above or below the earlier baseline",
+    "value": "Recent trend"
+  },
+  "quota.forecast.metric.safetyTarget": {
+    "comment": "Forecast metric: the share of the quota the user wants to still hold at reset",
+    "value": "Safety target"
+  },
+  "quota.forecast.metric.timePace": {
+    "comment": "Forecast metric: the projection that only knows how much of the window has elapsed",
+    "value": "Time-only pace"
+  },
+  "quota.forecast.metric.timePaceDetail": {
+    "comment": "Detail under the time-only pace metric; stage is the pace summary such as '5% in deficit'",
+    "value": "{stage} by wall clock"
+  },
+  "quota.forecast.metric.timePaceMissing": {
+    "comment": "Detail under the time-only pace metric when the bucket reports no window",
+    "value": "Needs reset time and window length"
+  },
+  "quota.forecast.metric.trendDetail": {
+    "comment": "Detail under the recent trend metric: the two spans being compared",
+    "value": "last 7 days versus prior 21 days"
+  },
+  "quota.forecast.metric.trendDetailMissing": {
+    "comment": "Detail under the recent trend metric when the earlier span has no activity",
+    "value": "needs prior daily activity"
+  },
+  "quota.forecast.metric.trendMissing": {
+    "comment": "Value of the recent trend metric before a baseline exists",
+    "value": "No baseline yet"
+  },
+  "quota.forecast.metric.trendMultiplier": {
+    "comment": "Value of the recent trend metric; multiplier is a decimal already formatted at the call site",
+    "value": "{multiplier}× activity"
+  },
+  "quota.forecast.metric.unavailable": {
+    "comment": "Value of a forecast metric whose inputs the bucket does not report",
+    "value": "Unavailable"
+  },
+  "quota.forecast.metric.uncertaintyInterval": {
+    "comment": "Detail under the forecast range metric",
+    "value": "uncertainty interval"
   },
   "quota.forecast.reset.atRisk": {
     "comment": "One-line forecast summary",
@@ -1210,6 +1573,14 @@
   "quota.forecast.useUp.uncertain": {
     "comment": "Use-up line when no ETA can be derived",
     "value": "Use-up time uncertain · may run short before reset"
+  },
+  "quota.forecast.value.atReset": {
+    "comment": "A quota figure qualified as the projection for the next reset; value is one of the used/left figures",
+    "value": "{value} at reset"
+  },
+  "quota.forecast.value.expectedNow": {
+    "comment": "A quota figure qualified as where usage should stand at this moment",
+    "value": "{value} expected now"
   },
   "quota.forecast.value.left": {
     "args": {
@@ -1341,6 +1712,101 @@
     "comment": "Quota group: a weekly credit balance rather than a percentage",
     "value": "Weekly Credits"
   },
+  "quota.history.allCurvesHidden": {
+    "comment": "Empty state of the all-providers quota history chart when every curve has been switched off",
+    "value": "Every curve is hidden — pick one from the menu above."
+  },
+  "quota.history.buildingUp": {
+    "comment": "Empty state of the quota history chart before enough refreshes have landed",
+    "value": "Quota history builds up as refreshes come in."
+  },
+  "quota.history.curveCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "How many quota curves the all-providers chart holds; used inside the footer note",
+    "value": "{count, plural, one {1 curve} other {# curves}}"
+  },
+  "quota.history.curvePickerA11y": {
+    "comment": "Accessibility label for the quota history curve picker",
+    "value": "Choose which quota curves to show"
+  },
+  "quota.history.curvesAll": {
+    "args": {
+      "total": "int"
+    },
+    "comment": "Curve picker summary when nothing is hidden",
+    "value": "All {total}"
+  },
+  "quota.history.curvesSome": {
+    "args": {
+      "shown": "int",
+      "total": "int"
+    },
+    "comment": "Curve picker summary when some curves are hidden",
+    "value": "{shown} of {total}"
+  },
+  "quota.history.forecastLegend": {
+    "comment": "Legend entry marking the dotted projection line on the quota history chart",
+    "value": "forecast"
+  },
+  "quota.history.moreBuckets": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Scope note when a group holds more quotas than the note can name; names are the ones it did name",
+    "value": "{names} +{count}"
+  },
+  "quota.history.moreReadings": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Last row of a crowded chart tooltip, standing in for the readings it could not fit",
+    "value": "+{count} more"
+  },
+  "quota.history.navigatorAllProviders": {
+    "comment": "Accessibility label for the range navigator under the all-providers quota chart",
+    "value": "All-providers quota history range navigator"
+  },
+  "quota.history.navigatorProvider": {
+    "comment": "Accessibility label for the range navigator under a single provider's quota chart",
+    "value": "Quota history range navigator"
+  },
+  "quota.history.providerCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "How many providers the all-providers chart covers; used inside the footer note",
+    "value": "{count, plural, one {1 provider} other {# providers}}"
+  },
+  "quota.history.scopeNote": {
+    "comment": "Footer under a quota history chart; scope names what the chart covers, visible and total are compact spans such as 7d",
+    "value": "{scope} · showing {visible} of {total} recorded"
+  },
+  "quota.history.showAllCurves": {
+    "comment": "Menu item that puts every quota curve back on the chart",
+    "value": "Show all curves"
+  },
+  "quota.history.showBusiest": {
+    "comment": "Menu item that leaves only the most-used quota curves on the chart",
+    "value": "Show only the busiest"
+  },
+  "quota.history.title": {
+    "comment": "Title of the quota history chart card",
+    "value": "Quota history"
+  },
+  "quota.history.tooltipAtReset": {
+    "comment": "Tooltip row on the quota history chart: the projection for the next reset",
+    "value": "At reset"
+  },
+  "quota.history.tooltipPace": {
+    "comment": "Tooltip row on the quota history chart: where the wall clock said usage should be",
+    "value": "Pace"
+  },
+  "quota.history.tooltipQuotaLeft": {
+    "comment": "Tooltip row on the quota history chart: the recorded remaining quota",
+    "value": "Quota left"
+  },
   "quota.login.claude": {
     "comment": "What to do when no credential is stored",
     "value": "Run claude login, then refresh."
@@ -1361,6 +1827,52 @@
     "comment": "Fallback for a misc provider; provider is a SubProvider name",
     "value": "Configure {provider} in Settings → Misc Providers."
   },
+  "quota.mini.forecastLearning": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Mini window forecast line while the forecast is still learning the usage pattern",
+    "value": "learning · {percent}% left"
+  },
+  "quota.mini.forecastLearningCompact": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Narrow form of the mini window learning forecast line",
+    "value": "~{percent}% left"
+  },
+  "quota.mini.forecastLeft": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Mini window forecast line for a quota that is comfortably ahead",
+    "value": "{percent}% left"
+  },
+  "quota.mini.forecastLeftCompact": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Narrow form of the mini window forecast line for a quota that is comfortably ahead",
+    "value": "left {percent}%"
+  },
+  "quota.mini.forecastMayRunOut": {
+    "comment": "Mini window forecast line for a quota that may, rather than will, be exhausted before reset",
+    "value": "may run out {countdown}"
+  },
+  "quota.mini.forecastSurplus": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Mini window forecast line for a quota expected to finish its window well under target",
+    "value": "surplus · {percent}% left"
+  },
+  "quota.mini.forecastSurplusCompact": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Narrow form of the mini window surplus forecast line",
+    "value": "surplus {percent}%"
+  },
   "quota.mode.remaining": {
     "comment": "Caption saying the bar shows what is left",
     "value": "remaining"
@@ -1369,13 +1881,49 @@
     "comment": "Caption saying the bar shows what has been spent",
     "value": "used"
   },
+  "quota.pace.deficit": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Pace summary when usage is running ahead of the linear expectation",
+    "value": "{percent}% in deficit"
+  },
+  "quota.pace.deficitShort": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Compact form of the pace summary for the mini window when usage runs ahead of the linear expectation",
+    "value": "{percent}% deficit"
+  },
   "quota.pace.lastsUntilReset": {
     "comment": "Legacy elapsed-time pace ETA on a Misc provider card",
     "value": "Lasts until reset"
   },
+  "quota.pace.onTrack": {
+    "comment": "Pace summary when usage matches the linear expectation",
+    "value": "On pace"
+  },
+  "quota.pace.reserve": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Pace summary when usage is running behind the linear expectation",
+    "value": "{percent}% in reserve"
+  },
+  "quota.pace.reserveShort": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Compact form of the pace summary for the mini window when usage runs behind the linear expectation",
+    "value": "{percent}% reserve"
+  },
   "quota.pace.runsOutIn": {
     "comment": "Legacy elapsed-time pace ETA on a Misc provider card",
     "value": "Runs out in {countdown}"
+  },
+  "quota.pace.runsOutShort": {
+    "comment": "Compact projection in the mini window: when the quota is estimated to be exhausted",
+    "value": "out {countdown}"
   },
   "quota.perModelLimits": {
     "args": {
@@ -1453,6 +2001,10 @@
     "comment": "Tooltip on the Time axis option",
     "value": "Each cycle where it actually happened, on a shared calendar"
   },
+  "quota.resetHistory.axisCurrent": {
+    "comment": "Axis label for the cycle that has not reset yet",
+    "value": "Current"
+  },
   "quota.resetHistory.axisCyclesBack": {
     "args": {
       "count": "int"
@@ -1463,6 +2015,45 @@
   "quota.resetHistory.axisNow": {
     "comment": "Caption on the live column of the reset-history grid",
     "value": "now"
+  },
+  "quota.resetHistory.barIsOneCycle": {
+    "comment": "Caption beside the reset-history strip's title",
+    "value": "Each bar is one quota cycle"
+  },
+  "quota.resetHistory.compareEmpty": {
+    "comment": "Empty state of the reset history comparison before any weekly or longer quota is known",
+    "value": "Nothing to compare yet — weekly and longer quotas appear here once a provider reports one."
+  },
+  "quota.resetHistory.compareTitle": {
+    "comment": "Title of the card that puts every weekly-and-longer quota's reset history side by side",
+    "value": "Reset History Compare"
+  },
+  "quota.resetHistory.compareWindow": {
+    "comment": "Tooltip on a window button in the reset history comparison; window is the spoken span such as 'last 8 weeks'",
+    "value": "Compare the {window}"
+  },
+  "quota.resetHistory.currentCycleCaption": {
+    "args": {
+      "used": "int",
+      "left": "int"
+    },
+    "comment": "Caption for the cycle still running in the reset-history strip",
+    "value": "Current cycle · {used}% used so far · {left}% left"
+  },
+  "quota.resetHistory.cycleCaption": {
+    "args": {
+      "used": "int",
+      "left": "int"
+    },
+    "comment": "Caption for one completed cycle in the reset-history strip; time is the reset moment",
+    "value": "{time} reset · {used}% used · {left}% left"
+  },
+  "quota.resetHistory.earlyRefillCount": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Note under the reset-history strip: how many cycles refilled before their window ended",
+    "value": "{count, plural, one {1 cycle refilled before the window was up} other {# cycles refilled before the window was up}}"
   },
   "quota.resetHistory.lane.emptyState": {
     "comment": "Empty-state copy for a lane",
@@ -1490,6 +2081,26 @@
     "comment": "Line under a lane label; says how many cycles it averages so one cycle cannot read as a settled habit",
     "value": "avg wasted {percent}% · last {count, plural, one {1 cycle} other {# cycles}}"
   },
+  "quota.resetHistory.lastSeenBefore": {
+    "comment": "Note appended to a cycle caption when the last reading predates the reset by a while",
+    "value": "last seen {duration} before reset"
+  },
+  "quota.resetHistory.legend.barHeight": {
+    "comment": "Legend entry explaining what a bar's height means in the reset history comparison",
+    "value": "bar height = remaining at reset"
+  },
+  "quota.resetHistory.legend.byDate": {
+    "comment": "Legend entry for the time axis: bars sit where they happened on a calendar",
+    "value": "placed by date"
+  },
+  "quota.resetHistory.legend.perCycle": {
+    "comment": "Legend entry for the cycle axis: columns are cycles, not dates",
+    "value": "one column per cycle"
+  },
+  "quota.resetHistory.legend.refilledEarly": {
+    "comment": "Legend entry for the dot marking a cycle that refilled before its window was up",
+    "value": "refilled early"
+  },
   "quota.resetHistory.reset.earlyClockRestarted": {
     "comment": "What the provider did to the clock on an early refill. This shape means a whole window lies ahead, so the extra capacity is usable.",
     "value": "refilled early, next window restarted"
@@ -1501,6 +2112,17 @@
   "quota.resetHistory.reset.earlyUnclear": {
     "comment": "An early refill that matches neither shape",
     "value": "refilled early, onto a different schedule"
+  },
+  "quota.resetHistory.retiredAccount": {
+    "comment": "Lane label for history kept from an account that is no longer signed in",
+    "value": "Signed-out account"
+  },
+  "quota.resetHistory.retiredAccountNumbered": {
+    "args": {
+      "number": "int"
+    },
+    "comment": "Lane label for one of several signed-out accounts on the same provider",
+    "value": "Signed-out account {number}"
   },
   "quota.resetHistory.spoken.allCycles": {
     "comment": "Spoken window name",
@@ -1537,6 +2159,30 @@
   "quota.resetHistory.title": {
     "comment": "Card title on a provider detail page",
     "value": "Reset History"
+  },
+  "quota.resetHistory.tooltip.completed": {
+    "args": {
+      "left": "int",
+      "used": "int"
+    },
+    "comment": "Tooltip figures for a finished cycle in the reset history comparison",
+    "value": "{left}% left at reset · {used}% used"
+  },
+  "quota.resetHistory.tooltip.current": {
+    "args": {
+      "left": "int",
+      "used": "int"
+    },
+    "comment": "Tooltip figures for the cycle still running",
+    "value": "Current cycle · {left}% left now · {used}% used so far"
+  },
+  "quota.resetHistory.tooltip.range": {
+    "comment": "Tooltip line naming the span a finished cycle covered",
+    "value": "{start} → {end} reset"
+  },
+  "quota.resetHistory.tooltip.rangeDue": {
+    "comment": "Tooltip line naming the span of the cycle still running and when it is due to reset",
+    "value": "{start} → {end} reset due"
   },
   "quota.resetHistory.totals.headline": {
     "args": {
@@ -1662,6 +2308,22 @@
   "quota.update.failed": {
     "comment": "Inline error row; reason is a provider message and is not translated",
     "value": "Update failed: {reason}"
+  },
+  "quota.window.dayOfDays": {
+    "args": {
+      "day": "int",
+      "total": "int"
+    },
+    "comment": "Window progress line for a window measured in whole days",
+    "value": "Day {day} of {total} · {value}"
+  },
+  "quota.window.elapsedOfWindow": {
+    "comment": "Window progress line for a sub-day window; window is its length, elapsed how much of it is gone",
+    "value": "{elapsed} of {window} · {value}"
+  },
+  "quota.window.resetsSoon": {
+    "comment": "Window progress line once the reset time has passed but no refresh has landed; value is the used/left figure",
+    "value": "Resets soon · {value}"
   },
   "settings.antigravityCookieEnabled": {
     "comment": "Hint under the Antigravity source picker",
@@ -3192,6 +3854,34 @@
     "comment": "Card title on the Overview's service-status tile row",
     "value": "Status"
   },
+  "usage.activity.a11y": {
+    "comment": "Accessibility label for the 7 by 24 activity grid",
+    "value": "Token usage by weekday and hour, 7 days by 24 hours"
+  },
+  "usage.activity.cellTooltip": {
+    "comment": "Tooltip on one cell of the activity grid",
+    "value": "{day} {hour} · {tokens}"
+  },
+  "usage.activity.heavy": {
+    "comment": "High end of the activity grid's intensity legend",
+    "value": "Heavy"
+  },
+  "usage.activity.peak": {
+    "comment": "Caption naming the busiest hour of the activity card when the peak hour and peak cell agree",
+    "value": "Peak {hour} · {day}"
+  },
+  "usage.activity.peakCell": {
+    "comment": "Caption naming the busiest hour overall and the busiest single cell when they differ",
+    "value": "Peak {hour} · {day} {cellHour}"
+  },
+  "usage.activity.quiet": {
+    "comment": "Low end of the activity grid's intensity legend",
+    "value": "Quiet"
+  },
+  "usage.activity.tokensShort": {
+    "comment": "A token count in the activity grid's tooltip; the number is already abbreviated at the call site",
+    "value": "{tokens} tok"
+  },
   "usage.breakdown.models": {
     "comment": "Tab over the Usage Stats breakdown table: one row per model.",
     "value": "Models"
@@ -3211,6 +3901,26 @@
   "usage.breakdown.requests": {
     "comment": "Tab over the Usage Stats breakdown table: one row per request. The all-caps hero metric of the same word is usage.hero.requests.",
     "value": "Requests"
+  },
+  "usage.chartNavigator.label": {
+    "comment": "Accessibility label for the brush strip under a pannable chart",
+    "value": "Chart range navigator"
+  },
+  "usage.chartNavigator.range": {
+    "comment": "Accessibility value of the chart range navigator; both ends are already formatted dates",
+    "value": "{start} to {end}"
+  },
+  "usage.chartNavigator.showFullRange": {
+    "comment": "Accessibility action that returns a chart to its whole domain",
+    "value": "Show Full Range"
+  },
+  "usage.chartNavigator.zoomIn": {
+    "comment": "Accessibility action on the chart range navigator",
+    "value": "Zoom In"
+  },
+  "usage.chartNavigator.zoomOut": {
+    "comment": "Accessibility action on the chart range navigator",
+    "value": "Zoom Out"
   },
   "usage.filters.allHarnesses": {
     "comment": "Chip that puts every harness into the Usage Stats query; 'harness' is the usage-axis unit and stays as spelled.",
@@ -3411,9 +4121,45 @@
     "comment": "Empty state when the local per-request ledger could not be opened",
     "value": "Usage ledger unavailable"
   },
+  "usage.mix.dimension.harnesses": {
+    "comment": "Usage Mix dimension: which local CLI or app produced the tokens; the harness names themselves are not translated",
+    "value": "Harnesses"
+  },
+  "usage.mix.dimension.models": {
+    "comment": "Usage Mix dimension: which model the tokens were spent on",
+    "value": "Models"
+  },
+  "usage.mix.dimension.projects": {
+    "comment": "Usage Mix dimension: which working directory the tokens came from",
+    "value": "Projects"
+  },
+  "usage.mix.dimension.tokenFlow": {
+    "comment": "Usage Mix dimension: fresh input against cache and output",
+    "value": "Token Flow"
+  },
   "usage.mix.donutUnit": {
     "comment": "Unit under the total in the middle of a donut card.",
     "value": "tokens"
+  },
+  "usage.mix.empty": {
+    "comment": "Usage Mix empty state when the range holds no local usage",
+    "value": "No local usage in this range."
+  },
+  "usage.mix.flow.cache": {
+    "comment": "Token Flow slice: cached tokens",
+    "value": "Cache"
+  },
+  "usage.mix.flow.cacheDetail": {
+    "comment": "Detail under the cache slice, naming the two cache token kinds it sums",
+    "value": "read + creation"
+  },
+  "usage.mix.flow.freshInput": {
+    "comment": "Token Flow slice: input tokens that were not served from cache",
+    "value": "Fresh input"
+  },
+  "usage.mix.flow.output": {
+    "comment": "Token Flow slice: tokens the model produced",
+    "value": "Output"
   },
   "usage.mix.harness.subtitle": {
     "comment": "Caption under the Harness Mix donut title.",
@@ -3422,6 +4168,14 @@
   "usage.mix.harness.title": {
     "comment": "Donut card on the Usage Stats distribution wall: tokens by harness. Title-case variant of the all-caps section label usage.harnessMix.title.",
     "value": "Harness Mix"
+  },
+  "usage.mix.lastThirtyDays": {
+    "comment": "Scope caption beside the Usage Mix title",
+    "value": "Last 30 days"
+  },
+  "usage.mix.ledgerUnreadable": {
+    "comment": "Usage Mix empty state when the per-request ledger could not be opened",
+    "value": "Usage ledger could not be read."
   },
   "usage.mix.model.empty": {
     "comment": "Empty state inside the Model Mix donut card.",
@@ -3434,6 +4188,13 @@
   "usage.mix.model.title": {
     "comment": "Donut card on the Usage Stats distribution wall: tokens by model.",
     "value": "Model Mix"
+  },
+  "usage.mix.moreSlices": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Detail on the Usage Mix slice that stands in for everything below the cut",
+    "value": "{count} more"
   },
   "usage.mix.other": {
     "comment": "Donut slice that collapses everything below the top five.",
@@ -3458,6 +4219,10 @@
     "comment": "Donut card on the Usage Stats distribution wall: tokens by project directory.",
     "value": "Project Mix"
   },
+  "usage.mix.projectsPending": {
+    "comment": "Usage Mix empty state on the Projects dimension before a cost refresh has attributed anything",
+    "value": "Project attribution appears after the next Codex or Claude cost refresh."
+  },
   "usage.mix.provider.empty": {
     "comment": "Empty state inside the Provider Mix donut card.",
     "value": "No provider traffic in this range"
@@ -3470,6 +4235,10 @@
     "comment": "Donut card on the Usage Stats distribution wall: tokens by L1 company.",
     "value": "Provider Mix"
   },
+  "usage.mix.title": {
+    "comment": "Title of the Overview card that splits recent tokens by project, harness, model or token kind",
+    "value": "Usage Mix"
+  },
   "usage.mix.tokenFlow.empty": {
     "comment": "Empty state inside the Token Flow donut card.",
     "value": "No token traffic in this range"
@@ -3481,6 +4250,10 @@
   "usage.mix.tokenFlow.title": {
     "comment": "Donut card on the Usage Stats distribution wall: tokens by kind.",
     "value": "Token Flow"
+  },
+  "usage.mix.tokensCaption": {
+    "comment": "Caption under the total in the middle of the Usage Mix donut",
+    "value": "tokens"
   },
   "usage.noHarnessSelected.detail": {
     "comment": "Empty state body explaining the All chip",
@@ -3801,9 +4574,40 @@
     "comment": "Heatmap title on the Google AI page",
     "value": "When you use Google AI"
   },
+  "usage.whenYouUse.provider": {
+    "comment": "Title of the weekday-by-hour activity card for one provider",
+    "value": "When you use {provider}"
+  },
   "usage.whenYouUse.spaceXAI": {
     "comment": "Heatmap title on the SpaceXAI page",
     "value": "When you use SpaceXAI"
+  },
+  "usage.yearHeatmap.a11y": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Accessibility label for the past-year grid; count is how many week columns it draws",
+    "value": "{provider} daily spend over the past year, {count, plural, one {1 week} other {# weeks}}"
+  },
+  "usage.yearHeatmap.less": {
+    "comment": "Low end of the past-year grid's intensity legend",
+    "value": "Less"
+  },
+  "usage.yearHeatmap.more": {
+    "comment": "High end of the past-year grid's intensity legend",
+    "value": "More"
+  },
+  "usage.yearHeatmap.title": {
+    "comment": "Title of the past-year contribution grid; provider is a name and is not translated",
+    "value": "{provider} — Past Year"
+  },
+  "usage.yearHeatmap.tooltip": {
+    "comment": "Tooltip on one day of the past-year grid",
+    "value": "{date} · {amount}"
+  },
+  "usage.yearHeatmap.total": {
+    "comment": "Caption beside the past-year grid's title; amount is already formatted currency",
+    "value": "{amount} total"
   },
   "workbench.appearance.useDark": {
     "comment": "Tooltip on the Workbench header button that switches the window to dark",

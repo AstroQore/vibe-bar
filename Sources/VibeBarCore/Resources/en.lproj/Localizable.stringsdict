@@ -51,6 +51,70 @@
 			<string>%1$lld minutes</string>
 		</dict>
 	</dict>
+	<key>quota.forecast.metric.comparableCycles</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 comparable reset cycle</string>
+			<key>other</key>
+			<string>%1$lld comparable reset cycles</string>
+		</dict>
+	</dict>
+	<key>quota.forecast.metric.recentIntervals</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 recent interval</string>
+			<key>other</key>
+			<string>%1$lld recent intervals</string>
+		</dict>
+	</dict>
+	<key>quota.history.curveCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 curve</string>
+			<key>other</key>
+			<string>%1$lld curves</string>
+		</dict>
+	</dict>
+	<key>quota.history.providerCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 provider</string>
+			<key>other</key>
+			<string>%1$lld providers</string>
+		</dict>
+	</dict>
 	<key>quota.perModelLimits</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -81,6 +145,22 @@
 			<string>1 manual reset available</string>
 			<key>other</key>
 			<string>%1$lld manual resets available</string>
+		</dict>
+	</dict>
+	<key>quota.resetHistory.earlyRefillCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 cycle refilled before the window was up</string>
+			<key>other</key>
+			<string>%1$lld cycles refilled before the window was up</string>
 		</dict>
 	</dict>
 	<key>quota.resetHistory.lane.wasteSummary</key>
@@ -353,6 +433,22 @@
 			<string>1 provider</string>
 			<key>other</key>
 			<string>%1$lld providers</string>
+		</dict>
+	</dict>
+	<key>usage.yearHeatmap.a11y</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$@ daily spend over the past year, %2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 week</string>
+			<key>other</key>
+			<string>%2$lld weeks</string>
 		</dict>
 	</dict>
 	<key>workbench.sessions.count.sessions</key>
