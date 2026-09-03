@@ -32,12 +32,45 @@ struct FillTimelineChart: View {
     private final class CycleCache {
         var key: SubscriptionHistoryKey?
         var samples: [SubscriptionWindowSample] = []
+        var limit = 0
         var visible: [SubscriptionWindowSample] = []
     }
 
     @State private var cycleCache = CycleCache()
+    /// Strip width, updated only when it changes. The number of cycles worth
+    /// drawing is a function of it.
+    @State private var stripWidth: CGFloat = 0
 
-    private static let maxCycles = 12
+    /// Most cycles the strip will draw, however wide it gets.
+    ///
+    /// A legibility budget, not a storage one — `SubscriptionHistoryStore`
+    /// keeps every cycle it ever recorded, and the busiest lane on a real Mac
+    /// holds a couple of hundred. Past this many the strip stops being a shape
+    /// you can read and becomes texture.
+    private static let maximumCycles = 60
+
+    /// Bar width the count is derived from. `cycleStrip` never draws narrower
+    /// than the geometry allows, so deriving from a slightly generous figure is
+    /// what keeps a little air between bars at the wide end.
+    private static let preferredBarWidth: CGFloat = 6
+
+    /// Until the strip has been measured. Small enough to look deliberate for
+    /// the one frame before the real width arrives.
+    private static let unmeasuredCycles = 12
+
+    /// As many cycles as fit at `preferredBarWidth`, capped.
+    ///
+    /// Fewer bars beats unreadable ones: the count comes down until each bar
+    /// has room, rather than the bars thinning to hairlines to fit a count.
+    private func maxCycles(forWidth width: CGFloat) -> Int {
+        guard width > 0 else { return Self.unmeasuredCycles }
+        let slot = Self.preferredBarWidth + barSpacing
+        return min(Self.maximumCycles, max(4, Int((width + barSpacing) / slot)))
+    }
+
+    /// Band above the bars holding the early-refill dots. Always reserved, so
+    /// the strip does not change height when a cycle refills early.
+    private var markerBand: CGFloat { 5 }
 
     private var barSpacing: CGFloat {
         switch density.profile {
@@ -56,7 +89,7 @@ struct FillTimelineChart: View {
     }
 
     var body: some View {
-        let cycles = visibleCycles(series: series)
+        let cycles = visibleCycles(series: series, limit: maxCycles(forWidth: stripWidth))
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Reset history")
@@ -67,7 +100,6 @@ struct FillTimelineChart: View {
                     .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
                     .foregroundStyle(.quaternary)
             }
-            earlyRefillMarks(cycles, tool: series.tool)
             cycleStrip(cycles, tool: series.tool, targetPercent: targetPercent)
             Text(caption(cycles))
                 .font(.system(size: max(8, density.subtitleFontSize - 3), design: .rounded).monospacedDigit())
@@ -79,21 +111,34 @@ struct FillTimelineChart: View {
         .padding(.top, 4)
     }
 
-    private func visibleCycles(series: FillTimelineSeries) -> [SubscriptionWindowSample] {
+    private func visibleCycles(
+        series: FillTimelineSeries,
+        limit: Int
+    ) -> [SubscriptionWindowSample] {
         let key = SubscriptionHistoryKey(accountId: series.accountId, bucketId: series.bucket.id)
         let samples = quotaService.historyByAccountBucket[key] ?? []
         // An equality check over the retained samples is far cheaper than the
-        // sort plus the per-element date resolution it drives.
-        if cycleCache.key == key, cycleCache.samples == samples {
+        // sort plus the per-element date resolution it drives. The limit is
+        // part of the key: it moves with the strip's width.
+        if cycleCache.key == key, cycleCache.limit == limit, cycleCache.samples == samples {
             return cycleCache.visible
         }
-        let visible = Array(samples.sorted { cycleDate($0) < cycleDate($1) }.suffix(Self.maxCycles))
+        let visible = Array(samples.sorted { cycleDate($0) < cycleDate($1) }.suffix(limit))
         cycleCache.key = key
         cycleCache.samples = samples
+        cycleCache.limit = limit
         cycleCache.visible = visible
         return visible
     }
 
+    /// The strip: one bar per cycle, the early-refill dots above them and the
+    /// safety target across them — all in one `Canvas`.
+    ///
+    /// One drawing surface because the count is now width-derived and can
+    /// reach sixty (`AGENTS.md` § 11: dense status history is one drawing
+    /// surface, not hundreds of views). The per-bar `ForEach` this replaces
+    /// was two views per cycle plus a second `ForEach` for the dots, and a
+    /// provider page draws one of these strips per bucket.
     @ViewBuilder
     private func cycleStrip(
         _ cycles: [SubscriptionWindowSample],
@@ -110,81 +155,111 @@ struct FillTimelineChart: View {
                 }
                 .frame(height: chartHeight)
         } else {
-            GeometryReader { geo in
-                let count = cycles.count
-                let barWidth = max(5, (geo.size.width - CGFloat(count - 1) * barSpacing) / CGFloat(count))
-                ZStack(alignment: .topLeading) {
-                    HStack(alignment: .bottom, spacing: barSpacing) {
-                        ForEach(Array(cycles.enumerated()), id: \.offset) { index, cycle in
-                            cycleBar(cycle, tool: tool, isHovered: hoveredIndex == index)
-                                .frame(width: barWidth, height: geo.size.height)
-                        }
+            Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+                let accent = Theme.providerAccent(for: tool)
+                let barWidth = Self.barWidth(in: size.width, count: cycles.count, spacing: barSpacing)
+                let top = markerBand
+                let plotHeight = max(1, size.height - top)
+                for (index, cycle) in cycles.enumerated() {
+                    let x = CGFloat(index) * (barWidth + barSpacing)
+                    let isHovered = hoveredIndex == index
+                    let rect = CGRect(x: x, y: top, width: barWidth, height: plotHeight)
+                    let radius = min(3, barWidth / 2)
+                    context.fill(
+                        Path(roundedRect: rect, cornerRadius: radius, style: .continuous),
+                        with: .color(Theme.barTrack.opacity(isHovered ? 0.95 : 0.62))
+                    )
+                    // The 4% floor keeps a spent cycle visible as a sliver
+                    // rather than an empty track, exactly as the bars did when
+                    // they were views and scaled themselves.
+                    let percent = displayedPercent(cycle)
+                    let fillHeight = max(plotHeight * 0.04, plotHeight * percent / 100)
+                    context.fill(
+                        Path(
+                            roundedRect: CGRect(
+                                x: x,
+                                y: rect.maxY - fillHeight,
+                                width: barWidth,
+                                height: fillHeight
+                            ),
+                            cornerRadius: min(radius, fillHeight / 2),
+                            style: .continuous
+                        ),
+                        with: .color(accent.opacity(isHovered ? 1 : 0.86))
+                    )
+                    if !cycle.isCompleted {
+                        context.stroke(
+                            Path(roundedRect: rect, cornerRadius: radius, style: .continuous),
+                            with: .color(accent.opacity(0.9)),
+                            style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                        )
                     }
-                    if let targetPercent, targetPercent > 3, targetPercent < 97 {
-                        Path { path in
-                            let y = geo.size.height * (1 - targetPercent / 100)
-                            path.move(to: CGPoint(x: 0, y: y))
-                            path.addLine(to: CGPoint(x: geo.size.width, y: y))
-                        }
-                        .stroke(
-                            Color.primary.opacity(0.34),
-                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                    // Above the bar, not inside it: a cycle that spent all of
+                    // its quota fills its track to the top, where a marker
+                    // would be the same colour as the fill under it. Shrinks
+                    // with the bar so it never overlaps its neighbour.
+                    if cycle.refilledEarly {
+                        let diameter = min(3, barWidth)
+                        context.fill(
+                            Path(
+                                ellipseIn: CGRect(
+                                    x: rect.midX - diameter / 2,
+                                    y: max(0, top - diameter) / 2,
+                                    width: diameter,
+                                    height: diameter
+                                )
+                            ),
+                            with: .color(accent.opacity(0.8))
                         )
                     }
                 }
-                .contentShape(Rectangle())
-                .onContinuousHover { phase in
-                    switch phase {
-                    case .active(let location):
-                        hoveredIndex = min(max(0, Int(location.x / (barWidth + barSpacing))), count - 1)
-                    case .ended:
-                        hoveredIndex = nil
-                    }
+                if let targetPercent, targetPercent > 3, targetPercent < 97 {
+                    let y = top + plotHeight * (1 - targetPercent / 100)
+                    var path = Path()
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: size.width, y: y))
+                    context.stroke(
+                        path,
+                        with: .color(Color.primary.opacity(0.34)),
+                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                    )
                 }
             }
-            .frame(height: chartHeight)
-        }
-    }
-
-    private func cycleBar(_ cycle: SubscriptionWindowSample, tool: ToolType, isHovered: Bool) -> some View {
-        let percent = displayedPercent(cycle)
-        return ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(Theme.barTrack.opacity(isHovered ? 0.95 : 0.62))
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(Theme.providerAccent(for: tool).opacity(isHovered ? 1 : 0.86))
-                .frame(maxHeight: .infinity)
-                .scaleEffect(x: 1, y: max(0.04, percent / 100), anchor: .bottom)
-        }
-        .overlay {
-            if !cycle.isCompleted {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .stroke(Theme.providerAccent(for: tool).opacity(0.9), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            .frame(height: chartHeight + markerBand)
+            .contentShape(Rectangle())
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { width in
+                stripWidth = width
+            }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    let barWidth = Self.barWidth(
+                        in: stripWidth,
+                        count: cycles.count,
+                        spacing: barSpacing
+                    )
+                    hoveredIndex = min(
+                        max(0, Int(location.x / (barWidth + barSpacing))),
+                        cycles.count - 1
+                    )
+                case .ended:
+                    hoveredIndex = nil
+                }
             }
         }
     }
 
-    /// Dots over the cycles that refilled before their window was up.
+    /// One bar's width. Shared by the draw and the hit test so the caption can
+    /// never describe a cycle the cursor is not over.
     ///
-    /// Above the bars rather than inside them: a cycle that spent all of its
-    /// quota fills its track to the top, where a marker would be the same
-    /// colour as the fill under it.
-    @ViewBuilder
-    private func earlyRefillMarks(
-        _ cycles: [SubscriptionWindowSample],
-        tool: ToolType
-    ) -> some View {
-        if cycles.contains(where: \.refilledEarly) {
-            HStack(alignment: .center, spacing: barSpacing) {
-                ForEach(Array(cycles.enumerated()), id: \.offset) { _, cycle in
-                    Circle()
-                        .fill(Theme.providerAccent(for: tool).opacity(cycle.refilledEarly ? 0.8 : 0))
-                        .frame(width: 3, height: 3)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .frame(height: 4)
-        }
+    /// No lower floor: the count is chosen so the natural width clears
+    /// `preferredBarWidth`, and flooring it instead would push the last bars
+    /// off the end of the strip during the frame after a resize.
+    private static func barWidth(in width: CGFloat, count: Int, spacing: CGFloat) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return max(1, (width - CGFloat(count - 1) * spacing) / CGFloat(count))
     }
 
     @ViewBuilder
