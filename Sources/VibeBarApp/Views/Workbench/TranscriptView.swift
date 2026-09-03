@@ -65,6 +65,9 @@ struct TranscriptView: View {
                         if document.messages.isEmpty {
                             message("This session's log has no readable messages.", systemImage: "text.alignleft")
                         } else {
+                            if let truncation = model.transcriptTruncation {
+                                truncationBanner(truncation)
+                            }
                             transcriptPager(document: document, proxy: proxy)
                                 .id(Self.pageAnchorID)
                             let range = TranscriptPageWindow.range(
@@ -96,7 +99,10 @@ struct TranscriptView: View {
             .cardSurface(density: density)
             .padding(.trailing, density.popoverPaddingH)
             .padding(.bottom, density.popoverPaddingV)
-            .onChange(of: model.transcript) { _, _ in focusOnSearchHit(proxy: proxy) }
+            // Keyed on an identity, not on the document: `TranscriptDocument`
+            // is `Equatable`, and `onChange` would compare two
+            // hundred-thousand-message values on every body evaluation.
+            .onChange(of: transcriptIdentity) { _, _ in focusOnSearchHit(proxy: proxy) }
         }
     }
 
@@ -128,15 +134,67 @@ struct TranscriptView: View {
     }
 
     private var loading: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             ProgressView().controlSize(.small)
             Text("Reading the session log…")
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
+            // A whole-file read of a gigabyte-scale rollout takes long enough
+            // that "wait or pick something else" has to be a real choice.
+            Button("Cancel") { model.cancelTranscriptLoad() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 24)
     }
+
+    /// What a head-window read says for itself.
+    ///
+    /// The count is exact — those messages were parsed — but the total is
+    /// genuinely unknown: the file was cut at a byte offset before any of it
+    /// became messages, which is the whole point. So the banner reports what
+    /// it can measure (messages shown, bytes read of bytes on disk) and
+    /// offers the unbounded read rather than guessing at a total.
+    private func truncationBanner(_ truncation: SessionManagerModel.TranscriptTruncation) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "doc.badge.ellipsis")
+                .font(.system(size: density.subtitleFontSize))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Showing the first \(truncation.shownMessages) messages of a very large log")
+                    .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                Text("\(Self.bytes.string(fromByteCount: truncation.parsedBytes)) read of "
+                    + "\(Self.bytes.string(fromByteCount: truncation.fileBytes)). "
+                    + "Reading all of it holds the whole transcript in memory.")
+                    .font(.system(size: max(10, density.resetCountdownFontSize)))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Load entire transcript") { model.loadEntireTranscript() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: density.cardCornerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 0.6)
+        )
+    }
+
+    private static let bytes: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useMB, .useGB]
+        return formatter
+    }()
 
     private func message(_ text: String, systemImage: String) -> some View {
         CardShell(density: density, alignment: .center) {
@@ -190,27 +248,89 @@ struct TranscriptView: View {
                 .overlay(Capsule().stroke(Color.primary.opacity(0.11), lineWidth: 0.6))
         )
         .accessibilityLabel("Find in transcript")
-        .onChange(of: query) { _, _ in recomputeMatches(proxy: proxy) }
-        .onChange(of: model.transcript) { _, _ in recomputeMatches(proxy: proxy) }
+        // One trigger for both inputs. `.task(id:)` cancels the previous run
+        // when the key changes, which is what makes the debounce below a
+        // debounce rather than a queue of scans.
+        .task(id: findKey) { await runFind(proxy: proxy) }
+    }
+
+    /// What a find run depends on. The transcript itself is identified rather
+    /// than compared: `TranscriptDocument` is `Equatable`, and comparing two
+    /// hundred-thousand-message documents on every keystroke would cost more
+    /// than the scan.
+    private struct FindKey: Equatable {
+        let query: String
+        let selectionID: String?
+        let messageCount: Int
+        let truncated: Bool
+    }
+
+    private var findKey: FindKey {
+        FindKey(
+            query: query,
+            selectionID: model.selection?.id,
+            messageCount: model.transcript?.messages.count ?? 0,
+            truncated: model.transcript?.truncated ?? false
+        )
+    }
+
+    /// The same identity without the query: what "a different transcript is
+    /// on screen" means, cheaply.
+    private var transcriptIdentity: FindKey {
+        FindKey(
+            query: "",
+            selectionID: model.selection?.id,
+            messageCount: model.transcript?.messages.count ?? 0,
+            truncated: model.transcript?.truncated ?? false
+        )
     }
 
     /// Matches drive three things at once: the counter, the next / previous
-    /// buttons, and which collapsed cards open — a hit hidden inside a
-    /// folded 40 KB tool result is a hit the user cannot see.
-    private func recomputeMatches(proxy: ScrollViewProxy) {
+    /// buttons, and which collapsed card opens — a hit hidden inside a folded
+    /// 40 KB tool result is a hit the user cannot see.
+    ///
+    /// Debounced and off the main actor: this used to run on every keystroke,
+    /// on the main actor, with `.diacriticInsensitive` folding over every
+    /// message of the open log, and then expanded *every* matching card at
+    /// once — which on a wide match turns one keystroke into hundreds of
+    /// re-laid-out bubbles. Only the match being scrolled to is opened now.
+    private func runFind(proxy: ScrollViewProxy) async {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty, let document = model.transcript else {
             matches = []
             matchIndex = 0
             return
         }
-        matches = document.messages
-            .filter { $0.text.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
-            .map(\.seq)
-        expanded.formUnion(matches)
+        try? await Task.sleep(for: Self.findDebounce)
+        guard !Task.isCancelled else { return }
+        let found = await Self.scan(document: document, needle: needle)
+        guard !Task.isCancelled else { return }
+        matches = found
         matchIndex = 0
-        guard let first = matches.first else { return }
+        guard let first = found.first else { return }
         scroll(to: first, proxy: proxy)
+    }
+
+    private static let findDebounce = Duration.milliseconds(250)
+
+    /// `.diacriticInsensitive` is deliberately gone. It forces a full
+    /// Unicode fold of every message before the comparison, it disagrees with
+    /// what `TranscriptFormatting.highlighted` would tint, and nobody types
+    /// "resume" hoping to find "résumé" in a build log.
+    private nonisolated static func scan(
+        document: TranscriptDocument,
+        needle: String
+    ) async -> [Int] {
+        await Task.detached(priority: .userInitiated) {
+            var found: [Int] = []
+            for message in document.messages {
+                if Task.isCancelled { return found }
+                if message.text.range(of: needle, options: [.caseInsensitive]) != nil {
+                    found.append(message.seq)
+                }
+            }
+            return found
+        }.value
     }
 
     private func step(by offset: Int, proxy: ScrollViewProxy) {
@@ -223,6 +343,8 @@ struct TranscriptView: View {
         guard let document = model.transcript,
               let index = document.messages.firstIndex(where: { $0.seq == seq })
         else { return }
+        // Open the card being landed on, and only that one.
+        expanded.insert(seq)
         let start = TranscriptPageWindow.start(
             containingItemAt: index,
             itemCount: document.messages.count

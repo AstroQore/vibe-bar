@@ -37,6 +37,78 @@ public struct UsageQueryFilter: Sendable, Equatable {
     }
 }
 
+// MARK: - Result reuse
+
+/// Everything a completed Usage Stats query result actually depends on.
+///
+/// The Workbench's Usage Stats page re-runs `activate()` on every entry, and
+/// its view model outlives the window — so "switch to Sessions and back" cost
+/// the whole analytic set (up to eleven sequential ledger round trips) to
+/// redraw numbers already on screen. Comparing this value against the one the
+/// visible results were produced with is what makes a re-entry free.
+///
+/// The membership rules are the whole point, and both directions matter:
+///
+/// - **What must be here:** every input the ledger reads. Range anchors,
+///   the tool / harness / model narrowing, the trend bucket, and
+///   `revision` — `UsageEventLedger.contentRevision()`, which moves on
+///   ingest, erase, rollup, and repricing.
+/// - **What must not be:** anything the ledger never sees. The wall clock at
+///   the end of a rolling preset is excluded because no row can appear
+///   inside the moved window without `revision` moving too. Which breakdown
+///   tab is open is excluded because opening one runs its own deferred
+///   query and changes no number in the shared set — including it meant
+///   opening Requests silently invalidated a perfectly good result set, and
+///   the next page entry re-ran all eleven queries for nothing.
+public struct UsageQuerySignature: Sendable, Equatable {
+    /// The chosen range as the user expressed it — preset plus whatever
+    /// anchors that preset actually reads. Not the resolved `DateInterval`:
+    /// see the clock-drift rule above.
+    public var rangeKey: String
+    public var tools: [ToolType]?
+    public var harnesses: [Harness]?
+    public var models: [String]?
+    public var granularity: UsageTrendBucket?
+    public var revision: UInt64
+
+    public init(
+        rangeKey: String,
+        tools: [ToolType]? = nil,
+        harnesses: [Harness]? = nil,
+        models: [String]? = nil,
+        granularity: UsageTrendBucket? = nil,
+        revision: UInt64
+    ) {
+        self.rangeKey = rangeKey
+        self.tools = tools
+        self.harnesses = harnesses
+        self.models = models
+        self.granularity = granularity
+        self.revision = revision
+    }
+
+    /// A stable key for "which window the user picked".
+    ///
+    /// `windowStart` is the historical anchor a back / forward step sets;
+    /// the custom bounds are only read when the preset is `custom`, but are
+    /// folded in unconditionally so the key stays a pure function of its
+    /// arguments.
+    public static func rangeKey(
+        preset: String,
+        windowStart: Date?,
+        customStart: Date,
+        customEnd: Date
+    ) -> String {
+        let anchor = windowStart.map { String($0.timeIntervalSince1970) } ?? "-"
+        return [
+            preset,
+            anchor,
+            String(customStart.timeIntervalSince1970),
+            String(customEnd.timeIntervalSince1970)
+        ].joined(separator: "|")
+    }
+}
+
 // MARK: - Trend bucketing
 
 public enum UsageTrendBucket: String, Sendable, Equatable, CaseIterable, Codable {

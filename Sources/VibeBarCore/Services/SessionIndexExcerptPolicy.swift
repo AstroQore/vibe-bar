@@ -40,13 +40,21 @@ public struct SessionIndexExcerptPolicy: Sendable, Equatable {
     /// excerpt budget is applied, so parsing a 1.6 GB rollout means
     /// gigabytes of transient strings; the session budget above is filled
     /// by the first few hundred KiB anyway.
+    ///
+    /// 8 MiB, not the 64 MiB this started at: `sessionExcerptBytes` is
+    /// 128 KiB, so the budget saturates two orders of magnitude before the
+    /// old limit and the extra 56 MiB were copied, parsed into strings, and
+    /// thrown away on every re-index of a file that had merely grown. The
+    /// only thing a larger head buys is a deeper *fallback* when the head is
+    /// mostly matter the trim drops (long tool output), and 8 MiB of JSONL
+    /// is already thousands of messages.
     public var headParseByteLimit: Int64
 
     public init(
         toolExcerptCharacters: Int = 600,
         proseExcerptCharacters: Int = 2_000,
         sessionExcerptBytes: Int = 128 * 1024,
-        headParseByteLimit: Int64 = 64 * 1024 * 1024
+        headParseByteLimit: Int64 = 8 * 1024 * 1024
     ) {
         self.toolExcerptCharacters = toolExcerptCharacters
         self.proseExcerptCharacters = proseExcerptCharacters
@@ -56,9 +64,15 @@ public struct SessionIndexExcerptPolicy: Sendable, Equatable {
 
     public static let standard = SessionIndexExcerptPolicy()
 
-    /// Bump when the standard caps tighten (or loosen) so
+    /// Bump when the standard *excerpt* caps tighten (or loosen) so
     /// `SessionIndexCompactor` re-runs its trim pass over existing rows
     /// regardless of the daily throttle.
+    ///
+    /// `headParseByteLimit` is deliberately not one of those caps:
+    /// it bounds what is *read*, and the rows already in the database were
+    /// written under the same 128 KiB excerpt budget either way. Lowering it
+    /// must not cost the user an unscheduled pass over a gigabyte-scale
+    /// index that would find nothing to trim.
     public static let version = 1
 
     /// The excerpt cap for one message, by the role the index stores.

@@ -510,4 +510,94 @@ final class UsageQueryMetricsTests: XCTestCase {
         XCTAssertEqual(collected.map(\.id), collected.map(\.id).sorted(by: >))
     }
 
+    // MARK: - Result reuse
+
+    /// What the Usage Stats page compares on re-entry. Each of these is an
+    /// input the ledger actually reads, so each has to move the signature.
+    func testSignatureChangesForEveryQueryInput() {
+        let base = UsageQuerySignature(
+            rangeKey: UsageQuerySignature.rangeKey(
+                preset: "day7", windowStart: nil, customStart: now, customEnd: now
+            ),
+            tools: [.codex],
+            harnesses: [.codex],
+            models: ["gpt-5"],
+            granularity: .day,
+            revision: 7
+        )
+
+        var range = base
+        range.rangeKey = UsageQuerySignature.rangeKey(
+            preset: "day30", windowStart: nil, customStart: now, customEnd: now
+        )
+        XCTAssertNotEqual(base, range)
+
+        var tools = base
+        tools.tools = [.claude]
+        XCTAssertNotEqual(base, tools)
+
+        var harnesses = base
+        harnesses.harnesses = [.claudeCode]
+        XCTAssertNotEqual(base, harnesses)
+
+        var models = base
+        models.models = ["gpt-5-codex"]
+        XCTAssertNotEqual(base, models)
+
+        var granularity = base
+        granularity.granularity = .hour
+        XCTAssertNotEqual(base, granularity)
+
+        var revision = base
+        revision.revision = 8
+        XCTAssertNotEqual(base, revision, "a scan that wrote rows must force a re-query")
+    }
+
+    /// A rolling preset's window slides with the wall clock, but no row can
+    /// appear inside it without the ledger's revision moving too — so the
+    /// clock alone must not invalidate a result set.
+    func testSignatureIgnoresClockDriftWithinTheSamePreset() {
+        let first = UsageQuerySignature.rangeKey(
+            preset: "day7", windowStart: nil, customStart: now, customEnd: now
+        )
+        let later = UsageQuerySignature.rangeKey(
+            preset: "day7", windowStart: nil, customStart: now, customEnd: now
+        )
+        XCTAssertEqual(first, later)
+
+        // A back / forward step *is* a different window, and must not fold
+        // into the same key.
+        let stepped = UsageQuerySignature.rangeKey(
+            preset: "day7",
+            windowStart: now.addingTimeInterval(-7 * 86_400),
+            customStart: now,
+            customEnd: now
+        )
+        XCTAssertNotEqual(first, stepped)
+    }
+
+    /// The regression this type exists to prevent.
+    ///
+    /// Opening the Requests tab runs only its own deferred page query — it
+    /// changes nothing in the shared analytic set. When the active breakdown
+    /// was part of the signature, doing so left the stored signature saying
+    /// "Periods" while the page said "Requests", and the next entry re-ran
+    /// all eleven ledger queries against an unchanged ledger. The signature
+    /// carries no tab, so the two moments are identical values.
+    func testSignatureIsUnchangedByOpeningADifferentBreakdownTab() {
+        func signature() -> UsageQuerySignature {
+            UsageQuerySignature(
+                rangeKey: UsageQuerySignature.rangeKey(
+                    preset: "day7", windowStart: nil, customStart: now, customEnd: now
+                ),
+                tools: nil,
+                harnesses: nil,
+                models: nil,
+                granularity: nil,
+                revision: 3
+            )
+        }
+        // Before opening Requests, and after: same inputs, same value.
+        XCTAssertEqual(signature(), signature())
+    }
 }
