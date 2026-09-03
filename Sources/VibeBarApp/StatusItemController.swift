@@ -1484,11 +1484,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return attributed
     }
 
+    /// One naming seam for both strips — the field list and the composed one
+    /// must not call the same bucket different things.
     private func label(for field: MenuBarFieldOption, bucket: QuotaBucket, itemSettings: MenuBarItemSettings) -> String {
-        let custom = itemSettings.customLabels[field.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let custom, !custom.isEmpty { return custom }
-        if field.defaultLabel != bucket.shortLabel { return bucket.shortLabel }
-        return field.defaultLabel
+        MenuBarStripResolver.label(for: field, bucket: bucket, itemSettings: itemSettings)
     }
 
     private func menuTextPiece(

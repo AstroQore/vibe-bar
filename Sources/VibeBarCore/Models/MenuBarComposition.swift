@@ -750,14 +750,11 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             tokens.append(MenuBarToken(kind: .logo(run.primary.tool), style: .label))
         }
         if style != .logoAndPercent {
-            let label = run.isMerged
-                ? MenuBarFieldCatalog.mergedGroupLabel(
-                    for: run,
-                    customLabels: item.customLabels,
-                    groupCatalogLabel: groupCatalogLabel
-                )
-                : seedLabel(for: run.primary, customLabels: item.customLabels)
-            tokens.append(MenuBarToken(kind: .text(label), style: .label))
+            tokens.append(seedLabelToken(
+                run,
+                item: item,
+                groupCatalogLabel: groupCatalogLabel
+            ))
         }
         for (offset, field) in run.fields.enumerated() {
             if offset > 0 {
@@ -775,18 +772,54 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// this field to for the menu bar. The live bucket's own short label wins
     /// at render time in the field path; a seed has no bucket in hand, so it
     /// captures the static name and the user can edit the text block after.
-    private static func seedLabel(
-        for field: MenuBarFieldOption,
-        customLabels: [String: String]
-    ) -> String {
-        let custom = customLabels[field.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let custom, !custom.isEmpty { return custom }
-        // Through the naming seam: "5 Hours" and "Weekly" are generic window
-        // words a Chinese reader has no reason to meet, while "Sonnet" or
-        // "Codex Spark" is a name that comes back untouched. Seeding the raw
-        // contract label would have put English in the middle of a Chinese
-        // strip from the first switch to Custom.
-        return QuotaGroupLabelLocalizer.display(field.defaultLabel)
+    /// The block that names an entry.
+    ///
+    /// Two genuinely different things, kept apart in the *model* rather than
+    /// only in this function:
+    ///
+    /// - A name the user typed is `.text`. It is theirs, it is derived from
+    ///   nothing, and it is stored verbatim and never translated.
+    /// - A name the app derives from the quota is `.quota(_, .label)` — a
+    ///   *reference*, resolved when the strip is drawn. Seeding the resolved
+    ///   words instead would freeze whichever language was selected at that
+    ///   moment into `settings.json`: seed in Chinese, switch to English, and
+    ///   the strip would stay Chinese forever.
+    ///
+    /// A merged group is the third case and is a literal on purpose: its name
+    /// is a naming-axis identifier — a SubProvider, a model-group name — or
+    /// the user's own rename, and `AGENTS.md` § 7.1 says neither is
+    /// translated.
+    ///
+    /// A strip seeded by an earlier build carries the resolved words as
+    /// `.text` and is **left alone**. There is no way to tell a seeded literal
+    /// from one the user typed over — the model says a `.text` block is the
+    /// user's text — so migrating would mean rewriting content on a guess, and
+    /// guessing wrong silently edits something they wrote. "Start over from
+    /// the current strip" is the explicit way to adopt the new shape.
+    private static func seedLabelToken(
+        _ run: MenuBarFieldRun,
+        item: MenuBarItemSettings,
+        groupCatalogLabel: (String) -> String?
+    ) -> MenuBarToken {
+        if run.isMerged {
+            return MenuBarToken(
+                kind: .text(MenuBarFieldCatalog.mergedGroupLabel(
+                    for: run,
+                    customLabels: item.customLabels,
+                    groupCatalogLabel: groupCatalogLabel
+                )),
+                style: .label
+            )
+        }
+        let custom = item.customLabels[run.primary.id]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let custom, !custom.isEmpty {
+            return MenuBarToken(kind: .text(custom), style: .label)
+        }
+        return MenuBarToken(
+            kind: .quota(fieldId: run.primary.id, metric: .label),
+            style: .label
+        )
     }
 
     // MARK: Codable
@@ -1138,22 +1171,37 @@ public extension MenuBarComposition {
     ) -> Set<UUID> {
         var echoed: Set<UUID> = []
         for (index, token) in tokens.enumerated() {
-            guard case let .text(text) = token.kind else { continue }
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
+            // A block that names a quota, either way it can be written: words
+            // the user typed, or a reference to the quota's own name.
+            let typed: String?
+            let referenced: String?
+            switch token.kind {
+            case let .text(text):
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                (typed, referenced) = (trimmed, nil)
+            case let .quota(fieldId, .label):
+                (typed, referenced) = (nil, fieldId)
+            default:
+                continue
+            }
             var cursor = index + 1
             scan: while cursor < tokens.count {
                 switch tokens[cursor].kind {
                 case .space, .separator:
                     cursor += 1
                 case let .quota(fieldId, metric):
-                    if let quota = quotas.first(where: { $0.fieldId == fieldId }),
-                       isVisible(tokens[cursor].visibility, quotas: quotas),
-                       value(of: metric, in: quota, displayMode: displayMode, now: now) != nil,
-                       quota.label.trimmingCharacters(in: .whitespacesAndNewlines)
-                           .caseInsensitiveCompare(trimmed) == .orderedSame {
-                        echoed.insert(token.id)
-                    }
+                    // Two names in a row is not an echo; the second is not
+                    // saying anything the first already said.
+                    guard metric != .label else { break scan }
+                    guard let quota = quotas.first(where: { $0.fieldId == fieldId }),
+                          isVisible(tokens[cursor].visibility, quotas: quotas),
+                          value(of: metric, in: quota, displayMode: displayMode, now: now) != nil
+                    else { break scan }
+                    let echoes = referenced.map { $0 == fieldId }
+                        ?? (quota.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .caseInsensitiveCompare(typed ?? "") == .orderedSame)
+                    if echoes { echoed.insert(token.id) }
                     break scan
                 default:
                     break scan

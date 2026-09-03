@@ -176,10 +176,20 @@ final class AppEnvironment: ObservableObject {
             // The menu bar selects from the same registry: a discovered
             // bucket shown only there must survive a response that
             // temporarily omits it.
+            //
+            // A composed strip is a *second* referrer, and one the default
+            // strip knows nothing about — a block can name a bucket the field
+            // list never selected, through the block itself, a colour that
+            // follows a quota, or a visibility rule. Its references are kept
+            // whether or not custom mode is currently on, because a stored
+            // composition is exactly the arrangement switching back restores.
             for kind in MenuBarItemKind.allCases {
                 let item = settings.menuBarItem(kind)
                 fieldIds.formUnion(item.selectedFieldIds)
                 fieldIds.formUnion(item.customLabels.keys)
+                if let composition = item.composition {
+                    fieldIds.formUnion(composition.referencedFieldIds)
+                }
             }
             return QuotaFieldKeepSet(fieldIds: fieldIds, groupKeys: groupKeys)
         }

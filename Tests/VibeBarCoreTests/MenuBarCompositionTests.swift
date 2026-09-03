@@ -531,11 +531,13 @@ final class MenuBarCompositionTests: XCTestCase {
 
     func testSeedingReproducesTodaysUnmergedStrip() {
         let seeded = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
+        // The name is a *reference*, not the words: resolved when the strip is
+        // drawn, so it follows the app's language.
         XCTAssertEqual(seeded.tokens.map(\.kind), [
-            .text("5 Hours"),
+            .quota(fieldId: "claude.five_hour", metric: .label),
             .quota(fieldId: "claude.five_hour", metric: .displayPercent),
             .separator(" · "),
-            .text("Weekly"),
+            .quota(fieldId: "claude.weekly", metric: .label),
             .quota(fieldId: "claude.weekly", metric: .displayPercent)
         ])
         // Seeding never switches the mode on by itself.
@@ -956,8 +958,9 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(decoded.tokens.map(\.kind), [.appIcon])
     }
 
+    /// The field of a percentage block, ignoring the name block beside it.
     private func quotaFieldId(_ kind: MenuBarToken.Kind) -> String? {
-        if case let .quota(fieldId, _) = kind { return fieldId }
+        if case let .quota(fieldId, metric) = kind, metric != .label { return fieldId }
         return nil
     }
 
@@ -1649,6 +1652,144 @@ final class MenuBarCompositionTests: XCTestCase {
             return raw.compactMapValues { $0["value"] as? String }
         }
         return (try load("en.json"), try load("zh-Hans.json"))
+    }
+
+    // MARK: - A seeded name follows the language (review thread 2)
+
+    func testASeededNameIsAReferenceAndATypedOneIsVerbatim() {
+        let item = fieldItem(labels: ["claude.weekly": "C-wk"])
+        let seeded = MenuBarComposition.seeded(template: .roomy, from: item)
+
+        // Nothing derived is stored as words: the only literals in the seed
+        // are the divider and the name the user typed.
+        let literals: [String] = seeded.tokens.compactMap {
+            if case let .text(text) = $0.kind { return text }
+            return nil
+        }
+        XCTAssertEqual(literals, ["C-wk"])
+        XCTAssertTrue(seeded.tokens.contains {
+            $0.kind == .quota(fieldId: "claude.five_hour", metric: .label)
+        })
+    }
+
+    func testTheSeededNameMovesWithTheLanguageAndTheTypedOneDoesNot() {
+        var seeded = MenuBarComposition.seeded(
+            template: .roomy,
+            from: fieldItem(labels: ["claude.weekly": "C-wk"])
+        )
+        seeded.isEnabled = true
+
+        // The resolver hands the planner an already-localized name, so a
+        // language change arrives as a different snapshot label.
+        func drawn(fiveHourLabel: String) -> [String] {
+            texts(seeded.plan(
+                quotas: [
+                    quota("claude.five_hour", label: fiveHourLabel, used: 73, display: 73),
+                    quota("claude.weekly", label: "Weekly", used: 40, display: 40)
+                ],
+                displayMode: .used,
+                colorBasis: .actual,
+                now: reference
+            )).flatMap { $0 }
+        }
+
+        let english = drawn(fiveHourLabel: "5 Hours")
+        let chinese = drawn(fiveHourLabel: "5 小时")
+        XCTAssertTrue(english.contains("5 Hours"))
+        XCTAssertTrue(chinese.contains("5 小时"))
+        XCTAssertFalse(chinese.contains("5 Hours"), "the seeded name followed the language")
+        // ...while the name the user typed is theirs in both.
+        XCTAssertTrue(english.contains("C-wk"))
+        XCTAssertTrue(chinese.contains("C-wk"), "a typed name is never translated")
+    }
+
+    func testASeededNameReferenceIsNotSpokenTwice() {
+        // The round-six rule, in the shape the seed now produces: a name block
+        // that refers to the very quota the next block reports says nothing of
+        // its own.
+        var seeded = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
+        seeded.isEnabled = true
+        let rendered = seeded.plan(
+            quotas: [
+                quota("claude.five_hour", label: "5 Hours", used: 73, display: 73),
+                quota("claude.weekly", label: "Weekly", used: 100, display: 100)
+            ],
+            displayMode: .used,
+            colorBasis: .actual,
+            now: reference
+        )
+        XCTAssertEqual(texts(rendered), [["5 Hours", "73%", " · ", "Weekly", "100%"]])
+        XCTAssertEqual(rendered.spokenDescription, "5 Hours 73% used, Weekly 100% used")
+    }
+
+    func testTwoNameBlocksInARowAreBothSpoken() {
+        // Only a name followed by a *report* of the same quota is an echo.
+        let rendered = plan(
+            [
+                MenuBarToken(kind: .quota(fieldId: "claude.five_hour", metric: .label)),
+                MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .label))
+            ],
+            quotas: [
+                quota("claude.five_hour", label: "5 Hours", used: 10, display: 10),
+                quota("claude.weekly", label: "Weekly", used: 20, display: 20)
+            ]
+        )
+        XCTAssertEqual(rendered.spokenDescription, "5 Hours, Weekly")
+    }
+
+    // MARK: - A composed strip claims its fields (review thread 1)
+
+    private func discoveredRegistry() -> QuotaFieldRegistry {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        return QuotaFieldRegistry(fields: [
+            DiscoveredQuotaField(
+                tool: .codex,
+                bucketId: "gpt_reserve_weekly",
+                title: "Weekly",
+                groupTitle: "GPT-reserve",
+                shortLabel: "Weekly",
+                firstSeen: now,
+                lastSeen: now
+            )
+        ])
+    }
+
+    func testAFieldOnlyTheComposedStripNamesSurvivesAPrune() {
+        // The field is in no `selectedFieldIds` and has no custom label — the
+        // composition is its only referrer, and it names it three ways none of
+        // which the default strip knows about.
+        let composed = composition([
+            MenuBarToken(kind: .quota(fieldId: "codex.gpt_reserve_weekly", metric: .displayPercent)),
+            MenuBarToken(
+                kind: .text("!"),
+                style: .init(color: .followsQuota(fieldId: "codex.gpt_reserve_weekly", basis: .actual))
+            ),
+            MenuBarToken(
+                kind: .logo(.codex),
+                visibility: .whenUsedAtLeast(fieldId: "codex.gpt_reserve_weekly", percent: 90)
+            )
+        ])
+        XCTAssertEqual(composed.referencedFieldIds, ["codex.gpt_reserve_weekly"])
+
+        var registry = discoveredRegistry()
+        // The provider's next response omits the bucket.
+        let dropped = registry.prune(
+            tool: .codex,
+            liveBucketIds: [],
+            keeping: QuotaFieldKeepSet(fieldIds: Set(composed.referencedFieldIds))
+        )
+        XCTAssertFalse(dropped)
+        XCTAssertNotNil(
+            registry.field(id: "codex.gpt_reserve_weekly"),
+            "a bucket the composed strip names must keep its display metadata"
+        )
+    }
+
+    func testAFieldNothingNamesIsStillPruned() {
+        var registry = discoveredRegistry()
+        let dropped = registry.prune(tool: .codex, liveBucketIds: [], keeping: QuotaFieldKeepSet())
+        XCTAssertTrue(dropped)
+        XCTAssertNil(registry.field(id: "codex.gpt_reserve_weekly"))
     }
 
     // MARK: - Persistence

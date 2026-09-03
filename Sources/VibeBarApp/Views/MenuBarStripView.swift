@@ -327,6 +327,12 @@ enum MenuBarStripResolver {
 
     /// What a quota is called on this item's strip: the user's rename if there
     /// is one, else the live bucket's own short label.
+    ///
+    /// Resolved here, on every render, rather than captured once: the generic
+    /// window words go through `QuotaGroupLabelLocalizer`, so the name follows
+    /// the app's language the way every other label does. A rename the user
+    /// typed is returned untouched — it is their text, not a contract value a
+    /// translation may improve.
     static func label(
         for field: MenuBarFieldOption,
         bucket: QuotaBucket,
@@ -334,8 +340,10 @@ enum MenuBarStripResolver {
     ) -> String {
         let custom = itemSettings.customLabels[field.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let custom, !custom.isEmpty { return custom }
-        if field.defaultLabel != bucket.shortLabel { return bucket.shortLabel }
-        return field.defaultLabel
+        let contractLabel = field.defaultLabel != bucket.shortLabel
+            ? bucket.shortLabel
+            : field.defaultLabel
+        return QuotaGroupLabelLocalizer.display(contractLabel)
     }
 }
 
