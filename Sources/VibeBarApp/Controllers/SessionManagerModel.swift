@@ -318,19 +318,31 @@ final class SessionManagerModel: ObservableObject {
         refreshIndex()
     }
 
+    /// Wind down everything this page has in flight.
+    ///
+    /// Cancelling the tasks is only half of it: each of them owns a piece of
+    /// published "…in progress" state that its completion path would have
+    /// cleared, and a cancelled task never reaches that path. Leaving them
+    /// set is what would make a reopened Workbench sit on "Reading the
+    /// session log…" or a permanent scan bar for a task that no longer
+    /// exists, until the user happened to click something.
     func stop() {
         searchTask?.cancel()
         directoryFilterTask?.cancel()
         refreshTask?.cancel()
         toastTask?.cancel()
         rowsTask?.cancel()
-        transcriptTask?.cancel()
+        cancelTranscriptParse()
         searchTask = nil
         directoryFilterTask = nil
         refreshTask = nil
         toastTask = nil
         rowsTask = nil
-        transcriptTask = nil
+
+        isLoadingTranscript = false
+        isPreparingRows = false
+        isLoadingSummaries = false
+        indexProgress = nil
     }
 
     // MARK: - Index
@@ -349,8 +361,22 @@ final class SessionManagerModel: ObservableObject {
         refreshTask = Task { [weak self] in
             // Wait out a compaction pass rather than fighting it for the
             // write lock; `SessionIndexMaintenanceGate` explains the split.
+            // The wait is cancellable, and it claims nothing when it throws,
+            // so the closing Workbench does not leave the gate held.
             let gate = SessionIndexMaintenanceGate.shared
-            await gate.acquire()
+            do {
+                try await gate.acquire()
+            } catch {
+                await MainActor.run { self?.indexProgress = nil }
+                return
+            }
+            // Cancelled while queued: hand the gate straight back rather than
+            // starting an 11 000-file sweep for a window that is closing.
+            guard !Task.isCancelled else {
+                await gate.release()
+                await MainActor.run { self?.indexProgress = nil }
+                return
+            }
             await service.refreshIndex(progress: progress)
             await gate.release()
             guard let self, !Task.isCancelled else { return }
@@ -916,11 +942,25 @@ final class SessionManagerModel: ObservableObject {
     /// rather than as the thing the user just asked for.
     func cancelTranscriptLoad() {
         guard isLoadingTranscript else { return }
+        cancelTranscriptParse()
+        isLoadingTranscript = false
+        transcriptError = Self.cancelledTranscriptMessage
+    }
+
+    static let cancelledTranscriptMessage =
+        "Reading this session was stopped. Select it again to reopen it."
+
+    /// Cancel the parse itself, not just the task waiting on it.
+    ///
+    /// `Task.detached` does not inherit cancellation, so cancelling the
+    /// waiter alone left the parser allocating gigabytes in the background —
+    /// and let a second selection start a second one beside it. The waiter
+    /// forwards its cancellation to the detached handle through
+    /// `withTaskCancellationHandler`; this is the one place that starts it.
+    private func cancelTranscriptParse() {
         transcriptTask?.cancel()
         transcriptTask = nil
         transcriptGeneration &+= 1
-        isLoadingTranscript = false
-        transcriptError = "Reading this session was stopped. Select it again to reopen it."
     }
 
     private func load(
@@ -933,14 +973,12 @@ final class SessionManagerModel: ObservableObject {
         // only discarded a stale *result*, so clicking through three large
         // sessions ran three full parses side by side and paid for all of
         // them.
-        transcriptTask?.cancel()
-        transcriptTask = nil
+        cancelTranscriptParse()
         selection = summary
         self.focusSeq = focusSeq
         transcript = nil
         transcriptError = nil
         transcriptTruncation = nil
-        transcriptGeneration &+= 1
         guard let summary else {
             isLoadingTranscript = false
             return
@@ -992,6 +1030,13 @@ final class SessionManagerModel: ObservableObject {
     /// `headByteLimit` is the memory bound. `range:` is not one: every kit
     /// adapter materializes the whole document before slicing it, so the only
     /// place a limit can be applied is the bytes handed to the parser.
+    ///
+    /// The detached task's handle is held and cancelled with the caller.
+    /// `Task.detached` deliberately inherits nothing — including
+    /// cancellation — so without this forwarding, cancelling the waiter left
+    /// the parser running: an unbounded "Load entire transcript" kept
+    /// allocating after the pane had moved on, and each further selection
+    /// stacked another parse beside it.
     private nonisolated static func parse(
         adapter: any SessionProviderAdapter,
         url: URL,
@@ -1001,7 +1046,7 @@ final class SessionManagerModel: ObservableObject {
         headByteLimit: Int64?,
         scratchDirectory: URL
     ) async -> ParsedTranscript {
-        await Task.detached(priority: .userInitiated) {
+        let handle = Task.detached(priority: .userInitiated) {
             do {
                 let read = try SessionIndexingBounds.readTranscript(
                     adapter: adapter,
@@ -1034,7 +1079,7 @@ final class SessionManagerModel: ObservableObject {
                 for review in related.sorted(by: {
                     ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast)
                 }) {
-                    guard !Task.isCancelled else { break }
+                    try Task.checkCancellation()
                     // Children are bounded on the same terms as the parent.
                     guard let child = try? SessionIndexingBounds.readTranscript(
                         adapter: adapter,
@@ -1058,6 +1103,9 @@ final class SessionManagerModel: ObservableObject {
                         translatedFocus = childStart + childIndex
                     }
                 }
+                // Resequencing allocates a second copy of every message, so
+                // it is worth not starting on a result nobody will read.
+                try Task.checkCancellation()
                 let resequenced = messages.enumerated().map { index, message in
                     SessionMessage(
                         seq: index,
@@ -1076,6 +1124,16 @@ final class SessionManagerModel: ObservableObject {
                     focusSeq: translatedFocus,
                     truncation: nil
                 )
+            } catch is CancellationError {
+                // Not a read failure. The waiter normally drops this on its
+                // own cancellation check; the message is here for the race
+                // where the parse gave up first.
+                return ParsedTranscript(
+                    document: nil,
+                    errorMessage: cancelledTranscriptMessage,
+                    focusSeq: nil,
+                    truncation: nil
+                )
             } catch {
                 return ParsedTranscript(
                     document: nil,
@@ -1085,7 +1143,12 @@ final class SessionManagerModel: ObservableObject {
                     truncation: nil
                 )
             }
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            await handle.value
+        } onCancel: {
+            handle.cancel()
+        }
     }
 
     // MARK: - Resume

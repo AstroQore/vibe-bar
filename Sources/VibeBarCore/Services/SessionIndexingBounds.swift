@@ -72,31 +72,53 @@ public enum SessionIndexingBounds {
     /// Cursor, AntiGravity, Grok Bot) are always read whole; a SQLite or
     /// protobuf store cut at an offset is not a shorter session, it is a
     /// corrupt one.
+    ///
+    /// `isCancelled` is checked at every point where this function is still
+    /// in control: before the head copy, between the copy's chunks, before
+    /// handing bytes to the adapter, and after the adapter returns. The
+    /// adapter's own parse is a single opaque call into the package and
+    /// cannot be interrupted from here — so the guarantee is "a cancelled
+    /// read starts no new parse and keeps no finished one", not "a parse
+    /// already inside the kit stops mid-file". Bounding the bytes first is
+    /// what keeps that uninterruptible window small.
     public static func readTranscript(
         adapter: any SessionProviderAdapter,
         fileURL: URL,
         headByteLimit: Int64?,
-        scratchDirectory: URL = VibeBarLocalStore.sessionIndexScratchDirectoryURL
+        scratchDirectory: URL = VibeBarLocalStore.sessionIndexScratchDirectoryURL,
+        isCancelled: () -> Bool = { Task.isCancelled }
     ) throws -> BoundedTranscript {
         let size = SessionParsing.fileSize(fileURL)
         // The autoreleasepool is what actually returns the parse's transient
         // strings: without it a run of selections holds every intermediate
         // NSString until the enclosing task hits a suspension point.
         return try autoreleasepool {
+            if isCancelled() { throw CancellationError() }
             guard let headByteLimit,
                   headByteLimit > 0,
                   headTruncatableProviders.contains(adapter.provider),
                   size > headByteLimit
             else {
+                let document = try adapter.parseTranscript(fileURL: fileURL, range: nil)
+                // Drop a finished-but-abandoned parse here rather than
+                // letting the caller carry gigabytes to its own check.
+                if isCancelled() { throw CancellationError() }
                 return BoundedTranscript(
-                    document: try adapter.parseTranscript(fileURL: fileURL, range: nil),
+                    document: document,
                     isHeadTruncated: false,
                     fileByteSize: size
                 )
             }
-            let head = try copyHead(of: fileURL, limit: headByteLimit, scratchDirectory: scratchDirectory)
+            let head = try copyHead(
+                of: fileURL,
+                limit: headByteLimit,
+                scratchDirectory: scratchDirectory,
+                isCancelled: isCancelled
+            )
             defer { try? FileManager.default.removeItem(at: head) }
+            if isCancelled() { throw CancellationError() }
             let parsed = try adapter.parseTranscript(fileURL: head, range: nil)
+            if isCancelled() { throw CancellationError() }
             return BoundedTranscript(
                 document: TranscriptDocument(
                     messages: parsed.messages,
@@ -114,7 +136,15 @@ public enum SessionIndexingBounds {
     /// lives under `~/.vibebar` because that directory is the only place
     /// the app writes; `SessionIndexCompactor` sweeps anything a crash
     /// leaves behind.
-    static func copyHead(of fileURL: URL, limit: Int64, scratchDirectory: URL) throws -> URL {
+    ///
+    /// The cancellation check is per chunk, which is the only granularity
+    /// this loop has — and the reason the copy is chunked at all.
+    static func copyHead(
+        of fileURL: URL,
+        limit: Int64,
+        scratchDirectory: URL,
+        isCancelled: () -> Bool = { Task.isCancelled }
+    ) throws -> URL {
         try FileManager.default.createDirectory(
             at: scratchDirectory,
             withIntermediateDirectories: true,
@@ -122,6 +152,11 @@ public enum SessionIndexingBounds {
         )
         let destination = scratchDirectory
             .appendingPathComponent("head-\(UUID().uuidString).\(fileURL.pathExtension)")
+        var completed = false
+        // A cancelled copy must not leave its partial file behind: nothing
+        // else knows this path, so `SessionIndexCompactor`'s scratch sweep
+        // would be the only thing that ever removed it.
+        defer { if !completed { try? FileManager.default.removeItem(at: destination) } }
         let source = try FileHandle(forReadingFrom: fileURL)
         defer { try? source.close() }
         FileManager.default.createFile(atPath: destination.path, contents: nil, attributes: [.posixPermissions: 0o600])
@@ -131,11 +166,13 @@ public enum SessionIndexingBounds {
         var remaining = limit
         let chunk = 4 * 1024 * 1024
         while remaining > 0 {
+            if isCancelled() { throw CancellationError() }
             let want = Int(min(Int64(chunk), remaining))
             guard let data = try source.read(upToCount: want), !data.isEmpty else { break }
             try sink.write(contentsOf: data)
             remaining -= Int64(data.count)
         }
+        completed = true
         return destination
     }
 
@@ -226,7 +263,14 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
             adapter: inner,
             fileURL: fileURL,
             headByteLimit: policy.headParseByteLimit,
-            scratchDirectory: scratchDirectory
+            scratchDirectory: scratchDirectory,
+            // Explicitly opted out. The indexing sweep's cancellation story
+            // belongs to the kit's `refreshIndex`, and making a throw here
+            // mean "cancelled" would silently turn a cancelled pass into a
+            // pass that skipped files — indistinguishable, in the index,
+            // from files that failed to parse. The viewer is the caller that
+            // needs the abort, and it passes its own check.
+            isCancelled: { false }
         )
         return SessionIndexingBounds.trimmed(
             read.document,

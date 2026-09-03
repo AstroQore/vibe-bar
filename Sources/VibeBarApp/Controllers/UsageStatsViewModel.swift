@@ -433,38 +433,24 @@ final class UsageStatsViewModel: ObservableObject {
         }
     }
 
-    /// Everything the last completed query actually depended on.
-    ///
-    /// The live `now` at the end of a rolling preset is deliberately absent:
-    /// no row can appear inside the moved window without the ledger's
-    /// revision moving too, so re-querying for a clock tick alone would
-    /// return the same numbers.
-    private struct ReloadSignature: Equatable {
-        let preset: RangePreset
-        let windowStart: Date?
-        let customStart: Date
-        let customEnd: Date
-        let tools: [ToolType]?
-        let harnesses: [Harness]?
-        let models: [String]?
-        let granularity: UsageTrendBucket?
-        let breakdown: Breakdown
-        let revision: UInt64
-    }
+    /// The last completed query's inputs. `UsageQuerySignature` documents
+    /// what belongs in one and, more importantly, what does not — the active
+    /// breakdown tab is deliberately absent, because switching tabs runs its
+    /// own deferred query and changes nothing the shared set answered.
+    private var loadedSignature: UsageQuerySignature?
 
-    private var loadedSignature: ReloadSignature?
-
-    private func reloadSignature(revision: UInt64) -> ReloadSignature {
-        ReloadSignature(
-            preset: rangePreset,
-            windowStart: windowStart,
-            customStart: customStart,
-            customEnd: customEnd,
+    private func reloadSignature(revision: UInt64) -> UsageQuerySignature {
+        UsageQuerySignature(
+            rangeKey: UsageQuerySignature.rangeKey(
+                preset: rangePreset.rawValue,
+                windowStart: windowStart,
+                customStart: customStart,
+                customEnd: customEnd
+            ),
             tools: selectedTools.map { $0.sorted { $0.rawValue < $1.rawValue } },
             harnesses: selectedHarnesses.map { $0.sorted { $0.rawValue < $1.rawValue } },
             models: selectedModels.map { $0.sorted() },
             granularity: trendGranularity,
-            breakdown: activeBreakdown,
             revision: revision
         )
     }

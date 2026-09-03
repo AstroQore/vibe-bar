@@ -194,6 +194,158 @@ final class SessionIndexingBoundsTests: XCTestCase {
         )
     }
 
+    // MARK: - Cancellation
+
+    /// The bound is what keeps the uninterruptible window small; this is the
+    /// other half — a read that is cancelled before the adapter is handed
+    /// anything must not produce a document at all.
+    func testCancelledReadThrowsBeforeParsing() throws {
+        let line = codexLine(role: "user", text: "alpha bravo charlie")
+        let fileURL = directory.appendingPathComponent("rollout-cancel.jsonl")
+        try Data((line + "\n").utf8).write(to: fileURL)
+
+        let adapter = CountingAdapter(inner: CodexSessionAdapter(homeDirectory: directory.path))
+        XCTAssertThrowsError(
+            try SessionIndexingBounds.readTranscript(
+                adapter: adapter,
+                fileURL: fileURL,
+                headByteLimit: nil,
+                scratchDirectory: scratchURL,
+                isCancelled: { true }
+            )
+        ) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(adapter.parseCount.value, 0, "a cancelled read must not reach the parser")
+    }
+
+    /// Cancellation that arrives during the head copy has to abort the copy
+    /// itself — the chunk loop is the only place this code is in control of a
+    /// gigabyte-scale read.
+    func testCancellationDuringTheHeadCopyAbortsAndLeavesNoScratch() throws {
+        // Comfortably more than one 4 MiB chunk, so the loop runs more than
+        // once and the check between chunks is the thing under test.
+        let filler = codexLine(role: "assistant", text: String(repeating: "x", count: 4 * 1024 * 1024))
+        let fileURL = directory.appendingPathComponent("rollout-chunked.jsonl")
+        try Data((filler + "\n" + filler + "\n" + filler + "\n").utf8).write(to: fileURL)
+
+        let adapter = CountingAdapter(inner: CodexSessionAdapter(homeDirectory: directory.path))
+        // False first (so the copy starts), then true from the second chunk.
+        let calls = Counter()
+        XCTAssertThrowsError(
+            try SessionIndexingBounds.readTranscript(
+                adapter: adapter,
+                fileURL: fileURL,
+                headByteLimit: 8 * 1024 * 1024,
+                scratchDirectory: scratchURL,
+                isCancelled: { calls.increment() > 2 }
+            )
+        ) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(adapter.parseCount.value, 0, "the parse must never start")
+        let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: scratchURL.path)) ?? []
+        XCTAssertTrue(leftovers.isEmpty, "an aborted head copy must not leave its partial file behind")
+    }
+
+    /// A parse that finished while the caller was cancelled is a whole
+    /// transcript in memory; it gets dropped here rather than travelling to
+    /// the caller's own check.
+    func testAFinishedParseIsDiscardedWhenCancellationArrivedDuringIt() throws {
+        let line = codexLine(role: "user", text: "alpha bravo charlie")
+        let fileURL = directory.appendingPathComponent("rollout-late-cancel.jsonl")
+        try Data((line + "\n").utf8).write(to: fileURL)
+
+        // False on the way in, true on the way out — cancellation landing
+        // while the adapter was busy.
+        let calls = Counter()
+        let adapter = CountingAdapter(inner: CodexSessionAdapter(homeDirectory: directory.path))
+        XCTAssertThrowsError(
+            try SessionIndexingBounds.readTranscript(
+                adapter: adapter,
+                fileURL: fileURL,
+                headByteLimit: nil,
+                scratchDirectory: scratchURL,
+                isCancelled: { calls.increment() > 1 }
+            )
+        ) { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(adapter.parseCount.value, 1)
+    }
+
+    /// The indexing wrapper opts out on purpose: a throw there would be
+    /// indistinguishable, in the index, from a file that failed to parse.
+    func testIndexingAdapterIgnoresAmbientCancellation() async throws {
+        let line = codexLine(role: "user", text: "alpha bravo charlie")
+        let fileURL = directory.appendingPathComponent("rollout-indexing.jsonl")
+        try Data((line + "\n").utf8).write(to: fileURL)
+
+        let adapter = BoundedSessionAdapter(
+            inner: CodexSessionAdapter(homeDirectory: directory.path),
+            policy: .standard,
+            scratchDirectory: scratchURL
+        )
+        let task = Task { () -> [String] in
+            // Park until cancellation has actually landed, so the parse below
+            // definitely runs inside a cancelled task rather than racing it.
+            while !Task.isCancelled { await Task.yield() }
+            return try adapter.parseTranscript(fileURL: fileURL, range: nil).messages.map(\.text)
+        }
+        task.cancel()
+        let texts = try await task.value
+        XCTAssertEqual(texts, ["alpha bravo charlie"])
+    }
+
+    /// A thread-safe call counter — the cancellation predicate is
+    /// `@escaping`-adjacent and read from the same thread, but the adapter's
+    /// counter is shared with the reader.
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        @discardableResult
+        func increment() -> Int {
+            lock.lock()
+            defer { lock.unlock() }
+            count += 1
+            return count
+        }
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+    }
+
+    /// Forwards everything, and counts the one call the tests care about.
+    private struct CountingAdapter: SessionProviderAdapter {
+        let inner: any SessionProviderAdapter
+        let parseCount = Counter()
+
+        var provider: SessionProvider { inner.provider }
+
+        func roots(homeDirectory: String) -> [URL] { inner.roots(homeDirectory: homeDirectory) }
+
+        func discoverSessionFiles(homeDirectory: String) -> [URL] {
+            inner.discoverSessionFiles(homeDirectory: homeDirectory)
+        }
+
+        func extractMetadata(fileURL: URL) throws -> SessionSummary {
+            try inner.extractMetadata(fileURL: fileURL)
+        }
+
+        func deletionPlan(for summary: SessionSummary, homeDirectory: String) throws -> SessionDeletionPlan {
+            try inner.deletionPlan(for: summary, homeDirectory: homeDirectory)
+        }
+
+        func parseTranscript(fileURL: URL, range: Range<Int>?) throws -> TranscriptDocument {
+            parseCount.increment()
+            return try inner.parseTranscript(fileURL: fileURL, range: range)
+        }
+    }
+
     func testHeadBoundNeverAppliesToAStoreThatCannotBeCutAtAnOffset() {
         // A SQLite or protobuf store truncated at a byte offset is not a
         // shorter session, it is a corrupt one.
@@ -224,14 +376,14 @@ final class SessionIndexingBoundsTests: XCTestCase {
         await gate.release()
     }
 
-    func testMaintenanceGateMakesAWaiterRunAfterTheHolder() async {
+    func testMaintenanceGateMakesAWaiterRunAfterTheHolder() async throws {
         // `acquire` is the refresh side: it waits rather than skipping.
         let gate = SessionIndexMaintenanceGate()
-        await gate.acquire()
+        try await gate.acquire()
         let order = OrderRecorder()
 
         let waiter = Task {
-            await gate.acquire()
+            try? await gate.acquire()
             await order.append("second")
             await gate.release()
         }
@@ -248,6 +400,55 @@ final class SessionIndexingBoundsTests: XCTestCase {
     private actor OrderRecorder {
         var entries: [String] = []
         func append(_ value: String) { entries.append(value) }
+    }
+
+    /// A refresh parked behind the launch compactor's multi-minute pass has
+    /// to be able to give up when the Workbench closes. A non-cancellable
+    /// continuation held that task alive for the rest of the compaction.
+    func testAWaitingAcquireGivesUpWhenItsTaskIsCancelled() async throws {
+        let gate = SessionIndexMaintenanceGate()
+        try await gate.acquire()
+
+        let waiter = Task { () -> Bool in
+            do {
+                try await gate.acquire()
+                return false
+            } catch {
+                return error is CancellationError
+            }
+        }
+        // Let it park on the gate before cancelling.
+        try? await Task.sleep(for: .milliseconds(50))
+        waiter.cancel()
+        let threw = await waiter.value
+        XCTAssertTrue(threw, "a cancelled wait must throw rather than hang")
+
+        // And it claimed nothing on the way out, so the holder's release
+        // still leaves the gate free rather than double-held.
+        await gate.release()
+        let claimable = await gate.tryAcquire()
+        XCTAssertTrue(claimable, "a cancelled waiter must not have taken the gate")
+        await gate.release()
+    }
+
+    /// Cancelled before it ever waits: the free-gate fast path has to check
+    /// too, or a closing window still starts an 11 000-file sweep.
+    func testAcquireOnAFreeGateStillHonoursAnAlreadyCancelledTask() async {
+        let gate = SessionIndexMaintenanceGate()
+        let task = Task { () -> Bool in
+            do {
+                try await gate.acquire()
+                return false
+            } catch {
+                return error is CancellationError
+            }
+        }
+        task.cancel()
+        let threw = await task.value
+        XCTAssertTrue(threw)
+        let claimable = await gate.tryAcquire()
+        XCTAssertTrue(claimable, "the gate was never claimed")
+        await gate.release()
     }
 
     func testBoundedRegistryKeepsProvidersAndOrder() {

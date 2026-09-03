@@ -17,17 +17,42 @@ public actor SessionIndexMaintenanceGate {
     public static let shared = SessionIndexMaintenanceGate()
 
     private var isBusy = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 
     public init() {}
 
-    /// Claim the index, waiting for whoever holds it. Every waiter re-checks
-    /// after being resumed, so a burst of refreshes still enters one at a
-    /// time.
-    public func acquire() async {
+    /// Claim the index, waiting for whoever holds it.
+    ///
+    /// Throws `CancellationError` if the caller's task is cancelled before or
+    /// while waiting, and claims nothing when it does — so a caller that
+    /// catches this must not call `release()`. Cancellability is the point:
+    /// a refresh parked behind the launch compactor's multi-minute pass has
+    /// to be able to give up when the Workbench closes, and a
+    /// non-cancellable continuation would have held that task alive for the
+    /// rest of the compaction.
+    ///
+    /// Every waiter re-checks `isBusy` after being resumed, so a burst of
+    /// refreshes still enters one at a time.
+    public func acquire() async throws {
         while isBusy {
-            await withCheckedContinuation { waiters.append($0) }
+            let id = UUID()
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<Void, Error>) in
+                    // Already cancelled: `onCancel` has run (or is about to)
+                    // with nothing installed to find, so answer here instead
+                    // of parking forever.
+                    guard !Task.isCancelled else {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    waiters[id] = continuation
+                }
+            } onCancel: {
+                Task { await self.failWaiter(id) }
+            }
         }
+        try Task.checkCancellation()
         isBusy = true
     }
 
@@ -42,7 +67,13 @@ public actor SessionIndexMaintenanceGate {
         isBusy = false
         let resumed = waiters
         waiters.removeAll()
-        for waiter in resumed { waiter.resume() }
+        for waiter in resumed.values { waiter.resume() }
+    }
+
+    /// `release` may have resumed and removed this waiter already, which is
+    /// why the lookup is allowed to find nothing.
+    private func failWaiter(_ id: UUID) {
+        waiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
     }
 }
 

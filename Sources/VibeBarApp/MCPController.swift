@@ -392,9 +392,21 @@ final class MCPController: ObservableObject, MCPDataSource {
         guard !didAttemptSessionBackfill else { return false }
         didAttemptSessionBackfill = true
         // Same gate the Workbench's refresh takes: one indexer at a time, and
-        // never on top of the daily compaction pass.
+        // never on top of the daily compaction pass. The wait is cancellable
+        // and claims nothing when it throws, so a client that disconnects
+        // mid-wait does not strand the gate.
         let gate = SessionIndexMaintenanceGate.shared
-        await gate.acquire()
+        do {
+            try await gate.acquire()
+        } catch {
+            // Gave up while queued. The one-per-process flag stays set: this
+            // was still the process's one opportunistic backfill attempt.
+            return false
+        }
+        guard !Task.isCancelled else {
+            await gate.release()
+            return false
+        }
         await index.refreshIndex()
         await gate.release()
         return true
