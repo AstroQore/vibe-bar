@@ -18,17 +18,25 @@ public actor SubscriptionHistoryStore {
         /// because they required a five-point usage drop. Optional keeps
         /// schema-v2 files backward compatible.
         var resetSignalRepairVersion: Int?
+        /// One-time backfill for lanes that only became eligible once
+        /// `supportedTools` grew. Separate from the two flags above because
+        /// those record work that has already run to completion; this one
+        /// records which *providers* have been reached into the retained fill
+        /// timeline for. Optional keeps older files decodable.
+        var promotedProviderBackfillVersion: Int?
         var samples: [SubscriptionWindowSample]
 
         init(
             schemaVersion: Int = SubscriptionHistoryStore.storageSchemaVersion,
             legacyTimelineImported: Bool = false,
             resetSignalRepairVersion: Int? = nil,
+            promotedProviderBackfillVersion: Int? = nil,
             samples: [SubscriptionWindowSample] = []
         ) {
             self.schemaVersion = schemaVersion
             self.legacyTimelineImported = legacyTimelineImported
             self.resetSignalRepairVersion = resetSignalRepairVersion
+            self.promotedProviderBackfillVersion = promotedProviderBackfillVersion
             self.samples = samples
         }
     }
@@ -37,6 +45,15 @@ public actor SubscriptionHistoryStore {
 
     private let fileURL: URL
     private var cachedStorage: Storage?
+    /// Positions in `cachedStorage.samples`, keyed by account + bucket.
+    ///
+    /// Retention is commonly unlimited, so the array only ever grows — a
+    /// couple of months of five core providers is already ~900 samples — and
+    /// both hot paths used to walk all of it: `observe` once per bucket
+    /// (~30 buckets per refresh) and `samples` once per bucket on every
+    /// popover render. `nil` means "not built yet"; anything that reshuffles
+    /// the array clears it and the next reader rebuilds one.
+    private var cachedIndex: [SubscriptionHistoryKey: [Int]]?
     private var lastSavedAt: Date?
     private var pendingFlushTask: Task<Void, Never>?
     private var pendingStorage: Storage?
@@ -45,6 +62,18 @@ public actor SubscriptionHistoryStore {
     private static let saveThrottleInterval: TimeInterval = 30
     private static let maxFileBytes = 16 * 1024 * 1024
     private static let currentResetSignalRepairVersion = 1
+    /// Bump when a provider joins `supportedTools` after users already have
+    /// history on disk, and list its tools under the new version below.
+    private static let currentPromotedProviderBackfillVersion = 1
+    /// Which lanes each backfill version has to recover from the retained
+    /// fill timeline. Version 1 is Cursor: it was promoted out of the Misc
+    /// page into the SpaceXAI family, but `supportedTools` was a hand-written
+    /// literal that did not follow, so every Cursor cycle since the promotion
+    /// was discarded here while `UsageFillTimelineStore` — whose own list did
+    /// include Cursor — kept recording the observations behind it.
+    private static let promotedProviderBackfillTools: [Int: Set<ToolType>] = [
+        1: [.cursor]
+    ]
     /// How early is early, and how close a new reset has to be to count as
     /// restarted or unchanged. A tenth of the window on each side: wide enough
     /// to absorb the minute or two a provider takes to publish a new boundary,
@@ -55,9 +84,16 @@ public actor SubscriptionHistoryStore {
     private static let weakResetAdvanceFraction = 0.01
     private static let minimumStrongUsageDrop = 0.5
     private static let minimumWeakUsageDrop = 0.25
-    private static let supportedTools: Set<ToolType> = [
-        .codex, .claude, .gemini, .antigravity, .grok
-    ]
+    /// Every provider that gets a dedicated card, derived rather than listed.
+    ///
+    /// The literal this replaced is what hid Cursor's reset history: Cursor
+    /// became a dedicated-card member of the SpaceXAI family and nobody
+    /// remembered this set, so its cards said "Waiting for the first quota
+    /// observation" while the fill timeline quietly banked hundreds of
+    /// observations of the same buckets. Deriving it means the next promotion
+    /// cannot repeat that. `UsageFillTimelineStore` and
+    /// `UsageForecastTimelineStore` cover exactly the same providers.
+    private static let supportedTools = Set(ToolType.dedicatedCardProviders)
 
     public init(fileURL: URL = SubscriptionHistoryStore.defaultFileURL()) {
         self.fileURL = fileURL
@@ -77,20 +113,20 @@ public actor SubscriptionHistoryStore {
     ) {
         guard Self.supportedTools.contains(quota.tool) else { return }
 
-        var storage = load()
+        var (storage, index) = loadIndexed()
         var dirty = false
         for bucket in quota.buckets {
             guard let resetAt = bucket.resetAt, bucket.usedPercent.isFinite else { continue }
             let used = clamp(bucket.usedPercent)
-            let currentIndex = storage.samples.indices
-                .filter {
-                    storage.samples[$0].accountId == quota.accountId
-                        && storage.samples[$0].bucketId == bucket.id
-                        && !storage.samples[$0].isCompleted
-                }
+            let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
+            // This bucket's own samples, not the whole file.
+            let positions = index[key] ?? []
+            let currentIndex = positions
+                .filter { !storage.samples[$0].isCompleted }
                 .max { storage.samples[$0].lastSeenAt < storage.samples[$1].lastSeenAt }
 
             guard let currentIndex else {
+                index[key, default: []].append(storage.samples.count)
                 storage.samples.append(makeCurrentSample(
                     quota: quota,
                     bucket: bucket,
@@ -120,16 +156,19 @@ public actor SubscriptionHistoryStore {
                     observedAt: now,
                     rawWindowSeconds: current.rawWindowSeconds
                 )
+                // Read before `current` is written back, so the cycle that is
+                // closing right now is still open in the array and excludes
+                // itself — as it did when this scanned every sample.
                 current.intervalSeconds = Self.previousRefill(
                     in: storage.samples,
-                    accountId: quota.accountId,
-                    bucketId: bucket.id,
+                    positions: positions,
                     before: now
                 ).map { now.timeIntervalSince($0) }
                 // The observed refill time is more useful than a stale reset
                 // forecast when providers reset early or late.
                 current.windowEnd = now
                 storage.samples[currentIndex] = current
+                index[key, default: []].append(storage.samples.count)
                 storage.samples.append(makeCurrentSample(
                     quota: quota,
                     bucket: bucket,
@@ -153,8 +192,10 @@ public actor SubscriptionHistoryStore {
         }
 
         guard dirty else { return }
-        pruneInPlace(&storage, retentionDays: retentionDays, now: now)
-        save(storage)
+        // Pruning renumbers everything left; anything else kept the index in
+        // step above and can hand it straight back.
+        let pruned = pruneInPlace(&storage, retentionDays: retentionDays, now: now)
+        save(storage, index: pruned ? nil : index)
     }
 
     /// One-time best-effort migration from the old hourly fill timeline.
@@ -169,10 +210,17 @@ public actor SubscriptionHistoryStore {
         let needsLegacyImport = !storage.legacyTimelineImported
         let needsResetSignalRepair = (storage.resetSignalRepairVersion ?? 0)
             < Self.currentResetSignalRepairVersion
+        let backfillTools = Self.promotedProviderBackfillTools(
+            after: storage.promotedProviderBackfillVersion ?? 0
+        )
+        let needsPromotedBackfill = (storage.promotedProviderBackfillVersion ?? 0)
+            < Self.currentPromotedProviderBackfillVersion
         let needsClassification = storage.samples.contains {
             $0.isCompleted && $0.resetKind == nil
         }
-        guard needsLegacyImport || needsResetSignalRepair || needsClassification else { return }
+        guard needsLegacyImport || needsResetSignalRepair
+                || needsPromotedBackfill || needsClassification
+        else { return }
 
         if needsLegacyImport {
             storage.legacyTimelineImported = true
@@ -182,6 +230,40 @@ public actor SubscriptionHistoryStore {
         if needsResetSignalRepair {
             repairMissedResetSignals(points, in: &storage)
             storage.resetSignalRepairVersion = Self.currentResetSignalRepairVersion
+        }
+
+        if needsPromotedBackfill {
+            // Existing installs already carry `legacyTimelineImported: true`
+            // and a current `resetSignalRepairVersion`, so the two passes
+            // above will never run again — and neither of them ever saw a
+            // Cursor point, because the whitelist they filter on excluded it.
+            // Replay them for the newly eligible lanes only, in the same
+            // order a fresh install runs them, so the refill pass lays down
+            // the obvious cycles and the reset-signal pass fills in the
+            // low-utilization ones without duplicating them.
+            //
+            // Skipped where the full pass has just run in this very call:
+            // `supportedTools` now includes the promoted lanes, so a fresh
+            // install has already covered them and a second, narrower pass
+            // would append the same cycles twice.
+            //
+            // Narrowed to the promoted lanes' own points first: the timeline
+            // is tens of thousands of rows across every provider, and grouping
+            // all of them to then throw away everything but Cursor made a
+            // launch-time pass out of a few hundred rows' work.
+            if !backfillTools.isEmpty {
+                let owned = points.filter { backfillTools.contains($0.tool) }
+                if !needsLegacyImport {
+                    importMaterialRefills(
+                        owned, into: &storage,
+                        limitedTo: backfillTools, skippingExisting: true
+                    )
+                }
+                if !needsResetSignalRepair {
+                    repairMissedResetSignals(owned, in: &storage, limitedTo: backfillTools)
+                }
+            }
+            storage.promotedProviderBackfillVersion = Self.currentPromotedProviderBackfillVersion
         }
         // Cycles finished before the app classified refills carry no answer.
         // Cheap to fill in, and worth doing rather than waiting: the chart
@@ -199,34 +281,79 @@ public actor SubscriptionHistoryStore {
         save(storage)
     }
 
-    private func importMaterialRefills(_ points: [FillTimelinePoint], into storage: inout Storage) {
+    /// Lanes still owed a backfill, for a file stamped with `storedVersion`.
+    ///
+    /// The union of every version above the stored one, so a user who skips
+    /// a release is not skipped along with it.
+    private static func promotedProviderBackfillTools(
+        after storedVersion: Int
+    ) -> Set<ToolType> {
+        guard storedVersion < currentPromotedProviderBackfillVersion else { return [] }
+        var tools: Set<ToolType> = []
+        for version in (storedVersion + 1)...currentPromotedProviderBackfillVersion {
+            tools.formUnion(promotedProviderBackfillTools[version] ?? [])
+        }
+        // A lane that has since been demoted out of `supportedTools` would
+        // import cycles nothing will ever display or extend.
+        return tools.intersection(supportedTools)
+    }
+
+    /// `skippingExisting` is for the backfill, which runs against a store
+    /// that already holds history rather than an empty one. Two clients share
+    /// this file (AGENTS.md § 11) and the older one drops a version key it
+    /// does not know, so the flag alone cannot be the only thing standing
+    /// between a re-run and a doubled chart — a cycle already recorded near
+    /// this refill is left alone on its own evidence.
+    private func importMaterialRefills(
+        _ points: [FillTimelinePoint],
+        into storage: inout Storage,
+        limitedTo tools: Set<ToolType>? = nil,
+        skippingExisting: Bool = false
+    ) {
+        let eligible = tools ?? Self.supportedTools
         let grouped = Dictionary(grouping: points) {
             SubscriptionHistoryKey(accountId: $0.accountId, bucketId: $0.bucketId)
         }
         for (_, rawPoints) in grouped {
             let sorted = rawPoints.sorted { $0.sampledAt < $1.sampledAt }
-            guard let first = sorted.first, Self.supportedTools.contains(first.tool) else { continue }
+            guard let first = sorted.first, eligible.contains(first.tool) else { continue }
             var peak = clamp(first.usedPercent)
             var previous = first
             var segmentStart = first.sampledAt
             for point in sorted.dropFirst() {
                 let currentUsed = clamp(point.usedPercent)
                 if Self.isMaterialRefill(previous: previous.usedPercent, peak: peak, current: currentUsed) {
-                    storage.samples.append(SubscriptionWindowSample(
+                    // The boundary is a boundary either way; only the record
+                    // of it is skipped when one is already there.
+                    if !skippingExisting || !hasNearbyCompletedSample(
                         accountId: first.accountId,
-                        tool: first.tool,
                         bucketId: first.bucketId,
-                        windowEnd: point.sampledAt,
-                        windowStart: segmentStart,
-                        rawWindowSeconds: nil,
-                        peakUsedPercent: peak,
-                        lastUsedPercent: clamp(previous.usedPercent),
-                        observationCount: 1,
-                        firstSeenAt: segmentStart,
-                        lastSeenAt: previous.sampledAt,
                         completedAt: point.sampledAt,
-                        completionReason: .legacyTimelineMigration
-                    ))
+                        windowSeconds: point.rawWindowSeconds ?? previous.rawWindowSeconds,
+                        in: storage.samples
+                    ) {
+                        storage.samples.append(SubscriptionWindowSample(
+                            accountId: first.accountId,
+                            tool: first.tool,
+                            bucketId: first.bucketId,
+                            windowEnd: point.sampledAt,
+                            windowStart: segmentStart,
+                            // The window the provider reported while this
+                            // cycle was live. Cursor's weekly bucket has
+                            // reported 13-, 156- and 168-hour windows, and
+                            // ResetsPage sorts a cycle into the sub-daily lane
+                            // or the month calendar by this value; `nil` here
+                            // would file a recovered 13-hour cycle as a day.
+                            rawWindowSeconds: previous.rawWindowSeconds ?? point.rawWindowSeconds,
+                            peakUsedPercent: peak,
+                            lastUsedPercent: clamp(previous.usedPercent),
+                            observationCount: 1,
+                            firstSeenAt: segmentStart,
+                            lastSeenAt: previous.sampledAt,
+                            completedAt: point.sampledAt,
+                            completionReason: .legacyTimelineMigration
+                        ))
+                    }
                     segmentStart = point.sampledAt
                     peak = currentUsed
                 } else {
@@ -314,8 +441,10 @@ public actor SubscriptionHistoryStore {
 
     private func repairMissedResetSignals(
         _ points: [FillTimelinePoint],
-        in storage: inout Storage
+        in storage: inout Storage,
+        limitedTo tools: Set<ToolType>? = nil
     ) {
+        let eligible = tools ?? Self.supportedTools
         let grouped = Dictionary(grouping: points) {
             SubscriptionHistoryKey(accountId: $0.accountId, bucketId: $0.bucketId)
         }
@@ -323,7 +452,7 @@ public actor SubscriptionHistoryStore {
             let sorted = rawPoints.sorted { $0.sampledAt < $1.sampledAt }
             guard let first = sorted.first,
                   sorted.count > 1,
-                  Self.supportedTools.contains(first.tool)
+                  eligible.contains(first.tool)
             else { continue }
 
             var previous = first
@@ -460,10 +589,15 @@ public actor SubscriptionHistoryStore {
         includeCurrent: Bool = true,
         limit: Int? = nil
     ) -> [SubscriptionWindowSample] {
-        var matching = load().samples.filter {
-            $0.accountId == accountId
-                && $0.bucketId == bucketId
-                && (includeCurrent || $0.isCompleted)
+        let (storage, index) = loadIndexed()
+        let key = SubscriptionHistoryKey(accountId: accountId, bucketId: bucketId)
+        guard let positions = index[key] else { return [] }
+        // Positions are ascending, so `sort` is handed the same sequence the
+        // whole-array filter used to produce and returns the same order.
+        var matching = positions.compactMap { position -> SubscriptionWindowSample? in
+            let sample = storage.samples[position]
+            guard includeCurrent || sample.isCompleted else { return nil }
+            return sample
         }
         matching.sort { sampleSortDate($0) > sampleSortDate($1) }
         if let limit, matching.count > limit {
@@ -482,6 +616,7 @@ public actor SubscriptionHistoryStore {
 
     public func eraseAll() {
         cachedStorage = Storage()
+        cachedIndex = [:]
         pendingStorage = nil
         pendingFlushTask?.cancel()
         pendingFlushTask = nil
@@ -611,17 +746,17 @@ public actor SubscriptionHistoryStore {
     }
 
     /// When this bucket last refilled, for the gap between refills.
+    ///
+    /// `positions` are the caller's index entries for one account + bucket,
+    /// so the account and bucket have already been matched.
     private static func previousRefill(
         in samples: [SubscriptionWindowSample],
-        accountId: String,
-        bucketId: String,
+        positions: [Int],
         before: Date
     ) -> Date? {
-        samples
-            .filter {
-                $0.accountId == accountId && $0.bucketId == bucketId
-                    && $0.isCompleted && $0.windowEnd < before
-            }
+        positions.lazy
+            .map { samples[$0] }
+            .filter { $0.isCompleted && $0.windowEnd < before }
             .map(\.windowEnd)
             .max()
     }
@@ -681,6 +816,7 @@ public actor SubscriptionHistoryStore {
            size > Self.maxFileBytes {
             let empty = Storage()
             cachedStorage = empty
+            cachedIndex = [:]
             return empty
         }
         guard let data = try? Data(contentsOf: fileURL),
@@ -690,14 +826,43 @@ public actor SubscriptionHistoryStore {
         else {
             let empty = Storage()
             cachedStorage = empty
+            cachedIndex = [:]
             return empty
         }
         cachedStorage = storage
+        cachedIndex = nil
         return storage
     }
 
-    private func save(_ storage: Storage) {
+    /// The cached storage together with the sample positions of each
+    /// account + bucket, building the index on first use.
+    private func loadIndexed() -> (Storage, [SubscriptionHistoryKey: [Int]]) {
+        let storage = load()
+        if let cachedIndex { return (storage, cachedIndex) }
+        let built = Self.buildIndex(storage.samples)
+        cachedIndex = built
+        return (storage, built)
+    }
+
+    private static func buildIndex(
+        _ samples: [SubscriptionWindowSample]
+    ) -> [SubscriptionHistoryKey: [Int]] {
+        var index: [SubscriptionHistoryKey: [Int]] = [:]
+        for position in samples.indices {
+            let sample = samples[position]
+            let key = SubscriptionHistoryKey(
+                accountId: sample.accountId, bucketId: sample.bucketId
+            )
+            index[key, default: []].append(position)
+        }
+        return index
+    }
+
+    /// `index` is the caller's, kept in step with `storage`; passing `nil`
+    /// (the default) drops the cached one and the next reader rebuilds it.
+    private func save(_ storage: Storage, index: [SubscriptionHistoryKey: [Int]]? = nil) {
         cachedStorage = storage
+        cachedIndex = index
         let now = Date()
         if let last = lastSavedAt, now.timeIntervalSince(last) < Self.saveThrottleInterval {
             pendingStorage = storage
@@ -728,12 +893,17 @@ public actor SubscriptionHistoryStore {
         }
     }
 
-    private func pruneInPlace(_ storage: inout Storage, retentionDays: Int, now: Date) {
-        guard !CostDataSettings.isUnlimitedRetention(retentionDays) else { return }
+    /// Returns true when samples were dropped, which invalidates every
+    /// position an index is holding.
+    @discardableResult
+    private func pruneInPlace(_ storage: inout Storage, retentionDays: Int, now: Date) -> Bool {
+        guard !CostDataSettings.isUnlimitedRetention(retentionDays) else { return false }
         let cutoff = now.addingTimeInterval(-TimeInterval(retentionDays) * 86_400)
+        let before = storage.samples.count
         storage.samples.removeAll {
             let relevantDate = $0.completedAt ?? $0.lastSeenAt
             return relevantDate < cutoff
         }
+        return storage.samples.count != before
     }
 }

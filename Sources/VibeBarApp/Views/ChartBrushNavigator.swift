@@ -256,8 +256,18 @@ struct ChartBrushNavigator<Mini: View>: View {
 /// One drawable point on a quota line. Segment membership travels with the
 /// point as `seriesKey` so Swift Charts never joins two sides of a reset (or of
 /// a stretch where Vibe Bar was not running) into one stroke.
+///
+/// `id` is the point's slot in the array it was built into, not a printed
+/// `"<series>-<offset>"` key. `ForEach` only needs identity to be unique inside
+/// the collection it walks, and every one of these arrays is walked by exactly
+/// one `ForEach` — so a `String` id bought nothing and cost one heap allocation
+/// *per mark, per rebuild*. On a zoomed-out chart that is a thousand transient
+/// strings built and released on the main thread every time the visible window
+/// moves. `seriesKey` stays a `String` because Swift Charts plots against it,
+/// but it is built once per segment and shared by every point in that segment,
+/// so copying it is a retain rather than an allocation.
 struct QuotaChartLinePoint: Identifiable {
-    let id: String
+    let id: Int
     let seriesKey: String
     let time: Date
     let value: Double
@@ -297,18 +307,23 @@ enum QuotaChartMarks {
             budget: budget
         )
         var result: [QuotaChartLinePoint] = []
+        result.reserveCapacity(allowance.reduce(0, +))
+        // One running counter across every segment: identity has to be unique
+        // inside this array, and nothing outside it ever looks a point up by id.
+        var nextId = 0
         for (slot, entry) in visible.enumerated() {
             let thinned = ChartSeriesThinning.strided(entry.samples, limit: allowance[slot])
             let key = "\(kind)-\(entry.index)"
-            for (offset, sample) in thinned.enumerated() {
+            for sample in thinned {
                 result.append(
                     QuotaChartLinePoint(
-                        id: "\(key)-\(offset)",
+                        id: nextId,
                         seriesKey: key,
                         time: time(sample),
                         value: value(sample)
                     )
                 )
+                nextId += 1
             }
         }
         return result
@@ -331,6 +346,7 @@ enum QuotaChartMarks {
     ) -> [QuotaChartLinePoint] {
         guard segments.count > 1 else { return [] }
         var result: [QuotaChartLinePoint] = []
+        var nextId = 0
         for index in 0..<(segments.count - 1) {
             guard let tail = segments[index].last,
                   let head = segments[index + 1].first
@@ -342,11 +358,12 @@ enum QuotaChartMarks {
             guard end >= range.lowerBound, start <= range.upperBound else { continue }
             let key = "\(kind)-bridge-\(index)"
             result.append(
-                QuotaChartLinePoint(id: "\(key)-0", seriesKey: key, time: start, value: value(tail))
+                QuotaChartLinePoint(id: nextId, seriesKey: key, time: start, value: value(tail))
             )
             result.append(
-                QuotaChartLinePoint(id: "\(key)-1", seriesKey: key, time: end, value: value(head))
+                QuotaChartLinePoint(id: nextId + 1, seriesKey: key, time: end, value: value(head))
             )
+            nextId += 2
         }
         return result
     }
