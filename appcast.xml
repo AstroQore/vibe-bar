@@ -3,22 +3,22 @@
     <channel>
         <title>Vibe Bar</title>
         <item>
-            <title>1.6.0</title>
-            <pubDate>Tue, 01 Sep 2026 09:59:44 +0000</pubDate>
-            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.0</link>
-            <sparkle:version>59</sparkle:version>
-            <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
+            <title>1.6.1</title>
+            <pubDate>Thu, 03 Sep 2026 11:55:41 +0000</pubDate>
+            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.1</link>
+            <sparkle:version>60</sparkle:version>
+            <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.6.0 (main)
+            <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.6.1 (main)
 
-See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.0).
+See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.1).
 ]]></description>
-            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.6.0/Vibe-Bar-1.6.0-macOS-arm64.zip" length="11967227" type="application/octet-stream" sparkle:edSignature="tfd78XX/i3ehLXpJOBFN5yp5k3d75EJoBcxd/GptVaoi0ubI0cbfgP/28CHhY0eFipSnQzyjrVIDGu/5sdSBDw=="/>
+            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.6.1/Vibe-Bar-1.6.1-macOS-arm64.zip" length="12352665" type="application/octet-stream" sparkle:edSignature="P0a8dz1XmUiPPkgRBUIJ/I6KaltSWe0HRGxe5CinEvoICy97DPDzZnuzEaSjVC1EAe8nwOdXvxUbRZ8BJZssBg=="/>
         </item>
         <item>
             <title>1.4.1</title>
-            <pubDate>Tue, 01 Sep 2026 09:59:44 +0000</pubDate>
+            <pubDate>Thu, 03 Sep 2026 11:55:42 +0000</pubDate>
             <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.4.1-dev.57</link>
             <sparkle:channel>dev</sparkle:channel>
             <sparkle:version>57</sparkle:version>
