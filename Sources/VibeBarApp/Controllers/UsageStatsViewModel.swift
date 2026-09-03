@@ -405,16 +405,87 @@ final class UsageStatsViewModel: ObservableObject {
 
     // MARK: - Lifecycle
 
-    /// First load on window open; a re-open re-queries instead of rebuilding,
-    /// because the view model outlives the window.
+    /// First load on window open; a re-open re-queries only when something it
+    /// depends on has actually moved.
+    ///
+    /// The page's `.task` runs this on every entry, and the model outlives
+    /// the window, so "switch to Sessions and back" used to cost the whole
+    /// analytic set — up to eleven sequential ledger round trips including
+    /// the day × tool trend — to redraw numbers already on screen. The
+    /// memo below is what makes re-entry free.
     func activate() {
         restartTimer()
-        if hasLoadedOnce {
-            reload(cascadeModels: false)
-        } else {
+        guard hasLoadedOnce else {
             hasLoadedOnce = true
             reload(cascadeModels: true)
+            return
         }
+        guard let ledger, let signature = loadedSignature else {
+            reload(cascadeModels: false)
+            return
+        }
+        let generation = self.generation
+        Task { [weak self] in
+            let revision = await ledger.contentRevision()
+            guard let self, !Task.isCancelled, generation == self.generation else { return }
+            guard signature != self.reloadSignature(revision: revision) else { return }
+            self.reload(cascadeModels: false)
+        }
+    }
+
+    /// Everything the last completed query actually depended on.
+    ///
+    /// The live `now` at the end of a rolling preset is deliberately absent:
+    /// no row can appear inside the moved window without the ledger's
+    /// revision moving too, so re-querying for a clock tick alone would
+    /// return the same numbers.
+    private struct ReloadSignature: Equatable {
+        let preset: RangePreset
+        let windowStart: Date?
+        let customStart: Date
+        let customEnd: Date
+        let tools: [ToolType]?
+        let harnesses: [Harness]?
+        let models: [String]?
+        let granularity: UsageTrendBucket?
+        let breakdown: Breakdown
+        let revision: UInt64
+    }
+
+    private var loadedSignature: ReloadSignature?
+
+    private func reloadSignature(revision: UInt64) -> ReloadSignature {
+        ReloadSignature(
+            preset: rangePreset,
+            windowStart: windowStart,
+            customStart: customStart,
+            customEnd: customEnd,
+            tools: selectedTools.map { $0.sorted { $0.rawValue < $1.rawValue } },
+            harnesses: selectedHarnesses.map { $0.sorted { $0.rawValue < $1.rawValue } },
+            models: selectedModels.map { $0.sorted() },
+            granularity: trendGranularity,
+            breakdown: activeBreakdown,
+            revision: revision
+        )
+    }
+
+    /// Park for as long as the page is on screen.
+    ///
+    /// `UsageStatsPage` awaits this inside its `.task`, and SwiftUI cancels a
+    /// `.task` when its view disappears — so leaving the page stops the
+    /// refresh poll, which otherwise kept calling `costService.refreshAll()`
+    /// (a walk of every session tree) against a page nobody is looking at.
+    /// The same shape as `SkillsManagerModel.monitorFilesystem`.
+    func pollWhileVisible() async {
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: .seconds(3_600))
+            } catch {
+                break
+            }
+        }
+        tickTask?.cancel()
+        tickTask = nil
     }
 
     func stop() {
@@ -627,6 +698,7 @@ final class UsageStatsViewModel: ObservableObject {
         breakdownTask?.cancel()
         loadedBreakdowns.removeAll()
         activeFilter = nil
+        loadedSignature = nil
         // A page still in flight is now for a filter nobody is looking at; it
         // drops itself on the generation check and never clears this, so the
         // reload has to, or paging stays wedged for the rest of the session.
@@ -712,6 +784,10 @@ final class UsageStatsViewModel: ObservableObject {
             if let refreshedModelsRevision {
                 self.lastAvailableModelsRevision = refreshedModelsRevision
             }
+            // Stamped with the revision this query actually read, not a
+            // fresher one: a scan that lands mid-query must still make the
+            // next page entry re-ask.
+            self.loadedSignature = self.reloadSignature(revision: ledgerRevision)
             self.apply(
                 snapshot, availableModels: models, isHourlyTrendAvailable: supportsHourly
             )
@@ -867,24 +943,39 @@ final class UsageStatsViewModel: ObservableObject {
         )
     }
 
+    /// Every query the dashboard needs, issued together.
+    ///
+    /// `async let` does not make the ledger run them in parallel — it is an
+    /// actor and its executor serializes them — but it does hand all seven to
+    /// that executor in one go instead of returning to this task between each
+    /// one, so the queries run back to back rather than with a scheduling
+    /// round trip in every gap. None of them depends on another's result.
     private nonisolated static func load(
         ledger: UsageEventLedger,
         filter: UsageQueryFilter,
         granularity: UsageTrendBucket?,
         breakdown: Breakdown
     ) async -> LoadedUsage {
-        let summary = (try? await ledger.summary(filter)) ?? .empty
         let bucket = granularity.resolved(for: filter.range)
-        let trend = (try? await ledger.trend(filter, bucket: bucket))
-            ?? UsageTrendSeries(bucket: bucket, points: [])
-        let providers = (try? await ledger.providerStats(filter)) ?? []
-        let harnesses = (try? await ledger.harnessStats(filter)) ?? []
-        let models = (try? await ledger.modelStats(filter)) ?? []
-        let projects = (try? await ledger.projectStats(filter)) ?? []
-        let requests = breakdown == .requests
-            ? ((try? await ledger.requestPage(filter, pageSize: requestPageSize))
-                ?? UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize))
-            : UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize)
+        let emptyPage = UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize)
+
+        async let summaryTask = try? await ledger.summary(filter)
+        async let trendTask = try? await ledger.trend(filter, bucket: bucket)
+        async let providersTask = try? await ledger.providerStats(filter)
+        async let harnessesTask = try? await ledger.harnessStats(filter)
+        async let modelsTask = try? await ledger.modelStats(filter)
+        async let projectsTask = try? await ledger.projectStats(filter)
+        async let requestsTask = breakdown == .requests
+            ? (try? await ledger.requestPage(filter, pageSize: requestPageSize))
+            : nil
+
+        let summary = await summaryTask ?? .empty
+        let trend = await trendTask ?? UsageTrendSeries(bucket: bucket, points: [])
+        let providers = await providersTask ?? []
+        let harnesses = await harnessesTask ?? []
+        let models = await modelsTask ?? []
+        let projects = await projectsTask ?? []
+        let requests = await requestsTask ?? emptyPage
         return LoadedUsage(
             summary: summary,
             trend: trend,

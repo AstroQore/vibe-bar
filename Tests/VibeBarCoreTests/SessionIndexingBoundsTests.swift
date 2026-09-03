@@ -137,6 +137,119 @@ final class SessionIndexingBoundsTests: XCTestCase {
         XCTAssertEqual(document.messages.first?.text, long)
     }
 
+    // MARK: - The viewer's own bound
+
+    func testStandardHeadLimitStaysWellAboveTheExcerptBudget() {
+        // The head copy exists to bound *memory*, and the excerpt budget is
+        // what it feeds; 64 MiB was two orders of magnitude past saturation.
+        let policy = SessionIndexExcerptPolicy.standard
+        XCTAssertEqual(policy.headParseByteLimit, 8 * 1024 * 1024)
+        XCTAssertGreaterThan(policy.headParseByteLimit, Int64(policy.sessionExcerptBytes) * 16)
+        // The viewer reads more than the indexer, and still not the file.
+        XCTAssertGreaterThan(
+            SessionIndexingBounds.viewerHeadParseByteLimit,
+            policy.headParseByteLimit
+        )
+    }
+
+    func testReadTranscriptBoundsALargeLogAndReportsIt() throws {
+        let first = codexLine(role: "user", text: "alpha bravo charlie")
+        let second = codexLine(role: "assistant", text: "delta echo foxtrot")
+        let fileURL = directory.appendingPathComponent("rollout-viewer.jsonl")
+        let contents = first + "\n" + second + "\n"
+        try Data(contents.utf8).write(to: fileURL)
+
+        let read = try SessionIndexingBounds.readTranscript(
+            adapter: CodexSessionAdapter(homeDirectory: directory.path),
+            fileURL: fileURL,
+            headByteLimit: Int64(first.utf8.count + 10),
+            scratchDirectory: scratchURL
+        )
+        XCTAssertTrue(read.isHeadTruncated)
+        XCTAssertTrue(read.document.truncated)
+        XCTAssertEqual(read.document.messages.map(\.text), ["alpha bravo charlie"])
+        XCTAssertEqual(read.fileByteSize, Int64(contents.utf8.count))
+        // Full text, unlike the indexing path: the viewer applies no excerpt
+        // trim at all, only the byte bound.
+        XCTAssertTrue((try? FileManager.default.contentsOfDirectory(atPath: scratchURL.path))?.isEmpty ?? true)
+    }
+
+    func testReadTranscriptWithNoLimitReadsTheWholeFile() throws {
+        let first = codexLine(role: "user", text: "alpha bravo charlie")
+        let second = codexLine(role: "assistant", text: "delta echo foxtrot")
+        let fileURL = directory.appendingPathComponent("rollout-whole.jsonl")
+        try Data((first + "\n" + second + "\n").utf8).write(to: fileURL)
+
+        let read = try SessionIndexingBounds.readTranscript(
+            adapter: CodexSessionAdapter(homeDirectory: directory.path),
+            fileURL: fileURL,
+            headByteLimit: nil,
+            scratchDirectory: scratchURL
+        )
+        XCTAssertFalse(read.isHeadTruncated)
+        XCTAssertFalse(read.document.truncated)
+        XCTAssertEqual(
+            read.document.messages.map(\.text),
+            ["alpha bravo charlie", "delta echo foxtrot"]
+        )
+    }
+
+    func testHeadBoundNeverAppliesToAStoreThatCannotBeCutAtAnOffset() {
+        // A SQLite or protobuf store truncated at a byte offset is not a
+        // shorter session, it is a corrupt one.
+        for provider in SessionProvider.allCases
+        where !SessionIndexingBounds.headTruncatableProviders.contains(provider) {
+            XCTAssertFalse(
+                SessionIndexingBounds.headTruncatableProviders.contains(provider),
+                "\(provider.rawValue) must not be head-truncated"
+            )
+        }
+        XCTAssertEqual(
+            SessionIndexingBounds.headTruncatableProviders,
+            [.codex, .claude, .claudeCowork]
+        )
+    }
+
+    // MARK: - Maintenance gate
+
+    func testMaintenanceGateRefusesASecondClaimUntilItIsReleased() async {
+        let gate = SessionIndexMaintenanceGate()
+        let firstClaim = await gate.tryAcquire()
+        XCTAssertTrue(firstClaim, "a free gate is claimable")
+        let secondClaim = await gate.tryAcquire()
+        XCTAssertFalse(secondClaim, "a held gate refuses the maintenance pass")
+        await gate.release()
+        let afterRelease = await gate.tryAcquire()
+        XCTAssertTrue(afterRelease, "release hands the gate back")
+        await gate.release()
+    }
+
+    func testMaintenanceGateMakesAWaiterRunAfterTheHolder() async {
+        // `acquire` is the refresh side: it waits rather than skipping.
+        let gate = SessionIndexMaintenanceGate()
+        await gate.acquire()
+        let order = OrderRecorder()
+
+        let waiter = Task {
+            await gate.acquire()
+            await order.append("second")
+            await gate.release()
+        }
+        // Give the waiter a chance to park on the gate before releasing.
+        try? await Task.sleep(for: .milliseconds(50))
+        await order.append("first")
+        await gate.release()
+        await waiter.value
+
+        let recorded = await order.entries
+        XCTAssertEqual(recorded, ["first", "second"])
+    }
+
+    private actor OrderRecorder {
+        var entries: [String] = []
+        func append(_ value: String) { entries.append(value) }
+    }
+
     func testBoundedRegistryKeepsProvidersAndOrder() {
         let registry = SessionProviderRegistry.standard(homeDirectory: directory.path)
         let bounded = SessionIndexingBounds.boundedRegistry(

@@ -74,7 +74,7 @@ final class SessionManagerModel: ObservableObject {
     }
 
     /// One list row: a session, plus where a full-text hit landed in it.
-    struct Row: Identifiable, Hashable {
+    struct Row: Identifiable, Hashable, Sendable {
         let summary: SessionSummary
         let snippet: String?
         let matchedSeq: Int?
@@ -84,11 +84,24 @@ final class SessionManagerModel: ObservableObject {
         var id: String { summary.id }
     }
 
-    struct ProjectGroup: Identifiable {
+    struct ProjectGroup: Identifiable, Sendable {
         let title: String
         let rows: [Row]
 
         var id: String { title }
+    }
+
+    /// Why the open transcript stops where it does.
+    ///
+    /// Present only when the viewer read a head window instead of the whole
+    /// file. The kit's adapters materialize every message before applying
+    /// `range:`, so the bound has to be in bytes and it has to be applied
+    /// before the parse — which means the reader genuinely does not know how
+    /// many messages the rest of the file holds.
+    struct TranscriptTruncation: Equatable, Sendable {
+        let shownMessages: Int
+        let parsedBytes: Int64
+        let fileBytes: Int64
     }
 
     // MARK: - Published state
@@ -110,12 +123,20 @@ final class SessionManagerModel: ObservableObject {
     @Published private(set) var harnessCounts: [Harness: Int] = [:]
     @Published private(set) var totalSessionCount = 0
     @Published private(set) var isLoadingSummaries = false
+    /// A rows build is in flight. The derivation moved off the main actor, so
+    /// there is now a turn between "summaries arrived" and "rows published" —
+    /// and an empty list during that turn is not the same thing as "nothing
+    /// matches".
+    @Published private(set) var isPreparingRows = false
 
     @Published var searchText = "" {
         didSet {
             guard oldValue != searchText else { return }
             scheduleSearch()
-            refreshRows()
+            // Debounced: a keystroke used to re-filter, re-sort and re-group
+            // every loaded summary synchronously on the main actor before the
+            // character it typed was drawn.
+            refreshRows(debounced: true)
         }
     }
     @Published var searchScopes = SessionSearchScope.defaultScopes {
@@ -166,6 +187,8 @@ final class SessionManagerModel: ObservableObject {
     @Published private(set) var transcript: TranscriptDocument?
     @Published private(set) var transcriptError: String?
     @Published private(set) var isLoadingTranscript = false
+    /// Non-nil while the open transcript is a head window of a larger file.
+    @Published private(set) var transcriptTruncation: TranscriptTruncation?
 
     @Published var isDeleteMode = false {
         didSet {
@@ -193,24 +216,45 @@ final class SessionManagerModel: ObservableObject {
     private let homeDirectory: String
     private let registry: SessionProviderRegistry
     private let deleter: SessionDeleter
-    private let store: SessionIndexStore?
-    private let service: SessionIndexService?
-    private let bodyIndexing: BodyIndexingFlag
+    private let index: SharedSessionIndex
+
+    private var store: SessionIndexStore? { index.store }
+    private var service: SessionIndexService? { index.service }
 
     private var searchTask: Task<Void, Never>?
     private var directoryFilterTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
+    private var rowsTask: Task<Void, Never>?
+    /// The parse behind the open transcript. Held so a second click cancels
+    /// the first: three 1 GB sessions in a row used to mean three concurrent
+    /// full parses, of which two were discarded on arrival by a generation
+    /// check that had already let them allocate everything.
+    private var transcriptTask: Task<Void, Never>?
     private var transcriptGeneration: UInt64 = 0
     private var searchGeneration: UInt64 = 0
     private var summaryGeneration: UInt64 = 0
-    private var hasActivated = false
     private var lastScanFinishedAt: Date?
     private var reviewSummariesByParent: [String: [SessionSummary]] = [:]
     private var relatedHitByParent: [String: SessionSummary] = [:]
+    /// Bumped whenever the index's contents can have moved (a completed
+    /// refresh, a rebuild, a delete). Everything derived from a whole-index
+    /// query — the review children and the harness chip counts — is fetched
+    /// once per value of this rather than on every filter change.
+    private var indexGeneration: UInt64 = 0
+    private var indexDerivedGeneration: UInt64?
+    /// Parent rows already resolved for auto-review hits, valid for one
+    /// `indexGeneration`.
+    private var parentSummaryCache: [String: SessionSummary] = [:]
 
-    /// Floor between two automatic sweeps. A manual refresh ignores it.
-    private static let rescanMinimumInterval: TimeInterval = 30
+    /// Floor between two activation sweeps.
+    ///
+    /// This used to be 30 seconds, which made every Workbench tab click cost
+    /// a full walk of every provider's session tree — 11 000 files on a busy
+    /// Mac. Re-opening the window after a while still rescans (the CLIs were
+    /// writing the whole time it was shut); moving between pages does not.
+    /// The Refresh button ignores this entirely.
+    private static let rescanMinimumInterval: TimeInterval = 10 * 60
 
     /// Long enough that a fast typist never pays for an intermediate query,
     /// short enough that pausing to read the list feels like it already ran.
@@ -219,63 +263,58 @@ final class SessionManagerModel: ObservableObject {
     /// thousands of main-actor hops between the user and a scroll.
     private nonisolated static let progressStride = 250
     private static let summaryPageSize = 250
+    /// Ceiling on how many summaries the page keeps loaded.
+    ///
+    /// The list is a `LazyVStack`, which builds rows lazily but never
+    /// releases them, so "scroll to the bottom of 11 000 sessions" is a
+    /// promise to hold 11 000 built rows — each with its own hover state and
+    /// up to four `.help()` strings. Eight pages is more than anyone reads in
+    /// one sitting, and the filters and full-text search are the way to reach
+    /// the rest.
+    static let maximumLoadedSummaries = 2_000
 
     var hasMoreSummaries: Bool {
-        summaries.count < totalSessionCount
+        summaries.count < min(totalSessionCount, Self.maximumLoadedSummaries)
     }
 
-    init(settingsStore: SettingsStore, homeDirectory: String = RealHomeDirectory.path) {
-        let registry = SessionProviderRegistry.standard(homeDirectory: homeDirectory)
+    /// True when the list stops short of the index because of the ceiling
+    /// above rather than because that is all there is.
+    var isSummaryListCapped: Bool {
+        totalSessionCount > Self.maximumLoadedSummaries
+            && summaries.count >= Self.maximumLoadedSummaries
+    }
+
+    init(
+        settingsStore: SettingsStore,
+        index: SharedSessionIndex,
+        homeDirectory: String = RealHomeDirectory.path
+    ) {
         self.settingsStore = settingsStore
         self.homeDirectory = homeDirectory
-        self.registry = registry
+        // The raw registry, deliberately: the transcript viewer and the
+        // deleter must see whole sessions. The *indexing* registry is the
+        // bounded one and lives on `SharedSessionIndex`.
+        self.registry = SessionProviderRegistry.standard(homeDirectory: homeDirectory)
         self.deleter = SessionDeleter(homeDirectory: homeDirectory)
-        let flag = BodyIndexingFlag(settingsStore.settings.sessionBodyIndexingEnabled)
-        self.bodyIndexing = flag
-
-        // Same shape as the usage ledger in `AppEnvironment`: a database that
-        // will not open costs this page its index, not the app.
-        let opened: SessionIndexStore?
-        do {
-            opened = try SessionIndexStore(url: VibeBarLocalStore.sessionIndexURL)
-        } catch {
-            SafeLog.warn("Opening the session index failed: \(SafeLog.sanitize(error.localizedDescription))")
-            opened = nil
-        }
-        self.store = opened
-        self.isIndexAvailable = opened != nil
-        self.service = opened.map {
-            SessionIndexService(
-                homeDirectory: homeDirectory,
-                store: $0,
-                // The indexer gets the bounded adapters: oversized rollouts
-                // are parsed from a head copy (memory) and excerpts are
-                // pre-trimmed to the host policy (index size). The raw
-                // `registry` stays for the transcript viewer and the
-                // deleter, which must see whole sessions.
-                registry: SessionIndexingBounds.boundedRegistry(
-                    registry,
-                    scratchDirectory: VibeBarLocalStore
-                        .sessionIndexScratchDirectoryURL(homeDirectory: homeDirectory)
-                ),
-                bodyIndexing: { flag.current }
-            )
-        }
+        self.index = index
+        self.isIndexAvailable = index.store != nil
     }
 
     // MARK: - Lifecycle
 
-    /// Cached rows first, disk second. Re-opening the window re-scans, since
-    /// the CLIs have been writing sessions the whole time it was shut — but
-    /// switching between Workbench pages re-runs this too, and a full sweep
-    /// of every provider's logs is not what a tab click should cost.
+    /// Cached rows first, disk second — and the two are never sequenced.
+    ///
+    /// The summary query answers from the last scan and paints immediately;
+    /// the scan, when one is due at all, runs behind it and re-queries when
+    /// it lands. Re-opening the window after a while re-scans, since the CLIs
+    /// have been writing sessions the whole time it was shut, but switching
+    /// between Workbench pages must not.
     func activate() {
         reloadSummaryPage(reset: true)
         guard refreshTask == nil else { return }
         if let last = lastScanFinishedAt, Date().timeIntervalSince(last) < Self.rescanMinimumInterval {
             return
         }
-        hasActivated = true
         refreshIndex()
     }
 
@@ -284,10 +323,14 @@ final class SessionManagerModel: ObservableObject {
         directoryFilterTask?.cancel()
         refreshTask?.cancel()
         toastTask?.cancel()
+        rowsTask?.cancel()
+        transcriptTask?.cancel()
         searchTask = nil
         directoryFilterTask = nil
         refreshTask = nil
         toastTask = nil
+        rowsTask = nil
+        transcriptTask = nil
     }
 
     // MARK: - Index
@@ -304,11 +347,17 @@ final class SessionManagerModel: ObservableObject {
             }
         }
         refreshTask = Task { [weak self] in
+            // Wait out a compaction pass rather than fighting it for the
+            // write lock; `SessionIndexMaintenanceGate` explains the split.
+            let gate = SessionIndexMaintenanceGate.shared
+            await gate.acquire()
             await service.refreshIndex(progress: progress)
+            await gate.release()
             guard let self, !Task.isCancelled else { return }
             self.indexProgress = nil
             self.refreshTask = nil
             self.lastScanFinishedAt = Date()
+            self.invalidateIndexDerivedState()
             self.reloadSummaryPage(reset: true)
             self.rerunSearch()
             // A refresh is when churn lands in the index, so it is the
@@ -318,6 +367,12 @@ final class SessionManagerModel: ObservableObject {
                 await SessionIndexCompactor.standard.compactIfDue()
             }
         }
+    }
+
+    /// Everything derived from a whole-index query is stale now.
+    private func invalidateIndexDerivedState() {
+        indexGeneration &+= 1
+        parentSummaryCache.removeAll(keepingCapacity: true)
     }
 
     /// Throw the index away and rebuild it from disk. The escape hatch for a
@@ -330,6 +385,7 @@ final class SessionManagerModel: ObservableObject {
             let cleared = (try? await store.eraseAll()) != nil
             guard let self else { return }
             if !cleared { self.show(toast: "The session index could not be cleared.") }
+            self.invalidateIndexDerivedState()
             self.summaries = []
             self.hits = []
             self.totalSessionCount = 0
@@ -367,31 +423,45 @@ final class SessionManagerModel: ObservableObject {
         case .oldestFirst: order = .oldestFirst
         case .byProject: order = .byProject
         }
+        // Chip counts and the Auto Review children are whole-index facts:
+        // they do not depend on the harness, date, sort or directory filter
+        // that triggered this reload. Re-asking for up to 2 000 review
+        // summaries on every chip click was the page's most expensive habit.
+        let currentIndexGeneration = indexGeneration
+        let needsIndexDerived = reset && indexDerivedGeneration != currentIndexGeneration
+        let includes = directoryIncludes
+        let excludes = directoryExcludes
         isLoadingSummaries = true
         Task { [weak self] in
             let page = try? await service.summaryPage(
                 harnesses: harnesses,
                 since: since,
-                projectIncludes: self?.directoryIncludes ?? [],
-                projectExcludes: self?.directoryExcludes ?? [],
+                projectIncludes: includes,
+                projectExcludes: excludes,
                 excludingProviderVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix,
                 order: order,
                 offset: offset,
                 limit: Self.summaryPageSize
             )
-            let counts = reset ? (try? await service.harnessCounts()) : nil
-            let reviews = reset ? (try? await service.summaries(
+            let counts = needsIndexDerived ? (try? await service.harnessCounts()) : nil
+            let reviews = needsIndexDerived ? (try? await service.summaries(
                 provider: .codex,
                 providerVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix
             )) : nil
             guard let self, generation == self.summaryGeneration else { return }
+            if needsIndexDerived, counts != nil || reviews != nil {
+                self.indexDerivedGeneration = currentIndexGeneration
+            }
             self.isLoadingSummaries = false
             guard let page else { return }
             if reset {
-                self.summaries = page.summaries
+                self.summaries = Array(page.summaries.prefix(Self.maximumLoadedSummaries))
             } else {
                 let existing = Set(self.summaries.map(\.id))
-                self.summaries.append(contentsOf: page.summaries.filter { !existing.contains($0.id) })
+                let room = max(0, Self.maximumLoadedSummaries - self.summaries.count)
+                self.summaries.append(contentsOf: page.summaries
+                    .filter { !existing.contains($0.id) }
+                    .prefix(room))
             }
             self.totalSessionCount = page.totalCount
             // A demo launch opens the newest session so the transcript pane
@@ -465,13 +535,42 @@ final class SessionManagerModel: ObservableObject {
             projectExcludes: directoryExcludes,
             limit: 200
         )) ?? []
+
+        // Resolve every Auto Review child to its parent in one hop.
+        //
+        // This used to be one `await service.summary(...)` per hit inside the
+        // loop: up to 200 main-actor → index-actor → main-actor round trips
+        // for a single search, most of them asking for a parent the last hit
+        // had already fetched. agent-session-kit 0.7.0 has no `IN`-list
+        // lookup (`summaries(provider:)` only takes a variant prefix), so the
+        // batching is host-side: dedupe the ids, answer what the loaded page
+        // and the per-generation cache already know, and ask the index only
+        // for the remainder — from a single detached task, so the main actor
+        // is entered once rather than 200 times.
+        var wanted: [String] = []
+        var seenWanted: Set<String> = []
+        for hit in found {
+            guard let parentID = CodexSessionAdapter.autoReviewParentSessionID(
+                providerVariant: hit.summary.providerVariant
+            ) else { continue }
+            guard parentSummaryCache[parentID] == nil, seenWanted.insert(parentID).inserted else {
+                continue
+            }
+            wanted.append(parentID)
+        }
+        if !wanted.isEmpty {
+            let fetched = await Self.resolveParentSummaries(service: service, sessionIDs: wanted)
+            guard generation == searchGeneration else { return }
+            parentSummaryCache.merge(fetched) { _, new in new }
+        }
+
         var resolved: [SessionSearchHit] = []
         var seen: Set<String> = []
         var relatedHits: [String: SessionSummary] = [:]
         for hit in found {
             if let parentID = CodexSessionAdapter.autoReviewParentSessionID(
                 providerVariant: hit.summary.providerVariant
-            ), let parent = try? await service.summary(provider: .codex, sessionID: parentID) {
+            ), let parent = parentSummaryCache[parentID] {
                 guard seen.insert(parent.id).inserted else { continue }
                 relatedHits[parent.id] = hit.summary
                 resolved.append(SessionSearchHit(
@@ -487,6 +586,24 @@ final class SessionManagerModel: ObservableObject {
         guard generation == searchGeneration else { return }
         relatedHitByParent = relatedHits
         hits = resolved
+    }
+
+    /// One detached pass over the deduped parent ids. Cancellation is checked
+    /// per id so an abandoned search stops paying immediately.
+    private nonisolated static func resolveParentSummaries(
+        service: SessionIndexService,
+        sessionIDs: [String]
+    ) async -> [String: SessionSummary] {
+        await Task.detached(priority: .userInitiated) {
+            var out: [String: SessionSummary] = [:]
+            for sessionID in sessionIDs {
+                guard !Task.isCancelled else { return out }
+                if let parent = try? await service.summary(provider: .codex, sessionID: sessionID) {
+                    out[sessionID] = parent
+                }
+            }
+            return out
+        }.value
     }
 
     private func scheduleDirectoryFilter() {
@@ -517,35 +634,99 @@ final class SessionManagerModel: ObservableObject {
     /// only that one can match on what was said inside a session. An empty
     /// full-text result falls back rather than blanking the list — the
     /// substring filter also matches session ids, which the index does not.
-    private func refreshRows() {
-        let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base: [Row]
-        if !needle.isEmpty, !hits.isEmpty {
-            base = hits.map {
-                Row(
-                    summary: $0.summary,
-                    snippet: $0.snippet,
-                    matchedSeq: $0.matchedSeq,
-                    matchedRelated: relatedHitByParent[$0.summary.id],
-                    reviewCount: reviewSummariesByParent[$0.summary.sessionID]?.count ?? 0
-                )
+    private func refreshRows(debounced: Bool = false) {
+        rowsTask?.cancel()
+        let input = RowInput(
+            summaries: summaries,
+            hits: hits,
+            relatedHitByParent: relatedHitByParent,
+            reviewCounts: reviewSummariesByParent.reduce(into: [String: Int]()) {
+                $0[$1.key] = $1.value.count
+            },
+            needle: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+            scopes: searchScopes,
+            harnessFilter: harnessFilter,
+            since: dateRange.start(),
+            sortOrder: sortOrder,
+            groupByProject: groupByProject
+        )
+        isPreparingRows = true
+        rowsTask = Task { [weak self] in
+            if debounced {
+                try? await Task.sleep(for: Self.searchDebounce)
+                guard !Task.isCancelled else { return }
             }
-        } else {
-            base = filteredSummaries(matching: needle).map {
-                Row(
-                    summary: $0,
-                    snippet: nil,
-                    matchedSeq: nil,
-                    matchedRelated: nil,
-                    reviewCount: reviewSummariesByParent[$0.sessionID]?.count ?? 0
-                )
-            }
+            let output = await Self.buildRows(input)
+            guard let self, !Task.isCancelled else { return }
+            self.rows = output.rows
+            self.groupedRows = output.groupedRows
+            self.isPreparingRows = false
         }
-        rows = needle.isEmpty ? base : sorted(base.filter(passesFilters))
-        groupedRows = groupByProject ? Self.grouped(rows) : []
     }
 
-    private static func grouped(_ rows: [Row]) -> [ProjectGroup] {
+    /// Everything `buildRows` needs, copied so it can run away from the main
+    /// actor. Value types throughout: the alternative is reading `@Published`
+    /// state from another executor while SwiftUI is drawing from it.
+    private struct RowInput: Sendable {
+        let summaries: [SessionSummary]
+        let hits: [SessionSearchHit]
+        let relatedHitByParent: [String: SessionSummary]
+        let reviewCounts: [String: Int]
+        let needle: String
+        let scopes: Set<SessionSearchScope>
+        let harnessFilter: Set<Harness>?
+        let since: Date?
+        let sortOrder: SortOrder
+        let groupByProject: Bool
+    }
+
+    private struct RowOutput: Sendable {
+        let rows: [Row]
+        let groupedRows: [ProjectGroup]
+    }
+
+    /// The list, derived off the main actor.
+    ///
+    /// A keystroke on a page holding a couple of thousand summaries used to
+    /// run this synchronously inside a `didSet`: a case- and
+    /// diacritic-insensitive `range(of:)` over two fields of every summary,
+    /// then a sort, then a grouping pass, then two `@Published` writes — all
+    /// before the character appeared in the field.
+    private nonisolated static func buildRows(_ input: RowInput) async -> RowOutput {
+        await Task.detached(priority: .userInitiated) {
+            let base: [Row]
+            if !input.needle.isEmpty, !input.hits.isEmpty {
+                base = input.hits.map {
+                    Row(
+                        summary: $0.summary,
+                        snippet: $0.snippet,
+                        matchedSeq: $0.matchedSeq,
+                        matchedRelated: input.relatedHitByParent[$0.summary.id],
+                        reviewCount: input.reviewCounts[$0.summary.sessionID] ?? 0
+                    )
+                }
+            } else {
+                base = filteredSummaries(input).map {
+                    Row(
+                        summary: $0,
+                        snippet: nil,
+                        matchedSeq: nil,
+                        matchedRelated: nil,
+                        reviewCount: input.reviewCounts[$0.sessionID] ?? 0
+                    )
+                }
+            }
+            let rows = input.needle.isEmpty
+                ? base
+                : sorted(base.filter { passesFilters($0, input) }, order: input.sortOrder)
+            return RowOutput(
+                rows: rows,
+                groupedRows: input.groupByProject ? grouped(rows) : []
+            )
+        }.value
+    }
+
+    private nonisolated static func grouped(_ rows: [Row]) -> [ProjectGroup] {
         var order: [String] = []
         var buckets: [String: [Row]] = [:]
         for row in rows {
@@ -559,12 +740,12 @@ final class SessionManagerModel: ObservableObject {
         return order.map { ProjectGroup(title: $0, rows: buckets[$0] ?? []) }
     }
 
-    static func projectTitle(_ projectDir: String?) -> String {
+    nonisolated static func projectTitle(_ projectDir: String?) -> String {
         guard let projectDir, !projectDir.isEmpty else { return "No project" }
         return URL(fileURLWithPath: projectDir).lastPathComponent
     }
 
-    static func projectTitle(for summary: SessionSummary) -> String {
+    nonisolated static func projectTitle(for summary: SessionSummary) -> String {
         if summary.provider == .codex, isGeneratedProjectlessPath(summary.projectDir) {
             return "Projectless"
         }
@@ -575,7 +756,7 @@ final class SessionManagerModel: ObservableObject {
     /// state database has no `project_id` column, so this stable path shape is
     /// the only on-disk distinction; the real cwd remains available in Details
     /// and resume commands.
-    static func isGeneratedProjectlessPath(_ path: String?) -> Bool {
+    nonisolated static func isGeneratedProjectlessPath(_ path: String?) -> Bool {
         guard let path else { return false }
         let components = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
         guard let codex = components.lastIndex(of: "Codex"), components.count == codex + 3 else {
@@ -586,16 +767,16 @@ final class SessionManagerModel: ObservableObject {
             && date.allSatisfy { Int($0) != nil }
     }
 
-    private func filteredSummaries(matching needle: String) -> [SessionSummary] {
-        guard !needle.isEmpty else { return summaries }
-        guard searchScopes.contains(.title) else { return [] }
-        return summaries.filter { Self.matches($0, needle: needle) }
+    private nonisolated static func filteredSummaries(_ input: RowInput) -> [SessionSummary] {
+        guard !input.needle.isEmpty else { return input.summaries }
+        guard input.scopes.contains(.title) else { return [] }
+        return input.summaries.filter { matches($0, needle: input.needle) }
     }
 
     /// Immediate metadata preview while the debounced SQLite query is in
     /// flight. It obeys the title scope exactly; project paths have their own
     /// include/exclude controls and transcript roles are answered by FTS.
-    static func matches(_ summary: SessionSummary, needle: String) -> Bool {
+    nonisolated static func matches(_ summary: SessionSummary, needle: String) -> Bool {
         let fields = [summary.title, summary.sessionID]
         for field in fields {
             guard let field else { continue }
@@ -606,20 +787,22 @@ final class SessionManagerModel: ObservableObject {
         return false
     }
 
-    private func passesFilters(_ row: Row) -> Bool {
-        if let harnessFilter, !harnessFilter.contains(row.summary.effectiveHarness) { return false }
-        guard let start = dateRange.start() else { return true }
+    private nonisolated static func passesFilters(_ row: Row, _ input: RowInput) -> Bool {
+        if let filter = input.harnessFilter, !filter.contains(row.summary.effectiveHarness) {
+            return false
+        }
+        guard let start = input.since else { return true }
         let stamp = row.summary.lastActiveAt ?? row.summary.createdAt
         guard let stamp else { return false }
         return stamp >= start
     }
 
-    private func sorted(_ rows: [Row]) -> [Row] {
-        switch sortOrder {
+    private nonisolated static func sorted(_ rows: [Row], order: SortOrder) -> [Row] {
+        switch order {
         case .recentFirst:
-            return rows.sorted { Self.activity($0) > Self.activity($1) }
+            return rows.sorted { activity($0) > activity($1) }
         case .oldestFirst:
-            return rows.sorted { Self.activity($0) < Self.activity($1) }
+            return rows.sorted { activity($0) < activity($1) }
         case .byProject:
             // Key first, compare second: a localized comparison inside the
             // predicate would re-derive both project names on every swap.
@@ -635,7 +818,7 @@ final class SessionManagerModel: ObservableObject {
         }
     }
 
-    private static func activity(_ row: Row) -> Date {
+    private nonisolated static func activity(_ row: Row) -> Date {
         row.summary.lastActiveAt ?? row.summary.createdAt ?? .distantPast
     }
 
@@ -704,10 +887,59 @@ final class SessionManagerModel: ObservableObject {
         focusSeq: Int? = nil,
         focusedRelatedID: String? = nil
     ) {
+        load(
+            summary,
+            focusSeq: focusSeq,
+            focusedRelatedID: focusedRelatedID,
+            headByteLimit: SessionIndexingBounds.viewerHeadParseByteLimit
+        )
+    }
+
+    /// Re-read the open session with no byte bound. Only ever reached from
+    /// the banner the truncated read puts on screen: a 1.7 GB rollout parses
+    /// into 1.5–1.9 GB of live objects, which is a thing to do because the
+    /// user asked, never by default.
+    func loadEntireTranscript() {
+        guard let selection, transcriptTruncation != nil else { return }
+        load(
+            selection,
+            focusSeq: focusSeq,
+            focusedRelatedID: nil,
+            headByteLimit: nil
+        )
+    }
+
+    /// Abandon an in-flight transcript read.
+    ///
+    /// The row stays selected, so the way back is to click it again — said
+    /// out loud, because a pane that simply goes blank reads as a failure
+    /// rather than as the thing the user just asked for.
+    func cancelTranscriptLoad() {
+        guard isLoadingTranscript else { return }
+        transcriptTask?.cancel()
+        transcriptTask = nil
+        transcriptGeneration &+= 1
+        isLoadingTranscript = false
+        transcriptError = "Reading this session was stopped. Select it again to reopen it."
+    }
+
+    private func load(
+        _ summary: SessionSummary?,
+        focusSeq: Int?,
+        focusedRelatedID: String?,
+        headByteLimit: Int64?
+    ) {
+        // Cancel first, and hold the new task: the generation check alone
+        // only discarded a stale *result*, so clicking through three large
+        // sessions ran three full parses side by side and paid for all of
+        // them.
+        transcriptTask?.cancel()
+        transcriptTask = nil
         selection = summary
         self.focusSeq = focusSeq
         transcript = nil
         transcriptError = nil
+        transcriptTruncation = nil
         transcriptGeneration &+= 1
         guard let summary else {
             isLoadingTranscript = false
@@ -721,20 +953,25 @@ final class SessionManagerModel: ObservableObject {
         let generation = transcriptGeneration
         let url = URL(fileURLWithPath: summary.sourcePath)
         let related = reviewSummariesByParent[summary.sessionID] ?? []
+        let scratch = VibeBarLocalStore.sessionIndexScratchDirectoryURL(homeDirectory: homeDirectory)
         isLoadingTranscript = true
-        Task { [weak self] in
+        transcriptTask = Task { [weak self] in
             let parsed = await Self.parse(
                 adapter: adapter,
                 url: url,
                 related: related,
                 requestedFocusSeq: focusSeq,
-                focusedRelatedID: focusedRelatedID
+                focusedRelatedID: focusedRelatedID,
+                headByteLimit: headByteLimit,
+                scratchDirectory: scratch
             )
-            guard let self, generation == self.transcriptGeneration else { return }
+            guard let self, !Task.isCancelled, generation == self.transcriptGeneration else { return }
+            self.transcriptTask = nil
             self.isLoadingTranscript = false
             self.focusSeq = parsed.focusSeq
             self.transcript = parsed.document
             self.transcriptError = parsed.errorMessage
+            self.transcriptTruncation = parsed.truncation
         }
     }
 
@@ -746,69 +983,109 @@ final class SessionManagerModel: ObservableObject {
         let document: TranscriptDocument?
         let errorMessage: String?
         let focusSeq: Int?
+        let truncation: TranscriptTruncation?
     }
 
     /// `nonisolated` so the parse runs off the main actor — a long rollout is
     /// megabytes of JSONL and the window has to stay interactive through it.
+    ///
+    /// `headByteLimit` is the memory bound. `range:` is not one: every kit
+    /// adapter materializes the whole document before slicing it, so the only
+    /// place a limit can be applied is the bytes handed to the parser.
     private nonisolated static func parse(
         adapter: any SessionProviderAdapter,
         url: URL,
         related: [SessionSummary],
         requestedFocusSeq: Int?,
-        focusedRelatedID: String?
+        focusedRelatedID: String?,
+        headByteLimit: Int64?,
+        scratchDirectory: URL
     ) async -> ParsedTranscript {
-        do {
-            let root = try adapter.parseTranscript(fileURL: url)
-            guard !related.isEmpty else {
-                return ParsedTranscript(document: root, errorMessage: nil, focusSeq: requestedFocusSeq)
-            }
-            var messages = root.messages
-            var translatedFocus = focusedRelatedID == nil ? requestedFocusSeq : nil
-            for review in related.sorted(by: {
-                ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast)
-            }) {
-                guard let document = try? adapter.parseTranscript(
-                    fileURL: URL(fileURLWithPath: review.sourcePath)
-                ) else { continue }
-                messages.append(SessionMessage(
-                    seq: messages.count,
-                    role: .system,
-                    text: "Auto Review",
-                    timestamp: review.createdAt
-                ))
-                let childStart = messages.count
-                messages.append(contentsOf: document.messages)
-                if review.id == focusedRelatedID,
-                   let requestedFocusSeq,
-                   let childIndex = document.messages.firstIndex(where: { $0.seq == requestedFocusSeq }) {
-                    translatedFocus = childStart + childIndex
+        await Task.detached(priority: .userInitiated) {
+            do {
+                let read = try SessionIndexingBounds.readTranscript(
+                    adapter: adapter,
+                    fileURL: url,
+                    headByteLimit: headByteLimit,
+                    scratchDirectory: scratchDirectory
+                )
+                let root = read.document
+                let truncation = read.isHeadTruncated
+                    ? TranscriptTruncation(
+                        shownMessages: root.messages.count,
+                        parsedBytes: headByteLimit ?? read.fileByteSize,
+                        fileBytes: read.fileByteSize
+                    )
+                    : nil
+                // A truncated parent already spends the budget; loading its
+                // Auto Review children on top would double it for no gain,
+                // since the pane cannot show the parent's tail either.
+                guard !related.isEmpty, truncation == nil else {
+                    return ParsedTranscript(
+                        document: root,
+                        errorMessage: nil,
+                        focusSeq: requestedFocusSeq,
+                        truncation: truncation
+                    )
                 }
-            }
-            let resequenced = messages.enumerated().map { index, message in
-                SessionMessage(
-                    seq: index,
-                    role: message.role,
-                    text: message.text,
-                    timestamp: message.timestamp
+                var messages = root.messages
+                var translatedFocus = focusedRelatedID == nil ? requestedFocusSeq : nil
+                var childTruncated = false
+                for review in related.sorted(by: {
+                    ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast)
+                }) {
+                    guard !Task.isCancelled else { break }
+                    // Children are bounded on the same terms as the parent.
+                    guard let child = try? SessionIndexingBounds.readTranscript(
+                        adapter: adapter,
+                        fileURL: URL(fileURLWithPath: review.sourcePath),
+                        headByteLimit: headByteLimit,
+                        scratchDirectory: scratchDirectory
+                    ) else { continue }
+                    let document = child.document
+                    childTruncated = childTruncated || child.isHeadTruncated
+                    messages.append(SessionMessage(
+                        seq: messages.count,
+                        role: .system,
+                        text: "Auto Review",
+                        timestamp: review.createdAt
+                    ))
+                    let childStart = messages.count
+                    messages.append(contentsOf: document.messages)
+                    if review.id == focusedRelatedID,
+                       let requestedFocusSeq,
+                       let childIndex = document.messages.firstIndex(where: { $0.seq == requestedFocusSeq }) {
+                        translatedFocus = childStart + childIndex
+                    }
+                }
+                let resequenced = messages.enumerated().map { index, message in
+                    SessionMessage(
+                        seq: index,
+                        role: message.role,
+                        text: message.text,
+                        timestamp: message.timestamp
+                    )
+                }
+                return ParsedTranscript(
+                    document: TranscriptDocument(
+                        messages: resequenced,
+                        totalMessageCount: resequenced.count,
+                        truncated: childTruncated
+                    ),
+                    errorMessage: nil,
+                    focusSeq: translatedFocus,
+                    truncation: nil
+                )
+            } catch {
+                return ParsedTranscript(
+                    document: nil,
+                    errorMessage: (error as? LocalizedError)?.errorDescription
+                        ?? "This session's log could not be read.",
+                    focusSeq: nil,
+                    truncation: nil
                 )
             }
-            return ParsedTranscript(
-                document: TranscriptDocument(
-                    messages: resequenced,
-                    totalMessageCount: resequenced.count,
-                    truncated: false
-                ),
-                errorMessage: nil,
-                focusSeq: translatedFocus
-            )
-        } catch {
-            return ParsedTranscript(
-                document: nil,
-                errorMessage: (error as? LocalizedError)?.errorDescription
-                    ?? "This session's log could not be read.",
-                focusSeq: nil
-            )
-        }
+        }.value
     }
 
     // MARK: - Resume
@@ -942,6 +1219,7 @@ final class SessionManagerModel: ObservableObject {
         // than waiting for the next scan's prune pass to notice.
         if let store, !removed.isEmpty {
             try? await store.removeSessions(sourcePathIn: removed.map(\.sourcePath))
+            invalidateIndexDerivedState()
         }
         checkedIDs.subtract(removed.map(\.id))
         reloadSummaryPage(reset: true)
@@ -978,7 +1256,7 @@ final class SessionManagerModel: ObservableObject {
     func setBodyIndexing(_ enabled: Bool) {
         guard enabled != settingsStore.settings.sessionBodyIndexingEnabled else { return }
         settingsStore.settings.sessionBodyIndexingEnabled = enabled
-        bodyIndexing.set(enabled)
+        index.bodyIndexing.set(enabled)
         guard let store else { return }
         if enabled {
             refreshIndex()
@@ -1018,5 +1296,70 @@ final class SessionManagerModel: ObservableObject {
     func dismissToast() {
         toastTask?.cancel()
         toast = nil
+    }
+}
+
+/// The app's one connection to `~/.vibebar/session_index.sqlite3`.
+///
+/// Three components used to open their own: the Workbench's Sessions page,
+/// `MCPController` (on the first `sessions.*` call), and
+/// `SessionIndexCompactor`. Nothing coordinated them, so an MCP backfill and
+/// a Workbench refresh could run two full 11 000-file passes over the same
+/// 1 GB database at once, each waiting out the other's busy timeout. Two
+/// connections to one WAL database are legal; two *indexers* are just twice
+/// the work.
+///
+/// The compactor still keeps its own handle — it runs once a day, needs raw
+/// SQLite, and is fenced by `SessionIndexMaintenanceGate` instead.
+@MainActor
+final class SharedSessionIndex {
+    /// `nil` when the database would not open. Same shape as the usage
+    /// ledger in `AppEnvironment`: that costs the Sessions page its index,
+    /// not the app its launch.
+    let store: SessionIndexStore?
+    let service: SessionIndexService?
+    /// The privacy switch, mirrored where the index actor can read it
+    /// without a main-actor hop — and, unlike a captured `Bool`, re-read on
+    /// every pass. Following the setting for the life of the app is what
+    /// makes "Index message text" reach the MCP surface too.
+    let bodyIndexing: BodyIndexingFlag
+
+    private var cancellables: Set<AnyCancellable> = []
+
+    init(settingsStore: SettingsStore, homeDirectory: String = RealHomeDirectory.path) {
+        let flag = BodyIndexingFlag(settingsStore.settings.sessionBodyIndexingEnabled)
+        self.bodyIndexing = flag
+
+        let opened: SessionIndexStore?
+        do {
+            opened = try SessionIndexStore(url: VibeBarLocalStore.sessionIndexURL)
+        } catch {
+            SafeLog.warn("Opening the session index failed: \(SafeLog.sanitize(error.localizedDescription))")
+            opened = nil
+        }
+        self.store = opened
+        self.service = opened.map {
+            SessionIndexService(
+                homeDirectory: homeDirectory,
+                store: $0,
+                // The indexer gets the bounded adapters: oversized rollouts
+                // are parsed from a head copy (memory) and excerpts are
+                // pre-trimmed to the host policy (index size). The raw
+                // registry stays with the transcript viewer and the deleter,
+                // which must see whole sessions.
+                registry: SessionIndexingBounds.boundedRegistry(
+                    SessionProviderRegistry.standard(homeDirectory: homeDirectory),
+                    scratchDirectory: VibeBarLocalStore
+                        .sessionIndexScratchDirectoryURL(homeDirectory: homeDirectory)
+                ),
+                bodyIndexing: { flag.current }
+            )
+        }
+
+        settingsStore.$settings
+            .map(\.sessionBodyIndexingEnabled)
+            .removeDuplicates()
+            .sink { enabled in flag.set(enabled) }
+            .store(in: &cancellables)
     }
 }

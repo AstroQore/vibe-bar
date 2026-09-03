@@ -57,6 +57,7 @@ final class AppEnvironment: ObservableObject {
     /// there is no status item to anchor to.
     var presentPopoverHandler: (() -> Void)?
     private var workbenchServicesStorage: WorkbenchServices?
+    private var sessionIndexStorage: SharedSessionIndex?
     private var cancellables: Set<AnyCancellable> = []
     private var routineBudgetInFlightAccountIds: Set<String> = []
     private var lastRoutineBudgetAttemptByAccount: [String: Date] = [:]
@@ -708,10 +709,29 @@ final class AppEnvironment: ObservableObject {
             usageLedger: usageLedger,
             costService: costService,
             settingsStore: settingsStore,
-            skillsService: skillsService
+            skillsService: skillsService,
+            sessionIndex: { [unowned self] in self.sessionIndex }
         )
         workbenchServicesStorage = services
         return services
+    }
+
+    /// Wind down the Workbench's background work when its window closes.
+    /// Reaches only the page models that were actually built — a session that
+    /// never opened Usage Stats must not construct it on the way out.
+    func stopWorkbenchBackgroundWork() {
+        workbenchServicesStorage?.stopBackgroundWork()
+    }
+
+    /// The app's single session-index connection, opened on the first use —
+    /// which is either the Workbench's Sessions page or an agent's
+    /// `sessions.*` MCP call, whichever comes first. A menu-bar-only session
+    /// never opens the SQLite file at all.
+    var sessionIndex: SharedSessionIndex {
+        if let sessionIndexStorage { return sessionIndexStorage }
+        let index = SharedSessionIndex(settingsStore: settingsStore)
+        sessionIndexStorage = index
+        return index
     }
 
     /// Front an already-open Workbench without creating one. Used by the Dock

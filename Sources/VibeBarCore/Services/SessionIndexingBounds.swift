@@ -41,6 +41,104 @@ public enum SessionIndexingBounds {
         })
     }
 
+    // MARK: - Reading a transcript for the screen
+
+    /// How much of an oversized log the transcript viewer parses before it
+    /// stops and offers the rest as an explicit action.
+    ///
+    /// Larger than the index's own limit because this is what the user asked
+    /// to read — but still a limit: the kit's adapters materialize every
+    /// message before applying `range:`, so a `range` is not a memory bound
+    /// and a 1.7 GB rollout put the app's lifetime peak at 1.5–1.9 GB. At
+    /// 32 MiB the viewer opens tens of thousands of messages, which is more
+    /// than its 80-per-page reader can walk in a sitting.
+    public static let viewerHeadParseByteLimit: Int64 = 32 * 1024 * 1024
+
+    /// One transcript, read whole or read from the head.
+    public struct BoundedTranscript: Sendable {
+        public let document: TranscriptDocument
+        /// True when `document` stops short of the file because the head
+        /// limit was hit — not because the adapter itself truncated.
+        public let isHeadTruncated: Bool
+        /// Size of the file on disk, so a caller can say how much was left.
+        public let fileByteSize: Int64
+    }
+
+    /// Parse `fileURL` with a byte bound instead of a message bound.
+    ///
+    /// `headByteLimit` of `nil` is the unbounded read — what "Load entire
+    /// transcript" performs once the user has asked for it in as many words.
+    /// Providers whose session is not a byte-truncatable JSONL log (Grok,
+    /// Cursor, AntiGravity, Grok Bot) are always read whole; a SQLite or
+    /// protobuf store cut at an offset is not a shorter session, it is a
+    /// corrupt one.
+    public static func readTranscript(
+        adapter: any SessionProviderAdapter,
+        fileURL: URL,
+        headByteLimit: Int64?,
+        scratchDirectory: URL = VibeBarLocalStore.sessionIndexScratchDirectoryURL
+    ) throws -> BoundedTranscript {
+        let size = SessionParsing.fileSize(fileURL)
+        // The autoreleasepool is what actually returns the parse's transient
+        // strings: without it a run of selections holds every intermediate
+        // NSString until the enclosing task hits a suspension point.
+        return try autoreleasepool {
+            guard let headByteLimit,
+                  headByteLimit > 0,
+                  headTruncatableProviders.contains(adapter.provider),
+                  size > headByteLimit
+            else {
+                return BoundedTranscript(
+                    document: try adapter.parseTranscript(fileURL: fileURL, range: nil),
+                    isHeadTruncated: false,
+                    fileByteSize: size
+                )
+            }
+            let head = try copyHead(of: fileURL, limit: headByteLimit, scratchDirectory: scratchDirectory)
+            defer { try? FileManager.default.removeItem(at: head) }
+            let parsed = try adapter.parseTranscript(fileURL: head, range: nil)
+            return BoundedTranscript(
+                document: TranscriptDocument(
+                    messages: parsed.messages,
+                    totalMessageCount: parsed.totalMessageCount,
+                    truncated: true
+                ),
+                isHeadTruncated: true,
+                fileByteSize: size
+            )
+        }
+    }
+
+    /// Streams the first `limit` bytes of `fileURL` into a scratch file.
+    /// Constant memory; the caller deletes the copy after parsing. Scratch
+    /// lives under `~/.vibebar` because that directory is the only place
+    /// the app writes; `SessionIndexCompactor` sweeps anything a crash
+    /// leaves behind.
+    static func copyHead(of fileURL: URL, limit: Int64, scratchDirectory: URL) throws -> URL {
+        try FileManager.default.createDirectory(
+            at: scratchDirectory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let destination = scratchDirectory
+            .appendingPathComponent("head-\(UUID().uuidString).\(fileURL.pathExtension)")
+        let source = try FileHandle(forReadingFrom: fileURL)
+        defer { try? source.close() }
+        FileManager.default.createFile(atPath: destination.path, contents: nil, attributes: [.posixPermissions: 0o600])
+        let sink = try FileHandle(forWritingTo: destination)
+        defer { try? sink.close() }
+
+        var remaining = limit
+        let chunk = 4 * 1024 * 1024
+        while remaining > 0 {
+            let want = Int(min(Int64(chunk), remaining))
+            guard let data = try source.read(upToCount: want), !data.isEmpty else { break }
+            try sink.write(contentsOf: data)
+            remaining -= Int64(data.count)
+        }
+        return destination
+    }
+
     // MARK: - Transcript trimming
 
     /// `document` with the excerpt policy applied: per-message character
@@ -124,47 +222,17 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
         guard range == nil else {
             return try inner.parseTranscript(fileURL: fileURL, range: range)
         }
-        var headTruncated = false
-        var document: TranscriptDocument
-        if SessionIndexingBounds.headTruncatableProviders.contains(inner.provider),
-           SessionParsing.fileSize(fileURL) > policy.headParseByteLimit {
-            let head = try copyHead(of: fileURL)
-            defer { try? FileManager.default.removeItem(at: head) }
-            document = try inner.parseTranscript(fileURL: head, range: nil)
-            headTruncated = true
-        } else {
-            document = try inner.parseTranscript(fileURL: fileURL, range: nil)
-        }
-        return SessionIndexingBounds.trimmed(document, policy: policy, headTruncated: headTruncated, provider: inner.provider)
-    }
-
-    /// Streams the first `headParseByteLimit` bytes into a scratch file.
-    /// Constant memory; the caller deletes the copy after parsing. Scratch
-    /// lives under `~/.vibebar` because that directory is the only place
-    /// the app writes; `SessionIndexCompactor` sweeps anything a crash
-    /// leaves behind.
-    private func copyHead(of fileURL: URL) throws -> URL {
-        try FileManager.default.createDirectory(
-            at: scratchDirectory,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
+        let read = try SessionIndexingBounds.readTranscript(
+            adapter: inner,
+            fileURL: fileURL,
+            headByteLimit: policy.headParseByteLimit,
+            scratchDirectory: scratchDirectory
         )
-        let destination = scratchDirectory
-            .appendingPathComponent("head-\(UUID().uuidString).\(fileURL.pathExtension)")
-        let source = try FileHandle(forReadingFrom: fileURL)
-        defer { try? source.close() }
-        FileManager.default.createFile(atPath: destination.path, contents: nil, attributes: [.posixPermissions: 0o600])
-        let sink = try FileHandle(forWritingTo: destination)
-        defer { try? sink.close() }
-
-        var remaining = policy.headParseByteLimit
-        let chunk = 4 * 1024 * 1024
-        while remaining > 0 {
-            let want = Int(min(Int64(chunk), remaining))
-            guard let data = try source.read(upToCount: want), !data.isEmpty else { break }
-            try sink.write(contentsOf: data)
-            remaining -= Int64(data.count)
-        }
-        return destination
+        return SessionIndexingBounds.trimmed(
+            read.document,
+            policy: policy,
+            headTruncated: read.isHeadTruncated,
+            provider: inner.provider
+        )
     }
 }

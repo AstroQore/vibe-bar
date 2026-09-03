@@ -1,6 +1,51 @@
 import Foundation
 import SQLite3
 
+/// Who is allowed to be inside `session_index.sqlite3` doing bulk work.
+///
+/// Three components write that database: the Workbench's Sessions page, the
+/// MCP surface's opportunistic backfill, and `SessionIndexCompactor`. Nothing
+/// coordinated them, so an 11 000-file sweep and a multi-minute compaction
+/// could run at once on the same 1 GB file — each one's transactions waiting
+/// out the other's busy timeout, for no benefit to either.
+///
+/// The two roles are deliberately asymmetric. A refresh is what the user
+/// asked for, so it `acquire()`s and waits its turn. Compaction is a
+/// throttled maintenance pass, so it `tryAcquire()`s and skips: still due
+/// tomorrow, and it costs nothing to wait.
+public actor SessionIndexMaintenanceGate {
+    public static let shared = SessionIndexMaintenanceGate()
+
+    private var isBusy = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    public init() {}
+
+    /// Claim the index, waiting for whoever holds it. Every waiter re-checks
+    /// after being resumed, so a burst of refreshes still enters one at a
+    /// time.
+    public func acquire() async {
+        while isBusy {
+            await withCheckedContinuation { waiters.append($0) }
+        }
+        isBusy = true
+    }
+
+    /// Claim the index only if it is free. `false` means someone else has it.
+    public func tryAcquire() -> Bool {
+        guard !isBusy else { return false }
+        isBusy = true
+        return true
+    }
+
+    public func release() {
+        isBusy = false
+        let resumed = waiters
+        waiters.removeAll()
+        for waiter in resumed { waiter.resume() }
+    }
+}
+
 /// Keeps `~/.vibebar/session_index.sqlite3` at the size its content
 /// deserves.
 ///
@@ -86,13 +131,25 @@ public final class SessionIndexCompactor: @unchecked Sendable {
     }
 
     /// Runs a pass when the stamp says one is due; returns `nil` otherwise
-    /// (also when the database does not exist yet). Safe to call from
-    /// several places — calls serialize on the compactor's queue.
+    /// (also when the database does not exist yet, and when an index refresh
+    /// currently holds the maintenance gate). Safe to call from several
+    /// places — calls serialize on the compactor's queue.
+    ///
+    /// The gate is what keeps this off the same database as a running scan.
+    /// Two writers with a busy timeout do not corrupt anything, but the
+    /// launch pass measured minutes on a 2.5 GB index and a Workbench refresh
+    /// arriving on top of it turns both into a queue of stalled
+    /// transactions. A maintenance pass that is due today is equally due in
+    /// an hour, so this one simply yields.
     public func compactIfDue(now: Date = Date()) async -> Outcome? {
-        await onQueue { [self] in
+        let gate = SessionIndexMaintenanceGate.shared
+        guard await gate.tryAcquire() else { return nil }
+        let outcome: Outcome? = await onQueue { [self] in
             guard isDue(now: now) else { return nil }
             return performCompact(now: now)
         }
+        await gate.release()
+        return outcome
     }
 
     /// Test seam for the scratch sweep's containment rules — the sweep is

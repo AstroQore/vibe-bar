@@ -38,34 +38,28 @@ final class MCPController: ObservableObject, MCPDataSource {
     private var socketServer: MCPSocketServer?
     private var cancellables: Set<AnyCancellable> = []
 
-    /// The session index, opened on the first `sessions.*` call.
-    ///
-    /// Deliberately not built at launch: opening it costs a SQLite file the
-    /// menu-bar-only session never needs, and the Workbench's Sessions page
-    /// keeps its own handle. Two connections to one WAL database with a busy
-    /// timeout is a supported arrangement — the alternative, threading this
-    /// through `SessionManagerModel`, would couple the MCP surface to the
-    /// Workbench's lifecycle for no benefit.
-    private var sessionIndex: SessionIndexService?
-    private var sessionIndexUnavailable = false
     /// One opportunistic scan per process when the index has never been built.
     /// Without it, `sessions.search` answers "nothing" until the user happens
     /// to open the Workbench, which reads as a bug rather than as an empty
     /// index.
     private var didAttemptSessionBackfill = false
-    /// The privacy switch, mirrored so the index actor can read it without a
-    /// main-actor hop — and, unlike a captured `Bool`, re-read on every pass.
-    /// Toggling "Index message text" off has to reach the MCP surface too, or
-    /// an agent's `sessions.search` would keep hitting (and re-populating) an
-    /// index the user just disabled.
-    private let bodyIndexing: BodyIndexingFlag
+
+    /// How long a connected client may say nothing before its socket is
+    /// closed.
+    ///
+    /// The package leaves this off, because a library cannot know whether its
+    /// host's clients respawn after an intentional EOF. Vibe Bar's do: every
+    /// client is a `--mcp-stdio` child that the agent starts on demand and
+    /// restarts the moment it needs the socket again. Without a timeout those
+    /// children accumulate — 21 were alive on one machine — each holding one
+    /// of the 64 connection slots for the rest of the app's life. Forty-five
+    /// minutes is far longer than any pause inside a working session and far
+    /// shorter than a day of leaving editors open.
+    static let clientIdleTimeout: TimeInterval = 45 * 60
 
     init(environment: AppEnvironment, socketPath: String = MCPSocketServer.defaultSocketPath) {
         self.environment = environment
         self.socketPath = socketPath
-        self.bodyIndexing = BodyIndexingFlag(
-            environment.settingsStore.settings.sessionBodyIndexingEnabled
-        )
     }
 
     // MARK: - Lifecycle
@@ -81,13 +75,9 @@ final class MCPController: ObservableObject, MCPDataSource {
             }
             .store(in: &cancellables)
 
-        // Follow the body-indexing switch for as long as the app runs, not
-        // just until the first `sessions.*` call opened the index.
-        settingsStore.$settings
-            .map(\.sessionBodyIndexingEnabled)
-            .removeDuplicates()
-            .sink { [bodyIndexing] enabled in bodyIndexing.set(enabled) }
-            .store(in: &cancellables)
+        // The body-indexing switch is followed by `SharedSessionIndex`, which
+        // owns the flag the index actor reads — one subscription for both the
+        // Workbench's Sessions page and this surface.
     }
 
     func stop() {
@@ -106,7 +96,11 @@ final class MCPController: ObservableObject, MCPDataSource {
         }
         guard socketServer == nil else { return }
         let server = MCPServer(dataSource: self)
-        let socket = MCPSocketServer(server: server, socketPath: socketPath)
+        let socket = MCPSocketServer(
+            server: server,
+            socketPath: socketPath,
+            idleTimeout: Self.clientIdleTimeout
+        )
         socket.onConnectionChange = { [weak self] count, at in
             Task { @MainActor in
                 self?.connectionCount = count
@@ -380,42 +374,29 @@ final class MCPController: ObservableObject, MCPDataSource {
         return page
     }
 
+    /// The app-wide index, opened on this call if nothing has needed it yet.
+    ///
+    /// This used to open a second `SessionIndexStore` of its own. Two
+    /// connections to one WAL database are legal, but two *indexers* meant an
+    /// MCP backfill and a Workbench refresh could each walk all 11 000
+    /// session files at the same time over the same 1 GB database.
     private func sessionIndexService() throws -> SessionIndexService {
-        if let sessionIndex { return sessionIndex }
-        guard !sessionIndexUnavailable else {
+        guard let environment, let service = environment.sessionIndex.service else {
             throw MCPToolFailure("The session index could not be opened, so sessions cannot be listed.")
         }
-        do {
-            let store = try SessionIndexStore(url: VibeBarLocalStore.sessionIndexURL)
-            // Explicit home on both: the kit's own defaults resolve the real
-            // home, not the one `RealHomeDirectory` may be redirected to.
-            let home = RealHomeDirectory.path
-            let service = SessionIndexService(
-                homeDirectory: home,
-                store: store,
-                // Bounded like the Workbench's indexer: MCP-triggered
-                // backfills hit the same multi-hundred-MB rollouts.
-                registry: SessionIndexingBounds.boundedRegistry(
-                    SessionProviderRegistry.standard(homeDirectory: home),
-                    scratchDirectory: VibeBarLocalStore
-                        .sessionIndexScratchDirectoryURL(homeDirectory: home)
-                ),
-                bodyIndexing: { [bodyIndexing] in bodyIndexing.current }
-            )
-            sessionIndex = service
-            return service
-        } catch {
-            sessionIndexUnavailable = true
-            SafeLog.warn("MCP: opening the session index failed: \(SafeLog.sanitize(error.localizedDescription))")
-            throw MCPToolFailure("The session index could not be opened, so sessions cannot be listed.")
-        }
+        return service
     }
 
     /// Returns true when a scan actually ran, so the caller re-queries.
     private func backfillSessionIndexIfNeeded(_ index: SessionIndexService) async -> Bool {
         guard !didAttemptSessionBackfill else { return false }
         didAttemptSessionBackfill = true
+        // Same gate the Workbench's refresh takes: one indexer at a time, and
+        // never on top of the daily compaction pass.
+        let gate = SessionIndexMaintenanceGate.shared
+        await gate.acquire()
         await index.refreshIndex()
+        await gate.release()
         return true
     }
 
