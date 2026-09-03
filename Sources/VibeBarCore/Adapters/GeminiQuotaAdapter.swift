@@ -135,7 +135,8 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             // response from the private RPC itself indicates a likely rotated
             // route/argument that WebKit can learn.
             return message.contains("Gemini Web batchexecute HTTP")
-        case .noCredential, .needsLogin, .rateLimited, .notImplemented, .unknown:
+        case .noCredential, .needsLogin, .credentialRejected,
+             .rateLimited, .notImplemented, .unknown:
             return false
         }
     }

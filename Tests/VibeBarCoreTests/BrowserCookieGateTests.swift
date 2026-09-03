@@ -68,6 +68,42 @@ final class BrowserCookieGateTests: XCTestCase {
         // doesn't crash and clears the persisted UserDefaults.
         XCTAssertNil(UserDefaults.standard.dictionary(forKey: "vibebarBrowserCookieAccessDeniedUntil"))
     }
+
+    /// The import UI needs to tell a declined Keychain prompt apart from
+    /// "no session found" — from the importer's side both look like an
+    /// empty result.
+    func testActiveCooldownsReportBrowserAndExpiry() {
+        let now = Date(timeIntervalSince1970: 1_715_000_000)
+        BrowserCookieAccessGate.recordDenied(for: .chrome, now: now)
+
+        let blockedUntil = BrowserCookieAccessGate.blockedUntil(.chrome, now: now)
+        XCTAssertEqual(blockedUntil, now.addingTimeInterval(60 * 60 * 6))
+
+        let cooldowns = BrowserCookieAccessGate.activeCooldowns(now: now)
+        XCTAssertEqual(cooldowns.count, 1)
+        XCTAssertEqual(cooldowns.first?.browserName, Browser.chrome.displayName)
+        XCTAssertEqual(cooldowns.first?.until, now.addingTimeInterval(60 * 60 * 6))
+    }
+
+    func testCooldownsSortByExpiryAndDropExpiredEntries() {
+        let now = Date(timeIntervalSince1970: 1_715_000_000)
+        BrowserCookieAccessGate.recordDenied(for: .brave, now: now.addingTimeInterval(60))
+        BrowserCookieAccessGate.recordDenied(for: .chrome, now: now)
+
+        let names = BrowserCookieAccessGate.activeCooldowns(now: now).map(\.browserName)
+        XCTAssertEqual(names, [Browser.chrome.displayName, Browser.brave.displayName])
+
+        let afterEverything = now.addingTimeInterval(60 * 60 * 7)
+        XCTAssertTrue(BrowserCookieAccessGate.activeCooldowns(now: afterEverything).isEmpty)
+        XCTAssertNil(BrowserCookieAccessGate.blockedUntil(.chrome, now: afterEverything))
+    }
+
+    func testResetClearsTheReportedCooldowns() {
+        BrowserCookieAccessGate.recordDenied(for: .chrome)
+        XCTAssertFalse(BrowserCookieAccessGate.activeCooldowns().isEmpty)
+        BrowserCookieAccessGate.reset()
+        XCTAssertTrue(BrowserCookieAccessGate.activeCooldowns().isEmpty)
+    }
 }
 
 final class BrowserKindMappingTests: XCTestCase {

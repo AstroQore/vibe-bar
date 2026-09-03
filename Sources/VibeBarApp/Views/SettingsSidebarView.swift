@@ -154,11 +154,62 @@ struct SettingsSidebarView: View {
     }
 
     private var filteredMiscProviders: [MiscProviderInstance] {
-        settingsStore.settings.miscProviderInstances.filter { instance in
-            let title = instance.displayTitle(fallback: instance.tool.menuTitle)
-            return searchText.isEmpty
-                || title.localizedCaseInsensitiveContains(searchText)
-                || instance.tool.vendorName.localizedCaseInsensitiveContains(searchText)
+        guard !searchText.isEmpty else { return settingsStore.settings.miscProviderInstances }
+        return settingsStore.settings.miscProviderInstances.filter { instance in
+            Self.searchTerms(for: instance).contains {
+                $0.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+
+    /// Everything a user might type to find one misc row.
+    ///
+    /// `menuTitle` collapses the plan pairs — both Volcengine rows are
+    /// "Volcengine", both Bailian rows "Bailian" — so searching for the
+    /// thing that actually distinguishes them ("Agent Plan", "Token Plan")
+    /// used to match nothing. `displayName` and `subtitle` carry the plan;
+    /// the vendor aliases cover the brands whose console name differs from
+    /// the one Vibe Bar shows.
+    private static func searchTerms(for instance: MiscProviderInstance) -> [String] {
+        let tool = instance.tool
+        var terms = [
+            instance.displayTitle(fallback: tool.displayName),
+            tool.displayName,
+            tool.menuTitle,
+            tool.subtitle,
+            tool.productName,
+            tool.vendorName,
+            tool.statusProviderName
+        ]
+        terms.append(contentsOf: vendorAliases(for: tool))
+        return terms
+    }
+
+    /// Names users know a provider by that no `ToolType` field carries.
+    private static func vendorAliases(for tool: ToolType) -> [String] {
+        switch tool {
+        case .alibaba, .alibabaTokenPlan:
+            return ["DashScope", "Aliyun", "Model Studio", "阿里云", "百炼"]
+        case .volcengine, .volcengineAgentPlan:
+            return ["Doubao", "Ark", "ByteDance", "火山引擎", "豆包"]
+        case .tencentHunyuan, .tencentTokenPlan:
+            return ["TokenHub", "腾讯云", "混元"]
+        case .zai:
+            return ["Zhipu", "BigModel", "GLM", "智谱"]
+        case .baiduQianfan:
+            return ["Baidu", "BCE", "百度", "千帆"]
+        case .iflytek:
+            return ["Spark", "MaaS", "讯飞", "星火"]
+        case .mimo:
+            return ["Xiaomi", "小米"]
+        case .kimi:
+            return ["Moonshot", "月之暗面"]
+        case .copilot:
+            return ["GitHub"]
+        case .openCodeGo:
+            return ["OpenCode"]
+        default:
+            return []
         }
     }
 
@@ -220,7 +271,11 @@ struct SettingsSidebarView: View {
         let enabled = instance.isVisible
         return sidebarRow(
             destination: .miscProvider(instance.id),
-            title: instance.displayTitle(fallback: instance.tool.menuTitle),
+            // `menuTitle` is the L2 SubProvider, which is identical for the
+            // Coding Plan / Token Plan / Agent Plan pairs — two sidebar rows
+            // reading "Volcengine" with no way to tell which is which.
+            // `displayName` keeps the plan.
+            title: instance.displayTitle(fallback: instance.tool.displayName),
             icon: AnyView(ToolBrandIconView(tool: instance.tool, size: 17).frame(width: 20, height: 20)),
             enabled: enabled,
             showsStatusDot: true,

@@ -68,14 +68,20 @@ public enum BrowserCookieAccessGate {
 
     /// Record an explicit denial coming back from SweetCookieKit's
     /// own error path. Re-uses the same cooldown window.
-    public static func recordIfNeeded(_ error: Error, now: Date = Date()) {
-        guard let err = error as? BrowserCookieError else { return }
-        guard case .accessDenied = err else { return }
-        recordDenied(for: err.browser, now: now)
+    ///
+    /// Returns the cooldown it installed, so a caller that is classifying
+    /// one import attempt can tell "this browser refused us just now" from
+    /// "some browser is in a cooldown from an unrelated earlier import".
+    @discardableResult
+    public static func recordIfNeeded(_ error: Error, now: Date = Date()) -> Cooldown? {
+        guard let err = error as? BrowserCookieError else { return nil }
+        guard case .accessDenied = err else { return nil }
+        return recordDenied(for: err.browser, now: now)
     }
 
-    public static func recordDenied(for browser: Browser, now: Date = Date()) {
-        guard browser.usesKeychainForCookieDecryption else { return }
+    @discardableResult
+    public static func recordDenied(for browser: Browser, now: Date = Date()) -> Cooldown? {
+        guard browser.usesKeychainForCookieDecryption else { return nil }
         let blockedUntil = now.addingTimeInterval(cooldownInterval)
         lock.withLock { state in
             loadIfNeeded(&state)
@@ -83,6 +89,53 @@ public enum BrowserCookieAccessGate {
             persist(state)
         }
         SafeLog.info("Browser cookie access denied for \(browser.displayName); cooldown until \(blockedUntil)")
+        return Cooldown(browserName: browser.displayName, until: blockedUntil)
+    }
+
+    /// One browser currently inside its denial cooldown.
+    public struct Cooldown: Equatable, Sendable {
+        /// Human-readable browser name, e.g. "Google Chrome".
+        public let browserName: String
+        public let until: Date
+
+        public init(browserName: String, until: Date) {
+            self.browserName = browserName
+            self.until = until
+        }
+    }
+
+    /// When `browser` may be asked for cookies again, or `nil` if it is
+    /// not in a cooldown right now.
+    public static func blockedUntil(_ browser: Browser, now: Date = Date()) -> Date? {
+        lock.withLock { state in
+            loadIfNeeded(&state)
+            guard let blockedUntil = state.deniedUntilByBrowser[browser.rawValue],
+                  blockedUntil > now else { return nil }
+            return blockedUntil
+        }
+    }
+
+    /// Every browser currently suppressed, soonest expiry first.
+    ///
+    /// The import UI needs this because a cooldown looks exactly like "no
+    /// session found" from the outside: the gate short-circuits before
+    /// touching Keychain, so the importer honestly finds nothing and used
+    /// to tell the user to go sign in again — advice that could not
+    /// possibly help.
+    public static func activeCooldowns(now: Date = Date()) -> [Cooldown] {
+        let raw: [String: Date] = lock.withLock { state in
+            loadIfNeeded(&state)
+            return state.deniedUntilByBrowser
+        }
+        return raw
+            .filter { $0.value > now }
+            .map { key, value in
+                Cooldown(
+                    browserName: Browser(rawValue: key)?.displayName ?? key,
+                    until: value
+                )
+            }
+            .sorted { $0.until < $1.until }
     }
 
     /// Wipe persisted denials. Exposed for the Settings panel "Reset

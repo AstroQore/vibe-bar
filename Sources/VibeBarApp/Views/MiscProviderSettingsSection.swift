@@ -16,6 +16,8 @@ struct MiscProviderSettingsSection: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
 
+    @State private var isConfirmingRemoval = false
+
     private var tool: ToolType { instance.tool }
     private var instanceID: String { instance.id }
 
@@ -59,11 +61,25 @@ struct MiscProviderSettingsSection: View {
                         help: "Remove this \(tool.menuTitle) copy",
                         size: 10
                     ) {
-                        removeClone()
+                        isConfirmingRemoval = true
                     }
                 }
             }
             MiscProviderCredentialRows(instance: instance)
+        }
+        // Removing a copy also deletes its Keychain entries — the API key
+        // or AK/SK and every stored cookie slot — and none of that comes
+        // back. A one-click trash icon next to a Clone button is too easy
+        // to hit for something irreversible.
+        .confirmationDialog(
+            "Remove this \(tool.menuTitle) copy?",
+            isPresented: $isConfirmingRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Copy", role: .destructive, action: removeClone)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Its saved credentials are deleted from your Keychain — the API key or AK/SK and every imported cookie slot. This cannot be undone.")
         }
     }
 
@@ -110,12 +126,24 @@ struct MiscProviderCredentialRows: View {
     private var tool: ToolType { instance.tool }
     private var instanceID: String { instance.id }
 
-    @ViewBuilder
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            credentialControls
+            MiscProviderSetupNote(tool: tool, instanceID: instanceID)
+        }
+    }
+
+    @ViewBuilder
+    private var credentialControls: some View {
         switch tool {
         case .zai:
             VStack(alignment: .leading, spacing: 4) {
-                ApiKeyField(tool: .zai, instanceID: instanceID, prompt: "Paste Z.ai API key (zai-...)", helpText: "Find it under z.ai → API Keys. Stored in macOS Keychain.")
+                ApiKeyField(
+                    tool: .zai,
+                    instanceID: instanceID,
+                    prompt: "Paste Z.ai API key (zai-...)",
+                    helpText: "Find it under API Keys on z.ai (Global) or open.bigmodel.cn (China mainland). Stored in macOS Keychain."
+                )
                 ZaiRegionPicker(instanceID: instanceID)
             }
         case .copilot:
@@ -186,12 +214,6 @@ struct MiscProviderCredentialRows: View {
                 instanceID: instanceID,
                 manualPrompt: "Paste www.kimi.com Cookie header (kimi-auth=eyJ...)"
             )
-        case .cursor:
-            CookieSourceControls(
-                tool: .cursor,
-                instanceID: instanceID,
-                manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
-            )
         case .mimo:
             VStack(alignment: .leading, spacing: 4) {
                 CookieSourceControls(
@@ -248,7 +270,7 @@ struct MiscProviderCredentialRows: View {
                 MiscWebLoginRow(
                     tool: .volcengine,
                     instanceID: instanceID,
-                    helpText: "Volcengine console session cookies expire after a few hours. When the card flips to \"Needs re-login\", click here to refresh."
+                    helpText: "Coding Plan reads a Volcengine console session — there is no API key for it. Sign in here, or paste the header above; either way it must carry csrfToken, which the Ark console sets on its first request. Console cookies expire after a few hours."
                 )
             }
         case .volcengineAgentPlan:
@@ -256,7 +278,7 @@ struct MiscProviderCredentialRows: View {
                 AkSkField(
                     tool: .volcengineAgentPlan,
                     instanceID: instanceID,
-                    helpText: "Agent Plan reads usage via Volcengine's official signed API — paste an AK/SK. Create an Access Key in the Volcengine console under Access Control / 访问控制 → API Access Key (a sub-user key with Ark read access works)."
+                    helpText: "Agent Plan reads usage through Volcengine's signed OpenAPI, so it needs an Access Key pair from Console → Access Control (访问控制) → API Access Key — not the sk-… Ark inference key, and not a console login. A sub-user key with Ark read access is enough."
                 )
             }
         case .baiduQianfan:
@@ -284,13 +306,16 @@ struct MiscProviderCredentialRows: View {
                     instanceID: instanceID,
                     prompt: "Workspace ID or URL (optional, wrk_... or /workspace/wrk_.../go)"
                 )
+                Text("Only needed when the account owns more than one workspace — otherwise Vibe Bar uses the first one it finds.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
         case .kilo:
             ApiKeyField(
                 tool: .kilo,
                 instanceID: instanceID,
                 prompt: "Paste Kilo API key (optional)",
-                helpText: "Optional. Vibe Bar also reads ~/.local/share/kilo/auth.json after `kilo login`. Env fallback: KILO_API_KEY."
+                helpText: "From app.kilo.ai → API Keys, and optional: Vibe Bar also reads the auth file `kilo login` writes under ~/.local/share/kilo/. Env fallback: KILO_API_KEY."
             )
         case .kiro:
             KiroStatusRow(instanceID: instanceID)
@@ -306,12 +331,10 @@ struct MiscProviderCredentialRows: View {
                     tool: .openRouter,
                     instanceID: instanceID,
                     prompt: "Paste OpenRouter API key (sk-or-v1-...)",
-                    helpText: "Stored in macOS Keychain. Env fallback: OPENROUTER_API_KEY."
+                    helpText: "From openrouter.ai → Keys; credit-read access is enough. Stored in macOS Keychain. Env fallback: OPENROUTER_API_KEY."
                 )
                 EnterpriseHostField(tool: .openRouter, instanceID: instanceID, prompt: "OpenRouter API URL (optional, defaults to https://openrouter.ai/api/v1)")
             }
-        case .antigravity:
-            AntigravityStatusRow(instanceID: instanceID)
         case .warp:
             ApiKeyField(
                 tool: .warp,
@@ -319,12 +342,108 @@ struct MiscProviderCredentialRows: View {
                 prompt: "Paste Warp API key (wk-...)",
                 helpText: "Open Warp → Settings → AI → API Keys to mint one. Stored in macOS Keychain. Env fallback: WARP_API_KEY, then WARP_TOKEN."
             )
-        case .grok:
-            // Partial-primary providers don't ship a misc-card UI;
-            // their settings live in the dedicated SettingsView panel.
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
+            // Partial-primary and primary providers don't ship a misc-card
+            // UI: `AppSettings` only builds instances for
+            // `isMiscPageProvider` tools, and their credentials live in the
+            // dedicated SettingsView panel. These cases exist purely to
+            // keep the switch exhaustive.
             EmptyView()
-        case .codex, .claude:
-            EmptyView()
+        }
+    }
+}
+
+/// One line per provider saying where its credential comes from, what
+/// Vibe Bar actually reads, and whether an API key exists for usage at
+/// all — plus a click-through to the page that issues it.
+///
+/// This lives beside the credential controls rather than inside them
+/// because several providers have two entry points (a key *and* a cookie
+/// jar) and the "which one do I need?" answer belongs to the provider, not
+/// to one field.
+struct MiscProviderSetupNote: View {
+    let tool: ToolType
+    /// Read live from the store rather than from a snapshot, so switching
+    /// the Region picker re-points the console link in the same frame.
+    let instanceID: String
+
+    @EnvironmentObject var settingsStore: SettingsStore
+
+    var body: some View {
+        if let note = tool.miscSetupNote {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                // Two links when a region-aware provider is on "Auto":
+                // either console could be the one holding the credential.
+                ForEach(consoleLinks) { link in
+                    Link(destination: link.url) {
+                        Text("\(link.title) →")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .help(link.url.absoluteString)
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private var consoleLinks: [MiscProviderConsole.Link] {
+        MiscProviderConsole.links(
+            for: tool,
+            settings: settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
+        )
+    }
+}
+
+extension ToolType {
+    /// nil for the providers that have no misc-card credential row.
+    var miscSetupNote: String? {
+        switch self {
+        case .alibaba:
+            return "The console session is read from bailian.console.aliyun.com (or modelstudio.console.alibabacloud.com internationally); Region has to match the account that owns the plan. A DashScope key is optional and is tried first when present."
+        case .alibabaTokenPlan:
+            return "Same Aliyun login as the Coding Plan card, a different subscription. Token Plan usage is only exposed to the console session — there is no DashScope key for it."
+        case .copilot:
+            return "Sign-in runs GitHub's device flow and Vibe Bar keeps only the OAuth token it returns; no cookies are read. Set the Enterprise host if the seat lives on GitHub Enterprise Server."
+        case .zai:
+            return "Mint the key under API Keys on z.ai (Global) or on open.bigmodel.cn (China mainland), then set Region to match — a key issued on one host returns nothing on the other. \"Auto\" tries both."
+        case .minimax:
+            return "The Token Plan key is under Billing → Token Plan (platform.minimax.io, or minimaxi.com in China mainland). A general MiniMax platform key authenticates but reports no Token Plan quota."
+        case .kimi:
+            return "Sign in at www.kimi.com in your browser, then import: Vibe Bar keeps the kimi-auth and kimi-refresh values (Chrome stores them in localStorage, which the importer also reads). Kimi publishes no API key for Coding Plan usage."
+        case .mimo:
+            return "Sign in at platform.xiaomimimo.com; Vibe Bar keeps userId, api-platform_slh, api-platform_ph and api-platform_serviceToken. There is no API key for Token Plan usage."
+        case .iflytek:
+            return "Sign in at maas.xfyun.cn with the account that owns the Coding Plan. The usage API checks HttpOnly tickets, so the whole maas.xfyun.cn / passport.xfyun.cn jar is kept rather than a few named cookies. No API key exposes this usage."
+        case .tencentHunyuan:
+            return "Sign in at console.cloud.tencent.com. The usage call needs the console's skey and uin cookies, and skey expires within hours — expect to refresh the session more often than other providers. No API key exposes Coding Plan usage."
+        case .tencentTokenPlan:
+            return "Same Tencent Cloud login as the Coding Plan card, a different subscription. It needs the same skey and uin console cookies, and there is no API key for Token Plan usage."
+        case .volcengine:
+            return "Coding Plan is read from a Volcengine console session (Sign in via Web, or paste the console.volcengine.com Cookie header) and the header must include csrfToken, which only appears once the Ark console has been opened in that browser. There is no API key for it. The Agent Plan is a separate subscription with a separate credential — set it up on the Volcengine Agent Plan card."
+        case .volcengineAgentPlan:
+            return "Agent Plan is read through Volcengine's signed OpenAPI, so it needs an Access Key pair (Console → Access Control (访问控制) → API Access Key) — not the sk-… Ark inference key, and not a console login. The Coding Plan is a separate subscription read from console cookies — set it up on the Volcengine Coding Plan card."
+        case .baiduQianfan:
+            return "Sign in at console.bce.baidu.com with the Baidu Cloud account that owns the Coding Plan; Vibe Bar keeps the BCE console jar. There is no API key for this usage endpoint."
+        case .openCodeGo:
+            return "Sign in at opencode.ai in your browser, then import: Vibe Bar keeps the __Host-auth (or auth) cookie. There is no API key for Go usage."
+        case .kilo:
+            return "The key comes from app.kilo.ai → API Keys and is optional — `kilo login` writes an auth file Vibe Bar reads instead."
+        case .kiro:
+            return "Kiro has neither a key to paste nor a cookie to import: Vibe Bar shells out to the locally installed kiro-cli. Install it from kiro.dev, run `kiro-cli login` in Terminal, then Probe."
+        case .ollama:
+            return "Ollama Cloud usage is only exposed to a signed-in web session — there is no API key for it. Sign in at ollama.com, then import; Vibe Bar keeps the session (or next-auth.session-token) cookie."
+        case .openRouter:
+            return "The key comes from openrouter.ai → Keys and only needs to read credits. Set the API URL when you route OpenRouter through a proxy."
+        case .warp:
+            return "The key is minted inside Warp itself: Warp → Settings → AI → API Keys."
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
+            return nil
         }
     }
 }
@@ -420,6 +539,7 @@ struct ApiKeyField: View {
     @State private var draft: String = ""
     @State private var hasStored: Bool = false
     @State private var saveError: String?
+    @State private var saveWarning: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -448,6 +568,13 @@ struct ApiKeyField: View {
                 Text(saveError)
                     .font(.caption2)
                     .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let saveWarning {
+                Text(saveWarning)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .onAppear { hasStored = MiscCredentialStore.hasValue(tool: tool, kind: .apiKey, instanceID: instanceID) }
@@ -456,9 +583,19 @@ struct ApiKeyField: View {
     private func save() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Shape-check before writing: a key that is silently the wrong kind
+        // used to be stored, shown as saved, and only fail later on a
+        // different screen.
+        let verdict = MiscCredentialFieldRules.check(tool: tool, kind: .apiKey, value: trimmed)
+        guard verdict.allowsSave else {
+            saveWarning = nil
+            saveError = verdict.message
+            return
+        }
         let ok = MiscCredentialStore.writeString(trimmed, tool: tool, kind: .apiKey, instanceID: instanceID)
         if ok {
             saveError = nil
+            saveWarning = verdict.message
             hasStored = true
             draft = ""
             triggerRefresh()
@@ -470,6 +607,8 @@ struct ApiKeyField: View {
     private func clear() {
         MiscCredentialStore.delete(tool: tool, kind: .apiKey, instanceID: instanceID)
         hasStored = false
+        saveError = nil
+        saveWarning = nil
         triggerRefresh()
     }
 
@@ -494,6 +633,7 @@ struct AkSkField: View {
     @State private var skDraft: String = ""
     @State private var hasStored: Bool = false
     @State private var saveError: String?
+    @State private var saveWarning: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -524,6 +664,13 @@ struct AkSkField: View {
                 Text(saveError)
                     .font(.caption2)
                     .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let saveWarning {
+                Text(saveWarning)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .onAppear {
@@ -536,10 +683,20 @@ struct AkSkField: View {
         let ak = akDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         let sk = skDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !ak.isEmpty, !sk.isEmpty else { return }
+        // Pasting the `sk-…` Ark inference key here is the single most
+        // common Agent Plan setup mistake, and it used to look like a
+        // success until the card came back with an auth error.
+        let verdict = MiscCredentialFieldRules.check(tool: tool, kind: .accessKeyID, value: ak)
+        guard verdict.allowsSave else {
+            saveWarning = nil
+            saveError = verdict.message
+            return
+        }
         let savedAK = MiscCredentialStore.writeString(ak, tool: tool, kind: .accessKeyID, instanceID: instanceID)
         let savedSK = MiscCredentialStore.writeString(sk, tool: tool, kind: .secretAccessKey, instanceID: instanceID)
         if savedAK && savedSK {
             saveError = nil
+            saveWarning = verdict.message
             hasStored = true
             akDraft = ""
             skDraft = ""
@@ -553,6 +710,8 @@ struct AkSkField: View {
         MiscCredentialStore.delete(tool: tool, kind: .accessKeyID, instanceID: instanceID)
         MiscCredentialStore.delete(tool: tool, kind: .secretAccessKey, instanceID: instanceID)
         hasStored = false
+        saveError = nil
+        saveWarning = nil
         triggerRefresh()
     }
 
@@ -687,37 +846,6 @@ struct CopilotDeviceLoginRow: View {
     }
 }
 
-/// AntiGravity has no remote credential — it talks to a locally
-/// running language server. The settings row is a tiny status
-/// indicator + manual refresh; the real action happens on the misc
-/// card itself.
-struct AntigravityStatusRow: View {
-    let instanceID: String
-
-    @EnvironmentObject var environment: AppEnvironment
-    @EnvironmentObject var quotaService: QuotaService
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "info.circle")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-            Text("Reads the locally running language_server_macos process. Open AntiGravity, then refresh.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            Spacer(minLength: 4)
-            Button("Probe", action: probe)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-        }
-    }
-
-    private func probe() {
-        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
-        Task { _ = await quotaService.refresh(account) }
-    }
-}
-
 /// Kiro is local-CLI only. The row mirrors AntiGravity's probe style
 /// but points users at the login command that creates the usable
 /// session.
@@ -767,6 +895,27 @@ struct CookieSourceControls: View {
     @State private var slots: [MiscCookieSlot] = []
     @State private var manualDraft: String = ""
     @State private var importStatus: String?
+    /// Set when the last import found nothing because macOS Keychain
+    /// access for a browser had been declined. Carries its own row with a
+    /// "Retry now" button, because the fix is a gate reset rather than
+    /// anything the user can do in the browser.
+    @State private var keychainCooldown: KeychainCooldownNotice?
+
+    struct KeychainCooldownNotice: Equatable {
+        let browser: String
+        let until: Date
+
+        var message: String {
+            "macOS Keychain access for \(browser) was declined. Vibe Bar will not ask again until \(Self.formatter.string(from: until))."
+        }
+
+        private static let formatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateStyle = .none
+            f.timeStyle = .short
+            return f
+        }()
+    }
 
     /// Which cookies to look for. Comes from `MiscCookieSpecCatalog`
     /// rather than the caller so this row and the all-providers batch
@@ -800,13 +949,14 @@ struct CookieSourceControls: View {
                     }
                 }
             }
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
                 Button("Import from browser", action: importNow)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                Text("Adds or refreshes the first signed-in browser profile found. Existing profiles stay stacked.")
+                Text("Adds or refreshes the first signed-in browser profile found; profiles already imported stay stacked, and this provider's quota is the average across every slot listed above. macOS may ask for your login-keychain password once per Chromium-family browser.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 6) {
                 SecureField(manualPrompt, text: $manualDraft)
@@ -814,10 +964,25 @@ struct CookieSourceControls: View {
                 Button("Add", action: saveManual)
                     .disabled(manualDraft.isEmpty)
             }
+            if let keychainCooldown {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "lock.slash")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Text(keychainCooldown.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Retry now", action: resetCooldownAndRetry)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+            }
             if let importStatus {
                 Text(importStatus)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .onAppear(perform: reloadSlots)
@@ -849,19 +1014,45 @@ struct CookieSourceControls: View {
     private func importNow() {
         guard let snapshotSpec = spec else { return }
         importStatus = "Importing…"
+        keychainCooldown = nil
         let snapshotInstanceID = instanceID
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = MiscCookieResolver.appendBrowserImport(for: snapshotSpec, instanceID: snapshotInstanceID)
+            let result = MiscCookieResolver.appendBrowserImportOutcome(
+                for: snapshotSpec,
+                instanceID: snapshotInstanceID
+            )
             DispatchQueue.main.async {
-                if let result {
-                    importStatus = "Imported from \(result.sourceLabel)."
-                    reloadSlots()
-                    triggerRefresh()
-                } else {
-                    importStatus = "No cookies found. Sign in at the provider in your browser, then retry."
-                }
+                apply(result)
             }
         }
+    }
+
+    private func apply(_ result: MiscCookieResolver.BatchImportOutcome.Result) {
+        switch result {
+        case .imported(let sourceLabel):
+            keychainCooldown = nil
+            importStatus = "Imported from \(sourceLabel)."
+            reloadSlots()
+            triggerRefresh()
+        case .noSessionFound:
+            keychainCooldown = nil
+            importStatus = "No cookies found. Sign in at the provider in your browser, then retry."
+        case let .keychainCooldown(browser, until):
+            importStatus = nil
+            keychainCooldown = KeychainCooldownNotice(browser: browser, until: until)
+        case .cookiesDisabled:
+            keychainCooldown = nil
+            importStatus = "Cookie sources are turned off for this provider in settings.json."
+        case .saveFailed:
+            keychainCooldown = nil
+            importStatus = "Found a session, but could not save it to Keychain."
+        }
+    }
+
+    private func resetCooldownAndRetry() {
+        BrowserCookieAccessGate.reset()
+        keychainCooldown = nil
+        importNow()
     }
 
     private func saveManual() {
@@ -869,6 +1060,13 @@ struct CookieSourceControls: View {
         guard !trimmed.isEmpty else { return }
         guard let normalised = normalizedManualCookie(from: trimmed), !normalised.isEmpty else {
             importStatus = missingCookieMessage
+            return
+        }
+        // Providers that ship the whole jar can't lean on `requiredNames`
+        // to reject a useless paste, so check the one cookie their adapter
+        // actually reads out of the header before storing it.
+        if let rejection = MiscManualCookieRules.rejectionMessage(for: tool, header: normalised) {
+            importStatus = rejection
             return
         }
         let slot = MiscCookieSlot(
@@ -927,9 +1125,13 @@ struct CookieSourceControls: View {
 
     private var missingCookieMessage: String {
         guard let spec, !spec.requiredNames.isEmpty else {
-            return "No usable cookie found in pasted text."
+            let names = MiscManualCookieRules.requiredCookieNames(for: tool)
+            if !names.isEmpty {
+                return "No \(names.joined(separator: " or ")) cookie found in the pasted text — copy the whole Cookie header from the provider's console tab."
+            }
+            return "No usable cookie found in the pasted text — copy the whole Cookie header from the provider's console tab."
         }
-        return "No \(spec.requiredNames.sorted().joined(separator: ", ")) cookie found in pasted text."
+        return "No \(spec.requiredNames.sorted().joined(separator: ", ")) cookie found in the pasted text."
     }
 
     private func triggerRefresh() {
@@ -953,6 +1155,20 @@ private struct CookieSlotRow: View {
             Text(slot.sourceLabel)
                 .font(.caption)
                 .foregroundStyle(.primary)
+            // Where this slot's header came from. That is the slot state
+            // Settings actually has: per-slot quota outcomes are merged by
+            // `MiscQuotaAggregator` before they reach any store, so a
+            // per-slot health badge would have to be invented here.
+            Text(originLabel)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.primary.opacity(0.07))
+                )
+                .help(originHelp)
             Spacer(minLength: 4)
             Text(Self.dateFormatter.string(from: slot.importedAt))
                 .font(.caption2)
@@ -976,6 +1192,25 @@ private struct CookieSlotRow: View {
         case .manual:         return "doc.on.clipboard"
         case .browserImport:  return "safari"
         case .autoRefresh:    return "arrow.clockwise.circle"
+        }
+    }
+
+    private var originLabel: String {
+        switch slot.origin {
+        case .manual:         return "Pasted"
+        case .browserImport:  return "Browser"
+        case .autoRefresh:    return "Auto-refreshed"
+        }
+    }
+
+    private var originHelp: String {
+        switch slot.origin {
+        case .manual:
+            return "Pasted by hand. Auto re-import never overwrites this slot."
+        case .browserImport:
+            return "Imported from this browser profile. \"Import from browser\" refreshes it in place."
+        case .autoRefresh:
+            return "Re-read from the browser automatically after the stored header stopped working."
         }
     }
 
@@ -1068,19 +1303,23 @@ struct TencentTokenPlanVariantPicker: View {
     }
 }
 
-/// Z.ai has separate international and mainland China quota hosts.
+/// Z.ai has separate international and mainland China quota hosts, and a
+/// key issued on one returns 401 on the other — indistinguishable from a
+/// bad key. "Auto" lets the adapter try the second host before giving up.
 struct ZaiRegionPicker: View {
     let instanceID: String
 
     @EnvironmentObject var settingsStore: SettingsStore
 
     enum Choice: String, CaseIterable, Identifiable {
+        case auto = ""
         case global
         case bigmodelCN = "bigmodel-cn"
 
         var id: String { rawValue }
         var label: String {
             switch self {
+            case .auto:       return "Auto (try both)"
             case .global:     return "Global (api.z.ai)"
             case .bigmodelCN: return "China mainland (open.bigmodel.cn)"
             }
@@ -1099,12 +1338,12 @@ struct ZaiRegionPicker: View {
     private var choiceBinding: Binding<Choice> {
         Binding(
             get: {
-                let raw = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).region ?? Choice.global.rawValue
-                return Choice(rawValue: raw) ?? .global
+                let raw = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).region ?? ""
+                return Choice(rawValue: raw) ?? .auto
             },
             set: { newValue in
                 var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
-                current.region = newValue.rawValue
+                current.region = newValue == .auto ? nil : newValue.rawValue
                 settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
             }
         )

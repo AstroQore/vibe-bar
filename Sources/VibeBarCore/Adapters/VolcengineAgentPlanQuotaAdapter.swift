@@ -175,7 +175,10 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
         }
         guard http.statusCode == 200 else {
             if http.statusCode == 401 || http.statusCode == 403 {
-                throw QuotaError.needsLogin
+                // This card has no login of its own — it is signed with an
+                // Access Key pair — so "Needs re-login" pointed at a
+                // control that does not exist. Name the field instead.
+                throw QuotaError.credentialRejected(VolcengineAgentPlanQuotaAdapter.rejectedKeyMessage)
             }
             if http.statusCode == 429 {
                 throw QuotaError.rateLimited
@@ -190,6 +193,18 @@ public struct VolcengineAgentPlanQuotaAdapter: QuotaAdapter {
     // OpenAPI gateway — NOT the Ark inference host
     // `ark.cn-beijing.volces.com`, which rejects these management actions
     // with HTTP 401. Service `ark`, region `cn-beijing`.
+    /// Shown whenever Volcengine refuses the signature. Both the HTTP
+    /// status path and the `ResponseMetadata.Error` path use it so the card
+    /// says the same thing however the rejection arrives.
+    static let rejectedKeyMessage =
+        "Key rejected — check that the Access Key is current and has Ark read access. Agent Plan needs an Access Key pair from Access Control (访问控制) → API Access Key, not the sk-… Ark inference key."
+
+    /// Shown when the signed call succeeds but the account carries no
+    /// Agent Plan windows — the normal outcome of setting this card up on
+    /// a Coding Plan account.
+    static let noAgentPlanMessage =
+        "This Volcengine account has no Agent Plan subscription. If you bought the Coding Plan, set up the Volcengine Coding Plan card instead."
+
     private static let openAPIHost = "open.volcengineapi.com"
     private static let region = "cn-beijing"
     private static let service = "ark"
@@ -223,7 +238,9 @@ enum VolcengineAgentPlanResponseParser {
             let code = err.code?.lowercased() ?? ""
             let message = err.message?.trimmedNonEmpty ?? "code \(err.code ?? "?")"
             if isAuthCode(code) || message.lowercased().contains("login") {
-                throw QuotaError.needsLogin
+                throw QuotaError.credentialRejected(
+                    VolcengineAgentPlanQuotaAdapter.rejectedKeyMessage
+                )
             }
             if code.contains("requestlimit") || code.contains("ratelimit") {
                 throw QuotaError.rateLimited
@@ -232,7 +249,9 @@ enum VolcengineAgentPlanResponseParser {
         }
 
         guard let result = envelope.result else {
-            throw QuotaError.parseFailure("Volcengine Agent Plan response had no Result block.")
+            throw QuotaError.parseFailure(
+                VolcengineAgentPlanQuotaAdapter.noAgentPlanMessage
+            )
         }
 
         // The console shows 5-hour / weekly / monthly; `AFPDaily` is
@@ -249,7 +268,9 @@ enum VolcengineAgentPlanResponseParser {
             buckets.append(bucket)
         }
         guard !buckets.isEmpty else {
-            throw QuotaError.parseFailure("Volcengine Agent Plan response had no usable AFP windows.")
+            throw QuotaError.parseFailure(
+                VolcengineAgentPlanQuotaAdapter.noAgentPlanMessage
+            )
         }
 
         return UsageSnapshot(buckets: buckets, planName: planName(from: result.planType))

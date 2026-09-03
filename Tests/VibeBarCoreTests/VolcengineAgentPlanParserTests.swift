@@ -80,15 +80,39 @@ final class VolcengineAgentPlanParserTests: XCTestCase {
         XCTAssertEqual(snap.buckets[0].usedPercent, 0, accuracy: 0.0001)
     }
 
-    func testInvalidStateMapsToNeedsLogin() {
+    /// This card is signed with an Access Key pair and has no login of its
+    /// own, so an auth-shaped failure has to name the key, not a re-login
+    /// the user cannot perform here.
+    func testInvalidStateMapsToCredentialRejected() {
         let json = """
         {"ResponseMetadata": {"Error": {"Code": "InvalidState", "Message": "登录态已更新"}}}
         """
         XCTAssertThrowsError(try VolcengineAgentPlanResponseParser.parseUsage(data: Data(json.utf8))) { error in
-            guard let qe = error as? QuotaError, case .needsLogin = qe else {
-                XCTFail("Expected needsLogin, got \(error)")
+            guard let qe = error as? QuotaError, case .credentialRejected(let message) = qe else {
+                XCTFail("Expected credentialRejected, got \(error)")
                 return
             }
+            XCTAssertTrue(qe.isCredentialState)
+            XCTAssertTrue(message.contains("Access Key"))
+            XCTAssertEqual(qe.userFacingMessage, message)
+        }
+    }
+
+    /// A 200 with no Agent Plan windows is what a Coding-Plan-only account
+    /// gets, so the message has to point at the other card instead of
+    /// blaming the response shape.
+    func testMissingWindowsPointsAtTheCodingPlanCard() {
+        let json = """
+        {"Result": {"PlanType": "small"}}
+        """
+        XCTAssertThrowsError(try VolcengineAgentPlanResponseParser.parseUsage(data: Data(json.utf8))) { error in
+            guard let qe = error as? QuotaError, case .parseFailure(let message) = qe else {
+                XCTFail("Expected parseFailure, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("no Agent Plan subscription"))
+            XCTAssertTrue(message.contains("Volcengine Coding Plan card"))
+            XCTAssertEqual(qe.userFacingMessage, message)
         }
     }
 

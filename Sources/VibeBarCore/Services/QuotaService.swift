@@ -219,7 +219,7 @@ public final class QuotaService: ObservableObject {
             store(success: quota)
             return quota
         case let .completed(.failure(qe)):
-            SafeLog.net("\(account.tool.rawValue) refresh failed: \(qe.userFacingMessage)")
+            SafeLog.net("\(account.tool.rawValue) refresh failed: \(qe.logSafeMessage)")
             store(error: qe, for: account)
             return cachedOrEmpty(for: account, error: qe)
         case .timedOut:

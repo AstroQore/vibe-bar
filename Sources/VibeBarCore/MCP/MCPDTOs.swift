@@ -212,7 +212,7 @@ extension MCPQuotaAccountDTO {
             lastUpdated: lastUpdated,
             lastAttempted: lastAttempted,
             inFlight: inFlight,
-            error: error?.userFacingMessage
+            error: error?.agentFacingMessage
         )
     }
 }
