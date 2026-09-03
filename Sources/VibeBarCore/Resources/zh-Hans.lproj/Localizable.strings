@@ -1079,6 +1079,102 @@
 /* Card title on the Overview's service-status tile row */
 "status.overview.title" = "状态";
 
+/* Tab over the Usage Stats breakdown table: one row per model. */
+"usage.breakdown.models" = "模型";
+
+/* Tab over the Usage Stats breakdown table: one row per time bucket. */
+"usage.breakdown.periods" = "周期";
+
+/* Tab over the Usage Stats breakdown table: one row per project directory. */
+"usage.breakdown.projects" = "项目";
+
+/* Tab over the Usage Stats breakdown table: one row per L1 company. */
+"usage.breakdown.providers" = "厂商";
+
+/* Tab over the Usage Stats breakdown table: one row per request. The all-caps hero metric of the same word is usage.hero.requests. */
+"usage.breakdown.requests" = "请求";
+
+/* Chip that puts every harness into the Usage Stats query; 'harness' is the usage-axis unit and stays as spelled. */
+"usage.filters.allHarnesses" = "全部 harness";
+
+/* Tooltip on the All harnesses chip while the selection is partial or empty — clicking it selects everything. */
+"usage.filters.allHarnessesHelpEvery" = "点按可选中全部 harness";
+
+/* Tooltip on the All harnesses chip while every harness is in the query — clicking it empties the selection. */
+"usage.filters.allHarnessesHelpNone" = "点按可清空 harness 选择";
+
+/* Screen-reader label for the All harnesses chip while the selection is partial or empty. */
+"usage.filters.allHarnessesSelectEvery" = "显示全部 harness";
+
+/* Screen-reader label for the All harnesses chip while every harness is in the query. */
+"usage.filters.allHarnessesSelectNone" = "不选择任何 harness";
+
+/* Menu item that clears the model filter on the Usage Stats page. Unrelated to the quota group of the same name, which is quota.group.allModels. */
+"usage.filters.allModels" = "全部模型";
+
+/* Caption on the auto-refresh pill; the call site uppercases it. */
+"usage.filters.autoMenu" = "自动";
+
+/* Screen-reader label for the auto-refresh menu button. */
+"usage.filters.autoMenuLabel" = "选择页面重新查询的频率";
+
+/* Picker label inside the auto-refresh menu. */
+"usage.filters.autoRefresh" = "自动刷新";
+
+/* Tooltip on the Clear button in the Usage Stats filter bar. */
+"usage.filters.clearHelp" = "清除 harness、厂商与模型筛选";
+
+/* Screen-reader label for a company section chip; company is an L1 company name and is never translated. */
+"usage.filters.companyHarnesses" = "%1$@，全部 harness";
+
+/* Tooltip on a company section chip, listing the harnesses it toggles. Both arguments are names and stay as spelled. */
+"usage.filters.companyHelp" = "%1$@ · %2$@";
+
+/* Date picker label for the start of a custom range. */
+"usage.filters.customRangeFrom" = "开始";
+
+/* Footnote in the custom date-range popover. */
+"usage.filters.customRangeHint" = "小时、日或周的分桶粒度在图表工具栏中选择。";
+
+/* All-caps heading of the custom date-range popover. English sets it in caps by the copy; Chinese has no case and relies on weight and colour. */
+"usage.filters.customRangeTitle" = "自定义区间";
+
+/* Date picker label for the end of a custom range. */
+"usage.filters.customRangeTo" = "结束";
+
+/* Menu item that opens the custom date-range editor. */
+"usage.filters.editCustomRange" = "编辑自定义区间…";
+
+/* Tooltip on a harness chip. First line names the chip (company and harness names are never translated), second line explains the click and the ⌥-click. */
+"usage.filters.harnessHelp" = "%1$@ · %2$@\n点按切换 · ⌥ 点按单独查看";
+
+/* Caption on the model filter pill; the call site uppercases it. */
+"usage.filters.modelsMenu" = "模型";
+
+/* Screen-reader label for the model filter menu button. */
+"usage.filters.modelsMenuLabel" = "选择要纳入的模型";
+
+/* Placeholder inside the model filter menu when the selected range recorded no model. */
+"usage.filters.noModelsInRange" = "所选范围内没有模型";
+
+/* Date-range preset: the last 14 local calendar days. The 7- and 30-day presets reuse cost.timeframe.weekShort / monthShort. */
+"usage.filters.range14d" = "14 天";
+
+/* Date-range preset: a rolling 24-hour window ending now. */
+"usage.filters.range24h" = "24 小时";
+
+/* Date-range preset: the hand-picked start and end. */
+"usage.filters.rangeCustom" = "自定义";
+
+/* Screen-reader label for the date-range menu button. */
+"usage.filters.rangeMenu" = "选择日期区间";
+
+/* Date-range pill value: two already-formatted dates around an en dash. */
+"usage.filters.rangeSpan" = "%1$@ – %2$@";
+
+/* A polling interval, read both as an option inside the auto-refresh menu and as the value on the pill that opens it. The off state is common.off. */
+"usage.filters.refreshInterval" = "%1$lld 秒";
+
 /* Caption saying what the mix is weighted by */
 "usage.harnessMix.byRealTokens" = "按实际 token 计";
 
@@ -1127,6 +1223,54 @@
 /* Empty state when the local per-request ledger could not be opened */
 "usage.ledgerUnavailable.title" = "用量账本不可用";
 
+/* Unit under the total in the middle of a donut card. */
+"usage.mix.donutUnit" = "token";
+
+/* Caption under the Harness Mix donut title. */
+"usage.mix.harness.subtitle" = "请求的运行位置";
+
+/* Donut card on the Usage Stats distribution wall: tokens by harness. Title-case variant of the all-caps section label usage.harnessMix.title. */
+"usage.mix.harness.title" = "Harness 分布";
+
+/* Empty state inside the Model Mix donut card. */
+"usage.mix.model.empty" = "所选范围内没有模型流量";
+
+/* Caption under the Model Mix donut title. */
+"usage.mix.model.subtitle" = "规范显示名";
+
+/* Donut card on the Usage Stats distribution wall: tokens by model. */
+"usage.mix.model.title" = "模型分布";
+
+/* Donut slice that collapses everything below the top five. */
+"usage.mix.other" = "其他";
+
+/* Empty state inside the Project Mix donut card; Codex and Claude are harness names and stay as spelled. */
+"usage.mix.project.empty" = "重新扫描 Codex 或 Claude 后才会显示项目归属";
+
+/* Caption under the Project Mix donut title; Codex and Claude are harness names and stay as spelled. */
+"usage.mix.project.subtitle" = "Codex + Claude 工作目录 · 最多 30 天明细";
+
+/* Donut card on the Usage Stats distribution wall: tokens by project directory. */
+"usage.mix.project.title" = "项目分布";
+
+/* Empty state inside the Provider Mix donut card. */
+"usage.mix.provider.empty" = "所选范围内没有厂商流量";
+
+/* Caption under the Provider Mix donut title. */
+"usage.mix.provider.subtitle" = "计费公司";
+
+/* Donut card on the Usage Stats distribution wall: tokens by L1 company. */
+"usage.mix.provider.title" = "厂商分布";
+
+/* Empty state inside the Token Flow donut card. */
+"usage.mix.tokenFlow.empty" = "所选范围内没有 token 流量";
+
+/* Caption under the Token Flow donut title. */
+"usage.mix.tokenFlow.subtitle" = "输入 · 缓存 · 输出";
+
+/* Donut card on the Usage Stats distribution wall: tokens by kind. */
+"usage.mix.tokenFlow.title" = "Token 流向";
+
 /* Empty state body explaining the All chip */
 "usage.noHarnessSelected.detail" = "「全部 harness」是一个开关：再点一次即可把所有 harness 放回查询。";
 
@@ -1135,6 +1279,96 @@
 
 /* Footer figure; count arrives already grouped by the number formatter */
 "usage.requestCount" = "%1$@ 条请求";
+
+/* Second line of a request row's input cell: cache read and cache write, both already formatted, e.g. 12.3k. */
+"usage.table.cacheReadWrite" = "读 %1$@ · 写 %2$@";
+
+/* Models table column header, average cost per request; the call site uppercases it. */
+"usage.table.column.average" = "每请求均价";
+
+/* Periods table column header, cache read plus cache write; the call site uppercases it. */
+"usage.table.column.cache" = "缓存";
+
+/* Periods table leading column header when the series is bucketed by day; the call site uppercases it. */
+"usage.table.column.day" = "日";
+
+/* Requests table column header; the call site uppercases it. 'Harness' is the usage-axis unit and stays as spelled. */
+"usage.table.column.harness" = "Harness";
+
+/* Periods table leading column header when the series is bucketed by hour; the call site uppercases it. */
+"usage.table.column.hour" = "小时";
+
+/* Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.input. */
+"usage.table.column.input" = "输入";
+
+/* Requests and Models table column header; the call site uppercases it. */
+"usage.table.column.model" = "模型";
+
+/* Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.output. */
+"usage.table.column.output" = "输出";
+
+/* Providers and Projects table column header; the call site uppercases it. */
+"usage.table.column.provider" = "厂商";
+
+/* Providers, Projects and Models table column header; the call site uppercases it. */
+"usage.table.column.requests" = "请求数";
+
+/* Requests table column header, the service tier a request was billed at; the call site uppercases it. */
+"usage.table.column.tier" = "档位";
+
+/* Requests table column header; the call site uppercases it. */
+"usage.table.column.time" = "时间";
+
+/* Periods table leading column header when the series is bucketed by week; the cell holds the week's first day. */
+"usage.table.column.weekOf" = "周起始";
+
+/* Empty state in place of the Models table. */
+"usage.table.emptyModels" = "所选范围内没有模型合计";
+
+/* Empty state in place of the Periods table. */
+"usage.table.emptyPeriods" = "所选范围内没有活跃周期";
+
+/* Empty state in place of the Projects table; Codex and Claude are harness names and stay as spelled. */
+"usage.table.emptyProjects" = "所选范围内没有归属到项目的 Codex 或 Claude 用量";
+
+/* Empty state in place of the Providers table. */
+"usage.table.emptyProviders" = "所选范围内没有厂商合计";
+
+/* Empty state in place of the Requests table. */
+"usage.table.emptyRequests" = "所选范围内没有请求级记录";
+
+/* Tooltip on a request row's harness cell; both arguments are names and are never translated. */
+"usage.table.harnessHelp" = "%1$@ · %2$@";
+
+/* Tooltip on a request row's input cell. One key rather than three: the three lines are one block and a translation may need to reorder them. All three counts arrive formatted. */
+"usage.table.inputHelp" = "新增输入：%1$@\n缓存读取：%2$@\n缓存写入：%3$@";
+
+/* Button that loads the next page of request rows. */
+"usage.table.loadMore" = "加载更多（剩余 %1$lld 条）";
+
+/* Button label and spinner label while another page of request rows is loading. */
+"usage.table.loadingMore" = "正在加载更多请求…";
+
+/* Screen-reader label for a Periods row; every argument arrives already formatted. */
+"usage.table.periodRow" = "%1$@，%2$@，%3$@";
+
+/* Screen-reader label for a Requests row; time, model, tokens and cost arrive formatted and harness is a name. */
+"usage.table.requestRow" = "%1$@，%2$@，%3$@，%4$@，%5$@";
+
+/* Screen-reader label for the Requests table's scroll area. */
+"usage.table.requestsLabel" = "请求用量表格";
+
+/* Row count over the Requests table while more pages remain. */
+"usage.table.requestsLoaded" = "已加载 %1$lld / %2$lld 条请求";
+
+/* Button under a clamped Periods table that reveals the next page of rows. */
+"usage.table.showMorePeriods" = "再显示 %1$lld 个，共 %2$lld 个周期";
+
+/* Cost cell of a request no price could be resolved for. */
+"usage.table.unpriced" = "未计价";
+
+/* Tooltip on the cost cell of a request no price could be resolved for. */
+"usage.table.unpricedHelp" = "该请求没有可用价格";
 
 /* Token composition legend: cache read tokens */
 "usage.tokens.cacheRead" = "缓存读取";
@@ -1147,6 +1381,78 @@
 
 /* Token composition legend: output tokens */
 "usage.tokens.output" = "输出";
+
+/* The token metric itself: the chart's Tokens toggle and the TOKENS table column. */
+"usage.tokens.title" = "Token";
+
+/* Subtitle under the trend chart title when the series is bucketed by local calendar day. */
+"usage.trend.bucketDay" = "按本地日历日";
+
+/* Subtitle under the trend chart title when the series is bucketed by hour. */
+"usage.trend.bucketHour" = "按小时分桶";
+
+/* Subtitle under the trend chart title when the series is bucketed by local calendar week. */
+"usage.trend.bucketWeek" = "按本地日历周";
+
+/* Screen-reader label for the trend chart in cost mode. */
+"usage.trend.costChartLabel" = "花费随时间变化";
+
+/* Empty state in place of the trend chart. */
+"usage.trend.empty" = "所选范围内没有用量记录";
+
+/* Button that widens the chart back to the whole selected window. */
+"usage.trend.fit" = "全览";
+
+/* Tooltip on the button that widens the chart back to the whole selected window. */
+"usage.trend.fitHelp" = "显示完整的所选区间";
+
+/* Picker label inside the chart granularity menu. */
+"usage.trend.granularity" = "粒度";
+
+/* Chart granularity option: let the range pick the bucket. */
+"usage.trend.granularityAuto" = "自动";
+
+/* Chart granularity option: one bucket per day. Unrelated to the quota window label quota.group.daily. */
+"usage.trend.granularityDaily" = "按日";
+
+/* Chart granularity option: one bucket per hour. */
+"usage.trend.granularityHourly" = "按小时";
+
+/* Screen-reader label for the chart granularity menu button. */
+"usage.trend.granularityLabel" = "选择图表粒度";
+
+/* Chart granularity option: one bucket per week. Unrelated to the quota window label quota.group.weekly. */
+"usage.trend.granularityWeekly" = "按周";
+
+/* Tooltip on a lit provider legend chip; provider is an L1 company name and is never translated. */
+"usage.trend.hideProvider" = "隐藏 %1$@";
+
+/* Screen-reader description of the brush navigator under the trend chart. */
+"usage.trend.navigatorLabel" = "用量图表区间导航条";
+
+/* Tooltip on the chart's step-forward button. */
+"usage.trend.nextWindow" = "下一区间";
+
+/* Button that returns the chart to the window ending now. */
+"usage.trend.now" = "现在";
+
+/* Tooltip on the button that returns the chart to the window ending now. */
+"usage.trend.nowHelp" = "回到当前区间";
+
+/* Tooltip on the chart's step-backward button. */
+"usage.trend.previousWindow" = "上一区间";
+
+/* Footnote under the trend chart's brush navigator. */
+"usage.trend.scopeHint" = "拖动导航条手柄可聚焦此图表；筛选与表格仍按完整区间统计。";
+
+/* Tooltip on an unlit provider legend chip; provider is an L1 company name and is never translated. */
+"usage.trend.showProvider" = "显示 %1$@";
+
+/* All-caps card title over the Usage Stats trend chart. English sets it in caps by the copy; Chinese has no case and relies on weight and colour. */
+"usage.trend.title" = "用量趋势";
+
+/* Screen-reader label for the trend chart in token mode. */
+"usage.trend.tokensChartLabel" = "Token 用量随时间变化";
 
 /* Heatmap title on the Overview, covering every provider at once */
 "usage.whenYouUse.everything" = "你什么时候在用";

@@ -1079,6 +1079,102 @@
 /* Card title on the Overview's service-status tile row */
 "status.overview.title" = "Status";
 
+/* Tab over the Usage Stats breakdown table: one row per model. */
+"usage.breakdown.models" = "Models";
+
+/* Tab over the Usage Stats breakdown table: one row per time bucket. */
+"usage.breakdown.periods" = "Periods";
+
+/* Tab over the Usage Stats breakdown table: one row per project directory. */
+"usage.breakdown.projects" = "Projects";
+
+/* Tab over the Usage Stats breakdown table: one row per L1 company. */
+"usage.breakdown.providers" = "Providers";
+
+/* Tab over the Usage Stats breakdown table: one row per request. The all-caps hero metric of the same word is usage.hero.requests. */
+"usage.breakdown.requests" = "Requests";
+
+/* Chip that puts every harness into the Usage Stats query; 'harness' is the usage-axis unit and stays as spelled. */
+"usage.filters.allHarnesses" = "All harnesses";
+
+/* Tooltip on the All harnesses chip while the selection is partial or empty — clicking it selects everything. */
+"usage.filters.allHarnessesHelpEvery" = "Click to include every harness";
+
+/* Tooltip on the All harnesses chip while every harness is in the query — clicking it empties the selection. */
+"usage.filters.allHarnessesHelpNone" = "Click to select no harness";
+
+/* Screen-reader label for the All harnesses chip while the selection is partial or empty. */
+"usage.filters.allHarnessesSelectEvery" = "Show every harness";
+
+/* Screen-reader label for the All harnesses chip while every harness is in the query. */
+"usage.filters.allHarnessesSelectNone" = "Select no harness";
+
+/* Menu item that clears the model filter on the Usage Stats page. Unrelated to the quota group of the same name, which is quota.group.allModels. */
+"usage.filters.allModels" = "All models";
+
+/* Caption on the auto-refresh pill; the call site uppercases it. */
+"usage.filters.autoMenu" = "Auto";
+
+/* Screen-reader label for the auto-refresh menu button. */
+"usage.filters.autoMenuLabel" = "Choose how often the page re-queries";
+
+/* Picker label inside the auto-refresh menu. */
+"usage.filters.autoRefresh" = "Auto refresh";
+
+/* Tooltip on the Clear button in the Usage Stats filter bar. */
+"usage.filters.clearHelp" = "Clear harness, company, and model filters";
+
+/* Screen-reader label for a company section chip; company is an L1 company name and is never translated. */
+"usage.filters.companyHarnesses" = "%1$@, every harness";
+
+/* Tooltip on a company section chip, listing the harnesses it toggles. Both arguments are names and stay as spelled. */
+"usage.filters.companyHelp" = "%1$@ · %2$@";
+
+/* Date picker label for the start of a custom range. */
+"usage.filters.customRangeFrom" = "From";
+
+/* Footnote in the custom date-range popover. */
+"usage.filters.customRangeHint" = "Choose hourly, daily, or weekly buckets from the chart toolbar.";
+
+/* All-caps heading of the custom date-range popover. English sets it in caps by the copy; Chinese has no case and relies on weight and colour. */
+"usage.filters.customRangeTitle" = "CUSTOM RANGE";
+
+/* Date picker label for the end of a custom range. */
+"usage.filters.customRangeTo" = "To";
+
+/* Menu item that opens the custom date-range editor. */
+"usage.filters.editCustomRange" = "Edit custom range…";
+
+/* Tooltip on a harness chip. First line names the chip (company and harness names are never translated), second line explains the click and the ⌥-click. */
+"usage.filters.harnessHelp" = "%1$@ · %2$@\nClick to toggle · ⌥-click to solo";
+
+/* Caption on the model filter pill; the call site uppercases it. */
+"usage.filters.modelsMenu" = "Models";
+
+/* Screen-reader label for the model filter menu button. */
+"usage.filters.modelsMenuLabel" = "Choose which models to include";
+
+/* Placeholder inside the model filter menu when the selected range recorded no model. */
+"usage.filters.noModelsInRange" = "No models in range";
+
+/* Date-range preset: the last 14 local calendar days. The 7- and 30-day presets reuse cost.timeframe.weekShort / monthShort. */
+"usage.filters.range14d" = "14d";
+
+/* Date-range preset: a rolling 24-hour window ending now. */
+"usage.filters.range24h" = "24h";
+
+/* Date-range preset: the hand-picked start and end. */
+"usage.filters.rangeCustom" = "Custom";
+
+/* Screen-reader label for the date-range menu button. */
+"usage.filters.rangeMenu" = "Choose the date range";
+
+/* Date-range pill value: two already-formatted dates around an en dash. */
+"usage.filters.rangeSpan" = "%1$@ – %2$@";
+
+/* A polling interval, read both as an option inside the auto-refresh menu and as the value on the pill that opens it. The off state is common.off. */
+"usage.filters.refreshInterval" = "%1$llds";
+
 /* Caption saying what the mix is weighted by */
 "usage.harnessMix.byRealTokens" = "by real tokens";
 
@@ -1127,6 +1223,54 @@
 /* Empty state when the local per-request ledger could not be opened */
 "usage.ledgerUnavailable.title" = "Usage ledger unavailable";
 
+/* Unit under the total in the middle of a donut card. */
+"usage.mix.donutUnit" = "tokens";
+
+/* Caption under the Harness Mix donut title. */
+"usage.mix.harness.subtitle" = "where requests ran";
+
+/* Donut card on the Usage Stats distribution wall: tokens by harness. Title-case variant of the all-caps section label usage.harnessMix.title. */
+"usage.mix.harness.title" = "Harness Mix";
+
+/* Empty state inside the Model Mix donut card. */
+"usage.mix.model.empty" = "No model traffic in this range";
+
+/* Caption under the Model Mix donut title. */
+"usage.mix.model.subtitle" = "canonical display names";
+
+/* Donut card on the Usage Stats distribution wall: tokens by model. */
+"usage.mix.model.title" = "Model Mix";
+
+/* Donut slice that collapses everything below the top five. */
+"usage.mix.other" = "Other";
+
+/* Empty state inside the Project Mix donut card; Codex and Claude are harness names and stay as spelled. */
+"usage.mix.project.empty" = "Project attribution appears after a Codex or Claude rescan";
+
+/* Caption under the Project Mix donut title; Codex and Claude are harness names and stay as spelled. */
+"usage.mix.project.subtitle" = "Codex + Claude cwd · up to 30 d detail";
+
+/* Donut card on the Usage Stats distribution wall: tokens by project directory. */
+"usage.mix.project.title" = "Project Mix";
+
+/* Empty state inside the Provider Mix donut card. */
+"usage.mix.provider.empty" = "No provider traffic in this range";
+
+/* Caption under the Provider Mix donut title. */
+"usage.mix.provider.subtitle" = "billing companies";
+
+/* Donut card on the Usage Stats distribution wall: tokens by L1 company. */
+"usage.mix.provider.title" = "Provider Mix";
+
+/* Empty state inside the Token Flow donut card. */
+"usage.mix.tokenFlow.empty" = "No token traffic in this range";
+
+/* Caption under the Token Flow donut title. */
+"usage.mix.tokenFlow.subtitle" = "input · cache · output";
+
+/* Donut card on the Usage Stats distribution wall: tokens by kind. */
+"usage.mix.tokenFlow.title" = "Token Flow";
+
 /* Empty state body explaining the All chip */
 "usage.noHarnessSelected.detail" = "The All harnesses chip is a switch: click it again to put every harness back in the query.";
 
@@ -1135,6 +1279,96 @@
 
 /* Footer figure; count arrives already grouped by the number formatter */
 "usage.requestCount" = "%1$@ requests";
+
+/* Second line of a request row's input cell: cache read and cache write, both already formatted, e.g. 12.3k. */
+"usage.table.cacheReadWrite" = "R %1$@ · W %2$@";
+
+/* Models table column header, average cost per request; the call site uppercases it. */
+"usage.table.column.average" = "Avg/req";
+
+/* Periods table column header, cache read plus cache write; the call site uppercases it. */
+"usage.table.column.cache" = "Cache";
+
+/* Periods table leading column header when the series is bucketed by day; the call site uppercases it. */
+"usage.table.column.day" = "Day";
+
+/* Requests table column header; the call site uppercases it. 'Harness' is the usage-axis unit and stays as spelled. */
+"usage.table.column.harness" = "Harness";
+
+/* Periods table leading column header when the series is bucketed by hour; the call site uppercases it. */
+"usage.table.column.hour" = "Hour";
+
+/* Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.input. */
+"usage.table.column.input" = "Input";
+
+/* Requests and Models table column header; the call site uppercases it. */
+"usage.table.column.model" = "Model";
+
+/* Periods and Requests table column header; the call site uppercases it. The narrow legend form is usage.tokens.output. */
+"usage.table.column.output" = "Output";
+
+/* Providers and Projects table column header; the call site uppercases it. */
+"usage.table.column.provider" = "Provider";
+
+/* Providers, Projects and Models table column header; the call site uppercases it. */
+"usage.table.column.requests" = "Requests";
+
+/* Requests table column header, the service tier a request was billed at; the call site uppercases it. */
+"usage.table.column.tier" = "Tier";
+
+/* Requests table column header; the call site uppercases it. */
+"usage.table.column.time" = "Time";
+
+/* Periods table leading column header when the series is bucketed by week; the cell holds the week's first day. */
+"usage.table.column.weekOf" = "Week of";
+
+/* Empty state in place of the Models table. */
+"usage.table.emptyModels" = "No model totals in this range";
+
+/* Empty state in place of the Periods table. */
+"usage.table.emptyPeriods" = "No active periods in this range";
+
+/* Empty state in place of the Projects table; Codex and Claude are harness names and stay as spelled. */
+"usage.table.emptyProjects" = "No project-attributed Codex or Claude usage in this range";
+
+/* Empty state in place of the Providers table. */
+"usage.table.emptyProviders" = "No provider totals in this range";
+
+/* Empty state in place of the Requests table. */
+"usage.table.emptyRequests" = "No request-level rows in this range";
+
+/* Tooltip on a request row's harness cell; both arguments are names and are never translated. */
+"usage.table.harnessHelp" = "%1$@ · %2$@";
+
+/* Tooltip on a request row's input cell. One key rather than three: the three lines are one block and a translation may need to reorder them. All three counts arrive formatted. */
+"usage.table.inputHelp" = "Fresh input: %1$@\nCache read: %2$@\nCache write: %3$@";
+
+/* Button that loads the next page of request rows. */
+"usage.table.loadMore" = "Load more (%1$lld remaining)";
+
+/* Button label and spinner label while another page of request rows is loading. */
+"usage.table.loadingMore" = "Loading more requests…";
+
+/* Screen-reader label for a Periods row; every argument arrives already formatted. */
+"usage.table.periodRow" = "%1$@, %2$@, %3$@";
+
+/* Screen-reader label for a Requests row; time, model, tokens and cost arrive formatted and harness is a name. */
+"usage.table.requestRow" = "%1$@, %2$@, %3$@, %4$@, %5$@";
+
+/* Screen-reader label for the Requests table's scroll area. */
+"usage.table.requestsLabel" = "Request usage table";
+
+/* Row count over the Requests table while more pages remain. */
+"usage.table.requestsLoaded" = "%1$lld of %2$lld requests";
+
+/* Button under a clamped Periods table that reveals the next page of rows. */
+"usage.table.showMorePeriods" = "Show %1$lld more of %2$lld periods";
+
+/* Cost cell of a request no price could be resolved for. */
+"usage.table.unpriced" = "unpriced";
+
+/* Tooltip on the cost cell of a request no price could be resolved for. */
+"usage.table.unpricedHelp" = "No price was available for this request";
 
 /* Token composition legend: cache read tokens */
 "usage.tokens.cacheRead" = "Cache read";
@@ -1147,6 +1381,78 @@
 
 /* Token composition legend: output tokens */
 "usage.tokens.output" = "Out";
+
+/* The token metric itself: the chart's Tokens toggle and the TOKENS table column. */
+"usage.tokens.title" = "Tokens";
+
+/* Subtitle under the trend chart title when the series is bucketed by local calendar day. */
+"usage.trend.bucketDay" = "Local calendar days";
+
+/* Subtitle under the trend chart title when the series is bucketed by hour. */
+"usage.trend.bucketHour" = "Hourly buckets";
+
+/* Subtitle under the trend chart title when the series is bucketed by local calendar week. */
+"usage.trend.bucketWeek" = "Local calendar weeks";
+
+/* Screen-reader label for the trend chart in cost mode. */
+"usage.trend.costChartLabel" = "Cost over time";
+
+/* Empty state in place of the trend chart. */
+"usage.trend.empty" = "No usage recorded in this range";
+
+/* Button that widens the chart back to the whole selected window. */
+"usage.trend.fit" = "Fit";
+
+/* Tooltip on the button that widens the chart back to the whole selected window. */
+"usage.trend.fitHelp" = "Show the full selected window";
+
+/* Picker label inside the chart granularity menu. */
+"usage.trend.granularity" = "Granularity";
+
+/* Chart granularity option: let the range pick the bucket. */
+"usage.trend.granularityAuto" = "Auto";
+
+/* Chart granularity option: one bucket per day. Unrelated to the quota window label quota.group.daily. */
+"usage.trend.granularityDaily" = "Daily";
+
+/* Chart granularity option: one bucket per hour. */
+"usage.trend.granularityHourly" = "Hourly";
+
+/* Screen-reader label for the chart granularity menu button. */
+"usage.trend.granularityLabel" = "Choose chart granularity";
+
+/* Chart granularity option: one bucket per week. Unrelated to the quota window label quota.group.weekly. */
+"usage.trend.granularityWeekly" = "Weekly";
+
+/* Tooltip on a lit provider legend chip; provider is an L1 company name and is never translated. */
+"usage.trend.hideProvider" = "Hide %1$@";
+
+/* Screen-reader description of the brush navigator under the trend chart. */
+"usage.trend.navigatorLabel" = "Usage chart range navigator";
+
+/* Tooltip on the chart's step-forward button. */
+"usage.trend.nextWindow" = "Next window";
+
+/* Button that returns the chart to the window ending now. */
+"usage.trend.now" = "Now";
+
+/* Tooltip on the button that returns the chart to the window ending now. */
+"usage.trend.nowHelp" = "Return to current window";
+
+/* Tooltip on the chart's step-backward button. */
+"usage.trend.previousWindow" = "Previous window";
+
+/* Footnote under the trend chart's brush navigator. */
+"usage.trend.scopeHint" = "Drag the navigator handles to focus this chart; filters and tables keep the full window.";
+
+/* Tooltip on an unlit provider legend chip; provider is an L1 company name and is never translated. */
+"usage.trend.showProvider" = "Show %1$@";
+
+/* All-caps card title over the Usage Stats trend chart. English sets it in caps by the copy; Chinese has no case and relies on weight and colour. */
+"usage.trend.title" = "USAGE OVER TIME";
+
+/* Screen-reader label for the trend chart in token mode. */
+"usage.trend.tokensChartLabel" = "Token usage over time";
 
 /* Heatmap title on the Overview, covering every provider at once */
 "usage.whenYouUse.everything" = "When you use everything";

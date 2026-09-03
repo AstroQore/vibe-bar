@@ -163,6 +163,22 @@
 			<string>%1$lld components</string>
 		</dict>
 	</dict>
+	<key>usage.filters.modelsSelected</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 selected</string>
+			<key>other</key>
+			<string>%1$lld selected</string>
+		</dict>
+	</dict>
 	<key>usage.harnessMix.activeCount</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -193,6 +209,150 @@
 			<string>1 request</string>
 			<key>other</key>
 			<string>%1$lld requests</string>
+		</dict>
+	</dict>
+	<key>usage.mix.otherCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 more</string>
+			<key>other</key>
+			<string>%1$lld more</string>
+		</dict>
+	</dict>
+	<key>usage.table.activeDays</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 active day</string>
+			<key>other</key>
+			<string>%1$lld active days</string>
+		</dict>
+	</dict>
+	<key>usage.table.activeHours</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 active hour</string>
+			<key>other</key>
+			<string>%1$lld active hours</string>
+		</dict>
+	</dict>
+	<key>usage.table.activeWeeks</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 active week</string>
+			<key>other</key>
+			<string>%1$lld active weeks</string>
+		</dict>
+	</dict>
+	<key>usage.table.companyCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 company</string>
+			<key>other</key>
+			<string>%1$lld companies</string>
+		</dict>
+	</dict>
+	<key>usage.table.modelCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 model</string>
+			<key>other</key>
+			<string>%1$lld models</string>
+		</dict>
+	</dict>
+	<key>usage.table.projectCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@ · up to 30 d detail</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 project</string>
+			<key>other</key>
+			<string>%1$lld projects</string>
+		</dict>
+	</dict>
+	<key>usage.table.statRow</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$@, %2$#@requests@, %3$@, %4$@</string>
+		<key>requests</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 request</string>
+			<key>other</key>
+			<string>%2$lld requests</string>
+		</dict>
+	</dict>
+	<key>usage.trend.accessibilitySummary</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@, %2$@ tokens, %3$@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>1 provider</string>
+			<key>other</key>
+			<string>%1$lld providers</string>
 		</dict>
 	</dict>
 </dict>

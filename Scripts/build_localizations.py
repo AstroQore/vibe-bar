@@ -490,7 +490,13 @@ def render_swift(base: dict, base_args: dict) -> str:
         for key in by_scope[scope]:
             member = swift_identifier(swift_member(key))
             arguments = base_args[key]
-            preview = base[key]["value"].replace("*/", "* /")
+            # A value may legitimately contain a newline — a multi-line
+            # tooltip is one key, so that a translation can reorder its
+            # lines — and a raw one here would end the `///` and leave the
+            # rest of the sentence as invalid Swift.
+            preview = (
+                base[key]["value"].replace("*/", "* /").replace("\n", "\\n")
+            )
             lines.append(f"        /// `{key}` — {preview}")
             if not arguments:
                 lines.append(f"        public static var {member}: String {{")
