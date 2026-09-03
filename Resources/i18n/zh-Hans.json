@@ -672,7 +672,7 @@
     "value": "正在学习你的使用规律 · 约剩余 {remaining}%"
   },
   "quota.forecast.reset.surplus": {
-    "value": "大概率用不完 · 预计剩余 {remaining}%"
+    "value": "大概率有盈余 · 预计剩余 {remaining}%"
   },
   "quota.forecast.reset.watch": {
     "value": "可能不够用 · 预计剩余 {remaining}%"
@@ -687,10 +687,10 @@
     "value": "学习中 · 重置时约{value}"
   },
   "quota.forecast.status.surplus": {
-    "value": "用不完 · 预计重置时{value}"
+    "value": "盈余 · 预计重置时{value}"
   },
   "quota.forecast.status.watch": {
-    "value": "需留意 · 预计重置时{value}"
+    "value": "需关注 · 预计重置时{value}"
   },
   "quota.forecast.useUp.beforeReset": {
     "value": "预计会在重置前用尽"
@@ -723,10 +723,10 @@
     "value": "学习中"
   },
   "quota.forecast.verdict.surplus": {
-    "value": "用不完"
+    "value": "盈余"
   },
   "quota.forecast.verdict.watch": {
-    "value": "需留意"
+    "value": "需关注"
   },
   "quota.freshness.age.days": {
     "value": "{days} 天"

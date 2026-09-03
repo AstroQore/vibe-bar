@@ -666,7 +666,7 @@
 "quota.forecast.reset.learning" = "正在学习你的使用规律 · 约剩余 %1$lld%%";
 
 /* One-line forecast summary */
-"quota.forecast.reset.surplus" = "大概率用不完 · 预计剩余 %1$lld%%";
+"quota.forecast.reset.surplus" = "大概率有盈余 · 预计剩余 %1$lld%%";
 
 /* One-line forecast summary */
 "quota.forecast.reset.watch" = "可能不够用 · 预计剩余 %1$lld%%";
@@ -681,10 +681,10 @@
 "quota.forecast.status.learning" = "学习中 · 重置时约%1$@";
 
 /* Status line under the quota bar */
-"quota.forecast.status.surplus" = "用不完 · 预计重置时%1$@";
+"quota.forecast.status.surplus" = "盈余 · 预计重置时%1$@";
 
 /* Status line under the quota bar */
-"quota.forecast.status.watch" = "需留意 · 预计重置时%1$@";
+"quota.forecast.status.watch" = "需关注 · 预计重置时%1$@";
 
 /* Use-up line for an at-risk verdict with no ETA */
 "quota.forecast.useUp.beforeReset" = "预计会在重置前用尽";
@@ -717,10 +717,10 @@
 "quota.forecast.verdict.learning" = "学习中";
 
 /* Forecast verdict: a materially large share is likely to expire unused */
-"quota.forecast.verdict.surplus" = "用不完";
+"quota.forecast.verdict.surplus" = "盈余";
 
 /* Forecast verdict: recent burn is above the safe range */
-"quota.forecast.verdict.watch" = "需留意";
+"quota.forecast.verdict.watch" = "需关注";
 
 /* Very short age used inside a freshness badge */
 "quota.freshness.age.days" = "%1$lld 天";
