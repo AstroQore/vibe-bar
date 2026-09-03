@@ -749,6 +749,188 @@ final class UsageEventLedgerTests: XCTestCase {
         XCTAssertEqual(retained.rows.count, 1)
     }
 
+    // MARK: - Storage upkeep and query-plan guards
+
+    /// `auto_vacuum` is written into the file header by the first statement
+    /// that touches the file, so the pragma has to be issued before
+    /// `journal_mode=WAL` — measured: with WAL first, the mode stays NONE and
+    /// every page `rollupAndPrune` frees is lost to the file forever.
+    func testNewLedgerIsCreatedWithIncrementalAutoVacuum() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerAutoVacuum")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        await ledger.optimizeStorage()
+        let url = directory.appendingPathComponent("usage_events.sqlite3")
+        XCTAssertEqual(try Self.pragmaInt("auto_vacuum", at: url), 2)
+    }
+
+    /// The detail-side group queries filter on `ts` and group by a different
+    /// column, which is exactly the shape that can degrade into a full table
+    /// scan once statistics go stale.
+    ///
+    /// Measured on a synthetic 245k-row ledger (the maintainer's real size):
+    /// with `ANALYZE` in place every one of these already resolves through an
+    /// index — `usage_events_tool_ts_idx` for tool, `usage_events_harness_ts_idx`
+    /// for harness, `usage_events_ts_id_idx` for the rest — in 18-30 ms warm.
+    /// Adding a `(ts, tool)` index changed no plan and no timing, so none was
+    /// added; this test is the guard that the existing ones keep being used.
+    func testDetailGroupQueriesResolveThroughAnIndex() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerQueryPlan")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("usage_events.sqlite3")
+
+        var events: [PricedUsageEvent] = []
+        for index in 0..<400 {
+            events.append(UsageLedgerFixtures.priced(UsageLedgerFixtures.event(
+                date: now.addingTimeInterval(TimeInterval(-index * 600)),
+                model: index.isMultiple(of: 2) ? "gpt-5" : "gpt-5-codex",
+                harness: index.isMultiple(of: 3) ? .chatgptWork : .codex
+            )))
+        }
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: events))
+        await ledger.optimizeStorage()
+
+        let start = Int64(now.addingTimeInterval(-86_400).timeIntervalSince1970)
+        let end = Int64(now.addingTimeInterval(86_400).timeIntervalSince1970)
+        for column in ["tool", "model", "harness", "project", "day"] {
+            let plan = try Self.queryPlan(
+                """
+                SELECT \(column), COUNT(*),
+                       COALESCE(SUM(fresh_input + output + cache_read + cache_creation), 0),
+                       COALESCE(SUM(cost_micros), 0)
+                  FROM usage_events WHERE ts >= \(start) AND ts < \(end) GROUP BY \(column)
+                """,
+                at: url
+            ).joined(separator: " | ")
+            XCTAssertTrue(
+                plan.contains("USING INDEX") || plan.contains("USING COVERING INDEX"),
+                "GROUP BY \(column) fell back to a table scan: \(plan)"
+            )
+        }
+    }
+
+    /// The picker queries deliberately ignore the date range, so the ledger's
+    /// content is their only input — which is what makes a revision-keyed
+    /// cache safe, and what makes a stale one a bug.
+    func testModelPickerCacheFollowsTheLedgerContent() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerPickerCache")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: [
+            UsageLedgerFixtures.priced(UsageLedgerFixtures.event(date: now, model: "gpt-5"))
+        ]))
+        let firstModels = try await ledger.availableModels()
+        XCTAssertEqual(firstModels, ["gpt-5"])
+        // Repeating the call must answer the same thing, from the cache.
+        let cachedModels = try await ledger.availableModels()
+        XCTAssertEqual(cachedModels, ["gpt-5"])
+        let firstEarliest = try await ledger.earliestUsageDate()
+        XCTAssertNotNil(firstEarliest)
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            path: "/Users/example/.codex/sessions/session-b.jsonl",
+            events: [
+                UsageLedgerFixtures.priced(UsageLedgerFixtures.event(
+                    date: now.addingTimeInterval(-10 * 86_400), model: "gpt-5-codex"
+                ))
+            ]
+        ))
+        let widenedModels = try await ledger.availableModels()
+        XCTAssertEqual(widenedModels, ["gpt-5", "gpt-5-codex"])
+        let secondEarliest = try await ledger.earliestUsageDate()
+        XCTAssertNotNil(secondEarliest)
+        XCTAssertLessThan(secondEarliest!, firstEarliest!)
+    }
+
+    /// The headline pass groups the whole detail table by day on every
+    /// popover open. Caching it is only correct if a new batch invalidates.
+    func testTokenHeadlineTotalsAreCachedButFollowNewEvents() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerHeadlineCache")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: [
+            UsageLedgerFixtures.priced(UsageLedgerFixtures.event(
+                date: now, input: 1_000, output: 200
+            ))
+        ]))
+        let first = try await ledger.tokenHeadlineTotals(now: now)
+        XCTAssertEqual(first.allTimeTokens, 1_200)
+        let repeated = try await ledger.tokenHeadlineTotals(now: now)
+        XCTAssertEqual(repeated.allTimeTokens, 1_200)
+
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            path: "/Users/example/.codex/sessions/session-c.jsonl",
+            events: [
+                UsageLedgerFixtures.priced(UsageLedgerFixtures.event(
+                    date: now, input: 500, output: 100
+                ))
+            ]
+        ))
+        let widened = try await ledger.tokenHeadlineTotals(now: now)
+        XCTAssertEqual(widened.allTimeTokens, 1_800)
+    }
+
+    /// Repricing walks the detail table in chunks now. Committing per chunk
+    /// must still leave every row repriced and the marker written once.
+    func testChunkedRepricingCoversEveryDetailRow() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("LedgerRepriceChunks")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var events: [PricedUsageEvent] = []
+        for index in 0..<250 {
+            events.append(UsageLedgerFixtures.priced(
+                UsageLedgerFixtures.event(date: now.addingTimeInterval(TimeInterval(-index))),
+                costUSD: nil
+            ))
+        }
+        try await ledger.ingest(UsageLedgerFixtures.batch(events: events))
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+        let before = try await ledger.summary(filter)
+        XCTAssertEqual(before.requests, 250)
+
+        let repriced = try await ledger.prepareForPricingRevision("chunked-v1")
+        XCTAssertTrue(repriced)
+        // Same revision twice is a no-op, so the marker landed exactly once.
+        let repeatedRun = try await ledger.prepareForPricingRevision("chunked-v1")
+        XCTAssertFalse(repeatedRun)
+        let after = try await ledger.summary(filter)
+        XCTAssertEqual(after.requests, 250)
+    }
+
+    private static func pragmaInt(_ pragma: String, at url: URL) throws -> Int {
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let handle
+        else { throw UsageLedgerError.open }
+        defer { sqlite3_close_v2(handle) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "PRAGMA \(pragma)", -1, &statement, nil) == SQLITE_OK,
+              let statement
+        else { throw UsageLedgerError.statement }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw UsageLedgerError.statement }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
+    private static func queryPlan(_ sql: String, at url: URL) throws -> [String] {
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let handle
+        else { throw UsageLedgerError.open }
+        defer { sqlite3_close_v2(handle) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            handle, "EXPLAIN QUERY PLAN " + sql, -1, &statement, nil
+        ) == SQLITE_OK, let statement else { throw UsageLedgerError.statement }
+        defer { sqlite3_finalize(statement) }
+        var rows: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let raw = sqlite3_column_text(statement, 3) {
+                rows.append(String(cString: raw))
+            }
+        }
+        return rows
+    }
+
     /// Index names on `usage_events`, read through a connection of the test's
     /// own so nothing has to be exposed from the actor for the assertion.
     private static func indexNames(at url: URL) throws -> [String] {

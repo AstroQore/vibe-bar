@@ -45,7 +45,13 @@ struct UsageStatsPage: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task { model.activate() }
+        .task {
+            model.activate()
+            // Held open on purpose: the auto-refresh poll should stop when
+            // this page goes away, and a `.task` that returns immediately
+            // cannot tell it that.
+            await model.pollWhileVisible()
+        }
     }
 
     /// The explicit empty selection the All chip can reach. Every number on

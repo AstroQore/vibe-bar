@@ -122,5 +122,12 @@ extension WorkbenchWindowController: NSWindowDelegate {
         // Dock icon goes away, which is what "the Workbench is closed" means
         // for an agent app.
         DockActivationController.shared.release(.workbench)
+
+        // The page models outlive the window, so nothing was stopping their
+        // background work: a Usage Stats auto-refresh kept polling — and
+        // kept calling `costService.refreshAll()`, which walks every session
+        // tree — until the app quit. Both `stop()` methods had no callers at
+        // all. Re-opening calls `activate()`, which restarts what it needs.
+        environment?.stopWorkbenchBackgroundWork()
     }
 }

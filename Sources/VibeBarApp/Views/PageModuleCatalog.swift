@@ -39,6 +39,9 @@ enum PageModuleKind: Hashable {
     case overviewCost(ToolType)
     case overviewUsageMix
     case overviewUpcomingResets
+    /// Every weekly-and-longer quota's reset history side by side — where
+    /// quota is being wasted, across providers.
+    case overviewResetHistoryCompare
     case overviewModelRanking
     case overviewYearHeatmap
     case overviewActivityHeatmap
@@ -46,6 +49,8 @@ enum PageModuleKind: Hashable {
     /// Carries `QuotaGroupModule.id` so the page can find the live group again.
     case quotaGroup(String)
     case serviceStatus
+    /// The same comparison scoped to this page's provider family.
+    case resetHistoryCompare
     case costHeader
     case costHistory
     case modelRanking
@@ -84,6 +89,12 @@ enum PageModuleCatalog {
     private enum FallbackHeight {
         static let quota: Double = 260
         static let quotaHistory: Double = 300
+        /// One row per weekly-and-longer quota plus header, legend and axis.
+        /// The Overview's copy carries every provider's lanes, a provider
+        /// page's carries two to four — stand-ins until the first measurement
+        /// replaces them.
+        static let resetCompareAll: Double = 460
+        static let resetCompareProvider: Double = 220
         static let cost: Double = 320
         static let analytics: Double = 200
         static let usageMix: Double = 300
@@ -169,6 +180,20 @@ enum PageModuleCatalog {
                 accent: .neutral,
                 masonryPhase: .quota,
                 fallbackHeight: FallbackHeight.status
+            )
+        )
+        // The retrospective half of the same question, immediately after the
+        // horizon: Upcoming Resets says when quota comes back, this says how
+        // much of the last one expired unused.
+        result.append(
+            PageModuleDescriptor(
+                id: .custom("overview-reset-history-compare"),
+                kind: .overviewResetHistoryCompare,
+                displayName: "Reset History Compare",
+                defaultColumn: 1,
+                accent: .neutral,
+                masonryPhase: .quota,
+                fallbackHeight: FallbackHeight.resetCompareAll
             )
         )
         let hasCostData = self.hasCostData(environment: environment, settings: settings)
@@ -325,6 +350,21 @@ enum PageModuleCatalog {
                 accent: .neutral,
                 masonryPhase: .quota,
                 fallbackHeight: FallbackHeight.status
+            )
+        )
+        // Right column, above the cost cards: a quota answer, and the reason
+        // the wide column no longer starts far below the narrow one. Appended
+        // before the no-cost-data early return so a provider with no local
+        // sessions still gets it.
+        result.append(
+            PageModuleDescriptor(
+                id: .custom("reset-history-compare:\(tool.rawValue)"),
+                kind: .resetHistoryCompare,
+                displayName: "Reset History Compare",
+                defaultColumn: 1,
+                accent: .provider(tool),
+                masonryPhase: .quota,
+                fallbackHeight: FallbackHeight.resetCompareProvider
             )
         )
 

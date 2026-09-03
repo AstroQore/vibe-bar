@@ -628,6 +628,8 @@ private struct OverviewWaterfall: View {
             OverviewUsageMixCard(density: density)
         case .overviewUpcomingResets:
             UpcomingResetsCard(density: density)
+        case .overviewResetHistoryCompare:
+            ResetHistoryCompareCard(density: density)
         case .overviewModelRanking:
             ModelRankingList(
                 breakdowns: context.models,
@@ -646,8 +648,9 @@ private struct OverviewWaterfall: View {
                 density: density,
                 titleOverride: "When you use everything"
             )
-        case .quotaGroup, .serviceStatus, .costHeader, .costHistory,
-             .modelRanking, .yearHeatmap, .activityHeatmap, .costEmpty:
+        case .quotaGroup, .serviceStatus, .resetHistoryCompare, .costHeader,
+             .costHistory, .modelRanking, .yearHeatmap, .activityHeatmap,
+             .costEmpty:
             // Provider-page families. `PageModuleCatalog` never puts them on
             // the Overview, and a stale identifier is dropped before it gets
             // here, so this is unreachable rather than a fallback.
@@ -1740,6 +1743,15 @@ private struct ProviderPageModule: View {
             }
         case .serviceStatus:
             ServiceStatusCard(tools: [context.pageTool], density: density)
+        case .resetHistoryCompare:
+            // Scoped to the page's family, so the Google AI page keeps
+            // AntiGravity beside Gemini Web and the SpaceXAI page keeps
+            // Cursor beside Grok — the same pairing the refresh button uses.
+            ResetHistoryCompareCard(
+                density: density,
+                tools: PageModuleCatalog.quotaRefreshTools(for: context.pageTool),
+                titleOverride: "Reset History"
+            )
         case .costHeader:
             if let snapshot = context.snapshot {
                 CostHeaderCard(
@@ -1797,7 +1809,8 @@ private struct ProviderPageModule: View {
             }
         case .overviewCostSummary, .overviewStatusSummary, .overviewQuota,
              .overviewQuotaHistoryAll, .overviewCostAll, .overviewCost,
-             .overviewUsageMix, .overviewUpcomingResets, .overviewModelRanking,
+             .overviewUsageMix, .overviewUpcomingResets,
+             .overviewResetHistoryCompare, .overviewModelRanking,
              .overviewYearHeatmap, .overviewActivityHeatmap:
             // Overview families. `PageModuleCatalog` never puts them on a
             // provider page, and a stale identifier is dropped before it gets
