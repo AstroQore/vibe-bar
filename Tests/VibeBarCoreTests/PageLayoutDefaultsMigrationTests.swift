@@ -246,6 +246,152 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         )
     }
 
+    // MARK: - Overview history segment
+
+    private let overview = PageLayoutPageID.overview
+    private let summaryIDs = [
+        PageLayoutModuleID(rawValue: "overview-summary-cost"),
+        PageLayoutModuleID(rawValue: "overview-summary-status")
+    ]
+
+    /// The three bands the old phase grouping produced.
+    private func previousOverviewSegments() -> [[PageLayoutModuleID]] {
+        [
+            summaryIDs,
+            [
+                PageLayoutModuleID(rawValue: "overview-quota:codex"),
+                PageLayoutModuleID(rawValue: "overview-quota:claude"),
+                PageLayoutModuleID(rawValue: "overview-upcoming-resets"),
+                PageLayoutModuleID(rawValue: "overview-reset-history-compare"),
+                PageLayoutModuleID(rawValue: "overview-usage-mix"),
+                .quotaHistoryAll
+            ],
+            [
+                .costAll,
+                .cost(tool: .codex),
+                .modelBreakdown(tool: .codex),
+                PageLayoutModuleID(rawValue: "heatmap-year:all"),
+                PageLayoutModuleID(rawValue: "heatmap-activity:all")
+            ]
+        ]
+    }
+
+    func testAnOverviewStillSegmentedTheOldWayIsLetGoOfItsSegmentation() {
+        // Clearing means "no chosen segmentation", which is what makes the new
+        // four-band default derive. The columns are not touched: the Overview's
+        // default arrangement is planner-computed from measured heights, so
+        // there is no cross-Mac signature to match there.
+        let columns = [[PageLayoutModuleID.quotaHistoryAll], [PageLayoutModuleID.costAll]]
+        let layout = StoredPageLayout(
+            mode: .compact,
+            ratio: .equal,
+            columns: columns,
+            segments: previousOverviewSegments(),
+            hidden: [.costAll]
+        )
+        let after = try? XCTUnwrap(
+            PageLayoutDefaultsMigration.migratedOverviewHistorySegment([overview: layout])[overview]
+        )
+        XCTAssertEqual(after?.segments, [])
+        XCTAssertEqual(after?.columns, columns)
+        XCTAssertEqual(after?.mode, .compact)
+        XCTAssertEqual(after?.ratio, .equal)
+        XCTAssertEqual(after?.hidden, [.costAll])
+    }
+
+    func testAnOverviewWithNoStoredSegmentationIsLeftAlone() {
+        // It already derives the new default; there is nothing to repair.
+        let layout = StoredPageLayout(mode: .compact, ratio: .equal, columns: [[.costAll], []])
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewHistorySegment([overview: layout])[overview],
+            layout
+        )
+    }
+
+    func testAHandGroupedOverviewKeepsItsSegmentation() {
+        // The real shape this has to refuse: a segmentation somebody packed by
+        // hand, where the all-providers history sits in the cost band rather
+        // than the quota one. `PageLayoutSegments.resolve` will re-place the
+        // three moved cards by their new phase anyway, so refusing costs the
+        // user nothing.
+        var segments = previousOverviewSegments()
+        segments[1].removeAll {
+            [
+                PageLayoutModuleID(rawValue: "overview-upcoming-resets"),
+                PageLayoutModuleID(rawValue: "overview-reset-history-compare"),
+                PageLayoutModuleID(rawValue: "overview-usage-mix"),
+                .quotaHistoryAll
+            ].contains($0)
+        }
+        segments[2].append(.quotaHistoryAll)
+        let arranged = StoredPageLayout(
+            mode: .compact,
+            ratio: .equal,
+            columns: [[.quotaHistoryAll], [.costAll]],
+            segments: segments
+        )
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewHistorySegment([overview: arranged])[overview],
+            arranged
+        )
+    }
+
+    func testAnOverviewSegmentedIntoSomethingOtherThanThreeBandsIsLeftAlone() {
+        let arranged = StoredPageLayout(
+            mode: .manual,
+            ratio: .equal,
+            columns: [[.costAll], []],
+            segments: [summaryIDs, [.quotaHistoryAll]]
+        )
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewHistorySegment([overview: arranged])[overview],
+            arranged
+        )
+    }
+
+    func testAnUnrecognizedModuleIsEnoughToLeaveTheOverviewAlone() {
+        // A card this table cannot classify may be exactly the one the user
+        // placed by hand.
+        var segments = previousOverviewSegments()
+        segments[1].append(PageLayoutModuleID(rawValue: "overview-something-new"))
+        let arranged = StoredPageLayout(
+            mode: .compact, ratio: .equal, columns: [[.costAll], []], segments: segments
+        )
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewHistorySegment([overview: arranged])[overview],
+            arranged
+        )
+    }
+
+    func testAProviderPageIsNeverTouchedByTheOverviewMigration() {
+        let layout = previousDefault()
+        XCTAssertEqual(
+            PageLayoutDefaultsMigration.migratedOverviewHistorySegment([page: layout])[page],
+            layout
+        )
+    }
+
+    func testThePreviousPhaseTableClassifiesEveryOverviewCardItShipped() {
+        typealias Phase = PageLayoutDefaultsMigration.PreviousOverviewPhase
+        func phase(_ raw: String) -> Phase? {
+            PageLayoutDefaultsMigration.previousOverviewPhase(PageLayoutModuleID(rawValue: raw))
+        }
+        XCTAssertEqual(phase("overview-summary-cost"), .summary)
+        XCTAssertEqual(phase("overview-quota:grok"), .quota)
+        // The four that used to ride in the quota band with the provider cards.
+        XCTAssertEqual(phase("overview-upcoming-resets"), .quota)
+        XCTAssertEqual(phase("overview-reset-history-compare"), .quota)
+        XCTAssertEqual(phase("overview-usage-mix"), .quota)
+        XCTAssertEqual(phase("quota-history-all"), .quota)
+        XCTAssertEqual(phase("cost-all"), .costOrAuxiliary)
+        XCTAssertEqual(phase("cost:codex"), .costOrAuxiliary)
+        XCTAssertEqual(phase("model-breakdown:all"), .costOrAuxiliary)
+        XCTAssertEqual(phase("heatmap-year:all"), .costOrAuxiliary)
+        XCTAssertEqual(phase("heatmap-activity:all"), .costOrAuxiliary)
+        XCTAssertNil(phase("status"))
+        XCTAssertNil(phase("overview-something-new"))
+    }
+
     // MARK: - Once, and only once
 
     func testMigrateRecordsItsIdentifierAndDoesNothingOnASecondPass() {
@@ -255,6 +401,9 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         )
         XCTAssertTrue(
             first.applied.contains(PageLayoutDefaultsMigration.providerRightColumnIdentifier)
+        )
+        XCTAssertTrue(
+            first.applied.contains(PageLayoutDefaultsMigration.overviewHistorySegmentIdentifier)
         )
         XCTAssertEqual(first.layouts[page]?.columns[0].count, 1)
 
@@ -283,7 +432,10 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         let result = PageLayoutDefaultsMigration.migrate(layouts: [:], applied: [])
         XCTAssertEqual(
             result.applied,
-            [PageLayoutDefaultsMigration.providerRightColumnIdentifier]
+            [
+                PageLayoutDefaultsMigration.providerRightColumnIdentifier,
+                PageLayoutDefaultsMigration.overviewHistorySegmentIdentifier
+            ]
         )
         XCTAssertTrue(result.layouts.isEmpty)
     }
