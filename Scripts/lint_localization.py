@@ -113,6 +113,22 @@ MIGRATED = [
     "Sources/VibeBarCore/Models/PrimaryProviderSourcePlanner.swift",
     "Sources/VibeBarCore/Models/UpdateChannel.swift",
     "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
+    "Sources/VibeBarApp/Views/HeaderView.swift",
+    "Sources/VibeBarApp/Views/QuotaGroupCard.swift",
+    "Sources/VibeBarApp/Views/QuotaHistoryChartView.swift",
+    "Sources/VibeBarApp/Views/OverviewQuotaHistoryCard.swift",
+    "Sources/VibeBarApp/Views/OverviewUsageMixCard.swift",
+    "Sources/VibeBarApp/Views/ResetHistoryCompareView.swift",
+    "Sources/VibeBarApp/Views/FillTimelineChart.swift",
+    "Sources/VibeBarApp/Views/CostHistoryView.swift",
+    "Sources/VibeBarApp/Views/ChartBrushNavigator.swift",
+    "Sources/VibeBarApp/Views/UsageActivityView.swift",
+    "Sources/VibeBarApp/Views/YearlyContributionHeatmapView.swift",
+    "Sources/VibeBarApp/Views/MiniQuotaWindowView.swift",
+    "Sources/VibeBarCore/Services/UsagePace.swift",
+    "Sources/VibeBarCore/Services/SubscriptionWindowProgress.swift",
+    "Sources/VibeBarCore/Models/CostChartGranularity.swift",
+    "Sources/VibeBarCore/Models/UsageHeatmap+Activity.swift",
 ]
 
 
@@ -412,7 +428,12 @@ def derived_helpers(files) -> set:
             tail = source[index:index + 80]
             if "String" in parameters and VIEW_RETURNS.search(tail):
                 helpers.add(match.group(1))
-    return helpers
+    # A function *named* for an identifier builds identity, not copy, however
+    # much its signature looks like a label helper's. `OverviewQuotaCurve.id`
+    # takes three strings and returns one, so inferring from the shape alone
+    # made every `id("blank-\(n)")` in the manifest a finding. These are the
+    # same names `IDENTIFIER_ARGUMENTS` already trusts as an argument label.
+    return helpers - IDENTIFIER_ARGUMENTS
 
 
 LETTER = re.compile(r"[A-Za-z一-鿿]")
