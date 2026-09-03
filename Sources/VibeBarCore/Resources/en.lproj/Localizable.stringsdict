@@ -291,5 +291,165 @@
 			<string>%1$lld messages</string>
 		</dict>
 	</dict>
+	<key>workbench.skills.appSeesCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$@ sees %2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%2$lld skill</string>
+			<key>other</key>
+			<string>%2$lld skills</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.countTotal</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld skill</string>
+			<key>other</key>
+			<string>%1$lld skills</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.discover.installs</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld install</string>
+			<key>other</key>
+			<string>%1$lld installs</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.import.apply</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Apply %1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld change</string>
+			<key>other</key>
+			<string>%1$lld changes</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.importConflicts</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Left %1$#@count@ unchanged.</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld conflicting app copy</string>
+			<key>other</key>
+			<string>%1$lld conflicting app copies</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.importRecognized</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Recognized %1$#@count@.</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld existing skill</string>
+			<key>other</key>
+			<string>%1$lld existing skills</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.installedArchive</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Installed %1$#@count@ from the archive.</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld skill</string>
+			<key>other</key>
+			<string>%1$lld skills</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.recorded</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Recorded %1$#@count@.</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld skill</string>
+			<key>other</key>
+			<string>%1$lld skills</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.reposUnreadable</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@ could not be read.</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld repository</string>
+			<key>other</key>
+			<string>%1$lld repositories</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.updatesAvailable</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@ can be updated.</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%1$lld skill</string>
+			<key>other</key>
+			<string>%1$lld skills</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

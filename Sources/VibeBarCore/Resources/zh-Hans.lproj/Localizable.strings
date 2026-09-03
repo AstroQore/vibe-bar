@@ -1655,6 +1655,474 @@
 /* Truncation banner detail. Both sizes arrive already formatted as byte counts. */
 "workbench.sessions.transcript.truncatedDetail" = "已读取 %2$@ 中的 %1$@。完整读取会把整份对话记录留在内存中。";
 
+/* Last clause of the per-harness count tooltip: skills linked into the harness but switched off in its own config. */
+"workbench.skills.appCountNativeDisabled" = "%1$lld 个已投影但被停用";
+
+/* Second clause of the per-harness count tooltip, for AntiGravity, which sees skills through the Gemini CLI folder. */
+"workbench.skills.appCountViaGeminiRoot" = "%1$lld 个已启用 + %2$lld 个来自 Gemini CLI 兼容根目录";
+
+/* Second clause of the per-harness count tooltip, for a harness that scans the shared root itself. */
+"workbench.skills.appCountViaSharedRoot" = "%1$lld 个已启用 + %2$lld 个来自共享技能根目录";
+
+/* Skills toolbar button that opens the backups sheet. */
+"workbench.skills.backups" = "备份";
+
+/* Accessibility label on the trash button in a backup row. */
+"workbench.skills.backups.deleteAccessibility" = "删除此备份";
+
+/* Message under the delete-backup confirmation title. The path is an identifier. */
+"workbench.skills.backups.deleteConfirmMessage" = "快照将从 ~/.vibebar 中删除，之后无法恢复。";
+
+/* Title of the delete-backup confirmation dialog when the snapshot names its skill. */
+"workbench.skills.backups.deleteConfirmTitle" = "删除 %1$@ 的备份？";
+
+/* Title of the delete-backup confirmation dialog when the snapshot has no readable skill name. */
+"workbench.skills.backups.deleteConfirmTitleGeneric" = "删除此备份？";
+
+/* Empty state of the backups sheet. */
+"workbench.skills.backups.empty" = "暂无备份";
+
+/* Footer of the backups sheet: what a restore does and does not do. */
+"workbench.skills.backups.footer" = "恢复只会重建共享目录 — 之后需要再为相应应用启用该技能。";
+
+/* Tooltip on the backups sheet refresh button. */
+"workbench.skills.backups.refreshHelp" = "重新读取备份目录";
+
+/* Button that copies a backup back into the shared skills directory. */
+"workbench.skills.backups.restore" = "恢复";
+
+/* Tooltip on the Restore button. The path is an identifier. */
+"workbench.skills.backups.restoreHelp" = "把快照复制回 ~/.agents/skills";
+
+/* Subtitle of the backups sheet. */
+"workbench.skills.backups.subtitle" = "在卸载或更新前自动创建。";
+
+/* Title of the backups sheet. */
+"workbench.skills.backups.title" = "技能备份";
+
+/* Badge on a discover-sheet row for a skill already installed on this Mac. */
+"workbench.skills.badge.installed" = "已安装";
+
+/* Row badge: the skill is linked into {app} but that harness's own config switches it off. */
+"workbench.skills.badge.nativeOff" = "%1$@ 已关闭";
+
+/* Tooltip on the row badge that names a harness whose native switch is off. */
+"workbench.skills.badge.nativeOffHelp" = "已投影，但被 harness 自身的配置停用";
+
+/* Row badge: a harness config file could not be parsed, so its per-skill switch is unknown. */
+"workbench.skills.badge.nativeUnknown" = "原生状态未知";
+
+/* Tooltip on the unknown-native-state row badge. */
+"workbench.skills.badge.nativeUnknownHelp" = "无法安全解析 harness 的配置";
+
+/* Row badge: the repository this skill came from has a newer version. */
+"workbench.skills.badge.update" = "可更新";
+
+/* Skills toolbar button that asks every repository-backed skill whether it has a newer commit. */
+"workbench.skills.checkUpdates" = "检查更新";
+
+/* Same Skills toolbar button once updates are known. {count} is how many skills can be updated. */
+"workbench.skills.checkUpdatesCount" = "检查更新 · %1$lld";
+
+/* Context-menu item: flip the harness's own per-skill switch off but leave the link on disk. */
+"workbench.skills.contextDisableKeepProjection" = "在 %1$@ 中停用 · 保留投影";
+
+/* Context-menu item on a skill's harness circle. */
+"workbench.skills.contextEnableIn" = "在 %1$@ 中启用";
+
+/* Context-menu item: delete the link or copy Vibe Bar made inside that harness's skills folder. */
+"workbench.skills.contextRemoveProjection" = "移除 %1$@ 投影";
+
+/* Skills page count caption while the search field filters the list. */
+"workbench.skills.countFiltered" = "%2$lld 个技能中的 %1$lld 个";
+
+/* Skills toolbar and empty-state button that opens the discover sheet. */
+"workbench.skills.discover" = "发现";
+
+/* Button that adds the typed repository reference to the scan list. */
+"workbench.skills.discover.addRepo" = "添加";
+
+/* Empty state of the discover sheet's available-skills section. */
+"workbench.skills.discover.availableEmpty" = "扫描已配置的仓库，或安装一条 skills.sh 结果，即可列出可用技能。";
+
+/* Discover sheet section title for what the last scan or download turned up. */
+"workbench.skills.discover.availableTitle" = "可用技能";
+
+/* Discover sheet section title for the community index. */
+"workbench.skills.discover.indexTitle" = "skills.sh 索引";
+
+/* Empty state of the discover sheet's repository list. The reference syntax is an identifier. */
+"workbench.skills.discover.noRepos" = "尚未配置仓库。可按 owner/repo 添加，也可用 owner/repo@branch。";
+
+/* Accessibility label on the button that removes a repository from the scan list. */
+"workbench.skills.discover.removeRepo" = "移除 %1$@";
+
+/* Placeholder in the add-repository field. The two forms are syntax and stay as spelled. */
+"workbench.skills.discover.repoFieldPlaceholder" = "owner/repo 或 owner/repo@branch";
+
+/* Hint under the add-repository field while what was typed is not a valid reference. */
+"workbench.skills.discover.repoRules" = "owner 只接受字母、数字和连字符；仓库名和分支名还可以包含点和下划线。";
+
+/* Discover sheet section title, and the source caption once a scan of those repositories finishes. */
+"workbench.skills.discover.reposTitle" = "已配置的仓库";
+
+/* Discover sheet button that downloads every configured repository. */
+"workbench.skills.discover.scanRepos" = "扫描仓库";
+
+/* Tooltip on the scan button. */
+"workbench.skills.discover.scanReposHelp" = "下载全部已配置的仓库";
+
+/* Caption in the skills.sh section before any search has run. */
+"workbench.skills.discover.searchHint" = "搜索结果会带上发布它的仓库；安装其中一个会下载该仓库，并在下方列出其余技能。";
+
+/* Placeholder in the skills.sh search field. */
+"workbench.skills.discover.searchPlaceholder" = "搜索社区索引";
+
+/* Discover sheet button that pre-selects every harness for new installs. */
+"workbench.skills.discover.selectAll" = "全选";
+
+/* Tooltip on the discover sheet's select-all button. */
+"workbench.skills.discover.selectHelp" = "设置每一行默认安装到哪些 agent CLI";
+
+/* Discover sheet button that clears the harness pre-selection. */
+"workbench.skills.discover.selectNone" = "全不选";
+
+/* Source caption once installing a skills.sh hit has replaced the results with that repository. */
+"workbench.skills.discover.sourceFromSkillsSh" = "%1$@（来自 skills.sh）";
+
+/* Tooltip on the scan button while a scan is running and the button cancels it. */
+"workbench.skills.discover.stopScanHelp" = "停止正在进行的扫描";
+
+/* Tooltip on the button that removes a repository from the scan list. */
+"workbench.skills.discover.stopScanningRepo" = "不再扫描 %1$@";
+
+/* Title of the discover sheet. */
+"workbench.skills.discover.title" = "发现技能";
+
+/* Tooltip on the Skills page Discover button. */
+"workbench.skills.discoverHelp" = "浏览已配置的仓库和 skills.sh 索引";
+
+/* Body of the Skills page empty state. The path is an identifier and stays as spelled. */
+"workbench.skills.empty.body" = "Vibe Bar 在 ~/.agents/skills 中保存每个技能的唯一副本，并将其链接到各个 agent CLI。可以导入这台 Mac 上已有的技能，也可以从仓库安装新的。";
+
+/* Headline of the Skills page empty state. */
+"workbench.skills.empty.headline" = "尚未记录任何技能";
+
+/* Accessibility label on the button that empties the Skills search field. */
+"workbench.skills.filterClear" = "清除筛选";
+
+/* Placeholder in the Skills page search field. */
+"workbench.skills.filterPlaceholder" = "筛选已安装的技能";
+
+/* Import sheet section header for skills that already live in the shared directory. */
+"workbench.skills.import.alreadyShared" = "已共享";
+
+/* Caption of the already-shared section. The path and CC Switch are identifiers. */
+"workbench.skills.import.alreadySharedDetail" = "这些技能已经位于 ~/.agents/skills，包括 CC Switch 建立的目录结构。Vibe Bar 只记录它们已有的链接，不会再次导入或复制。";
+
+/* Import sheet section header for app folders whose name collides with a shared skill. */
+"workbench.skills.import.conflicts" = "冲突的应用副本";
+
+/* Count beside the conflicts section header. */
+"workbench.skills.import.conflictsCount" = "%1$lld 个保持不变";
+
+/* Caption of the conflicts section: why nothing was changed and what the user can do. */
+"workbench.skills.import.conflictsDetail" = "某个应用技能目录中的真实文件夹与 ~/.agents/skills 中的同名。Vibe Bar 不会覆盖它 — 需手动处理，或在该文件夹删除后再为该应用启用共享技能。";
+
+/* Caption under an unmanaged directory naming the harnesses whose folders hold it. {apps} is a comma-separated list of harness names. */
+"workbench.skills.import.foundIn" = "发现于 %1$@";
+
+/* Label before the harness circles that choose which existing links the import records. */
+"workbench.skills.import.keepEvidenceFor" = "为以下应用保留记录";
+
+/* Import sheet section header for app-local directories that are not in the shared directory yet. */
+"workbench.skills.import.needsAdoption" = "待接管";
+
+/* Caption of the needs-adoption section: exactly what applying it writes. */
+"workbench.skills.import.needsAdoptionDetail" = "这些技能还不在共享目录中。选中后会把它复制到 ~/.agents/skills，再把所选应用中的副本替换为受管链接。";
+
+/* Import sheet section header for directories that hold no SKILL.md. */
+"workbench.skills.import.notSkills" = "非技能目录";
+
+/* Caption of the not-skills section. The path and the filename are identifiers. */
+"workbench.skills.import.notSkillsDetail" = "~/.agents/skills 中没有 SKILL.md 的目录。将保持原样。";
+
+/* Count beside the already-shared section header. */
+"workbench.skills.import.recognizedCount" = "已识别 %1$lld 个";
+
+/* Subtitle of the import sheet: what applying it will and will not touch. */
+"workbench.skills.import.subtitle" = "Vibe Bar 已识别共享技能。只有选中的应用本地目录会被移动。";
+
+/* Import sheet footer totals across the scan's four sections. */
+"workbench.skills.import.summary" = "%1$lld 个已共享 · %2$lld 个待接管 · %3$lld 个保持不变";
+
+/* Title of the import sheet. */
+"workbench.skills.import.title" = "检查磁盘上的技能";
+
+/* Skills toolbar and empty-state button that scans the Mac for skills already on disk. */
+"workbench.skills.importExisting" = "导入已有技能";
+
+/* Button on a discover-sheet row that installs that skill. */
+"workbench.skills.install" = "安装";
+
+/* Skills toolbar button that opens a file picker for a skill archive. */
+"workbench.skills.installFromZip" = "从 ZIP 安装";
+
+/* Accessibility label on a skill row's overflow menu button. */
+"workbench.skills.menuMoreActions" = "%1$@ 的更多操作";
+
+/* Overflow-menu item that selects the skill's directory in Finder. */
+"workbench.skills.menuRevealInFinder" = "在 Finder 中显示";
+
+/* Overflow-menu item that asks to uninstall the skill. */
+"workbench.skills.menuUninstall" = "卸载…";
+
+/* Overflow-menu item that re-fetches the skill from its repository. */
+"workbench.skills.menuUpdateFromRepository" = "从仓库更新";
+
+/* Overflow-menu item that opens the per-skill wiring popover. */
+"workbench.skills.menuWiringDetails" = "连接详情…";
+
+/* Card shown when the Skills search field matches nothing. {query} is what the user typed. */
+"workbench.skills.noMatch" = "没有技能匹配「%1$@」";
+
+/* Progress line when the scan covered exactly one repository. */
+"workbench.skills.phase.downloadedOne" = "已下载 1 个仓库";
+
+/* Progress line while a multi-repository scan runs. */
+"workbench.skills.phase.downloadedProgress" = "已下载 %2$lld 个仓库中的 %1$lld 个";
+
+/* Progress line while a repository is being fetched. */
+"workbench.skills.phase.downloading" = "正在下载 %1$@…";
+
+/* Progress line while a downloaded repository is being read. */
+"workbench.skills.phase.scanning" = "正在扫描 %1$@…";
+
+/* Tooltip on the source badge naming the git branch the skill was fetched from. */
+"workbench.skills.sourceBranch" = "分支 %1$@";
+
+/* Tooltip on the source badge when the skill has no repository. */
+"workbench.skills.sourceInstalledLocally" = "本地安装";
+
+/* Source badge and result-group heading for a skill with no repository behind it. */
+"workbench.skills.sourceLocal" = "本地";
+
+/* Accessibility value of a harness circle: the harness finds the skill without a link of its own. */
+"workbench.skills.state.coupled" = "通过共享根目录或兼容根目录可用";
+
+/* Accessibility value of a harness circle: linked, but the harness's own switch is off. */
+"workbench.skills.state.disabledInHarness" = "已投影，在 harness 中停用";
+
+/* Accessibility value of a harness circle: the skill is linked and switched on. */
+"workbench.skills.state.enabled" = "已启用";
+
+/* Accessibility value of a harness circle: nothing links the skill into that harness. */
+"workbench.skills.state.notProjected" = "未投影";
+
+/* Accessibility value of a harness circle: linked, but the harness config could not be read. */
+"workbench.skills.state.unknown" = "已投影，原生状态未知";
+
+/* Footer of the sync explainer popover. {path} is the shared skills directory. */
+"workbench.skills.sync.footer" = "Vibe Bar 只写入 ~/%1$@、各 harness 的技能目录以及上面列出的配置文件。";
+
+/* Sync explainer's third paragraph. */
+"workbench.skills.sync.nativeSwitchesBody" = "如果某个 harness 有自己的按技能开关，圆形按钮切换的就是那个开关。Cursor 没有，因此共享根目录里的每个技能对它都始终可用 — 这就是「共享根目录」标记的含义，没有可切换的开关。";
+
+/* Run-in heading of the sync explainer's third paragraph. */
+"workbench.skills.sync.nativeSwitchesLead" = "原生开关。";
+
+/* Clause in a harness's one-line sync summary when it has no switch of its own. */
+"workbench.skills.sync.noPerSkillSwitch" = "无按技能开关";
+
+/* Clause in AntiGravity's one-line sync summary. {path} is the Gemini CLI skills directory. */
+"workbench.skills.sync.noSwitchAlsoReads" = "无按技能开关；同时读取 ~/%1$@";
+
+/* Clause in a harness's one-line sync summary naming its config key and file. */
+"workbench.skills.sync.perSkillSwitch" = "按技能开关 %1$@ 位于 ~/%2$@";
+
+/* Sync explainer's second paragraph. The harness names are identifiers and stay as spelled. */
+"workbench.skills.sync.projectionsBody" = "Claude Code 和 AntiGravity 只读取各自的技能目录，因此 Vibe Bar 会把技能链接（或复制）进去。Codex、Gemini CLI、Grok Build 和 Cursor 会自行扫描共享根目录，无需链接。";
+
+/* Run-in heading of the sync explainer's second paragraph. */
+"workbench.skills.sync.projectionsLead" = "投影。";
+
+/* Clause in a harness's one-line sync summary. {path} is that harness's own skills directory. */
+"workbench.skills.sync.readsOwnFolder" = "只读取 ~/%1$@";
+
+/* Clause in a harness's one-line sync summary. {path} is the shared skills directory. */
+"workbench.skills.sync.scansSharedRoot" = "直接扫描 ~/%1$@";
+
+/* Sync explainer's first paragraph. {path} is the shared skills directory and stays as spelled. */
+"workbench.skills.sync.ssotBody" = "每个技能都存放在 ~/%1$@/<name>。安装、更新和卸载都只在那里发生。";
+
+/* Run-in heading of the sync explainer's first paragraph. */
+"workbench.skills.sync.ssotLead" = "唯一真相源。";
+
+/* Title of the page-level sync explainer popover. */
+"workbench.skills.sync.title" = "技能同步的原理";
+
+/* Tooltip on the question-mark button that opens the sync explainer popover. */
+"workbench.skills.syncExplainerHelp" = "技能同步的原理 — 根目录、链接与原生开关";
+
+/* Toast when a scan is asked for with no repositories configured. */
+"workbench.skills.toast.addRepoFirst" = "请先添加一个仓库。";
+
+/* Toast after an update check that found nothing to do. */
+"workbench.skills.toast.allUpToDate" = "所有来自仓库的技能都是最新的。";
+
+/* Toast after a ZIP import that produced no skill. */
+"workbench.skills.toast.archiveEmpty" = "该压缩包中没有可安装的内容。";
+
+/* Toast after flipping a harness's own per-skill switch off. */
+"workbench.skills.toast.disabledKeptProjection" = "已在 %2$@ 中停用 %1$@，并保留其投影。";
+
+/* Second sentence of the archive-install toast. {apps} is a list of harness names. */
+"workbench.skills.toast.enabledForApps" = "已为 %1$@ 启用。";
+
+/* Toast after installing one skill into the selected harnesses. {apps} is a list of harness names. */
+"workbench.skills.toast.installedForApps" = "已为 %2$@ 安装 %1$@。";
+
+/* Toast after installing one skill with no harness selected. */
+"workbench.skills.toast.installedShared" = "已把 %1$@ 安装到共享库。可在「技能」页查看各 harness 的实际状态。";
+
+/* Toast when the add-repository field holds something unusable or already listed. */
+"workbench.skills.toast.invalidRepoRef" = "「%1$@」不是一条新的 owner/repo[@branch] 引用。";
+
+/* Toast after removing a redundant link from a harness that scans the shared root anyway. */
+"workbench.skills.toast.linkRemovedStillShared" = "已移除 %1$@ 的链接。%2$@ 仍可通过共享技能根目录在其中使用。";
+
+/* Toast after a community-index search with no hits. */
+"workbench.skills.toast.noSearchMatches" = "skills.sh 没有返回匹配结果。";
+
+/* Toast after a scan that read every repository and found nothing. */
+"workbench.skills.toast.noSkillsFound" = "在已配置的仓库中没有找到技能。";
+
+/* Toast when a skills.sh hit is missing from the repository it named. */
+"workbench.skills.toast.notFoundInRepo" = "在 %2$@ 中未找到 %1$@。";
+
+/* Toast after removing a projection that turned out to be a real folder Vibe Bar did not create. */
+"workbench.skills.toast.projectionClearedFolderKept" = "已清除 %1$@ 在 %2$@ 的 Vibe Bar 投影记录，但原有文件夹保留在原处。";
+
+/* Toast after restoring a backup into the shared directory. */
+"workbench.skills.toast.restored" = "已恢复 %1$@。可按需为相应应用启用。";
+
+/* Toast after cancelling a repository scan. */
+"workbench.skills.toast.scanStopped" = "已停止扫描。";
+
+/* Second sentence of the archive-install toast when no harness was selected. */
+"workbench.skills.toast.sharedLibraryNote" = "它们保留在共享库中。可在「技能」页查看各 harness 的实际状态。";
+
+/* Toast after clicking a circle that cannot change anything. */
+"workbench.skills.toast.sharedRootNoSwitch" = "%1$@ 直接读取共享技能根目录 — %2$@ 在其中始终可用，且没有按技能的开关。";
+
+/* Toast after uninstalling a skill that was linked nowhere else. */
+"workbench.skills.toast.uninstalledBackedUp" = "已卸载 %1$@。备份已保存。";
+
+/* Toast after an uninstall that left real folders in some harnesses. {apps} is a list of harness names. */
+"workbench.skills.toast.uninstalledLeftInPlace" = "已卸载 %1$@。在 %2$@ 中保持原样。";
+
+/* Toast after re-fetching one skill from its repository. */
+"workbench.skills.toast.updated" = "已更新 %1$@。";
+
+/* Tooltip on a harness circle in the discover sheet, where the circles pick install targets. */
+"workbench.skills.toggleHelp.installInto" = "安装到 %1$@";
+
+/* Tooltip on a harness circle in the import sheet's already-shared section. */
+"workbench.skills.toggleHelp.keepLinks" = "保留磁盘上已有的 %1$@ 链接";
+
+/* Tooltip on a harness circle beside an unmanaged directory in the import sheet. */
+"workbench.skills.toggleHelp.linkAfterAdopting" = "接管后链接到 %1$@";
+
+/* Tooltip on AntiGravity's circle when the skill reaches it through the Gemini CLI folder. */
+"workbench.skills.toggleState.coupledGemini" = "%1$@ — 通过它同样读取的 Gemini CLI 投影可见。点按可为其建立独立投影。";
+
+/* Tooltip on a harness circle for a harness that scans the shared root and has no switch. */
+"workbench.skills.toggleState.coupledSharedRoot" = "%1$@ 直接读取共享技能根目录，该技能在其中始终可用。没有按技能的开关可切换。";
+
+/* Tooltip on a harness circle whose harness switched the skill off in its own config. */
+"workbench.skills.toggleState.disabledInHarness" = "%1$@ — 已投影，但被其原生配置停用。点按即可启用。";
+
+/* Tooltip on a harness circle that is on purely because Vibe Bar linked the skill there. */
+"workbench.skills.toggleState.enabled" = "%1$@ — 通过投影启用。点按即可移除。";
+
+/* Tooltip on a harness circle that is on and whose harness has its own per-skill switch. */
+"workbench.skills.toggleState.enabledNative" = "%1$@ — 已投影并启用。点按可在该 harness 中停用；右键可管理投影选项。";
+
+/* Tooltip on a harness circle that is on for a harness that would find the skill anyway. */
+"workbench.skills.toggleState.enabledSharedRoot" = "%1$@ — 既有自己的链接，也会直接读取共享技能根目录。没有按技能的开关；右键可管理这条多余的链接。";
+
+/* Tooltip on an installed skill's harness circle when nothing links the skill there. */
+"workbench.skills.toggleState.notProjected" = "%1$@ — 未投影。点按即可启用。";
+
+/* Tooltip on a harness circle whose harness config could not be read. */
+"workbench.skills.toggleState.unknown" = "%1$@ — 已投影，但原生配置无法解析。点按可按启用状态修复。";
+
+/* Destructive button in the uninstall confirmation dialog. */
+"workbench.skills.uninstall" = "卸载";
+
+/* Message under the uninstall confirmation title. */
+"workbench.skills.uninstallConfirmMessage" = "会先备份该技能，再从所有链接到它的应用中移除。";
+
+/* Title of the confirmation dialog for uninstalling a skill. */
+"workbench.skills.uninstallConfirmTitle" = "卸载 %1$@？";
+
+/* Footer of the per-skill wiring popover: the write scope, in one sentence. */
+"workbench.skills.wiring.footer" = "Vibe Bar 只写入上面的技能目录和列出的四个配置文件，并在卸载前先备份技能。";
+
+/* Wiring popover mechanism line for AntiGravity. */
+"workbench.skills.wiring.mechanismGeminiCompat" = "同时读取 Gemini CLI 的技能目录，该技能的 Gemini 投影就在其中。";
+
+/* Wiring popover mechanism line for a harness that finds the shared root on its own. */
+"workbench.skills.wiring.mechanismSharedRoot" = "自行扫描共享根目录 — 无需为其单独建立链接。";
+
+/* Wiring popover mechanism line naming the harness config entry that switches this skill on or off. */
+"workbench.skills.wiring.nativeSwitch" = "按技能开关：%2$@ 中的 %1$@";
+
+/* Wiring popover mechanism line for a harness with no per-skill switch of its own. */
+"workbench.skills.wiring.noNativeSwitch" = "没有按技能开关 — 凡是被发现的都处于生效状态。";
+
+/* Wiring popover mechanism line: Vibe Bar copied the skill into the harness. {path} is a file path. */
+"workbench.skills.wiring.projectionCopy" = "副本位于 %1$@";
+
+/* Wiring popover mechanism line for a copy that was already on disk before Vibe Bar recorded it. */
+"workbench.skills.wiring.projectionCopyAdopted" = "副本位于 %1$@ · 接管自已有安装";
+
+/* Wiring popover mechanism line when nothing links the skill into a harness that needs a link. */
+"workbench.skills.wiring.projectionMissing" = "%1$@ 下没有条目 — 该 harness 看不到这个技能。";
+
+/* Wiring popover mechanism line: Vibe Bar linked the skill into the harness. {path} is a file path. */
+"workbench.skills.wiring.projectionSymlink" = "符号链接位于 %1$@";
+
+/* Wiring popover mechanism line for a symlink that was already on disk before Vibe Bar recorded it. */
+"workbench.skills.wiring.projectionSymlinkAdopted" = "符号链接位于 %1$@ · 接管自已有安装";
+
+/* Button in the per-skill wiring popover that opens the skill's directory in Finder. */
+"workbench.skills.wiring.reveal" = "显示";
+
+/* Tooltip on the wiring popover's Reveal button. */
+"workbench.skills.wiring.revealHelp" = "在 Finder 中显示该技能的源目录";
+
+/* Wiring popover row title for the one real copy of the skill. */
+"workbench.skills.wiring.source" = "源目录";
+
+/* Caption under the wiring popover's Source row. */
+"workbench.skills.wiring.sourceDetail" = "技能的唯一副本。下方每个 harness 读取的都是这个目录或指向它的链接。";
+
+/* Wiring popover state label: the harness config could not be parsed. */
+"workbench.skills.wiring.stateConfigUnreadable" = "配置无法读取";
+
+/* Wiring popover state label: the harness sees the skill through the Gemini CLI folder. */
+"workbench.skills.wiring.stateCoupledGemini" = "已开启 · 经由 Gemini";
+
+/* Wiring popover state label: the harness scans the shared skills root itself. */
+"workbench.skills.wiring.stateCoupledSharedRoot" = "已开启 · 共享根目录";
+
+/* Wiring popover state label: linked, but the harness's own config switches the skill off. */
+"workbench.skills.wiring.stateNativeOff" = "已关闭 · 原生开关";
+
+/* Wiring popover state label: nothing links the skill into that harness. */
+"workbench.skills.wiring.stateNotLinked" = "已关闭 · 未链接";
+
 /* Workbench header status for the Resets page when no refill is scheduled */
 "workbench.status.cachedQuotas" = "缓存额度";
 

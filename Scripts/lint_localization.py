@@ -81,6 +81,13 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/Workbench/SessionManagerPage.swift",
     "Sources/VibeBarApp/Views/Workbench/TranscriptView.swift",
     "Sources/VibeBarApp/Controllers/SessionManagerModel.swift",
+    "Sources/VibeBarApp/Controllers/SkillsManagerModel.swift",
+    "Sources/VibeBarApp/Views/Workbench/SkillsManagerPage.swift",
+    "Sources/VibeBarApp/Views/Workbench/SkillListRow.swift",
+    "Sources/VibeBarApp/Views/Workbench/SkillWiringView.swift",
+    "Sources/VibeBarApp/Views/Workbench/SkillDiscoverSheet.swift",
+    "Sources/VibeBarApp/Views/Workbench/SkillImportSheet.swift",
+    "Sources/VibeBarApp/Views/Workbench/SkillBackupsSheet.swift",
 ]
 
 

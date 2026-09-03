@@ -255,5 +255,145 @@
 			<string>%1$lld 条消息</string>
 		</dict>
 	</dict>
+	<key>workbench.skills.appSeesCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$@ 可见 %2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%2$lld 个技能</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.countTotal</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个技能</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.discover.installs</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 次安装</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.import.apply</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>应用 %1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 项更改</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.importConflicts</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>有 %1$#@count@保持不变。</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个冲突的应用副本</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.importRecognized</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>已识别 %1$#@count@。</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个已有技能</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.installedArchive</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>已从压缩包安装 %1$#@count@。</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个技能</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.recorded</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>已记录 %1$#@count@。</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个技能</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.reposUnreadable</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>有 %1$#@count@无法读取。</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个仓库</string>
+		</dict>
+	</dict>
+	<key>workbench.skills.toast.updatesAvailable</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>有 %1$#@count@可以更新。</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 个技能</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

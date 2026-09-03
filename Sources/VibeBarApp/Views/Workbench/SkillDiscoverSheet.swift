@@ -44,18 +44,22 @@ struct SkillDiscoverSheet: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Text("Discover Skills")
+            Text(L10n.Workbench.skillsDiscoverTitle)
                 .font(.system(size: density.titleFontSize, weight: .semibold))
             Spacer(minLength: 8)
-            Button(defaultApps.count == SkillAppTarget.managedHarnesses.count ? "Select none" : "Select all") {
+            Button(
+                defaultApps.count == SkillAppTarget.managedHarnesses.count
+                    ? L10n.Workbench.skillsDiscoverSelectNone
+                    : L10n.Workbench.skillsDiscoverSelectAll
+            ) {
                 defaultApps = defaultApps.count == SkillAppTarget.managedHarnesses.count
                     ? []
                     : Set(SkillAppTarget.managedHarnesses)
                 overrides.removeAll()
             }
             .buttonStyle(.bordered)
-            .help("Set which agent CLIs every row installs into")
-            Button("Done") { dismiss() }
+            .help(L10n.Workbench.skillsDiscoverSelectHelp)
+            Button(L10n.Common.done) { dismiss() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
         }
@@ -68,7 +72,7 @@ struct SkillDiscoverSheet: View {
     private var repositoriesSection: some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             HStack(spacing: 8) {
-                sectionTitle("Configured repositories")
+                sectionTitle(L10n.Workbench.skillsDiscoverReposTitle)
                 Spacer(minLength: 8)
                 Button {
                     if model.isDiscovering {
@@ -87,14 +91,18 @@ struct SkillDiscoverSheet: View {
                         }
                         // A download nobody can stop is the whole complaint
                         // this button answers.
-                        Text(model.isDiscovering ? "Cancel" : "Scan repos")
+                        Text(model.isDiscovering
+                            ? L10n.Common.cancel
+                            : L10n.Workbench.skillsDiscoverScanRepos)
                             .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
                     }
                     .frame(minHeight: 22)
                 }
                 .buttonStyle(.bordered)
                 .disabled(model.repoList.isEmpty && !model.isDiscovering)
-                .help(model.isDiscovering ? "Stop the running scan" : "Download every configured repository")
+                .help(model.isDiscovering
+                    ? L10n.Workbench.skillsDiscoverStopScanHelp
+                    : L10n.Workbench.skillsDiscoverScanReposHelp)
             }
 
             if let phase = model.discoverPhase {
@@ -116,7 +124,7 @@ struct SkillDiscoverSheet: View {
             }
 
             if model.repoList.isEmpty {
-                Text("No repositories configured. Add one as owner/repo, optionally owner/repo@branch.")
+                Text(L10n.Workbench.skillsDiscoverNoRepos)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             } else {
@@ -136,24 +144,23 @@ struct SkillDiscoverSheet: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.vibeBar)
-                        .help("Stop scanning \(repo)")
-                        .accessibilityLabel("Remove \(repo)")
+                        .help(L10n.Workbench.skillsDiscoverStopScanningRepo(repo: repo))
+                        .accessibilityLabel(L10n.Workbench.skillsDiscoverRemoveRepo(repo: repo))
                     }
                 }
             }
 
             HStack(spacing: 8) {
-                TextField("owner/repo or owner/repo@branch", text: $repoDraft)
+                TextField(L10n.Workbench.skillsDiscoverRepoFieldPlaceholder, text: $repoDraft)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: density.subtitleFontSize, design: .monospaced))
                     .onSubmit { addRepo() }
-                Button("Add") { addRepo() }
+                Button(L10n.Workbench.skillsDiscoverAddRepo) { addRepo() }
                     .buttonStyle(.bordered)
                     .disabled(!isRepoDraftValid)
             }
             if !repoDraft.isEmpty, !isRepoDraftValid {
-                Text("Owners take letters, digits, and hyphens; names and branches also take "
-                    + "dots and underscores.")
+                Text(L10n.Workbench.skillsDiscoverRepoRules)
                     .font(.system(size: max(9, density.resetCountdownFontSize)))
                     .foregroundStyle(.tertiary)
             }
@@ -175,13 +182,13 @@ struct SkillDiscoverSheet: View {
     private var searchSection: some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             HStack(spacing: 8) {
-                sectionTitle("skills.sh index")
+                sectionTitle(L10n.Workbench.skillsDiscoverIndexTitle)
                 Spacer(minLength: 8)
                 if model.isBusy(SkillsManagerModel.BusyKey.search) {
                     ProgressView().controlSize(.small)
                 }
             }
-            TextField("Search the community index", text: $query)
+            TextField(L10n.Workbench.skillsDiscoverSearchPlaceholder, text: $query)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: density.subtitleFontSize))
                 .onChange(of: query) { _, newValue in
@@ -189,8 +196,7 @@ struct SkillDiscoverSheet: View {
                 }
 
             if model.searchResults.isEmpty {
-                Text("Results come back with the repository that publishes them; installing one "
-                    + "downloads that repository and lists the rest of it below.")
+                Text(L10n.Workbench.skillsDiscoverSearchHint)
                     .font(.system(size: max(9, density.resetCountdownFontSize)))
                     .foregroundStyle(.tertiary)
             } else {
@@ -216,7 +222,7 @@ struct SkillDiscoverSheet: View {
                         .font(.system(size: max(9, density.resetCountdownFontSize), design: .monospaced))
                         .foregroundStyle(.secondary)
                     if let installs = result.installs {
-                        Text("\(installs) install\(installs == 1 ? "" : "s")")
+                        Text(L10n.Workbench.skillsDiscoverInstalls(count: installs))
                             .font(.system(size: max(9, density.resetCountdownFontSize), design: .rounded)
                                 .monospacedDigit())
                             .foregroundStyle(.tertiary)
@@ -238,7 +244,7 @@ struct SkillDiscoverSheet: View {
     private var resultsSection: some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             HStack(spacing: 8) {
-                sectionTitle("Available skills")
+                sectionTitle(L10n.Workbench.skillsDiscoverAvailableTitle)
                 Spacer(minLength: 8)
                 if let source = model.discoverSource {
                     Text(source)
@@ -248,8 +254,7 @@ struct SkillDiscoverSheet: View {
                 }
             }
             if model.discoverResults.isEmpty {
-                Text("Scan the configured repositories, or install a skills.sh result, to list "
-                    + "what is available.")
+                Text(L10n.Workbench.skillsDiscoverAvailableEmpty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             } else {
@@ -268,7 +273,9 @@ struct SkillDiscoverSheet: View {
     }
 
     private var groupedResults: [(repo: String, skills: [DiscoveredSkill])] {
-        Dictionary(grouping: model.discoverResults) { $0.repositorySlug ?? "local" }
+        Dictionary(grouping: model.discoverResults) {
+            $0.repositorySlug ?? L10n.Workbench.skillsSourceLocal
+        }
             .map { (repo: $0.key, skills: $0.value) }
             .sorted { $0.repo.localizedCaseInsensitiveCompare($1.repo) == .orderedAscending }
     }
@@ -283,7 +290,7 @@ struct SkillDiscoverSheet: View {
                         .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                         .lineLimit(1)
                     if installed {
-                        Text("INSTALLED")
+                        Text(L10n.Workbench.skillsBadgeInstalled)
                             .font(.system(size: max(8, density.resetCountdownFontSize - 2), weight: .semibold))
                             .tracking(0.4)
                             .foregroundStyle(.secondary)
@@ -321,7 +328,7 @@ struct SkillDiscoverSheet: View {
             diameter: 22,
             glyphSize: 11,
             spacing: 3,
-            helpSuffix: "install into"
+            helpOverride: { L10n.Workbench.skillsToggleHelpInstallInto(app: $0.displayName) }
         )
     }
 
@@ -331,7 +338,7 @@ struct SkillDiscoverSheet: View {
                 if model.isBusy(busyKey) {
                     ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 12, height: 12)
                 }
-                Text("Install")
+                Text(L10n.Workbench.skillsInstall)
                     .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
             }
             .frame(minHeight: 22)

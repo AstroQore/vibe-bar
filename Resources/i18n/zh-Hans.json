@@ -1706,6 +1706,504 @@
   "workbench.sessions.transcript.truncatedTitle": {
     "value": "已显示这份超大日志中的前 {count, plural, other {# 条消息}}"
   },
+  "workbench.skills.appCountNativeDisabled": {
+    "value": "{count} 个已投影但被停用"
+  },
+  "workbench.skills.appCountViaGeminiRoot": {
+    "value": "{enabled} 个已启用 + {coupled} 个来自 Gemini CLI 兼容根目录"
+  },
+  "workbench.skills.appCountViaSharedRoot": {
+    "value": "{enabled} 个已启用 + {coupled} 个来自共享技能根目录"
+  },
+  "workbench.skills.appSeesCount": {
+    "value": "{app} 可见 {count, plural, other {# 个技能}}"
+  },
+  "workbench.skills.backups": {
+    "value": "备份"
+  },
+  "workbench.skills.backups.deleteAccessibility": {
+    "value": "删除此备份"
+  },
+  "workbench.skills.backups.deleteConfirmMessage": {
+    "value": "快照将从 ~/.vibebar 中删除，之后无法恢复。"
+  },
+  "workbench.skills.backups.deleteConfirmTitle": {
+    "value": "删除 {skill} 的备份？"
+  },
+  "workbench.skills.backups.deleteConfirmTitleGeneric": {
+    "value": "删除此备份？"
+  },
+  "workbench.skills.backups.empty": {
+    "value": "暂无备份"
+  },
+  "workbench.skills.backups.footer": {
+    "value": "恢复只会重建共享目录 — 之后需要再为相应应用启用该技能。"
+  },
+  "workbench.skills.backups.refreshHelp": {
+    "value": "重新读取备份目录"
+  },
+  "workbench.skills.backups.restore": {
+    "value": "恢复"
+  },
+  "workbench.skills.backups.restoreHelp": {
+    "value": "把快照复制回 ~/.agents/skills"
+  },
+  "workbench.skills.backups.subtitle": {
+    "value": "在卸载或更新前自动创建。"
+  },
+  "workbench.skills.backups.title": {
+    "value": "技能备份"
+  },
+  "workbench.skills.badge.installed": {
+    "value": "已安装"
+  },
+  "workbench.skills.badge.nativeOff": {
+    "value": "{app} 已关闭"
+  },
+  "workbench.skills.badge.nativeOffHelp": {
+    "value": "已投影，但被 harness 自身的配置停用"
+  },
+  "workbench.skills.badge.nativeUnknown": {
+    "value": "原生状态未知"
+  },
+  "workbench.skills.badge.nativeUnknownHelp": {
+    "value": "无法安全解析 harness 的配置"
+  },
+  "workbench.skills.badge.update": {
+    "value": "可更新"
+  },
+  "workbench.skills.checkUpdates": {
+    "value": "检查更新"
+  },
+  "workbench.skills.checkUpdatesCount": {
+    "value": "检查更新 · {count}"
+  },
+  "workbench.skills.contextDisableKeepProjection": {
+    "value": "在 {app} 中停用 · 保留投影"
+  },
+  "workbench.skills.contextEnableIn": {
+    "value": "在 {app} 中启用"
+  },
+  "workbench.skills.contextRemoveProjection": {
+    "value": "移除 {app} 投影"
+  },
+  "workbench.skills.countFiltered": {
+    "value": "{total} 个技能中的 {shown} 个"
+  },
+  "workbench.skills.countTotal": {
+    "value": "{count, plural, other {# 个技能}}"
+  },
+  "workbench.skills.discover": {
+    "value": "发现"
+  },
+  "workbench.skills.discover.addRepo": {
+    "value": "添加"
+  },
+  "workbench.skills.discover.availableEmpty": {
+    "value": "扫描已配置的仓库，或安装一条 skills.sh 结果，即可列出可用技能。"
+  },
+  "workbench.skills.discover.availableTitle": {
+    "value": "可用技能"
+  },
+  "workbench.skills.discover.indexTitle": {
+    "value": "skills.sh 索引"
+  },
+  "workbench.skills.discover.installs": {
+    "value": "{count, plural, other {# 次安装}}"
+  },
+  "workbench.skills.discover.noRepos": {
+    "value": "尚未配置仓库。可按 owner/repo 添加，也可用 owner/repo@branch。"
+  },
+  "workbench.skills.discover.removeRepo": {
+    "value": "移除 {repo}"
+  },
+  "workbench.skills.discover.repoFieldPlaceholder": {
+    "value": "owner/repo 或 owner/repo@branch"
+  },
+  "workbench.skills.discover.repoRules": {
+    "value": "owner 只接受字母、数字和连字符；仓库名和分支名还可以包含点和下划线。"
+  },
+  "workbench.skills.discover.reposTitle": {
+    "value": "已配置的仓库"
+  },
+  "workbench.skills.discover.scanRepos": {
+    "value": "扫描仓库"
+  },
+  "workbench.skills.discover.scanReposHelp": {
+    "value": "下载全部已配置的仓库"
+  },
+  "workbench.skills.discover.searchHint": {
+    "value": "搜索结果会带上发布它的仓库；安装其中一个会下载该仓库，并在下方列出其余技能。"
+  },
+  "workbench.skills.discover.searchPlaceholder": {
+    "value": "搜索社区索引"
+  },
+  "workbench.skills.discover.selectAll": {
+    "value": "全选"
+  },
+  "workbench.skills.discover.selectHelp": {
+    "value": "设置每一行默认安装到哪些 agent CLI"
+  },
+  "workbench.skills.discover.selectNone": {
+    "value": "全不选"
+  },
+  "workbench.skills.discover.sourceFromSkillsSh": {
+    "value": "{repo}（来自 skills.sh）"
+  },
+  "workbench.skills.discover.stopScanHelp": {
+    "value": "停止正在进行的扫描"
+  },
+  "workbench.skills.discover.stopScanningRepo": {
+    "value": "不再扫描 {repo}"
+  },
+  "workbench.skills.discover.title": {
+    "value": "发现技能"
+  },
+  "workbench.skills.discoverHelp": {
+    "value": "浏览已配置的仓库和 skills.sh 索引"
+  },
+  "workbench.skills.empty.body": {
+    "value": "Vibe Bar 在 ~/.agents/skills 中保存每个技能的唯一副本，并将其链接到各个 agent CLI。可以导入这台 Mac 上已有的技能，也可以从仓库安装新的。"
+  },
+  "workbench.skills.empty.headline": {
+    "value": "尚未记录任何技能"
+  },
+  "workbench.skills.filterClear": {
+    "value": "清除筛选"
+  },
+  "workbench.skills.filterPlaceholder": {
+    "value": "筛选已安装的技能"
+  },
+  "workbench.skills.import.alreadyShared": {
+    "value": "已共享"
+  },
+  "workbench.skills.import.alreadySharedDetail": {
+    "value": "这些技能已经位于 ~/.agents/skills，包括 CC Switch 建立的目录结构。Vibe Bar 只记录它们已有的链接，不会再次导入或复制。"
+  },
+  "workbench.skills.import.apply": {
+    "value": "应用 {count, plural, other {# 项更改}}"
+  },
+  "workbench.skills.import.conflicts": {
+    "value": "冲突的应用副本"
+  },
+  "workbench.skills.import.conflictsCount": {
+    "value": "{count} 个保持不变"
+  },
+  "workbench.skills.import.conflictsDetail": {
+    "value": "某个应用技能目录中的真实文件夹与 ~/.agents/skills 中的同名。Vibe Bar 不会覆盖它 — 需手动处理，或在该文件夹删除后再为该应用启用共享技能。"
+  },
+  "workbench.skills.import.foundIn": {
+    "value": "发现于 {apps}"
+  },
+  "workbench.skills.import.keepEvidenceFor": {
+    "value": "为以下应用保留记录"
+  },
+  "workbench.skills.import.needsAdoption": {
+    "value": "待接管"
+  },
+  "workbench.skills.import.needsAdoptionDetail": {
+    "value": "这些技能还不在共享目录中。选中后会把它复制到 ~/.agents/skills，再把所选应用中的副本替换为受管链接。"
+  },
+  "workbench.skills.import.notSkills": {
+    "value": "非技能目录"
+  },
+  "workbench.skills.import.notSkillsDetail": {
+    "value": "~/.agents/skills 中没有 SKILL.md 的目录。将保持原样。"
+  },
+  "workbench.skills.import.recognizedCount": {
+    "value": "已识别 {count} 个"
+  },
+  "workbench.skills.import.subtitle": {
+    "value": "Vibe Bar 已识别共享技能。只有选中的应用本地目录会被移动。"
+  },
+  "workbench.skills.import.summary": {
+    "value": "{adopted} 个已共享 · {unmanaged} 个待接管 · {conflicts} 个保持不变"
+  },
+  "workbench.skills.import.title": {
+    "value": "检查磁盘上的技能"
+  },
+  "workbench.skills.importExisting": {
+    "value": "导入已有技能"
+  },
+  "workbench.skills.install": {
+    "value": "安装"
+  },
+  "workbench.skills.installFromZip": {
+    "value": "从 ZIP 安装"
+  },
+  "workbench.skills.menuMoreActions": {
+    "value": "{skill} 的更多操作"
+  },
+  "workbench.skills.menuRevealInFinder": {
+    "value": "在 Finder 中显示"
+  },
+  "workbench.skills.menuUninstall": {
+    "value": "卸载…"
+  },
+  "workbench.skills.menuUpdateFromRepository": {
+    "value": "从仓库更新"
+  },
+  "workbench.skills.menuWiringDetails": {
+    "value": "连接详情…"
+  },
+  "workbench.skills.noMatch": {
+    "value": "没有技能匹配「{query}」"
+  },
+  "workbench.skills.phase.downloadedOne": {
+    "value": "已下载 1 个仓库"
+  },
+  "workbench.skills.phase.downloadedProgress": {
+    "value": "已下载 {total} 个仓库中的 {completed} 个"
+  },
+  "workbench.skills.phase.downloading": {
+    "value": "正在下载 {repo}…"
+  },
+  "workbench.skills.phase.scanning": {
+    "value": "正在扫描 {repo}…"
+  },
+  "workbench.skills.sourceBranch": {
+    "value": "分支 {branch}"
+  },
+  "workbench.skills.sourceInstalledLocally": {
+    "value": "本地安装"
+  },
+  "workbench.skills.sourceLocal": {
+    "value": "本地"
+  },
+  "workbench.skills.state.coupled": {
+    "value": "通过共享根目录或兼容根目录可用"
+  },
+  "workbench.skills.state.disabledInHarness": {
+    "value": "已投影，在 harness 中停用"
+  },
+  "workbench.skills.state.enabled": {
+    "value": "已启用"
+  },
+  "workbench.skills.state.notProjected": {
+    "value": "未投影"
+  },
+  "workbench.skills.state.unknown": {
+    "value": "已投影，原生状态未知"
+  },
+  "workbench.skills.sync.footer": {
+    "value": "Vibe Bar 只写入 ~/{path}、各 harness 的技能目录以及上面列出的配置文件。"
+  },
+  "workbench.skills.sync.nativeSwitchesBody": {
+    "value": "如果某个 harness 有自己的按技能开关，圆形按钮切换的就是那个开关。Cursor 没有，因此共享根目录里的每个技能对它都始终可用 — 这就是「共享根目录」标记的含义，没有可切换的开关。"
+  },
+  "workbench.skills.sync.nativeSwitchesLead": {
+    "value": "原生开关。"
+  },
+  "workbench.skills.sync.noPerSkillSwitch": {
+    "value": "无按技能开关"
+  },
+  "workbench.skills.sync.noSwitchAlsoReads": {
+    "value": "无按技能开关；同时读取 ~/{path}"
+  },
+  "workbench.skills.sync.perSkillSwitch": {
+    "value": "按技能开关 {key} 位于 ~/{path}"
+  },
+  "workbench.skills.sync.projectionsBody": {
+    "value": "Claude Code 和 AntiGravity 只读取各自的技能目录，因此 Vibe Bar 会把技能链接（或复制）进去。Codex、Gemini CLI、Grok Build 和 Cursor 会自行扫描共享根目录，无需链接。"
+  },
+  "workbench.skills.sync.projectionsLead": {
+    "value": "投影。"
+  },
+  "workbench.skills.sync.readsOwnFolder": {
+    "value": "只读取 ~/{path}"
+  },
+  "workbench.skills.sync.scansSharedRoot": {
+    "value": "直接扫描 ~/{path}"
+  },
+  "workbench.skills.sync.ssotBody": {
+    "value": "每个技能都存放在 ~/{path}/<name>。安装、更新和卸载都只在那里发生。"
+  },
+  "workbench.skills.sync.ssotLead": {
+    "value": "唯一真相源。"
+  },
+  "workbench.skills.sync.title": {
+    "value": "技能同步的原理"
+  },
+  "workbench.skills.syncExplainerHelp": {
+    "value": "技能同步的原理 — 根目录、链接与原生开关"
+  },
+  "workbench.skills.toast.addRepoFirst": {
+    "value": "请先添加一个仓库。"
+  },
+  "workbench.skills.toast.allUpToDate": {
+    "value": "所有来自仓库的技能都是最新的。"
+  },
+  "workbench.skills.toast.archiveEmpty": {
+    "value": "该压缩包中没有可安装的内容。"
+  },
+  "workbench.skills.toast.disabledKeptProjection": {
+    "value": "已在 {app} 中停用 {skill}，并保留其投影。"
+  },
+  "workbench.skills.toast.enabledForApps": {
+    "value": "已为 {apps} 启用。"
+  },
+  "workbench.skills.toast.importConflicts": {
+    "value": "有 {count, plural, other {# 个冲突的应用副本}}保持不变。"
+  },
+  "workbench.skills.toast.importRecognized": {
+    "value": "已识别 {count, plural, other {# 个已有技能}}。"
+  },
+  "workbench.skills.toast.installedArchive": {
+    "value": "已从压缩包安装 {count, plural, other {# 个技能}}。"
+  },
+  "workbench.skills.toast.installedForApps": {
+    "value": "已为 {apps} 安装 {skill}。"
+  },
+  "workbench.skills.toast.installedShared": {
+    "value": "已把 {skill} 安装到共享库。可在「技能」页查看各 harness 的实际状态。"
+  },
+  "workbench.skills.toast.invalidRepoRef": {
+    "value": "「{input}」不是一条新的 owner/repo[@branch] 引用。"
+  },
+  "workbench.skills.toast.linkRemovedStillShared": {
+    "value": "已移除 {app} 的链接。{skill} 仍可通过共享技能根目录在其中使用。"
+  },
+  "workbench.skills.toast.noSearchMatches": {
+    "value": "skills.sh 没有返回匹配结果。"
+  },
+  "workbench.skills.toast.noSkillsFound": {
+    "value": "在已配置的仓库中没有找到技能。"
+  },
+  "workbench.skills.toast.notFoundInRepo": {
+    "value": "在 {repo} 中未找到 {skill}。"
+  },
+  "workbench.skills.toast.projectionClearedFolderKept": {
+    "value": "已清除 {skill} 在 {app} 的 Vibe Bar 投影记录，但原有文件夹保留在原处。"
+  },
+  "workbench.skills.toast.recorded": {
+    "value": "已记录 {count, plural, other {# 个技能}}。"
+  },
+  "workbench.skills.toast.reposUnreadable": {
+    "value": "有 {count, plural, other {# 个仓库}}无法读取。"
+  },
+  "workbench.skills.toast.restored": {
+    "value": "已恢复 {skill}。可按需为相应应用启用。"
+  },
+  "workbench.skills.toast.scanStopped": {
+    "value": "已停止扫描。"
+  },
+  "workbench.skills.toast.sharedLibraryNote": {
+    "value": "它们保留在共享库中。可在「技能」页查看各 harness 的实际状态。"
+  },
+  "workbench.skills.toast.sharedRootNoSwitch": {
+    "value": "{app} 直接读取共享技能根目录 — {skill} 在其中始终可用，且没有按技能的开关。"
+  },
+  "workbench.skills.toast.uninstalledBackedUp": {
+    "value": "已卸载 {skill}。备份已保存。"
+  },
+  "workbench.skills.toast.uninstalledLeftInPlace": {
+    "value": "已卸载 {skill}。在 {apps} 中保持原样。"
+  },
+  "workbench.skills.toast.updated": {
+    "value": "已更新 {skill}。"
+  },
+  "workbench.skills.toast.updatesAvailable": {
+    "value": "有 {count, plural, other {# 个技能}}可以更新。"
+  },
+  "workbench.skills.toggleHelp.installInto": {
+    "value": "安装到 {app}"
+  },
+  "workbench.skills.toggleHelp.keepLinks": {
+    "value": "保留磁盘上已有的 {app} 链接"
+  },
+  "workbench.skills.toggleHelp.linkAfterAdopting": {
+    "value": "接管后链接到 {app}"
+  },
+  "workbench.skills.toggleState.coupledGemini": {
+    "value": "{app} — 通过它同样读取的 Gemini CLI 投影可见。点按可为其建立独立投影。"
+  },
+  "workbench.skills.toggleState.coupledSharedRoot": {
+    "value": "{app} 直接读取共享技能根目录，该技能在其中始终可用。没有按技能的开关可切换。"
+  },
+  "workbench.skills.toggleState.disabledInHarness": {
+    "value": "{app} — 已投影，但被其原生配置停用。点按即可启用。"
+  },
+  "workbench.skills.toggleState.enabled": {
+    "value": "{app} — 通过投影启用。点按即可移除。"
+  },
+  "workbench.skills.toggleState.enabledNative": {
+    "value": "{app} — 已投影并启用。点按可在该 harness 中停用；右键可管理投影选项。"
+  },
+  "workbench.skills.toggleState.enabledSharedRoot": {
+    "value": "{app} — 既有自己的链接，也会直接读取共享技能根目录。没有按技能的开关；右键可管理这条多余的链接。"
+  },
+  "workbench.skills.toggleState.notProjected": {
+    "value": "{app} — 未投影。点按即可启用。"
+  },
+  "workbench.skills.toggleState.unknown": {
+    "value": "{app} — 已投影，但原生配置无法解析。点按可按启用状态修复。"
+  },
+  "workbench.skills.uninstall": {
+    "value": "卸载"
+  },
+  "workbench.skills.uninstallConfirmMessage": {
+    "value": "会先备份该技能，再从所有链接到它的应用中移除。"
+  },
+  "workbench.skills.uninstallConfirmTitle": {
+    "value": "卸载 {skill}？"
+  },
+  "workbench.skills.wiring.footer": {
+    "value": "Vibe Bar 只写入上面的技能目录和列出的四个配置文件，并在卸载前先备份技能。"
+  },
+  "workbench.skills.wiring.mechanismGeminiCompat": {
+    "value": "同时读取 Gemini CLI 的技能目录，该技能的 Gemini 投影就在其中。"
+  },
+  "workbench.skills.wiring.mechanismSharedRoot": {
+    "value": "自行扫描共享根目录 — 无需为其单独建立链接。"
+  },
+  "workbench.skills.wiring.nativeSwitch": {
+    "value": "按技能开关：{path} 中的 {key}"
+  },
+  "workbench.skills.wiring.noNativeSwitch": {
+    "value": "没有按技能开关 — 凡是被发现的都处于生效状态。"
+  },
+  "workbench.skills.wiring.projectionCopy": {
+    "value": "副本位于 {path}"
+  },
+  "workbench.skills.wiring.projectionCopyAdopted": {
+    "value": "副本位于 {path} · 接管自已有安装"
+  },
+  "workbench.skills.wiring.projectionMissing": {
+    "value": "{path} 下没有条目 — 该 harness 看不到这个技能。"
+  },
+  "workbench.skills.wiring.projectionSymlink": {
+    "value": "符号链接位于 {path}"
+  },
+  "workbench.skills.wiring.projectionSymlinkAdopted": {
+    "value": "符号链接位于 {path} · 接管自已有安装"
+  },
+  "workbench.skills.wiring.reveal": {
+    "value": "显示"
+  },
+  "workbench.skills.wiring.revealHelp": {
+    "value": "在 Finder 中显示该技能的源目录"
+  },
+  "workbench.skills.wiring.source": {
+    "value": "源目录"
+  },
+  "workbench.skills.wiring.sourceDetail": {
+    "value": "技能的唯一副本。下方每个 harness 读取的都是这个目录或指向它的链接。"
+  },
+  "workbench.skills.wiring.stateConfigUnreadable": {
+    "value": "配置无法读取"
+  },
+  "workbench.skills.wiring.stateCoupledGemini": {
+    "value": "已开启 · 经由 Gemini"
+  },
+  "workbench.skills.wiring.stateCoupledSharedRoot": {
+    "value": "已开启 · 共享根目录"
+  },
+  "workbench.skills.wiring.stateNativeOff": {
+    "value": "已关闭 · 原生开关"
+  },
+  "workbench.skills.wiring.stateNotLinked": {
+    "value": "已关闭 · 未链接"
+  },
   "workbench.status.cachedQuotas": {
     "value": "缓存额度"
   },
