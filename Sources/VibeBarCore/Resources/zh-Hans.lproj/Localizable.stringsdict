@@ -101,6 +101,20 @@
 			<string>%1$lld 家</string>
 		</dict>
 	</dict>
+	<key>quota.misc.independentCopies</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@独立配置</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>%1$lld 份</string>
+		</dict>
+	</dict>
 	<key>quota.perModelLimits</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

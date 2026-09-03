@@ -1126,6 +1126,26 @@ extension L10n {
         public static var awaitingFirstObservation: String {
             L10n.string("quota.awaitingFirstObservation")
         }
+        /// `quota.bridge.empty` — No enabled CodexBar-only provider returned a quota window. Overlapping providers remain on Vibe Bar's native cards.
+        public static var bridgeEmpty: String {
+            L10n.string("quota.bridge.empty")
+        }
+        /// `quota.bridge.refresh` — Refresh CodexBar providers
+        public static var bridgeRefresh: String {
+            L10n.string("quota.bridge.refresh")
+        }
+        /// `quota.bridge.subtitle` — Additional providers · read-only
+        public static var bridgeSubtitle: String {
+            L10n.string("quota.bridge.subtitle")
+        }
+        /// `quota.bridge.subtitleVersion` — CodexBar {version} · read-only
+        public static func bridgeSubtitleVersion(version: String) -> String {
+            L10n.string("quota.bridge.subtitleVersion", version)
+        }
+        /// `quota.bridge.title` — CodexBar Bridge
+        public static var bridgeTitle: String {
+            L10n.string("quota.bridge.title")
+        }
         /// `quota.bucket.noResetInfo` — No reset info
         public static var bucketNoResetInfo: String {
             L10n.string("quota.bucket.noResetInfo")
@@ -1701,6 +1721,54 @@ extension L10n {
         /// `quota.mini.forecastSurplusCompact` — surplus {percent}%
         public static func miniForecastSurplusCompact(percent: Int) -> String {
             L10n.string("quota.mini.forecastSurplusCompact", percent)
+        }
+        /// `quota.mini.nextProvider` — Next provider
+        public static var miniNextProvider: String {
+            L10n.string("quota.mini.nextProvider")
+        }
+        /// `quota.mini.noLiveData` — No selected fields have live data
+        public static var miniNoLiveData: String {
+            L10n.string("quota.mini.noLiveData")
+        }
+        /// `quota.mini.pageIndicator` — {index}/{total}
+        public static func miniPageIndicator(index: Int, total: Int) -> String {
+            L10n.string("quota.mini.pageIndicator", index, total)
+        }
+        /// `quota.mini.railEmpty` — Nothing selected refills in the next seven days.
+        public static var miniRailEmpty: String {
+            L10n.string("quota.mini.railEmpty")
+        }
+        /// `quota.mini.railTitle` — QUOTA RESETS · NEXT {days} DAYS
+        public static func miniRailTitle(days: Int) -> String {
+            L10n.string("quota.mini.railTitle", days)
+        }
+        /// `quota.mini.resets` — resets {countdown}
+        public static func miniResets(countdown: String) -> String {
+            L10n.string("quota.mini.resets", countdown)
+        }
+        /// `quota.mini.rowHelp` — {subProvider} — {row}: {percent}%
+        public static func miniRowHelp(subProvider: String, row: String, percent: Int) -> String {
+            L10n.string("quota.mini.rowHelp", subProvider, row, percent)
+        }
+        /// `quota.misc.independentCopies` — {count, plural, one {1 independent copy} other {# independent copies}}
+        public static func miscIndependentCopies(count: Int) -> String {
+            L10n.string("quota.misc.independentCopies", count)
+        }
+        /// `quota.misc.notConfigured` — Not configured.
+        public static var miscNotConfigured: String {
+            L10n.string("quota.misc.notConfigured")
+        }
+        /// `quota.misc.refreshCopies` — Refresh {provider} copies
+        public static func miscRefreshCopies(provider: String) -> String {
+            L10n.string("quota.misc.refreshCopies", provider)
+        }
+        /// `quota.misc.refreshProvider` — Refresh {provider}
+        public static func miscRefreshProvider(provider: String) -> String {
+            L10n.string("quota.misc.refreshProvider", provider)
+        }
+        /// `quota.misc.setUpInSettings` — Set up in Settings
+        public static var miscSetUpInSettings: String {
+            L10n.string("quota.misc.setUpInSettings")
         }
         /// `quota.mode.remaining` — remaining
         public static var modeRemaining: String {
@@ -5923,6 +5991,11 @@ extension L10n {
         "popover.tab.miscShort",
         "popover.tab.overview",
         "quota.awaitingFirstObservation",
+        "quota.bridge.empty",
+        "quota.bridge.refresh",
+        "quota.bridge.subtitle",
+        "quota.bridge.subtitleVersion",
+        "quota.bridge.title",
         "quota.bucket.noResetInfo",
         "quota.bucket.resetsIn",
         "quota.cycleRecordedOnRefill",
@@ -6067,6 +6140,18 @@ extension L10n {
         "quota.mini.forecastMayRunOut",
         "quota.mini.forecastSurplus",
         "quota.mini.forecastSurplusCompact",
+        "quota.mini.nextProvider",
+        "quota.mini.noLiveData",
+        "quota.mini.pageIndicator",
+        "quota.mini.railEmpty",
+        "quota.mini.railTitle",
+        "quota.mini.resets",
+        "quota.mini.rowHelp",
+        "quota.misc.independentCopies",
+        "quota.misc.notConfigured",
+        "quota.misc.refreshCopies",
+        "quota.misc.refreshProvider",
+        "quota.misc.setUpInSettings",
         "quota.mode.remaining",
         "quota.mode.used",
         "quota.pace.deficit",
@@ -7061,6 +7146,7 @@ extension L10n {
         "quota.forecast.metric.recentIntervals",
         "quota.history.curveCount",
         "quota.history.providerCount",
+        "quota.misc.independentCopies",
         "quota.perModelLimits",
         "quota.resetCredits.available",
         "quota.resetHistory.earlyRefillCount",

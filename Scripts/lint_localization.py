@@ -112,7 +112,6 @@ MIGRATED = [
     "Sources/VibeBarCore/Models/PrimaryProviderRouteHealth.swift",
     "Sources/VibeBarCore/Models/PrimaryProviderSourcePlanner.swift",
     "Sources/VibeBarCore/Models/UpdateChannel.swift",
-    "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/HeaderView.swift",
     "Sources/VibeBarApp/Views/QuotaGroupCard.swift",
     "Sources/VibeBarApp/Views/QuotaHistoryChartView.swift",
@@ -129,6 +128,10 @@ MIGRATED = [
     "Sources/VibeBarCore/Services/SubscriptionWindowProgress.swift",
     "Sources/VibeBarCore/Models/CostChartGranularity.swift",
     "Sources/VibeBarCore/Models/UsageHeatmap+Activity.swift",
+    "Sources/VibeBarApp/Views/MiniWindowAltLayouts.swift",
+    "Sources/VibeBarApp/Views/MiscProvidersPage.swift",
+    "Sources/VibeBarApp/Views/CodexBarProviderBridgeCard.swift",
+    "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
 ]
 
 

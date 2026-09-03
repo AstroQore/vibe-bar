@@ -815,6 +815,21 @@
 /* Placeholder inside an empty reset-history strip, before any quota reading has landed */
 "quota.awaitingFirstObservation" = "等待首次额度观测";
 
+/* Empty state of the CodexBar bridge card when every bridged provider is one Vibe Bar already reads natively */
+"quota.bridge.empty" = "没有仅存在于 CodexBar 的厂商返回额度窗口。重叠的厂商仍显示在 Vibe Bar 自己的卡片上。";
+
+/* Tooltip on the CodexBar bridge card's refresh button */
+"quota.bridge.refresh" = "刷新 CodexBar 厂商";
+
+/* Subtitle of the CodexBar bridge card before its version is known */
+"quota.bridge.subtitle" = "额外厂商 · 只读";
+
+/* Subtitle of the CodexBar bridge card once the installed version is known */
+"quota.bridge.subtitleVersion" = "CodexBar %1$@ · 只读";
+
+/* Title of the card listing quota read from a CodexBar install; CodexBar is a product name */
+"quota.bridge.title" = "CodexBar 桥接";
+
 /* Caption under a quota bar when the provider reported no reset time */
 "quota.bucket.noResetInfo" = "无重置信息";
 
@@ -1234,6 +1249,39 @@
 
 /* Narrow form of the mini window surplus forecast line */
 "quota.mini.forecastSurplusCompact" = "盈余 %1$lld%%";
+
+/* Tooltip on the mini focus layout's button that pages to the next provider */
+"quota.mini.nextProvider" = "下一个厂商";
+
+/* Mini window placeholder when none of the selected fields has a live reading yet */
+"quota.mini.noLiveData" = "所选字段暂无实时数据";
+
+/* Mini focus layout's page counter when there are too many providers for dots */
+"quota.mini.pageIndicator" = "%1$lld/%2$lld";
+
+/* Empty state of the mini window's refill rail; only the user's selected fields are considered */
+"quota.mini.railEmpty" = "所选项目在未来 7 天内没有补额。";
+
+/* Heading of the mini window's refill rail, naming how far ahead it looks */
+"quota.mini.railTitle" = "额度重置 · 未来 %1$lld 天";
+
+/* Mini window caption for when a bucket refills; countdown is a compact span */
+"quota.mini.resets" = "%1$@重置";
+
+/* Tooltip on a mini window row; subProvider and row are names, percent the current reading */
+"quota.mini.rowHelp" = "%1$@ — %2$@：%3$lld%%";
+
+/* Body of a misc provider card that has no credential yet */
+"quota.misc.notConfigured" = "尚未配置。";
+
+/* Tooltip on the refresh button of a misc provider that has several configured copies */
+"quota.misc.refreshCopies" = "刷新 %1$@ 的全部副本";
+
+/* Tooltip on the refresh button of a misc provider's card */
+"quota.misc.refreshProvider" = "刷新 %1$@";
+
+/* Button on an unconfigured misc provider card that opens its settings */
+"quota.misc.setUpInSettings" = "在设置中配置";
 
 /* Caption saying the bar shows what is left */
 "quota.mode.remaining" = "剩余";

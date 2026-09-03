@@ -1164,6 +1164,26 @@
     "comment": "Placeholder inside an empty reset-history strip, before any quota reading has landed",
     "value": "Waiting for the first quota observation"
   },
+  "quota.bridge.empty": {
+    "comment": "Empty state of the CodexBar bridge card when every bridged provider is one Vibe Bar already reads natively",
+    "value": "No enabled CodexBar-only provider returned a quota window. Overlapping providers remain on Vibe Bar's native cards."
+  },
+  "quota.bridge.refresh": {
+    "comment": "Tooltip on the CodexBar bridge card's refresh button",
+    "value": "Refresh CodexBar providers"
+  },
+  "quota.bridge.subtitle": {
+    "comment": "Subtitle of the CodexBar bridge card before its version is known",
+    "value": "Additional providers · read-only"
+  },
+  "quota.bridge.subtitleVersion": {
+    "comment": "Subtitle of the CodexBar bridge card once the installed version is known",
+    "value": "CodexBar {version} · read-only"
+  },
+  "quota.bridge.title": {
+    "comment": "Title of the card listing quota read from a CodexBar install; CodexBar is a product name",
+    "value": "CodexBar Bridge"
+  },
   "quota.bucket.noResetInfo": {
     "comment": "Caption under a quota bar when the provider reported no reset time",
     "value": "No reset info"
@@ -1872,6 +1892,67 @@
     },
     "comment": "Narrow form of the mini window surplus forecast line",
     "value": "surplus {percent}%"
+  },
+  "quota.mini.nextProvider": {
+    "comment": "Tooltip on the mini focus layout's button that pages to the next provider",
+    "value": "Next provider"
+  },
+  "quota.mini.noLiveData": {
+    "comment": "Mini window placeholder when none of the selected fields has a live reading yet",
+    "value": "No selected fields have live data"
+  },
+  "quota.mini.pageIndicator": {
+    "args": {
+      "index": "int",
+      "total": "int"
+    },
+    "comment": "Mini focus layout's page counter when there are too many providers for dots",
+    "value": "{index}/{total}"
+  },
+  "quota.mini.railEmpty": {
+    "comment": "Empty state of the mini window's refill rail; only the user's selected fields are considered",
+    "value": "Nothing selected refills in the next seven days."
+  },
+  "quota.mini.railTitle": {
+    "args": {
+      "days": "int"
+    },
+    "comment": "Heading of the mini window's refill rail, naming how far ahead it looks",
+    "value": "QUOTA RESETS · NEXT {days} DAYS"
+  },
+  "quota.mini.resets": {
+    "comment": "Mini window caption for when a bucket refills; countdown is a compact span",
+    "value": "resets {countdown}"
+  },
+  "quota.mini.rowHelp": {
+    "args": {
+      "percent": "int"
+    },
+    "comment": "Tooltip on a mini window row; subProvider and row are names, percent the current reading",
+    "value": "{subProvider} — {row}: {percent}%"
+  },
+  "quota.misc.independentCopies": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Caption under a misc provider that holds more than one independently configured account",
+    "value": "{count, plural, one {1 independent copy} other {# independent copies}}"
+  },
+  "quota.misc.notConfigured": {
+    "comment": "Body of a misc provider card that has no credential yet",
+    "value": "Not configured."
+  },
+  "quota.misc.refreshCopies": {
+    "comment": "Tooltip on the refresh button of a misc provider that has several configured copies",
+    "value": "Refresh {provider} copies"
+  },
+  "quota.misc.refreshProvider": {
+    "comment": "Tooltip on the refresh button of a misc provider's card",
+    "value": "Refresh {provider}"
+  },
+  "quota.misc.setUpInSettings": {
+    "comment": "Button on an unconfigured misc provider card that opens its settings",
+    "value": "Set up in Settings"
   },
   "quota.mode.remaining": {
     "comment": "Caption saying the bar shows what is left",

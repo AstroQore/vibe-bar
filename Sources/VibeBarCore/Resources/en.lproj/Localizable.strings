@@ -815,6 +815,21 @@
 /* Placeholder inside an empty reset-history strip, before any quota reading has landed */
 "quota.awaitingFirstObservation" = "Waiting for the first quota observation";
 
+/* Empty state of the CodexBar bridge card when every bridged provider is one Vibe Bar already reads natively */
+"quota.bridge.empty" = "No enabled CodexBar-only provider returned a quota window. Overlapping providers remain on Vibe Bar's native cards.";
+
+/* Tooltip on the CodexBar bridge card's refresh button */
+"quota.bridge.refresh" = "Refresh CodexBar providers";
+
+/* Subtitle of the CodexBar bridge card before its version is known */
+"quota.bridge.subtitle" = "Additional providers · read-only";
+
+/* Subtitle of the CodexBar bridge card once the installed version is known */
+"quota.bridge.subtitleVersion" = "CodexBar %1$@ · read-only";
+
+/* Title of the card listing quota read from a CodexBar install; CodexBar is a product name */
+"quota.bridge.title" = "CodexBar Bridge";
+
 /* Caption under a quota bar when the provider reported no reset time */
 "quota.bucket.noResetInfo" = "No reset info";
 
@@ -1234,6 +1249,39 @@
 
 /* Narrow form of the mini window surplus forecast line */
 "quota.mini.forecastSurplusCompact" = "surplus %1$lld%%";
+
+/* Tooltip on the mini focus layout's button that pages to the next provider */
+"quota.mini.nextProvider" = "Next provider";
+
+/* Mini window placeholder when none of the selected fields has a live reading yet */
+"quota.mini.noLiveData" = "No selected fields have live data";
+
+/* Mini focus layout's page counter when there are too many providers for dots */
+"quota.mini.pageIndicator" = "%1$lld/%2$lld";
+
+/* Empty state of the mini window's refill rail; only the user's selected fields are considered */
+"quota.mini.railEmpty" = "Nothing selected refills in the next seven days.";
+
+/* Heading of the mini window's refill rail, naming how far ahead it looks */
+"quota.mini.railTitle" = "QUOTA RESETS · NEXT %1$lld DAYS";
+
+/* Mini window caption for when a bucket refills; countdown is a compact span */
+"quota.mini.resets" = "resets %1$@";
+
+/* Tooltip on a mini window row; subProvider and row are names, percent the current reading */
+"quota.mini.rowHelp" = "%1$@ — %2$@: %3$lld%%";
+
+/* Body of a misc provider card that has no credential yet */
+"quota.misc.notConfigured" = "Not configured.";
+
+/* Tooltip on the refresh button of a misc provider that has several configured copies */
+"quota.misc.refreshCopies" = "Refresh %1$@ copies";
+
+/* Tooltip on the refresh button of a misc provider's card */
+"quota.misc.refreshProvider" = "Refresh %1$@";
+
+/* Button on an unconfigured misc provider card that opens its settings */
+"quota.misc.setUpInSettings" = "Set up in Settings";
 
 /* Caption saying the bar shows what is left */
 "quota.mode.remaining" = "remaining";

@@ -821,6 +821,21 @@
   "quota.awaitingFirstObservation": {
     "value": "等待首次额度观测"
   },
+  "quota.bridge.empty": {
+    "value": "没有仅存在于 CodexBar 的厂商返回额度窗口。重叠的厂商仍显示在 Vibe Bar 自己的卡片上。"
+  },
+  "quota.bridge.refresh": {
+    "value": "刷新 CodexBar 厂商"
+  },
+  "quota.bridge.subtitle": {
+    "value": "额外厂商 · 只读"
+  },
+  "quota.bridge.subtitleVersion": {
+    "value": "CodexBar {version} · 只读"
+  },
+  "quota.bridge.title": {
+    "value": "CodexBar 桥接"
+  },
   "quota.bucket.noResetInfo": {
     "value": "无重置信息"
   },
@@ -1252,6 +1267,42 @@
   },
   "quota.mini.forecastSurplusCompact": {
     "value": "盈余 {percent}%"
+  },
+  "quota.mini.nextProvider": {
+    "value": "下一个厂商"
+  },
+  "quota.mini.noLiveData": {
+    "value": "所选字段暂无实时数据"
+  },
+  "quota.mini.pageIndicator": {
+    "value": "{index}/{total}"
+  },
+  "quota.mini.railEmpty": {
+    "value": "所选项目在未来 7 天内没有补额。"
+  },
+  "quota.mini.railTitle": {
+    "value": "额度重置 · 未来 {days} 天"
+  },
+  "quota.mini.resets": {
+    "value": "{countdown}重置"
+  },
+  "quota.mini.rowHelp": {
+    "value": "{subProvider} — {row}：{percent}%"
+  },
+  "quota.misc.independentCopies": {
+    "value": "{count, plural, other {# 份}}独立配置"
+  },
+  "quota.misc.notConfigured": {
+    "value": "尚未配置。"
+  },
+  "quota.misc.refreshCopies": {
+    "value": "刷新 {provider} 的全部副本"
+  },
+  "quota.misc.refreshProvider": {
+    "value": "刷新 {provider}"
+  },
+  "quota.misc.setUpInSettings": {
+    "value": "在设置中配置"
   },
   "quota.mode.remaining": {
     "value": "剩余"
