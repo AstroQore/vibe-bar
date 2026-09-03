@@ -139,11 +139,27 @@ public extension UsagePace {
         let value = Int(abs(deltaPercent).rounded())
         switch stage {
         case .onTrack:
-            return "On pace"
+            return L10n.Quota.paceOnTrack
         case .slightlyAhead, .ahead, .farAhead:
-            return "\(value)% in deficit"
+            return L10n.Quota.paceDeficit(percent: value)
         case .slightlyBehind, .behind, .farBehind:
-            return "\(value)% in reserve"
+            return L10n.Quota.paceReserve(percent: value)
+        }
+    }
+
+    /// The same summary with the preposition dropped, for the mini window's
+    /// compact rows. A shorter *key*, not `replacingOccurrences` on the long
+    /// one: a language that does not spell "in reserve" with a separable word
+    /// would have kept the long form and silently overflowed the row.
+    var stageSummaryCompact: String {
+        let value = Int(abs(deltaPercent).rounded())
+        switch stage {
+        case .onTrack:
+            return L10n.Quota.paceOnTrack
+        case .slightlyAhead, .ahead, .farAhead:
+            return L10n.Quota.paceDeficitShort(percent: value)
+        case .slightlyBehind, .behind, .farBehind:
+            return L10n.Quota.paceReserveShort(percent: value)
         }
     }
 }
