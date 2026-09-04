@@ -1630,6 +1630,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return brandAttachment(
                 for: tool, fontSize: fontSize, font: font, tint: tint, tintKey: tintKey
             )
+        case let .brand(logo):
+            guard let mark = logo.brandMark else {
+                return brandAttachment(
+                    for: logo.tool, fontSize: fontSize, font: font, tint: tint, tintKey: tintKey
+                )
+            }
+            let side = MenuBarStripMetrics.singleRowGlyphSide(fontSize: fontSize)
+            guard let image = brandMarkImage(mark, side: side, tint: tint, tintKey: tintKey) else {
+                return nil
+            }
+            return attachment(image: image, side: side, font: font)
         case .app:
             let side = MenuBarStripMetrics.singleRowGlyphSide(fontSize: fontSize)
             guard let image = appGlyphImage(side: side, tint: tint, tintKey: tintKey) else {
@@ -1649,9 +1660,35 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         switch glyph {
         case let .provider(tool):
             return brandLogoImage(for: tool, side: side, tint: tint, tintKey: tintKey)
+        case let .brand(logo):
+            guard let mark = logo.brandMark else {
+                return brandLogoImage(for: logo.tool, side: side, tint: tint, tintKey: tintKey)
+            }
+            return brandMarkImage(mark, side: side, tint: tint, tintKey: tintKey)
         case .app:
             return appGlyphImage(side: side, tint: tint, tintKey: tintKey)
         }
+    }
+
+    /// A company's or SubProvider's mark, cached beside the tool marks on a
+    /// key shape of its own so Grok Bot's and Cursor's can never collide.
+    private func brandMarkImage(
+        _ mark: BrandMark,
+        side: CGFloat,
+        tint: NSColor,
+        tintKey: String
+    ) -> NSImage? {
+        let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
+        let key = "mark.\(mark.rawValue).\(side).\(appearance.name.rawValue).\(tintKey)"
+        if let cached = brandAttachmentImages[key] { return cached }
+        let image = ProviderBrandIcon.image(
+            for: mark,
+            size: NSSize(width: side, height: side),
+            tint: tint,
+            appearance: appearance
+        )
+        brandAttachmentImages[key] = image
+        return image
     }
 
     /// Vibe Bar's own mark, cached beside the provider marks on the same key

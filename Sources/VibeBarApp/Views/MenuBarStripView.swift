@@ -576,6 +576,11 @@ private struct MenuBarStripGlyph: View {
         switch glyph {
         case let .provider(tool):
             return ProviderBrandIcon.image(for: tool, size: size, tint: tint, appearance: appearance)
+        case let .brand(logo):
+            if let mark = logo.brandMark {
+                return ProviderBrandIcon.image(for: mark, size: size, tint: tint, appearance: appearance)
+            }
+            return ProviderBrandIcon.image(for: logo.tool, size: size, tint: tint, appearance: appearance)
         case .app:
             return ProviderBrandIcon.image(
                 for: MenuBarItemKind.compact, size: size, tint: tint, appearance: appearance
@@ -586,6 +591,8 @@ private struct MenuBarStripGlyph: View {
     private var fallbackSymbol: String {
         switch glyph {
         case let .provider(tool): return ProviderBrandIcon.fallbackSystemImage(for: tool)
+        case let .brand(logo):
+            return logo.brandMark?.fallbackSystemImage ?? ProviderBrandIcon.fallbackSystemImage(for: logo.tool)
         case .app: return ProviderBrandIcon.fallbackSystemImage(for: MenuBarItemKind.compact)
         }
     }

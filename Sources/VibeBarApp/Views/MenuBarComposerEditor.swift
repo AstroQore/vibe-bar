@@ -79,6 +79,9 @@ struct MenuBarComposerEditor: View {
     @State private var optionsById: [String: MenuBarFieldOption] = [:]
     @State private var paletteQuotaSections: [PaletteQuotaSection] = []
     @State private var paletteLogoTools: [ToolType] = []
+    /// Company and SubProvider marks the quota sections wear that no tool
+    /// mark already is — Google AI, SpaceXAI, Grok Bot.
+    @State private var paletteBrandLogos: [MenuBarBrandLogo] = []
 
     private struct PaletteQuotaSection: Identifiable {
         let tool: ToolType
@@ -573,9 +576,23 @@ struct MenuBarComposerEditor: View {
             selection = isSelected && selection.count == 1 ? [] : [token.id]
         } label: {
             HStack(spacing: 4) {
-                if case let .logo(tool) = token.kind {
+                // A quota block wears its provider's mark, the way the
+                // palette entry it came from does — the fastest way to tell
+                // one "Weekly" from another.
+                switch token.kind {
+                case let .logo(tool):
                     ToolBrandIconView(tool: tool, size: 11)
-                } else {
+                case let .brandLogo(logo):
+                    BrandLogoIconView(logo: logo, size: 11)
+                case let .quota(fieldId, _):
+                    if let option = optionsById[fieldId] {
+                        QuotaBrandIconView(tool: option.tool, bucketID: option.bucketId, size: 11)
+                    } else {
+                        Image(systemName: symbol(for: token.kind))
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                default:
                     Image(systemName: symbol(for: token.kind))
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -662,7 +679,7 @@ struct MenuBarComposerEditor: View {
 
     private func symbol(for kind: MenuBarToken.Kind) -> String {
         switch kind {
-        case .logo: return "app.badge"
+        case .logo, .brandLogo: return "app.badge"
         case .text: return "textformat"
         case .quota: return "percent"
         case .space: return "space"
@@ -676,12 +693,19 @@ struct MenuBarComposerEditor: View {
         switch token.kind {
         case let .logo(tool):
             return tool.menuTitle
+        case let .brandLogo(logo):
+            return logo.name
         case let .text(text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? L10n.MenuBar.composerBlockEmptyText : MenuBarToken.truncated(trimmed)
         case let .quota(fieldId, metric):
-            let name = optionsById[fieldId]?.displayDefaultLabel ?? fieldId
-            return "\(name) · \(metric.title)"
+            // SubProvider first: a strip holding three "Weekly" blocks has to
+            // say which is Codex's, which Claude's, which Grok Bot's. The
+            // metric is spelled only when it is not the plain percentage,
+            // which is what the "Shows" control says and what nearly every
+            // block shows.
+            let name = optionsById[fieldId].map(Self.fieldTitle) ?? fieldId
+            return metric == .displayPercent ? name : "\(name) · \(metric.title)"
         case let .space(width):
             let width = MenuBarToken.clampedSpaceWidth(width)
             return width == MenuBarToken.defaultSpaceWidth
@@ -695,6 +719,14 @@ struct MenuBarComposerEditor: View {
         case .unsupported:
             return L10n.MenuBar.composerBlockUnsupported
         }
+    }
+
+    /// "Grok Bot · Weekly", "ChatGPT · GPT-5.3 Codex Spark · 5 Hours": the L2
+    /// SubProvider the bucket bills against, then the field's own title.
+    /// Every list of fields in this editor spells them this way, because a
+    /// bare "Weekly" is exactly the ambiguity the naming axis exists to end.
+    static func fieldTitle(_ option: MenuBarFieldOption) -> String {
+        "\(option.tool.quotaSubProviderName(bucketID: option.bucketId)) · \(option.displayTitle)"
     }
 
     private func chipHelp(_ token: MenuBarToken, isSilent: Bool, isDegraded: Bool) -> String {
@@ -719,6 +751,11 @@ struct MenuBarComposerEditor: View {
                 ForEach(paletteLogoTools, id: \.self) { tool in
                     paletteButton(title: tool.menuTitle, icon: nil, tool: tool) {
                         MenuBarToken.newLogo(tool)
+                    }
+                }
+                ForEach(paletteBrandLogos, id: \.self) { logo in
+                    paletteButton(title: logo.name, icon: nil, brand: logo) {
+                        MenuBarToken.newBrandLogo(logo)
                     }
                 }
             }
@@ -834,9 +871,10 @@ struct MenuBarComposerEditor: View {
         title: String,
         icon: String?,
         tool: ToolType? = nil,
+        brand: MenuBarBrandLogo? = nil,
         make: @escaping () -> MenuBarToken
     ) -> some View {
-        paletteButton(title: title, icon: icon, tool: tool) { add(make()) }
+        paletteButton(title: title, icon: icon, tool: tool, brand: brand) { add(make()) }
             .onDrag {
                 // Same flush as a chip drag: the drop writes the whole
                 // snapshot back, so a queued edit missing from it would be
@@ -855,12 +893,15 @@ struct MenuBarComposerEditor: View {
         icon: String?,
         tool: ToolType? = nil,
         bucketID: String? = nil,
+        brand: MenuBarBrandLogo? = nil,
         isOpen: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                if let tool {
+                if let brand {
+                    BrandLogoIconView(logo: brand, size: 11)
+                } else if let tool {
                     // Bucket-aware: a quota section riding another company's
                     // account draws its own mark, not the account holder's.
                     QuotaBrandIconView(tool: tool, bucketID: bucketID, size: 11)
@@ -924,6 +965,7 @@ struct MenuBarComposerEditor: View {
                     warning(L10n.MenuBar.composerWarningDegraded)
                 }
                 MenuBarTokenInspector(
+                    brandLogos: paletteBrandLogos,
                     token: token,
                     options: sortedOptions,
                     liveFieldIds: liveFieldIds,
@@ -1208,6 +1250,26 @@ struct MenuBarComposerEditor: View {
         }
         paletteQuotaSections = sections
         paletteLogoTools = ToolType.dedicatedCardProviders
+        // Every mark the Quota row can show that the Logo row could not: the
+        // companies with a mark of their own, then the SubProviders with one.
+        // Deduplicated by picture, so Gemini and AntiGravity offer Google AI
+        // once.
+        var brandLogos: [MenuBarBrandLogo] = []
+        var marks = Set<BrandMark>()
+        for tool in ToolType.dedicatedCardProviders {
+            let logo = MenuBarBrandLogo.company(tool)
+            if let mark = logo.brandMark, marks.insert(mark).inserted {
+                brandLogos.append(logo)
+            }
+        }
+        for section in sections {
+            guard let bucket = section.options.first?.bucketId else { continue }
+            let logo = MenuBarBrandLogo.subProvider(section.tool, bucketId: bucket)
+            if let mark = logo.brandMark, marks.insert(mark).inserted {
+                brandLogos.append(logo)
+            }
+        }
+        paletteBrandLogos = brandLogos
     }
 
     /// What the snapshots are resolved from: the order being drawn, plus the
@@ -1242,6 +1304,9 @@ struct MenuBarComposerEditor: View {
 /// Controls for one block. Split out so the editor's own body does not
 /// re-evaluate every palette section and every chip when a slider moves.
 private struct MenuBarTokenInspector: View {
+    /// The company and SubProvider marks the palette offers, so the logo
+    /// picker lists the same choices as the row the block came from.
+    let brandLogos: [MenuBarBrandLogo]
     let token: MenuBarToken
     let options: [MenuBarFieldOption]
     let liveFieldIds: Set<String>
@@ -1399,15 +1464,21 @@ private struct MenuBarTokenInspector: View {
                 }
                 .help(L10n.MenuBar.composerFieldResetFormatHelp)
             }
-        case let .logo(tool):
+        case .logo, .brandLogo:
             HStack(spacing: 8) {
                 Text(L10n.MenuBar.composerFieldProvider).frame(width: 62, alignment: .leading)
                 Picker("", selection: Binding(
-                    get: { tool },
-                    set: { value in update { $0.kind = .logo(value) } }
+                    get: { token.kind },
+                    set: { value in update { $0.kind = value } }
                 )) {
-                    ForEach(ToolType.dedicatedCardProviders, id: \.self) {
-                        Text($0.menuTitle).tag($0)
+                    // A mark the palette no longer offers (its quota went
+                    // away) still needs a row, or the picker would show a
+                    // neighbour and a click would silently change the block.
+                    if !logoChoices.contains(token.kind) {
+                        Text(logoTitle(token.kind)).tag(token.kind)
+                    }
+                    ForEach(logoChoices, id: \.self) { kind in
+                        Text(logoTitle(kind)).tag(kind)
                     }
                 }
                 .labelsHidden()
@@ -1657,6 +1728,21 @@ private struct MenuBarTokenInspector: View {
         }
     }
 
+    /// Every mark a logo block can be: the tools, then the company and
+    /// SubProvider marks — the Logo row of the palette, in its order.
+    private var logoChoices: [MenuBarToken.Kind] {
+        ToolType.dedicatedCardProviders.map { MenuBarToken.Kind.logo($0) }
+            + brandLogos.map { MenuBarToken.Kind.brandLogo($0) }
+    }
+
+    private func logoTitle(_ kind: MenuBarToken.Kind) -> String {
+        switch kind {
+        case let .logo(tool): return tool.menuTitle
+        case let .brandLogo(logo): return logo.name
+        default: return ""
+        }
+    }
+
     private func fieldPicker(
         selected: String,
         set: @escaping (String) -> Void
@@ -1668,9 +1754,10 @@ private struct MenuBarTokenInspector: View {
                 Text(selected).tag(selected)
             }
             ForEach(options) { option in
+                let title = MenuBarComposerEditor.fieldTitle(option)
                 Text(liveFieldIds.contains(option.id)
-                    ? option.displayTitle
-                    : L10n.MenuBar.composerFieldOfflineOption(title: option.displayTitle))
+                    ? title
+                    : L10n.MenuBar.composerFieldOfflineOption(title: title))
                     .tag(option.id)
             }
         }
@@ -1710,6 +1797,8 @@ private struct MenuBarTokenInspector: View {
                     case .brand:
                         if case let .logo(tool) = edited.kind {
                             edited.style.color = .brand(tool)
+                        } else if case let .brandLogo(logo) = edited.kind {
+                            edited.style.color = .brand(logo.accentTool)
                         } else {
                             edited.style.color = .brand(ToolType.dedicatedCardProviders.first ?? .claude)
                         }

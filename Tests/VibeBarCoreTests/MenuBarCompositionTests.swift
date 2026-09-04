@@ -2406,6 +2406,55 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(restored.composition?.tokens.last?.kind, .text("tail"))
     }
 
+    // MARK: - Brand logos
+
+    func testABrandLogoRoundTripsAndDrawsItsOwnMark() throws {
+        let grokBot = MenuBarBrandLogo.subProvider(.cursor, bucketId: "grok_bot_weekly")
+        let googleAI = MenuBarBrandLogo.company(.antigravity)
+        let composition = MenuBarComposition(tokens: [
+            MenuBarToken.newBrandLogo(grokBot),
+            MenuBarToken.newBrandLogo(googleAI)
+        ])
+        let data = try JSONEncoder().encode(composition)
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(json.contains("\"type\":\"brandLogo\""))
+        XCTAssertTrue(json.contains("\"level\":\"subProvider\""))
+
+        let decoded = try JSONDecoder().decode(MenuBarComposition.self, from: data)
+        XCTAssertEqual(decoded.tokens.map(\.kind), [.brandLogo(grokBot), .brandLogo(googleAI)])
+
+        // The company is keyed by its representative tool, so AntiGravity's
+        // company mark is Gemini's — one Google AI, however it was asked for.
+        XCTAssertEqual(googleAI.tool, .gemini)
+        XCTAssertEqual(googleAI.name, ToolType.gemini.vendorName)
+        XCTAssertEqual(grokBot.name, "Grok Bot")
+
+        let plan = decoded.plan(quotas: [], displayMode: .used, colorBasis: .actual, now: reference)
+        let glyphs = plan.rows.flatMap(\.tokens).compactMap(\.glyph)
+        XCTAssertEqual(glyphs, [.brand(grokBot), .brand(googleAI)])
+    }
+
+    func testABrandLogoOfALevelThisBuildLacksIsPreserved() throws {
+        let json = """
+        {"isEnabled":true,"template":"roomy","tokens":[
+          {"id":"11111111-1111-1111-1111-111111111111",
+           "kind":{"type":"brandLogo","tool":"cursor","level":"galaxy"},
+           "style":{"color":{"type":"primary"},"size":"regular","weight":"medium","monospacedDigits":false},
+           "visibility":{"type":"always"}}
+        ]}
+        """
+        let decoded = try JSONDecoder().decode(MenuBarComposition.self, from: Data(json.utf8))
+        guard case .unsupported = decoded.tokens[0].kind else {
+            return XCTFail("a brand logo this build cannot read should be preserved, not redrawn")
+        }
+        let again = try JSONDecoder().decode(
+            MenuBarComposition.self, from: try JSONEncoder().encode(decoded)
+        )
+        guard case .unsupported = again.tokens[0].kind else {
+            return XCTFail("and it should survive a save")
+        }
+    }
+
     func testAnUnreadableBlockIsKeptRatherThanDroppedFromTheStrip() throws {
         // This used to assert the block was dropped. Dropping is a silent,
         // permanent deletion the moment the settings file is saved again, so

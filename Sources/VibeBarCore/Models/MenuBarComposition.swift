@@ -85,6 +85,50 @@ public enum MenuBarQuotaMetric: String, Codable, CaseIterable, Sendable {
 
 /// One block in a composed menu-bar strip.
 ///
+/// A brand mark on the quota axis that is not a tool's own — what
+/// `MenuBarToken.Kind.brandLogo` draws.
+///
+/// Keyed the way the naming seam is keyed: a company by its representative
+/// tool, a SubProvider by the bucket that names it
+/// (`ToolType.quotaSubProviderName(bucketID:)`). The app resolves the picture
+/// from the same pair, so the mark it draws and the name it speaks can never
+/// disagree — and a build that gains a new mark later draws it for a block
+/// saved before it existed.
+public struct MenuBarBrandLogo: Hashable, Sendable {
+    public enum Level: String, Codable, Sendable {
+        case company
+        case subProvider
+    }
+
+    public var tool: ToolType
+    public var level: Level
+    /// The bucket that names the SubProvider; nil for a company mark.
+    public var bucketId: String?
+
+    public init(tool: ToolType, level: Level, bucketId: String? = nil) {
+        self.tool = tool
+        self.level = level
+        self.bucketId = bucketId
+    }
+
+    public static func company(_ tool: ToolType) -> MenuBarBrandLogo {
+        MenuBarBrandLogo(tool: tool.coreProviderRepresentative ?? tool, level: .company)
+    }
+
+    public static func subProvider(_ tool: ToolType, bucketId: String) -> MenuBarBrandLogo {
+        MenuBarBrandLogo(tool: tool, level: .subProvider, bucketId: bucketId)
+    }
+
+    /// What the block is called. A company or a SubProvider is a name, and
+    /// stays as its owner spells it in every language.
+    public var name: String {
+        switch level {
+        case .company: return tool.vendorName
+        case .subProvider: return tool.quotaSubProviderName(bucketID: bucketId)
+        }
+    }
+}
+
 /// The identity is a `UUID` rather than the content so the stage-2 editor can
 /// drag, duplicate, and undo blocks that happen to render identically — two
 /// `.text("·")` separators are two blocks, not one.
@@ -95,6 +139,13 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         /// the style says otherwise. Any provider, not just the ones the user
         /// selected as quota fields.
         case logo(ToolType)
+        /// A brand mark that is not a tool's own: an L1 company's (Google AI
+        /// over Gemini and AntiGravity, SpaceXAI over Grok and Cursor) or an
+        /// L2 SubProvider's (Grok Bot, whose quota rides on Cursor's
+        /// account). Named by the tool and the level rather than by the
+        /// picture, so a build with no picture for it still knows what to
+        /// say — see `MenuBarBrandLogo`.
+        case brandLogo(MenuBarBrandLogo)
         /// Literal words the user typed.
         case text(String)
         /// One number (or name, or countdown) read off a live quota bucket.
@@ -401,6 +452,10 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
 
     public static func newLogo(_ tool: ToolType) -> MenuBarToken {
         MenuBarToken(kind: .logo(tool), style: .label)
+    }
+
+    public static func newBrandLogo(_ logo: MenuBarBrandLogo) -> MenuBarToken {
+        MenuBarToken(kind: .brandLogo(logo), style: .label)
     }
 
     public static func newQuota(fieldId: String) -> MenuBarToken {
@@ -964,7 +1019,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
                 continue
             case let .quota(_, metric) where metric != .label:
                 sawValue = true
-            case .logo, .appIcon, .text, .quota, .unsupported:
+            case .logo, .brandLogo, .appIcon, .text, .quota, .unsupported:
                 if sawValue {
                     starts.append(index)
                     sawValue = false
@@ -2064,6 +2119,8 @@ public struct MenuBarRenderedToken: Equatable, Sendable, Identifiable {
     /// A mark rather than words: a provider's brand, or Vibe Bar's own icon.
     public enum Glyph: Equatable, Sendable {
         case provider(ToolType)
+        /// A company's or SubProvider's mark — see `MenuBarBrandLogo`.
+        case brand(MenuBarBrandLogo)
         case app
     }
 
@@ -2447,6 +2504,8 @@ public extension MenuBarComposition {
                 glyph: .provider(tool),
                 spoken: tool.quotaSubProviderName()
             )
+        case let .brandLogo(logo):
+            return TokenContent(text: nil, glyph: .brand(logo), spoken: logo.name)
         case .appIcon:
             return TokenContent(text: nil, glyph: .app, spoken: "Vibe Bar")
         case let .text(text):
@@ -2673,10 +2732,12 @@ extension MenuBarToken.Kind: Codable {
         case fieldId
         case metric
         case width
+        case level
+        case bucketId
     }
 
     private enum Discriminator: String, Codable {
-        case logo, text, quota, space, separator, appIcon
+        case logo, brandLogo, text, quota, space, separator, appIcon
     }
 
     public init(from decoder: Decoder) throws {
@@ -2696,6 +2757,14 @@ extension MenuBarToken.Kind: Codable {
         switch try c.decode(Discriminator.self, forKey: .type) {
         case .logo:
             return .logo(try c.decode(ToolType.self, forKey: .tool))
+        case .brandLogo:
+            // A level this build lacks throws, so the block is preserved
+            // whole rather than redrawn as some other mark.
+            return .brandLogo(MenuBarBrandLogo(
+                tool: try c.decode(ToolType.self, forKey: .tool),
+                level: try c.decode(MenuBarBrandLogo.Level.self, forKey: .level),
+                bucketId: try c.decodeIfPresent(String.self, forKey: .bucketId)
+            ))
         case .text:
             return .text(try c.decode(String.self, forKey: .text))
         case .quota:
@@ -2733,6 +2802,11 @@ extension MenuBarToken.Kind: Codable {
         case let .logo(tool):
             try c.encode(Discriminator.logo, forKey: .type)
             try c.encode(tool, forKey: .tool)
+        case let .brandLogo(logo):
+            try c.encode(Discriminator.brandLogo, forKey: .type)
+            try c.encode(logo.tool, forKey: .tool)
+            try c.encode(logo.level, forKey: .level)
+            try c.encodeIfPresent(logo.bucketId, forKey: .bucketId)
         case let .text(text):
             try c.encode(Discriminator.text, forKey: .type)
             try c.encode(text, forKey: .text)
