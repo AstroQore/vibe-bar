@@ -52,6 +52,7 @@ GLOSSARY = ROOT / "Resources/i18n/_glossary.json"
 # `swift test`.
 MIGRATED = [
     "Sources/VibeBarCore/Models/QuotaError.swift",
+    "Sources/VibeBarCore/Models/ServiceStatus.swift",
     "Sources/VibeBarCore/Models/ResetHistoryComparison.swift",
     "Sources/VibeBarCore/Utilities/ResetCountdownFormatter.swift",
     "Sources/VibeBarCore/Utilities/QuotaFreshnessLabel.swift",
@@ -127,7 +128,6 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/MiniWindowAltLayouts.swift",
     "Sources/VibeBarApp/Views/MiscProvidersPage.swift",
     "Sources/VibeBarApp/Views/CodexBarProviderBridgeCard.swift",
-    "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/MenuBarComposerEditor.swift",
     "Sources/VibeBarApp/Views/MenuBarStripView.swift",
@@ -490,6 +490,36 @@ def copy_member_spans(source: str):
 
 LETTER = re.compile(r"[A-Za-z一-鿿]")
 
+
+def without_interpolations(text: str) -> str:
+    """Drop every `\\(…)` segment, keeping the literal's own characters.
+
+    `scan` consumes an interpolated literal whole, so the reported text
+    carries the *expression* inside each `\\(…)` — Swift identifiers, which
+    look exactly like words to `LETTER`. That is what reported
+    `"\\(base) · \\(accountQualifier)"` as copy: a separator joining two
+    already-localized halves, whose only letters were variable names.
+
+    Only the letters the literal spells itself are copy, so this removes
+    the interpolations before that question is asked. `"\\(n) left"` still
+    keeps its "left" and is still flagged — which is the whole point of
+    consuming interpolated literals whole.
+    """
+    out, index, length = [], 0, len(text)
+    while index < length:
+        if text.startswith("\\(", index):
+            depth, index = 1, index + 2
+            while index < length and depth:
+                if text[index] == "(":
+                    depth += 1
+                elif text[index] == ")":
+                    depth -= 1
+                index += 1
+            continue
+        out.append(text[index])
+        index += 1
+    return "".join(out)
+
 # Per-file exceptions: a literal that reads like copy but is not, keyed by
 # the reason it is exempt. Kept short on purpose — most cases are better
 # answered by the glossary (a name) or by `IDENTIFIER_ARGUMENTS` (an
@@ -518,7 +548,7 @@ URL = re.compile(r"^[a-z][a-z0-9+.-]*://\S*$|^~?/[\w./~-]*$")
 
 def is_allowed(text: str, terms: set, path: str) -> bool:
     stripped = text.strip()
-    if not stripped or not LETTER.search(stripped):
+    if not stripped or not LETTER.search(without_interpolations(stripped)):
         return True
     # A URL or a bare filesystem path is an address, not a sentence. No
     # language spells `https://` differently.

@@ -2972,6 +2972,27 @@
 /* Card title on the Overview's service-status tile row */
 "status.overview.title" = "Status";
 
+/* Overview status tile state */
+"status.overview.up" = "Up";
+
+/* Badge text when the provider's page still claims a milder state than its own open incident */
+"status.summary.activeIncident" = "Active incident";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.allOperational" = "All services operational";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.majorOutage" = "Major outage";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.partialOutage" = "Partial outage";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.serviceIssue" = "Service issue";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.underMaintenance" = "Under maintenance";
+
 /* Accessibility label for the 7 by 24 activity grid */
 "usage.activity.a11y" = "Token usage by weekday and hour, 7 days by 24 hours";
 

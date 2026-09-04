@@ -36,7 +36,11 @@ final class XAIServiceStatusTests: XCTestCase {
 
         XCTAssertEqual(snapshot.tool, .grok)
         XCTAssertEqual(snapshot.indicator, .none)
-        XCTAssertEqual(snapshot.description, "All services operational")
+        // status.x.ai publishes no page-level wording, so nothing goes into
+        // the field that is cached to disk; our own (translated) summary is
+        // derived on read instead.
+        XCTAssertEqual(snapshot.description, "")
+        XCTAssertEqual(snapshot.effectiveDescription, "All services operational")
         XCTAssertEqual(snapshot.components.count, 2)
         XCTAssertEqual(
             snapshot.components.first { $0.name == "API (us-east-1.api.x.ai)" }?.status,

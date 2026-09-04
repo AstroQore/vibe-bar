@@ -2972,6 +2972,27 @@
 /* Card title on the Overview's service-status tile row */
 "status.overview.title" = "状态";
 
+/* Overview status tile state */
+"status.overview.up" = "可用";
+
+/* Badge text when the provider's page still claims a milder state than its own open incident */
+"status.summary.activeIncident" = "故障处理中";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.allOperational" = "全部服务正常";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.majorOutage" = "严重故障";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.partialOutage" = "部分故障";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.serviceIssue" = "服务异常";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.underMaintenance" = "维护中";
+
 /* Accessibility label for the 7 by 24 activity grid */
 "usage.activity.a11y" = "按星期与小时划分的 token 用量，7 天 × 24 小时";
 

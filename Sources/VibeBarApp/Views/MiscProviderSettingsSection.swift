@@ -1236,9 +1236,9 @@ struct AlibabaRegionPicker: View {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .auto:           return "Auto (try both)"
-            case .international:  return "International (ap-southeast-1)"
-            case .chinaMainland:  return "China mainland (cn-beijing)"
+            case .auto:           return L10n.Settings.miscRegionAuto
+            case .international:  return L10n.Settings.miscRegionInternational
+            case .chinaMainland:  return L10n.Settings.miscRegionChinaMainland
             }
         }
     }
@@ -1317,9 +1317,9 @@ struct ZaiRegionPicker: View {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .auto:       return "Auto (try both)"
-            case .global:     return "Global (api.z.ai)"
-            case .bigmodelCN: return "China mainland (open.bigmodel.cn)"
+            case .auto:       return L10n.Settings.miscRegionAuto
+            case .global:     return L10n.Settings.miscRegionZaiGlobal
+            case .bigmodelCN: return L10n.Settings.miscRegionZaiChina
             }
         }
     }
@@ -1363,8 +1363,8 @@ struct MiniMaxRegionPicker: View {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .global:        return "Global (minimax.io)"
-            case .chinaMainland: return "China mainland (minimaxi.com)"
+            case .global:        return L10n.Settings.miscRegionMinimaxGlobal
+            case .chinaMainland: return L10n.Settings.miscRegionMinimaxChina
             }
         }
     }

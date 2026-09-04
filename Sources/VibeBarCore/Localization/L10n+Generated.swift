@@ -4063,6 +4063,34 @@ extension L10n {
         public static var overviewTitle: String {
             L10n.string("status.overview.title")
         }
+        /// `status.overview.up` — Up
+        public static var overviewUp: String {
+            L10n.string("status.overview.up")
+        }
+        /// `status.summary.activeIncident` — Active incident
+        public static var summaryActiveIncident: String {
+            L10n.string("status.summary.activeIncident")
+        }
+        /// `status.summary.allOperational` — All services operational
+        public static var summaryAllOperational: String {
+            L10n.string("status.summary.allOperational")
+        }
+        /// `status.summary.majorOutage` — Major outage
+        public static var summaryMajorOutage: String {
+            L10n.string("status.summary.majorOutage")
+        }
+        /// `status.summary.partialOutage` — Partial outage
+        public static var summaryPartialOutage: String {
+            L10n.string("status.summary.partialOutage")
+        }
+        /// `status.summary.serviceIssue` — Service issue
+        public static var summaryServiceIssue: String {
+            L10n.string("status.summary.serviceIssue")
+        }
+        /// `status.summary.underMaintenance` — Under maintenance
+        public static var summaryUnderMaintenance: String {
+            L10n.string("status.summary.underMaintenance")
+        }
     }
 
     public enum Usage {
@@ -7142,6 +7170,13 @@ extension L10n {
         "status.overview.partialOutage",
         "status.overview.refreshing",
         "status.overview.title",
+        "status.overview.up",
+        "status.summary.activeIncident",
+        "status.summary.allOperational",
+        "status.summary.majorOutage",
+        "status.summary.partialOutage",
+        "status.summary.serviceIssue",
+        "status.summary.underMaintenance",
         "usage.activity.a11y",
         "usage.activity.cellTooltip",
         "usage.activity.heavy",
