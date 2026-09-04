@@ -2238,7 +2238,7 @@
     "value": "实验性"
   },
   "settings.remote.experimentalNote": {
-    "value": "远端机器为实验性功能：协议与本面板可能在版本之间变化；未连接工作区时，popover 不显示该标签页。"
+    "value": "远端机器为实验性功能：协议与此设置页可能在版本之间变化；未连接工作区时，面板不显示该标签页。"
   },
   "settings.remote.exportIdentity": {
     "value": "导出 Core 身份…"

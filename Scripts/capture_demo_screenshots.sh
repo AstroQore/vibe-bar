@@ -67,6 +67,15 @@ if [[ ! -f "$DEMO_HOME/.vibebar/remote_core.json" ]]; then
   SURFACES=("${SURFACES[@]:#popover-machines=*}")
   echo "capture: no remote_core.json in the demo home — skipping popover-machines" >&2
 fi
+
+# Asking for only that surface is a supported invocation, and skipping it can
+# empty the list. Stop here rather than falling through to the optimizer,
+# whose "$OUT"/*.png is a fatal unmatched glob in zsh when nothing was
+# captured — an obscure abort in place of the clean skip just announced.
+if (( ${#SURFACES[@]} == 0 )); then
+  echo "capture: nothing to capture" >&2
+  exit 0
+fi
 mkdir -p "$OUT"
 
 capture_one() {
