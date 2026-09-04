@@ -1112,10 +1112,25 @@ struct MenuBarComposerEditor: View {
         paletteLogoTools = ToolType.dedicatedCardProviders
     }
 
+    /// What the snapshots are resolved from: the order being drawn, plus the
+    /// block still in flight from the palette.
+    ///
+    /// A palette drag sets `draggedNewToken` before it reaches any target, so
+    /// at that moment `displayedComposition` is still the committed order. If
+    /// resolution stopped there, the quota would have no snapshot — and
+    /// `dropEntered` changes nothing `snapshotKey` watches, so no second
+    /// rebuild would come. Nothing draws this copy; it exists to be resolved.
+    private var resolvableComposition: MenuBarComposition {
+        var order = displayedComposition
+        if let token = draggedNewToken, order.location(of: token.id) == nil {
+            order.append(token, to: nil)
+        }
+        return order
+    }
+
     private func rebuildSnapshots() {
         snapshots = MenuBarStripResolver.snapshots(
-            // The order being drawn, so a block staged mid-drag resolves.
-            for: displayedComposition,
+            for: resolvableComposition,
             itemSettings: item,
             settings: settingsStore.settings,
             environment: environment
