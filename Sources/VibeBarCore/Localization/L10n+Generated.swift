@@ -1152,6 +1152,10 @@ extension L10n {
         public static var cookiesImportGrok: String {
             L10n.string("onboarding.cookies.importGrok")
         }
+        /// `onboarding.cookies.importProvider` — Import {provider} cookies from browser
+        public static func cookiesImportProvider(provider: String) -> String {
+            L10n.string("onboarding.cookies.importProvider", provider)
+        }
         /// `onboarding.cookies.importing` — Importing…
         public static var cookiesImporting: String {
             L10n.string("onboarding.cookies.importing")
@@ -2788,6 +2792,10 @@ extension L10n {
         public static var deleteGrokCookies: String {
             L10n.string("settings.deleteGrokCookies")
         }
+        /// `settings.deleteProviderCookies` — Delete {provider} cookies
+        public static func deleteProviderCookies(provider: String) -> String {
+            L10n.string("settings.deleteProviderCookies", provider)
+        }
         /// `settings.displayMode.remaining` — Remaining
         public static var displayModeRemaining: String {
             L10n.string("settings.displayMode.remaining")
@@ -3347,6 +3355,10 @@ extension L10n {
         /// `settings.planBadgeDetail` — Leave blank to use the detected account plan.
         public static var planBadgeDetail: String {
             L10n.string("settings.planBadgeDetail")
+        }
+        /// `settings.planFollows` — Follows {provider}
+        public static func planFollows(provider: String) -> String {
+            L10n.string("settings.planFollows", provider)
         }
         /// `settings.popoverDensity.compact` — Compact
         public static var popoverDensityCompact: String {
@@ -6582,6 +6594,7 @@ extension L10n {
         "onboarding.cookies.importFromBrowser",
         "onboarding.cookies.importGemini",
         "onboarding.cookies.importGrok",
+        "onboarding.cookies.importProvider",
         "onboarding.cookies.importing",
         "onboarding.cookies.intro",
         "onboarding.cookies.notImported",
@@ -6988,6 +7001,7 @@ extension L10n {
         "settings.deleteCookies",
         "settings.deleteGeminiCookies",
         "settings.deleteGrokCookies",
+        "settings.deleteProviderCookies",
         "settings.displayMode.remaining",
         "settings.displayMode.used",
         "settings.externalChange.title",
@@ -7128,6 +7142,7 @@ extension L10n {
         "settings.percentShows",
         "settings.planBadge",
         "settings.planBadgeDetail",
+        "settings.planFollows",
         "settings.popoverDensity.compact",
         "settings.popoverDensity.compactDetail",
         "settings.popoverDensity.regular",

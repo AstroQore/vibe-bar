@@ -827,6 +827,9 @@
 /* Button in the setup assistant */
 "onboarding.cookies.importGrok" = "从浏览器导入 Grok 的 cookies";
 
+/* Button that imports one provider's cookies from the browser; {provider} is the provider name */
+"onboarding.cookies.importProvider" = "从浏览器导入 %1$@ cookies";
+
 /* Status line while an import runs */
 "onboarding.cookies.importing" = "正在导入…";
 
@@ -2009,6 +2012,9 @@
 /* Button label */
 "settings.deleteGrokCookies" = "删除 Grok 的 cookies";
 
+/* Destructive button that removes every saved cookie for one provider; {provider} is the provider name */
+"settings.deleteProviderCookies" = "删除 %1$@ cookies";
+
 /* Segmented option: the percentage shows what is left. Title case because it is a picker option; quota.mode.remaining is the lowercase caption under a bar. */
 "settings.displayMode.remaining" = "剩余";
 
@@ -2428,6 +2434,9 @@
 
 /* Caption under the plan badge field */
 "settings.planBadgeDetail" = "留空则使用自动检测到的账号套餐。";
+
+/* Trailing note on a roster row for a SubProvider that has no plan of its own; {provider} is the account it rides on */
+"settings.planFollows" = "跟随 %1$@";
 
 /* Popover density option */
 "settings.popoverDensity.compact" = "紧凑";

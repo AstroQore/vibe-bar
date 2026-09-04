@@ -845,6 +845,9 @@
   "onboarding.cookies.importGrok": {
     "value": "从浏览器导入 Grok 的 cookies"
   },
+  "onboarding.cookies.importProvider": {
+    "value": "从浏览器导入 {provider} cookies"
+  },
   "onboarding.cookies.importing": {
     "value": "正在导入…"
   },
@@ -2063,6 +2066,9 @@
   "settings.deleteGrokCookies": {
     "value": "删除 Grok 的 cookies"
   },
+  "settings.deleteProviderCookies": {
+    "value": "删除 {provider} cookies"
+  },
   "settings.displayMode.remaining": {
     "value": "剩余"
   },
@@ -2482,6 +2488,9 @@
   },
   "settings.planBadgeDetail": {
     "value": "留空则使用自动检测到的账号套餐。"
+  },
+  "settings.planFollows": {
+    "value": "跟随 {provider}"
   },
   "settings.popoverDensity.compact": {
     "value": "紧凑"

@@ -493,7 +493,17 @@ struct SettingsView: View {
                             representative: .grok,
                             healthProviders: [.grok]
                         )
-                        coreProviderPlanBadgeRows(for: [.grok, .cursor])
+                        coreProviderPlanBadgeRows(
+                            for: [.grok, .cursor],
+                            linked: [
+                                LinkedSubProvider(
+                                    mark: .grokBot,
+                                    title: ToolType.cursor
+                                        .quotaSubProviderName(bucketID: grokBotBucketID),
+                                    host: .cursor
+                                )
+                            ]
+                        )
                         Divider()
                             .padding(.vertical, 2)
                         Text(L10n.Settings.spaceXAIIntro)
@@ -558,7 +568,11 @@ struct SettingsView: View {
                         CookieSourceControls(
                             tool: .cursor,
                             instanceID: ToolType.cursor.rawValue,
-                            manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)"
+                            manualPrompt: "Paste cursor.com Cookie header (WorkosCursorSessionToken=...)",
+                            // Beside Grok's full-size buttons a small
+                            // text-only import reads as a lesser control than
+                            // the one directly above it.
+                            emphasis: .standard
                         )
 
                         Divider()
@@ -752,7 +766,10 @@ struct SettingsView: View {
         }
     }
 
-    private func coreProviderPlanBadgeRows(for tools: [ToolType]) -> some View {
+    private func coreProviderPlanBadgeRows(
+        for tools: [ToolType],
+        linked: [LinkedSubProvider] = []
+    ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(L10n.Settings.planBadge)
                 .font(.caption)
@@ -760,9 +777,38 @@ struct SettingsView: View {
             ForEach(tools, id: \.self) { tool in
                 providerBadgeRow(tool)
             }
+            ForEach(linked) { sub in
+                linkedSubProviderRow(sub)
+            }
             Text(L10n.Settings.planBadgeDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    /// A SubProvider this company page covers that has no account of its own.
+    ///
+    /// Grok Bot is one: its quota arrives on Cursor's session, so it appears
+    /// in the roster — with its own mark and name, because it *is* a separate
+    /// SubProvider everywhere else in the app — but with the account it rides
+    /// named instead of a second plan field that would write the same value
+    /// twice.
+    private func linkedSubProviderRow(_ sub: LinkedSubProvider) -> some View {
+        HStack(spacing: 10) {
+            BrandMarkIconView(mark: sub.mark, size: 16)
+                .frame(width: 18, height: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(sub.title)
+                    .font(.system(size: 12, weight: .medium))
+                Text(autoPlanLabel(for: sub.host))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 8)
+            Text(L10n.Settings.planFollows(provider: sub.host.quotaSubProviderName()))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(width: 130, alignment: .trailing)
         }
     }
 
@@ -1274,6 +1320,20 @@ private struct UpdateSettingsRow: View {
 /// + L2 product name above its rows so a flat 20-row checklist
 /// stops asking the user to remember which "5 Hours" belongs to
 /// Codex and which to Claude.
+/// Cursor's bucket that is really Grok Bot's. Named once so the roster row,
+/// the mini-window section and `BrandMark.subProvider` cannot drift.
+let grokBotBucketID = "grok_bot_weekly"
+
+/// A SubProvider a company page lists but does not sign in separately.
+struct LinkedSubProvider: Identifiable {
+    let mark: BrandMark
+    let title: String
+    /// The account whose session and plan it rides on.
+    let host: ToolType
+
+    var id: String { title }
+}
+
 struct MiniWindowFieldProviderSection: Identifiable {
     let tool: ToolType
     let title: String

@@ -885,9 +885,21 @@ struct KiroStatusRow: View {
 /// queries fan out across every slot and the bucket percentages are
 /// averaged; see `MiscQuotaAggregator`.
 struct CookieSourceControls: View {
+    /// How much visual weight the import button carries.
+    ///
+    /// The misc-providers list packs a dozen providers into one scroll and
+    /// keeps every control small; a core-provider page puts this button
+    /// directly under full-size ones, where a small text-only button reads
+    /// as a lesser class of control rather than the same action.
+    enum Emphasis {
+        case compact
+        case standard
+    }
+
     let tool: ToolType
     let instanceID: String
     let manualPrompt: String
+    var emphasis: Emphasis = .compact
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
@@ -937,25 +949,39 @@ struct CookieSourceControls: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if slots.isEmpty {
+            // The core-provider pages say this once, above, in the provider's
+            // own words ("No usable Cursor.app session — import cursor.com
+            // cookies below."); repeating it here read as two warnings.
+            if slots.isEmpty, emphasis == .compact {
                 Text(L10n.Settings.miscNoCookiesYet)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-            } else {
+            } else if !slots.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(slots) { slot in
                         CookieSlotRow(slot: slot) { deleteSlot(slot) }
                     }
                 }
             }
-            HStack(alignment: .top, spacing: 6) {
-                Button(L10n.Onboarding.cookiesImportFromBrowser, action: importNow)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                Text(L10n.Settings.miscImportDetail)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+            switch emphasis {
+            case .compact:
+                HStack(alignment: .top, spacing: 6) {
+                    importButton
+                    importDetail
+                }
+            case .standard:
+                // The pair the sibling provider on the same page already has:
+                // full-size, named after the provider, import beside delete.
+                HStack {
+                    importButton
+                    Button(role: .destructive, action: deleteAllSlots) {
+                        Label(
+                            L10n.Settings.deleteProviderCookies(provider: tool.menuTitle),
+                            systemImage: "trash"
+                        )
+                    }
+                    .disabled(slots.isEmpty)
+                }
             }
             HStack(spacing: 6) {
                 SecureField(manualPrompt, text: $manualDraft)
@@ -1090,6 +1116,58 @@ struct CookieSourceControls: View {
                 }
                 importStatus = "Pasted cookie saved."
                 manualDraft = ""
+                reloadSlots()
+                triggerRefresh()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var importButton: some View {
+        switch emphasis {
+        case .compact:
+            // Unnamed on purpose: the misc list puts one of these under every
+            // provider's own heading, where repeating the name is noise.
+            Button(L10n.Onboarding.cookiesImportFromBrowser, action: importNow)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        case .standard:
+            Button(action: importNow) {
+                Label(
+                    L10n.Onboarding.cookiesImportProvider(provider: tool.menuTitle),
+                    systemImage: "safari"
+                )
+            }
+        }
+    }
+
+    private var importDetail: some View {
+        Text(L10n.Settings.miscImportDetail)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Every saved slot for this provider, the way the core-provider pages
+    /// delete a provider's web cookies in one go. The per-slot buttons above
+    /// stay: they are how a single stale browser profile is dropped.
+    private func deleteAllSlots() {
+        let snapshotTool = tool
+        let snapshotInstanceID = instanceID
+        let snapshotSlots = slots
+        DispatchQueue.global(qos: .userInitiated).async {
+            var removed = 0
+            for slot in snapshotSlots
+            where MiscCookieSlotStore.delete(
+                slotID: slot.id,
+                for: snapshotTool,
+                instanceID: snapshotInstanceID
+            ) {
+                removed += 1
+            }
+            DispatchQueue.main.async {
+                guard removed > 0 else { return }
+                importStatus = nil
                 reloadSlots()
                 triggerRefresh()
             }
