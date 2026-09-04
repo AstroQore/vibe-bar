@@ -37,12 +37,16 @@ enum InitialFocusPolicy {
 
 struct InitialFocusProbe: NSViewRepresentable {
     let presentationID: UUID
+    var afterClear: (@MainActor () -> Void)? = nil
 
     func makeNSView(context: Context) -> InitialFocusProbeView {
-        InitialFocusProbeView(presentationID: presentationID)
+        let view = InitialFocusProbeView(presentationID: presentationID)
+        view.afterClear = afterClear
+        return view
     }
 
     func updateNSView(_ view: InitialFocusProbeView, context: Context) {
+        view.afterClear = afterClear
         view.beginPresentation(presentationID)
     }
 }
@@ -59,6 +63,11 @@ final class InitialFocusController {
     private var presentationID: UUID?
     private var state = InitialFocusState()
     private var isScheduled = false
+
+    /// Runs right after the one-shot clear, in the same main-queue turn, for
+    /// the presentation that names a control to start in. Nothing else can
+    /// slip between the clear and the hand-off.
+    var afterClear: (@MainActor () -> Void)?
 
     func attach(to newWindow: NSWindow?, presentationID newPresentationID: UUID) {
         guard window !== newWindow || presentationID != newPresentationID else {
@@ -109,6 +118,7 @@ final class InitialFocusController {
                       self.presentationID == scheduledPresentation
                 else { return }
                 self.clearInitialFocus(in: window)
+                self.afterClear?()
             }
         }
     }
@@ -149,6 +159,11 @@ final class InitialFocusProbeView: NSView {
     private let controller = InitialFocusController()
     private var presentationID: UUID
 
+    var afterClear: (@MainActor () -> Void)? {
+        get { controller.afterClear }
+        set { controller.afterClear = newValue }
+    }
+
     init(presentationID: UUID) {
         self.presentationID = presentationID
         super.init(frame: .zero)
@@ -178,12 +193,13 @@ final class InitialFocusProbeView: NSView {
 /// Workbench, or a sheet does — and each of those reopenings deserves
 /// exactly one new clear.
 private struct NoInitialFocusModifier: ViewModifier {
+    var afterClear: (@MainActor () -> Void)? = nil
     @State private var presentationID = UUID()
 
     func body(content: Content) -> some View {
         content
             .background {
-                InitialFocusProbe(presentationID: presentationID)
+                InitialFocusProbe(presentationID: presentationID, afterClear: afterClear)
                     .frame(width: 0, height: 0)
                     .accessibilityHidden(true)
                     .allowsHitTesting(false)
@@ -202,5 +218,15 @@ extension View {
     /// ``VibeBarButtonStyle``.
     func vibeBarNoInitialFocus() -> some View {
         modifier(NoInitialFocusModifier())
+    }
+
+    /// The same policy for the one kind of presentation that exists to be
+    /// typed into: a picker with a search field. The default responder is
+    /// still cleared — so no button lights up — and then, in the same turn,
+    /// `focus` hands the field its caret, the way Spotlight and the
+    /// Character Viewer open with theirs live. Reserve it for search; a form
+    /// still starts neutral.
+    func vibeBarNoInitialFocus(thenFocus focus: @escaping @MainActor () -> Void) -> some View {
+        modifier(NoInitialFocusModifier(afterClear: focus))
     }
 }

@@ -587,7 +587,8 @@ final class SessionManagerModel: ObservableObject {
         let found = (try? await service.search(
             needle,
             harnesses: harnesses,
-            scopes: searchScopes,
+            // Titles are always in: the scope menu offers only message roles.
+            scopes: searchScopes.union([.title]),
             projectIncludes: directoryIncludes,
             projectExcludes: directoryExcludes,
             limit: 200
@@ -751,19 +752,25 @@ final class SessionManagerModel: ObservableObject {
     /// before the character appeared in the field.
     private nonisolated static func buildRows(_ input: RowInput) async -> RowOutput {
         await Task.detached(priority: .userInitiated) {
-            let base: [Row]
-            if !input.needle.isEmpty, !input.hits.isEmpty {
-                base = input.hits.map {
-                    Row(
-                        summary: $0.summary,
-                        snippet: $0.snippet,
-                        matchedSeq: $0.matchedSeq,
-                        matchedRelated: input.relatedHitByParent[$0.summary.id],
-                        reviewCount: input.reviewCounts[$0.summary.sessionID] ?? 0
-                    )
-                }
-            } else {
-                base = filteredSummaries(input).map {
+            // Both kinds of hit, together: what the index found inside
+            // sessions (with a snippet), then every loaded row whose own
+            // label matches and the index did not already return. Full-text
+            // hits used to replace the label matches outright, so typing
+            // "codex" found messages that said codex and lost the Codex
+            // sessions themselves.
+            let hitRows = input.needle.isEmpty ? [] : input.hits.map {
+                Row(
+                    summary: $0.summary,
+                    snippet: $0.snippet,
+                    matchedSeq: $0.matchedSeq,
+                    matchedRelated: input.relatedHitByParent[$0.summary.id],
+                    reviewCount: input.reviewCounts[$0.summary.sessionID] ?? 0
+                )
+            }
+            let hitIDs = Set(hitRows.map(\.id))
+            let labelRows = filteredSummaries(input)
+                .filter { !hitIDs.contains($0.id) }
+                .map {
                     Row(
                         summary: $0,
                         snippet: nil,
@@ -772,7 +779,7 @@ final class SessionManagerModel: ObservableObject {
                         reviewCount: input.reviewCounts[$0.sessionID] ?? 0
                     )
                 }
-            }
+            let base = hitRows + labelRows
             let rows = input.needle.isEmpty
                 ? base
                 : sorted(base.filter { passesFilters($0, input) }, order: input.sortOrder)
@@ -830,15 +837,25 @@ final class SessionManagerModel: ObservableObject {
 
     private nonisolated static func filteredSummaries(_ input: RowInput) -> [SessionSummary] {
         guard !input.needle.isEmpty else { return input.summaries }
-        guard input.scopes.contains(.title) else { return [] }
         return input.summaries.filter { matches($0, needle: input.needle) }
     }
 
-    /// Immediate metadata preview while the debounced SQLite query is in
-    /// flight. It obeys the title scope exactly; project paths have their own
-    /// include/exclude controls and transcript roles are answered by FTS.
+    /// Whether a row is found by what it shows: its title, its id, its
+    /// project folder (the last path component and the whole path), and the
+    /// harness and company it is labelled with. Not gated on a scope — the
+    /// scopes choose which *messages* the index searches; a search that
+    /// cannot find "codex" or a folder name that is right there on the row
+    /// is the one nobody trusts.
     nonisolated static func matches(_ summary: SessionSummary, needle: String) -> Bool {
-        let fields = [summary.title, summary.sessionID]
+        let harness = summary.effectiveHarness
+        let fields: [String?] = [
+            summary.title,
+            summary.sessionID,
+            summary.projectDir,
+            projectBucket(for: summary).title,
+            harness.displayName,
+            harness.companyName,
+        ]
         for field in fields {
             guard let field else { continue }
             if field.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil {

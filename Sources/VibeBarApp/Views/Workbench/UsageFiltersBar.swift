@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import VibeBarCore
 
@@ -6,10 +5,11 @@ import VibeBarCore
 /// picker, the date range, and how often the page re-queries.
 ///
 /// This is a usage surface, so the unit is the **harness** — the CLI or app
-/// that produced the tokens — and the company is supplementary: a muted
-/// section head that toggles its harnesses in one click. Chips, not a menu,
-/// because a chip can carry the brand accent, which is how this app says
-/// "provider" everywhere else. See AGENTS.md § 7.1.
+/// that produced the tokens — and the company is a section head inside the
+/// picker that toggles its harnesses in one click. The picker is the same
+/// one the Sessions page opens (`FilterPickerList`): type to find a harness
+/// by any of its names, tick several without the list closing, ⌥-click to
+/// keep only one. See AGENTS.md § 7.1.
 struct UsageFiltersBar: View {
     let density: Theme.Density
     @ObservedObject var model: UsageStatsViewModel
@@ -18,144 +18,101 @@ struct UsageFiltersBar: View {
 
     var body: some View {
         Group {
-            ViewThatFits(in: .horizontal) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 8) {
-                    providerChips
-                    Spacer(minLength: 8)
+                    harnessPicker
+                    modelPicker
                     controls
                 }
-                VStack(alignment: .leading, spacing: 7) {
-                    providerChips
-                    controls
-                }
+                .padding(.vertical, 1)
             }
+            .scrollIndicators(.never)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .workbenchToolbarSurface()
     }
 
-    // MARK: - Harnesses
+    // MARK: - Harnesses and models
 
-    private var providerChips: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 7) {
-                allHarnessesChip
-                ForEach(model.harnessChipGroups) { group in
-                    HStack(spacing: 4) {
-                        companyChip(group)
-                        ForEach(group.harnesses, id: \.self) { harness in
-                            harnessChip(harness, in: group)
-                        }
-                    }
-                }
-            }
-            .padding(.vertical, 1)
+    private var harnessPicker: some View {
+        let stats = Dictionary(model.harnessStats.map { ($0.harness, $0) }, uniquingKeysWith: { first, _ in first })
+        return FilterPickerButton(
+            density: density,
+            systemImage: "terminal",
+            title: L10n.Usage.Table.Column.harness,
+            detail: harnessSummary,
+            prominent: model.selectedHarnesses != nil,
+            accessibilityLabel: L10n.Usage.Table.Column.harness
+        ) {
+            FilterPickerList(
+                density: density,
+                sections: HarnessPickerRows.sections(
+                    groups: model.harnessChipGroups,
+                    density: density,
+                    // Tokens in the current range, for the harnesses the query
+                    // already covers; a harness outside it has no number yet.
+                    detail: { stats[$0].map { UsageFormatting.compactTokens($0.totalTokens) } }
+                ),
+                searchPlaceholder: L10n.Workbench.Filter.searchHarnesses,
+                isSelected: { model.selectedHarnesses?.contains($0) ?? true },
+                toggle: { model.toggleHarness($0) },
+                solo: { model.soloHarness($0) },
+                toggleGroup: { model.toggleHarnesses(Set($0)) },
+                selectAll: { model.setSelectedHarnesses(nil) },
+                selectNone: { model.setSelectedHarnesses([]) }
+            )
         }
-        .scrollIndicators(.never)
     }
 
-    /// The All chip is a switch, not a shortcut: lit means every harness is
-    /// in the query and clicking it clears the selection outright; anything
-    /// else and it puts every harness back.
-    private var allHarnessesChip: some View {
-        let selected = model.selectedHarnesses == nil
-        return Button {
-            model.toggleAllHarnesses()
-        } label: {
-            Text(L10n.Usage.Filters.allHarnesses)
-                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                .foregroundStyle(selected ? .primary : .secondary)
-                .padding(.horizontal, 10)
-                .frame(minHeight: 28)
-        }
-        .buttonStyle(.vibeBar)
-        .background(chipBackground(tint: .accentColor, selected: selected))
-        .help(selected
-            ? L10n.Usage.Filters.allHarnessesHelpNone
-            : L10n.Usage.Filters.allHarnessesHelpEvery)
-        .accessibilityLabel(selected
-            ? L10n.Usage.Filters.allHarnessesSelectNone
-            : L10n.Usage.Filters.allHarnessesSelectEvery)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-    }
-
-    /// The company section head. Quieter than the harness chips beside it —
-    /// smaller, barely any fill — because the company is context here, not
-    /// another level to filter by: clicking it toggles its harnesses.
-    private func companyChip(_ group: Harness.ChipGroup) -> some View {
-        let accent = Theme.providerAccent(for: group.company)
-        let selected = isSelected(group)
-        return Button {
-            model.toggleHarnesses(group.harnessSet)
-        } label: {
-            HStack(spacing: 4) {
-                CompanyBrandIconView(tool: group.company, size: max(9, density.segmentedFontSize - 1))
-                Text(group.company.vendorName)
-                    .font(.system(size: max(9, density.segmentedFontSize - 2), weight: .semibold))
-                    .tracking(0.3)
-                    .lineLimit(1)
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 7)
-            .frame(minHeight: 28)
-        }
-        .buttonStyle(.vibeBar)
-        .background(Capsule().fill(accent.opacity(selected ? 0.10 : 0.035)))
-        .opacity(selected ? 1 : 0.65)
-        .saturation(selected ? 1 : 0.50)
-        .help(companyHelp(group))
-        .accessibilityLabel(
-            L10n.Usage.Filters.companyHarnesses(company: group.company.vendorName)
+    private var harnessSummary: String {
+        let options = model.harnessOptions
+        guard let selected = model.selectedHarnesses else { return L10n.Common.all }
+        return L10n.Workbench.Sessions.fraction(
+            shown: options.count(where: selected.contains), total: options.count
         )
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    /// One chip per harness — the axis this page actually groups by. The icon
-    /// is the harness's own brand (Cursor's mark, not Grok's); the accent is
-    /// the company's, so a group still reads as one block of colour.
-    ///
-    /// ⌥-click solos, which is the one-click way to ask "just this harness"
-    /// without turning eight other chips off by hand.
-    private func harnessChip(_ harness: Harness, in group: Harness.ChipGroup) -> some View {
-        let selected = model.selectedHarnesses?.contains(harness) ?? true
-        return Button {
-            if NSEvent.modifierFlags.contains(.option) {
-                model.soloHarness(harness)
-            } else {
-                model.toggleHarness(harness)
-            }
-        } label: {
-            HStack(spacing: 5) {
-                HarnessBrandIconView(harness: harness, size: density.segmentedFontSize + 1)
-                Text(harness.displayName)
-                    .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 9)
-            .frame(minHeight: 28)
-        }
-        .buttonStyle(.vibeBar)
-        .background(chipBackground(tint: Theme.providerAccent(for: group.company), selected: selected))
-        // Unselected chips stay legible but recede — the accent is the signal
-        // that a harness is in the query, so an off chip must not wear it.
-        .opacity(selected ? 1 : 0.70)
-        .saturation(selected ? 1 : 0.50)
-        .help(L10n.Usage.Filters.harnessHelp(
-            company: group.company.vendorName, harness: harness.displayName
-        ))
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-    }
-
-    private func isSelected(_ group: Harness.ChipGroup) -> Bool {
-        guard let selected = model.selectedHarnesses else { return true }
-        return group.harnesses.allSatisfy(selected.contains)
-    }
-
-    private func chipBackground(tint: Color, selected: Bool) -> some View {
-        ZStack {
-            Capsule().fill(tint.opacity(selected ? 0.16 : 0.05))
-            Capsule().stroke(tint.opacity(selected ? 0.55 : 0.18), lineWidth: 0.8)
+    /// The model picker is one flat list; models have no company head.
+    private var modelPicker: some View {
+        FilterPickerButton(
+            density: density,
+            systemImage: "cpu",
+            title: L10n.Usage.Breakdown.models,
+            detail: modelSummary,
+            prominent: model.selectedModels != nil,
+            accessibilityLabel: L10n.Usage.Filters.modelsMenuLabel
+        ) {
+            FilterPickerList(
+                density: density,
+                sections: [
+                    FilterPickerSection(
+                        id: "models",
+                        rows: model.availableModels.map { name in
+                            FilterPickerRow(
+                                id: name,
+                                title: UsageModelNaming.canonicalDisplayName(name),
+                                accent: .accentColor,
+                                icon: AnyView(
+                                    Image(systemName: "cpu")
+                                        .font(.system(size: density.segmentedFontSize - 1))
+                                        .foregroundStyle(.secondary)
+                                ),
+                                searchKeys: [name, UsageModelNaming.canonicalDisplayName(name)]
+                            )
+                        }
+                    )
+                ],
+                searchPlaceholder: L10n.Workbench.Filter.searchModels,
+                emptyMessage: L10n.Usage.Filters.noModelsInRange,
+                showsNone: false,
+                isSelected: { model.selectedModels?.contains($0) ?? true },
+                toggle: { model.toggleModel($0) },
+                solo: { model.setSelectedModels([$0]) },
+                toggleGroup: { _ in },
+                selectAll: { model.setSelectedModels(nil) },
+                selectNone: {}
+            )
         }
     }
 
@@ -164,7 +121,6 @@ struct UsageFiltersBar: View {
     private var controls: some View {
         HStack(spacing: 8) {
             rangeMenu
-            modelMenu
             refreshMenu
             if model.selectedTools != nil
                 || model.selectedHarnesses != nil
@@ -247,33 +203,6 @@ struct UsageFiltersBar: View {
         .frame(width: 300)
     }
 
-    private var modelMenu: some View {
-        Menu {
-            Button(L10n.Usage.Filters.allModels) { model.setSelectedModels(nil) }
-            if model.availableModels.isEmpty {
-                Text(L10n.Usage.Filters.noModelsInRange)
-            } else {
-                Divider()
-                ForEach(model.availableModels, id: \.self) { name in
-                    Toggle(isOn: modelBinding(name)) {
-                        Text(UsageModelNaming.canonicalDisplayName(name))
-                    }
-                }
-            }
-        } label: {
-            menuLabel(
-                systemImage: "cpu",
-                title: L10n.Usage.Breakdown.models,
-                detail: modelSummary
-            )
-        }
-        .menuStyle(.button)
-        .buttonStyle(WorkbenchPillButtonStyle())
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel(L10n.Usage.Filters.modelsMenuLabel)
-    }
-
     private var refreshMenu: some View {
         Menu {
             Picker(L10n.Usage.Filters.autoRefresh, selection: $model.refreshInterval) {
@@ -324,17 +253,6 @@ struct UsageFiltersBar: View {
             get: { model.selectedModels?.contains(name) ?? true },
             set: { _ in model.toggleModel(name) }
         )
-    }
-
-    /// Company chip tooltip: the harnesses that chip actually toggles, which
-    /// is the level this page groups by.
-    private func companyHelp(_ group: Harness.ChipGroup) -> String {
-        let harnesses = group.harnesses.map(\.displayName).joined(separator: " + ")
-        return harnesses.isEmpty
-            ? group.company.vendorName
-            : L10n.Usage.Filters.companyHelp(
-                company: group.company.vendorName, harnesses: harnesses
-            )
     }
 
     private var rangeSummary: String {
