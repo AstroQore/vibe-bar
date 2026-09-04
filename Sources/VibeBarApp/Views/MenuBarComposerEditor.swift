@@ -43,7 +43,17 @@ struct MenuBarComposerEditor: View {
     /// property until the drag reaches a drop target — nothing is inserted,
     /// nothing is displayed, and a drag released over empty space simply
     /// leaves it behind.
-    @State private var draggedNewToken: MenuBarToken?
+    /// The block dragged out of the palette, and when that drag began.
+    ///
+    /// It outlives the 200 ms cancel window on purpose, so a drag that wanders
+    /// off every target and comes back still has something to stage. The
+    /// deadline is what stops an abandoned one from being staged later by an
+    /// unrelated drop: the chips accept `.text`, so text dragged in from
+    /// another app reaches the same branch. Guarding by payload type instead
+    /// is what broke every drag in 1.6.2-dev.69 — `UTType(exportedAs:)` for a
+    /// type this app does not declare matches nothing, so the targets refused
+    /// their own blocks. A deadline cannot fail that way.
+    @State private var draggedNewToken: PendingPaletteBlock?
     /// The quota section whose buckets are showing. Only one at a time: the
     /// palette is a strip of chips, and seven open sections is a wall.
     @State private var openQuotaSection: String?
@@ -129,9 +139,9 @@ struct MenuBarComposerEditor: View {
     }
 
     private var stagedRequirements: [MenuBarQuotaRequirement] {
-        guard let token = draggedNewToken else { return [] }
+        guard let pending = draggedNewToken else { return [] }
         var staged = MenuBarComposition(isEnabled: true)
-        staged.append(token, to: nil)
+        staged.append(pending.token, to: nil)
         return staged.quotaRequirements
     }
 
@@ -290,7 +300,7 @@ struct MenuBarComposerEditor: View {
                     Color.clear
                         .frame(maxWidth: .infinity, minHeight: 30)
                         .contentShape(Rectangle())
-                        .onDrop(of: [.menuBarBlock], delegate: chipDrop(.newStrip))
+                        .onDrop(of: [.text], delegate: chipDrop(.newStrip))
                     if composition.segments.isEmpty {
                         Text(L10n.MenuBar.composerBlocksEmpty)
                             .font(.caption)
@@ -431,7 +441,7 @@ struct MenuBarComposerEditor: View {
                 Color.clear
                     .frame(minWidth: 96, minHeight: 22)
                     .contentShape(Rectangle())
-                    .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
+                    .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
                 if tokens.isEmpty {
                     // A group with one empty row is an empty group; an empty
                     // row inside a stacked one is a row waiting to be filled.
@@ -481,35 +491,17 @@ struct MenuBarComposerEditor: View {
                         // Snapshot the committed order; every crossing
                         // reorders this copy, and only the drop writes.
                         dragComposition = self.composition
-                        return blockItemProvider(token)
+                        return NSItemProvider(object: token.id.uuidString as NSString)
                     }
-                    .onDrop(of: [.menuBarBlock], delegate: chipDrop(.before(token.id)))
+                    .onDrop(of: [.text], delegate: chipDrop(.before(token.id)))
             }
             // Trailing landing strip, so a block can be dragged to the end
             // of this row without having to hit its last chip.
             Color.clear
                 .frame(width: 16, height: 22)
                 .contentShape(Rectangle())
-                .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
+                .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
         }
-    }
-
-    /// The dragged block's identity, under the composer's private type. The
-    /// delegates never read it back — they work from `draggedTokenId` and
-    /// `draggedNewToken` — but a payload has to exist for a drag to start.
-    private func blockItemProvider(_ token: MenuBarToken) -> NSItemProvider {
-        let provider = NSItemProvider()
-        let id = token.id.uuidString
-        // In-process only: this identity means nothing outside the composer,
-        // so it should not be draggable into another app.
-        provider.registerDataRepresentation(
-            for: .menuBarBlock,
-            visibility: .ownProcess
-        ) { completion in
-            completion(Data(id.utf8), nil)
-            return nil
-        }
-        return provider
     }
 
     private func chipDrop(_ target: MenuBarChipDropTarget) -> MenuBarChipDropDelegate {
@@ -547,7 +539,7 @@ struct MenuBarComposerEditor: View {
                 )
         )
         .onDrop(
-            of: [.menuBarBlock],
+            of: [.text],
             delegate: MenuBarChipRemoveDelegate(
                 dragged: $draggedTokenId,
                 isTargeted: $isOverRemoveTarget,
@@ -790,8 +782,8 @@ struct MenuBarComposerEditor: View {
                 let token = make()
                 draggedTokenId = nil
                 dragComposition = nil
-                draggedNewToken = token
-                return blockItemProvider(token)
+                draggedNewToken = PendingPaletteBlock(token: token)
+                return NSItemProvider(object: token.id.uuidString as NSString)
             }
     }
 
@@ -1157,8 +1149,8 @@ struct MenuBarComposerEditor: View {
     /// rebuild would come. Nothing draws this copy; it exists to be resolved.
     private var resolvableComposition: MenuBarComposition {
         var order = displayedComposition
-        if let token = draggedNewToken, order.location(of: token.id) == nil {
-            order.append(token, to: nil)
+        if let pending = draggedNewToken, order.location(of: pending.token.id) == nil {
+            order.append(pending.token, to: nil)
         }
         return order
     }
@@ -1784,17 +1776,33 @@ private struct DebouncedPercentStepper: View {
 /// group because a stacked column has two of them, and the empty space after
 /// the top row's last chip is not the same place as the empty space after the
 /// bottom row's.
-extension UTType {
-    /// The composer's own drag payload.
+/// A palette block in flight, with the moment its drag began.
+///
+/// See `MenuBarComposerEditor.draggedNewToken` for why the deadline is here
+/// rather than a payload type.
+struct PendingPaletteBlock {
+    let token: MenuBarToken
+    var startedAt: Date = .now
+
+    /// Long enough for a drag that leaves the strip, hesitates and comes back;
+    /// short enough that a drag abandoned over nothing is not still waiting
+    /// when the next one arrives.
+    static let deadline: TimeInterval = 30
+
+    /// Identifying the payload instead was tried twice and cost the feature
+    /// both times. A private `UTType` changes what the targets *match*, so
+    /// they refused their own blocks — that is the dev.69 outage. Tagging the
+    /// provider's `suggestedName` and checking it in `dropEntered` does not
+    /// survive the drag: measured in the running app, the receiving side sees
+    /// no name, so palette staging never fired. Reading the payload itself is
+    /// asynchronous and `dropEntered` is not.
     ///
-    /// These used to travel as `.text`, which meant every chip and landing
-    /// strip also accepted text dragged in from any other app — and a palette
-    /// token still waiting for a target would have been staged by one. A
-    /// private type makes the composer accept nothing but its own blocks.
-    static let menuBarBlock = UTType(
-        exportedAs: "com.astroqore.VibeBar.menu-bar-block",
-        conformingTo: .data
-    )
+    /// So the window is bounded rather than the payload identified. The worst
+    /// case left is narrow — abandon a palette drag over nothing, then within
+    /// half a minute drag text in from another app onto a chip, and that block
+    /// lands. It is one drag to the bin, and a guard that fails closed costs
+    /// the whole feature.
+    var isLive: Bool { Date.now.timeIntervalSince(startedAt) < Self.deadline }
 }
 
 enum MenuBarChipDropTarget {
@@ -1814,7 +1822,7 @@ private struct MenuBarChipDropDelegate: DropDelegate {
     /// Reordered in place on every crossing. Local state, not settings.
     @Binding var provisional: MenuBarComposition?
     /// A block dragged out of the palette, waiting for its first target.
-    @Binding var pendingNew: MenuBarToken?
+    @Binding var pendingNew: PendingPaletteBlock?
     /// The committed order, to seed a provisional that does not exist yet
     /// because this drag started in the palette rather than on a chip.
     let committed: () -> MenuBarComposition
@@ -1831,7 +1839,8 @@ private struct MenuBarChipDropDelegate: DropDelegate {
         // ordinary dragged chip. Landing it on arrival rather than at the
         // drag's start is what lets a drag released over nothing add nothing
         // — there is no speculative insertion to undo.
-        if dragged == nil, let new = pendingNew {
+        if dragged == nil, let pending = pendingNew, pending.isLive {
+            let new = pending.token
             var order = provisional ?? committed()
             switch target {
             case let .before(id):
