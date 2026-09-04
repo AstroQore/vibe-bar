@@ -163,8 +163,20 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
     /// entry — `Claude 5%/100%` instead of `5 Hours 5% · Weekly 100%`.
     /// Opt-in: the un-merged list is what every existing bar already shows.
     public var mergesGroupWindows: Bool
+    /// The composed strip, when the user has ever opened the composer.
+    ///
+    /// `nil` means they never did, and the item renders the field-based strip
+    /// this type has always rendered. A stored composition with
+    /// `isEnabled == false` means they built one and switched back — the
+    /// arrangement is kept so switching on again returns to it instead of
+    /// reseeding over their work. Every field-mode setting above stays intact
+    /// either way; the two modes never write over each other.
+    public var composition: MenuBarComposition?
 
     public var id: MenuBarItemKind { kind }
+
+    /// Whether this item draws the composed strip rather than the field list.
+    public var usesComposedStrip: Bool { composition?.isEnabled == true }
 
     public init(
         kind: MenuBarItemKind,
@@ -174,7 +186,8 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         selectedFieldIds: [String],
         customLabels: [String: String] = [:],
         fieldStyles: [String: MenuBarFieldStyle] = [:],
-        mergesGroupWindows: Bool = false
+        mergesGroupWindows: Bool = false,
+        composition: MenuBarComposition? = nil
     ) {
         self.kind = kind
         self.isVisible = isVisible
@@ -184,10 +197,60 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         self.customLabels = customLabels
         self.fieldStyles = fieldStyles
         self.mergesGroupWindows = mergesGroupWindows
+        self.composition = composition
     }
 
     public func style(for fieldId: String) -> MenuBarFieldStyle {
         fieldStyles[fieldId] ?? .labelAndPercent
+    }
+
+    /// Turn the composer on or off without losing anything.
+    ///
+    /// Seeding happens exactly once — the first time custom mode is switched
+    /// on with no stored strip. Afterwards this only flips `isEnabled`, so a
+    /// user who toggles back and forth keeps the arrangement they built, and
+    /// the field-mode selection is never touched at all. Stage 2's editor
+    /// should call `reseed(template:...)` when the user explicitly asks to
+    /// start over.
+    public mutating func setComposedStripEnabled(
+        _ enabled: Bool,
+        template: MenuBarComposition.Template = .roomy,
+        registry: QuotaFieldRegistry = .empty,
+        groupCatalogLabel: (String) -> String? = { _ in nil }
+    ) {
+        if var existing = composition {
+            existing.isEnabled = enabled
+            composition = existing
+            return
+        }
+        guard enabled else { return }
+        var seeded = MenuBarComposition.seeded(
+            template: template,
+            from: self,
+            registry: registry,
+            groupCatalogLabel: groupCatalogLabel
+        )
+        seeded.isEnabled = true
+        composition = seeded
+    }
+
+    /// Replace the stored strip with a fresh seed of `template`, keeping the
+    /// current on/off state. This is the destructive one; it exists so the
+    /// editor's "start over" is explicit rather than a side effect of a toggle.
+    public mutating func reseedComposedStrip(
+        template: MenuBarComposition.Template,
+        registry: QuotaFieldRegistry = .empty,
+        groupCatalogLabel: (String) -> String? = { _ in nil }
+    ) {
+        let wasEnabled = composition?.isEnabled ?? false
+        var seeded = MenuBarComposition.seeded(
+            template: template,
+            from: self,
+            registry: registry,
+            groupCatalogLabel: groupCatalogLabel
+        )
+        seeded.isEnabled = wasEnabled
+        composition = seeded
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -199,6 +262,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         case customLabels
         case fieldStyles
         case mergesGroupWindows
+        case composition
     }
 
     public init(from decoder: Decoder) throws {
@@ -206,7 +270,12 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         self.kind = try c.decode(MenuBarItemKind.self, forKey: .kind)
         self.isVisible = try c.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
         self.showTitle = try c.decodeIfPresent(Bool.self, forKey: .showTitle) ?? true
-        self.layout = try c.decodeIfPresent(MenuBarLayout.self, forKey: .layout)
+        // `try?`: an unknown layout from a newer build used to throw, and
+        // `LossyMenuBarItem` turns that into a dropped item — which discards
+        // the field selection, every rename, every per-field style *and* the
+        // composed strip, replacing the lot with defaults. One unreadable
+        // enum must cost at most that enum.
+        self.layout = (try? c.decode(MenuBarLayout.self, forKey: .layout))
             ?? (kind == .compact ? .iconOnly : .singleLine)
         self.selectedFieldIds = try c.decodeIfPresent([String].self, forKey: .selectedFieldIds) ?? []
         self.customLabels = try c.decodeIfPresent([String: String].self, forKey: .customLabels) ?? [:]
@@ -217,6 +286,10 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         // Absent in every settings file written before group merging existed;
         // off is the layout those bars were arranged against.
         self.mergesGroupWindows = try c.decodeIfPresent(Bool.self, forKey: .mergesGroupWindows) ?? false
+        // Absent for every item that predates the composer, and lossy on
+        // purpose: an unreadable strip falls back to the field-based bar
+        // instead of taking the whole settings file down.
+        self.composition = try? c.decodeIfPresent(MenuBarComposition.self, forKey: .composition)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -229,6 +302,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         try c.encode(customLabels, forKey: .customLabels)
         try c.encode(fieldStyles, forKey: .fieldStyles)
         try c.encode(mergesGroupWindows, forKey: .mergesGroupWindows)
+        try c.encodeIfPresent(composition, forKey: .composition)
     }
 }
 

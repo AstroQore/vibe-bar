@@ -789,19 +789,42 @@ struct SettingsView: View {
 
     private func menuBarOverviewEditor() -> some View {
         let kind = MenuBarItemKind.compact
+        let isCustom = settingsStore.settings.menuBarItem(kind).usesComposedStrip
         return VStack(alignment: .leading, spacing: 10) {
             Toggle(L10n.Platform.macosMenuBarShowInMenuBar, isOn: menuItemVisibleBinding(kind))
-            Toggle(L10n.Platform.macosMenuBarShowTitleText, isOn: menuItemTitleBinding(kind))
-            Picker(L10n.Platform.macosMenuBarLayout, selection: menuItemLayoutBinding(kind)) {
-                ForEach(MenuBarLayout.allCases) { layout in
-                    Text(layout.label).tag(layout)
-                }
+
+            // The way back to the plain strip is the second control in the
+            // section, not something to hunt for inside the composer.
+            Picker(L10n.MenuBar.composerModeLabel, selection: menuBarStripModeBinding(kind)) {
+                Text(L10n.MenuBar.composerModeDefault).tag(false)
+                Text(L10n.MenuBar.composerModeCustom).tag(true)
             }
             .pickerStyle(.segmented)
-            Toggle(L10n.Platform.macosMenuBarMergeGroupWindows, isOn: menuItemMergeGroupWindowsBinding(kind))
-            Text(L10n.Platform.macosMenuBarMergeGroupWindowsDetail)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text(
+                isCustom
+                    ? L10n.MenuBar.composerModeCustomCaption
+                    : L10n.MenuBar.composerModeDefaultCaption
+            )
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if isCustom {
+                MenuBarComposerEditor(kind: kind, density: density)
+            } else {
+                Toggle(L10n.Platform.macosMenuBarShowTitleText, isOn: menuItemTitleBinding(kind))
+                Picker(L10n.Platform.macosMenuBarLayout, selection: menuItemLayoutBinding(kind)) {
+                    ForEach(MenuBarLayout.allCases) { layout in
+                        Text(layout.label).tag(layout)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Toggle(L10n.Platform.macosMenuBarMergeGroupWindows, isOn: menuItemMergeGroupWindowsBinding(kind))
+                Text(L10n.Platform.macosMenuBarMergeGroupWindowsDetail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
             Picker(L10n.Platform.macosMenuBarDisplayDensity, selection: popoverDensityBinding()) {
                 ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
             }
@@ -816,7 +839,7 @@ struct SettingsView: View {
             Text(settingsStore.settings.menuBarColorBasis.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            if !MenuBarFieldCatalog.fields(for: kind).isEmpty {
+            if !isCustom, !MenuBarFieldCatalog.fields(for: kind).isEmpty {
                 Text(L10n.Platform.macosMenuBarFields)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -824,6 +847,28 @@ struct SettingsView: View {
                 menuItemFieldList(for: kind)
             }
         }
+    }
+
+    /// Default ↔ Custom. Off never destroys anything: the composed strip is
+    /// kept on the item and only its `isEnabled` flag moves, so the field
+    /// selection and the block arrangement coexist rather than overwriting
+    /// each other. Seeding happens once, the first time Custom is chosen.
+    private func menuBarStripModeBinding(_ kind: MenuBarItemKind) -> Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.menuBarItem(kind).usesComposedStrip },
+            set: { enabled in
+                var item = settingsStore.settings.menuBarItem(kind)
+                item.setComposedStripEnabled(
+                    enabled,
+                    // Match the layout the user is looking at, so the seed
+                    // starts with their spacing as well as their blocks.
+                    template: .matching(item.layout),
+                    registry: quotaService.fieldRegistry,
+                    groupCatalogLabel: MiniWindowGroupLabelCatalog.defaultLabel(for:)
+                )
+                settingsStore.settings.setMenuBarItem(item)
+            }
+        )
     }
 
     private func launchAtLoginBinding() -> Binding<Bool> {

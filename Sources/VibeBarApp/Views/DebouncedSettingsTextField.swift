@@ -1,4 +1,5 @@
 import SwiftUI
+import VibeBarCore
 
 /// A Settings text field that types into its own draft and writes back later.
 ///
@@ -25,18 +26,32 @@ struct DebouncedSettingsTextField: View {
     @Binding var value: String
     /// How long the field waits after the last keystroke before writing.
     let idleDelay: Duration
+    /// A queue this field's pending write joins, so a caller that flushes
+    /// before doing something else picks this field's draft up too.
+    ///
+    /// Without it the field owns its own timer, which nothing outside can
+    /// reach: acting on the block while a draft is in flight — duplicating it,
+    /// say — copies the pre-edit value, and the original then receives the new
+    /// text while the copy keeps the old. Optional, so every existing call
+    /// site keeps the self-contained behaviour it was written against.
+    let pending: PendingEditQueue?
+    let pendingKey: String
 
     @FocusState private var isFocused: Bool
     @State private var draft: String = ""
 
     init(
         prompt: String,
+        pending: PendingEditQueue? = nil,
+        pendingKey: String = "",
         value: Binding<String>,
         idleDelay: Duration = .milliseconds(400)
     ) {
         self.prompt = prompt
         self._value = value
         self.idleDelay = idleDelay
+        self.pending = pending
+        self.pendingKey = pendingKey
     }
 
     var body: some View {
@@ -50,6 +65,14 @@ struct DebouncedSettingsTextField: View {
             // leaves the view tree.
             .task(id: draft) {
                 guard draft != value else { return }
+                // With a queue, the wait is the queue's and the write is
+                // reachable from outside; without one, this timer is the only
+                // thing holding the keystroke back.
+                if let pending {
+                    let text = draft
+                    pending.schedule(pendingKey) { value = text }
+                    return
+                }
                 try? await Task.sleep(for: idleDelay)
                 guard !Task.isCancelled else { return }
                 commit()

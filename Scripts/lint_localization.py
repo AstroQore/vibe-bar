@@ -93,10 +93,6 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/Workbench/SkillDiscoverSheet.swift",
     "Sources/VibeBarApp/Views/Workbench/SkillImportSheet.swift",
     "Sources/VibeBarApp/Views/Workbench/SkillBackupsSheet.swift",
-    # Settings, its panes, and the model types whose `label` / `title` /
-    # `detail` properties they render. An enum carrying a presentation string
-    # looks like a model detail and *is* UI: the picker label was localized
-    # while its choices stayed English until a reviewer caught it.
     "Sources/VibeBarApp/Views/SettingsSidebarView.swift",
     "Sources/VibeBarApp/Views/MCPSettingsSection.swift",
     "Sources/VibeBarApp/Views/MiniWindowsSettingsSection.swift",
@@ -133,6 +129,8 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/CodexBarProviderBridgeCard.swift",
     "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
+    "Sources/VibeBarApp/Views/MenuBarComposerEditor.swift",
+    "Sources/VibeBarApp/Views/MenuBarStripView.swift",
 ]
 
 

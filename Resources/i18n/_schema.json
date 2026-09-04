@@ -5,7 +5,7 @@
   "description": "One language catalog. A flat map of stable dotted key to entry, so the file diffs by key and a translator never has to reason about nesting. Files beginning with '_' in this directory are metadata, not catalogs. Placeholders are named and brace-delimited ({provider}, {days}); printf specifiers are rejected, because the positional order they encode is exactly what a second language reorders and because the cross-platform client cannot render them. Plurals are ICU (`{count, plural, one {...} other {...}}`) with '#' standing for the number; Simplified Chinese has only the 'other' category and English needs 'one' and 'other'. Only Scripts/build_localizations.py reads these files - it compiles them into .strings, .stringsdict and a typed Swift API, all checked in, so no build depends on this directory or on Python.",
   "type": "object",
   "propertyNames": {
-    "pattern": "^(common|popover|quota|cost|status|usage|workbench|onboarding|settings|error|platform)(\\.[A-Za-z0-9_]+)+$",
+    "pattern": "^(common|menuBar|popover|quota|cost|status|usage|workbench|onboarding|settings|error|platform)(\\.[A-Za-z0-9_]+)+$",
     "description": "Surface scope, then a dotted path. The scope says where the string is read. 'platform.macos.*' is for copy only one client can ever show; everything else must be renderable by a React client too."
   },
   "additionalProperties": {

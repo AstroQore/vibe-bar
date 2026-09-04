@@ -68,6 +68,7 @@ LANGUAGES = ["en", "zh-Hans"]
 # permission — and everything outside it must be renderable by both.
 SCOPES = {
     "common": "Common",        # reused everywhere: Refresh, Cancel, units
+    "menuBar": "MenuBar",      # the status item itself and its composer editor
     "popover": "Popover",      # the menu-bar popover shell, tabs, cards
     "quota": "Quota",          # quota bars, buckets, forecast, reset history
     "cost": "Cost",            # cost cards, history, model ranking
@@ -80,7 +81,9 @@ SCOPES = {
     "platform": "Platform",    # macOS-only copy: platform.macos.*
 }
 
-KEY_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:\.[A-Za-z0-9_]+)+$")
+# The scope segment is camelCase-able so a two-word surface reads as one
+# word (`menuBar.*`), which is how the shared catalog spells it.
+KEY_PATTERN = re.compile(r"^[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_]+)+$")
 NAME_PATTERN = re.compile(r"^[a-z][A-Za-z0-9]*$")
 
 # `{name}` — a simple substitution. Braces are only ever placeholders, so

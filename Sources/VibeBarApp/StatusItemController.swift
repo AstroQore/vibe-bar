@@ -4,22 +4,60 @@ import Combine
 import VibeBarCore
 
 private enum MenuBarStatusMetrics {
-    static let twoRowFontSize: CGFloat = 9
+    static let twoRowFontSize = MenuBarStripMetrics.twoRowFontSize
     static let twoRowColumnSpacing: CGFloat = 8
-    static let twoRowLineSpacing: CGFloat = -2
+    static let twoRowLineSpacing = MenuBarStripMetrics.twoRowLineSpacing
     static let twoRowHorizontalPadding: CGFloat = 2
-    static let twoRowVerticalPadding: CGFloat = 1
+    static let twoRowVerticalPadding = MenuBarStripMetrics.twoRowVerticalPadding
     static let minimumTwoRowLength: CGFloat = 24
     static let twoRowContentIdentifier = NSUserInterfaceItemIdentifier("VibeBarTwoRowStatusContent")
     /// Manually drawn beside the text in each ~10pt row band; see
     /// `twoRowImage` — text attachments cannot be used at this size.
     static let twoRowLogoSide: CGFloat = 8
     static let twoRowLogoGap: CGFloat = 2
+    /// Ceiling for a composed glyph in a two-row strip: past this it is the
+    /// glyph, not the type, that decides the row height.
+    static let twoRowMaximumGlyphSide = MenuBarStripMetrics.maximumGlyphSide
 }
 
+/// One cell of the rasterized two-row status image, drawn left to right.
+///
+/// A composed row can put a logo anywhere — between two words, at the end —
+/// so a cell is a run list rather than one optional leading logo. Logos stay
+/// out of the attributed strings on purpose: the two-row canvas is about 10pt
+/// per band and a text attachment inflates its line box to 14pt no matter what
+/// bounds it declares, which pushes the second row out of the bar.
 private struct TwoRowMenuCell {
-    var text: NSAttributedString
-    var logo: NSImage?
+    enum Run {
+        case logo(NSImage)
+        case text(NSAttributedString)
+    }
+
+    var runs: [Run]
+    /// Points inserted between adjacent runs.
+    ///
+    /// The built-in two-row layout draws a leading logo and needs a fixed gap
+    /// after it. A composed row does not: it already carries the user's
+    /// configured spacing inside its own text runs, so adding this again
+    /// double-counts it — zero spacing would still show a gap, and non-zero
+    /// spacing would come out wider in the status item than in the preview
+    /// and the single-row bar.
+    var runGap: CGFloat
+
+    init(runs: [Run], runGap: CGFloat = 0) {
+        self.runs = runs
+        self.runGap = runGap
+    }
+
+    init(text: NSAttributedString, logo: NSImage? = nil) {
+        var runs: [Run] = []
+        if let logo { runs.append(.logo(logo)) }
+        runs.append(.text(text))
+        self.runs = runs
+        self.runGap = MenuBarStatusMetrics.twoRowLogoGap
+    }
+
+    var isEmpty: Bool { runs.isEmpty }
 }
 
 private struct TwoRowMenuColumn {
@@ -90,6 +128,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Rendered brand-logo images keyed by tool, point size, and appearance —
     /// see `brandAttachment(for:fontSize:font:)`.
     private var brandAttachmentImages: [String: NSImage?] = [:]
+    /// One-shot, minute-aligned tick that keeps a composed countdown honest.
+    /// Nil whenever no visible item shows a time-based block — see
+    /// `updateCountdownClock`.
+    private var countdownTimer: Timer?
+    /// The cadence `countdownTimer` was armed at, so a strip that changes what
+    /// it needs re-arms instead of keeping the old one.
+    private var countdownInterval: TimeInterval?
 
     init(environment: AppEnvironment) {
         self.environment = environment
@@ -252,7 +297,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.lineBreakMode = .byClipping
         button.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         button.tag = statusItemTag(for: kind)
-        button.toolTip = "\(kind.label) quota"
+        button.toolTip = L10n.MenuBar.spokenTitle(kind: kind.label)
     }
 
     private func observeChanges() {
@@ -266,25 +311,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
-        // Coalesce all render triggers into one throttled pipeline so a burst
-        // of quota, settings, account, and status updates only redraws once.
-        //
-        // Observations, cycle history, and cost snapshots are in the set
-        // because forecast coloring depends on them, and they land *after*
-        // `$lastSuccessByAccount` — a refresh publishes the new quota first and
-        // records the observation in a follow-up task. Without them the color
-        // would always describe the previous refresh. The extra churn is
-        // bounded: observations publish once per account per refresh.
-        let renderTriggers: [AnyPublisher<Void, Never>] = [
-            environment.settingsStore.$settings.map { _ in () }.eraseToAnyPublisher(),
-            environment.quotaService.$lastSuccessByAccount.map { _ in () }.eraseToAnyPublisher(),
-            environment.quotaService.$lastErrorByAccount.map { _ in () }.eraseToAnyPublisher(),
-            environment.quotaService.$observationsByAccountBucket.map { _ in () }.eraseToAnyPublisher(),
-            environment.quotaService.$historyByAccountBucket.map { _ in () }.eraseToAnyPublisher(),
-            environment.costService.$snapshots.map { _ in () }.eraseToAnyPublisher(),
-            environment.accountStore.$accounts.map { _ in () }.eraseToAnyPublisher(),
-            environment.serviceStatus.$snapshotByTool.map { _ in () }.eraseToAnyPublisher()
-        ]
+        // Coalesce every input a composed or field strip reads into one
+        // throttled pipeline, so a burst of quota, settings, account, and
+        // status updates only redraws once. The list itself lives with the
+        // resolver that reads those inputs — see
+        // `MenuBarStripResolver.inputPublishers`, which the Settings preview
+        // subscribes to as well.
+        let renderTriggers = MenuBarStripResolver.inputPublishers(environment: environment)
         Publishers.MergeMany(renderTriggers)
             .throttle(for: .milliseconds(120), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] _ in self?.renderMenuBar() }
@@ -774,6 +807,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     func applicationWillTerminate() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        countdownInterval = nil
         miniWindowController.applicationWillTerminate()
         blockWatchdog?.stop()
     }
@@ -803,6 +839,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func renderMenuBar() {
         let settings = environment.settingsStore.settings
         let allHidden = MenuBarItemKind.allCases.allSatisfy { !settings.menuBarItem($0).isVisible }
+        // Set while walking the items, so the clock decision uses the same
+        // effective visibility the drawing does rather than a second copy of
+        // the rule.
+        var stripClockInterval: TimeInterval?
+        defer { updateStripClock(interval: stripClockInterval) }
         for kind in MenuBarItemKind.allCases {
             guard let item = statusItem(for: kind) else { continue }
             let itemSettings = settings.menuBarItem(kind)
@@ -813,6 +854,26 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             button.image = nil
             button.imagePosition = .noImage
             removeTwoRowStatusContent(from: button)
+            // Custom mode replaces the field walk outright — the composition
+            // owns its own rows, so it also supersedes `layout`. Everything
+            // the field path stores stays untouched underneath it.
+            if let composition = itemSettings.composition, composition.isEnabled {
+                if item.isVisible,
+                   let interval = composition.clockInterval(
+                       colorBasis: settings.menuBarColorBasis
+                   ) {
+                    stripClockInterval = min(stripClockInterval ?? interval, interval)
+                }
+                installComposedContent(
+                    composition,
+                    in: button,
+                    item: item,
+                    kind: kind,
+                    itemSettings: itemSettings,
+                    settings: settings
+                )
+                continue
+            }
             // Resolved once and shared by every layout: the field walk, the
             // group merge, the bucket lookups, and the forecast colors all
             // happen here rather than inside each builder.
@@ -839,6 +900,56 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 applyStatusDescription(pieces, to: button, kind: kind)
             }
         }
+    }
+
+    /// Keeps a composed strip honest between refreshes.
+    ///
+    /// The render pipeline is driven by settings, quota, account, cost and
+    /// status publishers — none of which is a clock. A strip printing
+    /// `resets in 12m` sat unchanged until the next refresh, which on a
+    /// 30-minute interval means the number is wrong for most of its life; a
+    /// forecast percentage, a verdict rule, or a forecast colour goes stale
+    /// the same way, just on the forecast's own five-minute grid.
+    ///
+    /// Armed only while a *visible* item needs it, at the interval that item
+    /// asks for, so a strip of plain percentages costs no wakeups at all
+    /// (`AGENTS.md` § 7's idle-CPU budget). One shot at a time rather than a
+    /// repeating timer, and phased on the same process-wide anchor the
+    /// popover's clocks use — a menu bar drifting a few seconds from the
+    /// popover would show two different countdowns for one quota.
+    private func updateStripClock(interval: TimeInterval?) {
+        guard let interval else {
+            countdownTimer?.invalidate()
+            countdownTimer = nil
+            countdownInterval = nil
+            return
+        }
+        // Already armed for a future tick at this cadence. Re-arming here
+        // would let a burst of quota publishes push the tick out indefinitely.
+        if let existing = countdownTimer,
+           existing.isValid,
+           existing.fireDate > Date(),
+           countdownInterval == interval {
+            return
+        }
+        countdownTimer?.invalidate()
+        countdownInterval = interval
+        let timer = Timer(
+            fire: MenuBarCountdownClock.nextTick(
+                after: Date(),
+                anchor: QuotaClockSchedule.anchor,
+                interval: interval
+            ),
+            interval: 0,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in self?.renderMenuBar() }
+        }
+        // A minute-granularity number does not need sub-second accuracy; let
+        // the system coalesce the wakeup with whatever else it has queued.
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        countdownTimer = timer
     }
 
     /// Everything the three text layouts need for one render.
@@ -901,7 +1012,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 label: label,
                 percents: percents,
                 tool: run.primary.tool,
-                style: itemSettings.style(for: run.primary.id),
+                // Through the shared rule rather than straight from settings:
+                // the single-line builder has always ignored the per-field
+                // style, and that fact now lives in one place both this and
+                // the seed read.
+                style: MenuBarFieldStripRules.effectiveStyle(
+                    itemSettings.style(for: run.primary.id),
+                    layout: itemSettings.layout
+                ),
                 spokenDescription: run.isMerged
                     ? "\(label) \(windows.joined(separator: ", "))"
                     : "\(label) \(percentText(percents[0].value)) \(modeWord)"
@@ -912,7 +1030,271 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func percentText(_ percent: Double) -> String {
-        "\(Int(percent.rounded()))%"
+        L10n.Common.percent(value: Int(percent.rounded()))
+    }
+
+    // MARK: - Composed strip
+
+    /// A composed strip resolved for one render: the draw plan plus the quota
+    /// snapshots it was planned against, kept together because the colour
+    /// roles the plan emits are resolved against those same snapshots.
+    private struct ComposedStrip {
+        var plan: MenuBarRenderPlan
+        var quotas: [MenuBarQuotaSnapshot]
+    }
+
+    private func installComposedContent(
+        _ composition: MenuBarComposition,
+        in button: NSStatusBarButton,
+        item: NSStatusItem,
+        kind: MenuBarItemKind,
+        itemSettings: MenuBarItemSettings,
+        settings: AppSettings
+    ) {
+        let strip = composedStrip(composition, itemSettings: itemSettings, settings: settings)
+        let rows = strip.plan.rows.filter { !$0.isEmpty }
+        if rows.count >= 2 {
+            let capped = Array(rows.prefix(MenuBarComposition.maximumRows))
+            let base = MenuBarStripMetrics.baseFontSize(
+                template: composition.template,
+                rowCount: capped.count
+            )
+            var cells = capped.map {
+                composedCell(row: $0, strip: strip, settings: settings, baseFontSize: base)
+            }
+            // Two rows of `.large` blocks, or a composition scaled towards
+            // 1.6, are taller than the ~22pt status bar. The canvas used to be
+            // capped while the row heights were not, so the upper row was
+            // cropped or the rows overlapped. Shrink the type to fit instead:
+            // a smaller strip is honest, a cropped one is a bug.
+            let fit = MenuBarStripFit.scale(
+                contentHeight: Double(Self.twoRowContentHeight(cells)),
+                availableHeight: Double(Self.twoRowAvailableHeight())
+            )
+            if fit < 1 {
+                cells = capped.map {
+                    composedCell(
+                        row: $0,
+                        strip: strip,
+                        settings: settings,
+                        baseFontSize: base * CGFloat(fit)
+                    )
+                }
+            }
+            installTwoRowImageContent(
+                in: button,
+                item: item,
+                columns: [TwoRowMenuColumn(top: cells[0], bottom: cells[1])]
+            )
+        } else {
+            // Every block the user kept fell away — no quota is answering, or
+            // every rule said no. Show the same "—" the field strip shows
+            // rather than an empty status item nobody can find to click. No
+            // title in front of it: in custom mode the title is a block the
+            // user may have deleted, so reviving it here would be a surprise.
+            // Not always the system face: a strip seeded from the Compact
+            // layout has to be drawn at the face that layout draws at, or the
+            // seed is visibly bigger than the strip it reproduced.
+            let base = MenuBarStripMetrics.baseFontSize(
+                template: composition.template,
+                rowCount: max(1, rows.count)
+            )
+            button.attributedTitle = rows.isEmpty
+                ? Self.composedPlaceholder(fontSize: base)
+                : composedAttributedRow(
+                    rows[0],
+                    strip: strip,
+                    settings: settings,
+                    baseFontSize: base
+                )
+            item.length = NSStatusItem.variableLength
+        }
+        applyStatusDescription(body: strip.plan.spokenDescription, to: button, kind: kind)
+    }
+
+    /// Resolve the quotas the strip names, then plan it.
+    ///
+    /// The resolution itself lives in `MenuBarStripResolver` so the editor's
+    /// live preview is looking at the same numbers under the same rules — the
+    /// preview drifting from the bar it is previewing would be worse than
+    /// having no preview.
+    private func composedStrip(
+        _ composition: MenuBarComposition,
+        itemSettings: MenuBarItemSettings,
+        settings: AppSettings
+    ) -> ComposedStrip {
+        let now = Date()
+        let quotas = MenuBarStripResolver.snapshots(
+            for: composition,
+            itemSettings: itemSettings,
+            settings: settings,
+            environment: environment,
+            now: now
+        )
+        return ComposedStrip(
+            plan: composition.plan(
+                quotas: quotas,
+                displayMode: settings.displayMode,
+                colorBasis: settings.menuBarColorBasis,
+                now: now
+            ),
+            quotas: quotas
+        )
+    }
+
+    /// One composed row as an attributed string. Used for a single-row strip,
+    /// where a logo can ride along as a text attachment.
+    private func composedAttributedRow(
+        _ row: MenuBarRenderRow,
+        strip: ComposedStrip,
+        settings: AppSettings,
+        baseFontSize: CGFloat
+    ) -> NSAttributedString {
+        let attributed = NSMutableAttributedString()
+        for (index, token) in row.tokens.enumerated() {
+            if index > 0, let gap = composedGap(strip.plan, baseFontSize: baseFontSize) {
+                attributed.append(gap)
+            }
+            let size = composedFontSize(token, baseFontSize: baseFontSize)
+            let font = composedFont(token, size: size)
+            if let glyph = token.glyph {
+                let paint = composedPaint(token.color, strip: strip, settings: settings)
+                if let attachment = glyphAttachment(
+                    glyph,
+                    fontSize: size,
+                    font: font,
+                    tint: MenuBarStripPalette.nsColor(paint),
+                    tintKey: MenuBarStripPalette.cacheKey(paint)
+                ) {
+                    attributed.append(attachment)
+                }
+                continue
+            }
+            guard let text = token.text, !text.isEmpty else { continue }
+            attributed.append(NSAttributedString(
+                string: text,
+                attributes: [
+                    .foregroundColor: MenuBarStripPalette.nsColor(
+                        composedPaint(token.color, strip: strip, settings: settings)
+                    ),
+                    .font: font
+                ]
+            ))
+        }
+        return attributed
+    }
+
+    /// One composed row as a rasterizer cell. Logos break the row into runs
+    /// instead of becoming attachments — see `TwoRowMenuCell`.
+    private func composedCell(
+        row: MenuBarRenderRow,
+        strip: ComposedStrip,
+        settings: AppSettings,
+        baseFontSize: CGFloat
+    ) -> TwoRowMenuCell {
+        var runs: [TwoRowMenuCell.Run] = []
+        var pending = NSMutableAttributedString()
+        func flush() {
+            if pending.length > 0 {
+                runs.append(.text(pending))
+                pending = NSMutableAttributedString()
+            }
+        }
+        for (index, token) in row.tokens.enumerated() {
+            if index > 0, let gap = composedGap(strip.plan, baseFontSize: baseFontSize) {
+                pending.append(gap)
+            }
+            if let glyph = token.glyph {
+                flush()
+                let paint = composedPaint(token.color, strip: strip, settings: settings)
+                // Sized from the block, not from the built-in layout's fixed
+                // 8pt mark: a `.large` logo in a composed row should grow with
+                // the words beside it. Capped at the row band so it cannot be
+                // the thing that overflows the canvas.
+                let side = MenuBarStripMetrics.twoRowGlyphSide(
+                    fontSize: composedFontSize(token, baseFontSize: baseFontSize)
+                )
+                if let image = glyphImage(
+                    glyph,
+                    side: side,
+                    tint: MenuBarStripPalette.nsColor(paint),
+                    tintKey: MenuBarStripPalette.cacheKey(paint)
+                ) {
+                    runs.append(.logo(image))
+                }
+                continue
+            }
+            guard let text = token.text, !text.isEmpty else { continue }
+            pending.append(NSAttributedString(
+                string: text,
+                attributes: [
+                    .foregroundColor: MenuBarStripPalette.nsColor(
+                        composedPaint(token.color, strip: strip, settings: settings)
+                    ),
+                    .font: composedFont(token, size: composedFontSize(token, baseFontSize: baseFontSize))
+                ]
+            ))
+        }
+        flush()
+        // The configured spacing already lives inside the text runs above, so
+        // the cell adds nothing between them.
+        return TwoRowMenuCell(runs: runs, runGap: 0)
+    }
+
+    /// What a composed strip shows when nothing survived.
+    private static func composedPlaceholder(fontSize: CGFloat) -> NSAttributedString {
+        NSAttributedString(
+            string: "—",
+            attributes: [
+                .foregroundColor: NSColor.tertiaryLabelColor,
+                .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular)
+            ]
+        )
+    }
+
+    /// The gap between two blocks, drawn as a space glyph at a scaled point
+    /// size — the same idiom the logo-to-label gap has always used, and the
+    /// only one that works in the two-row canvas, where an attachment would
+    /// inflate the line box.
+    private func composedGap(_ plan: MenuBarRenderPlan, baseFontSize: CGFloat) -> NSAttributedString? {
+        let spacing = plan.tokenSpacing
+        guard spacing > 0 else { return nil }
+        return NSAttributedString(
+            string: " ",
+            attributes: [.font: NSFont.systemFont(ofSize: max(1, baseFontSize * spacing))]
+        )
+    }
+
+    private func composedFontSize(_ token: MenuBarRenderedToken, baseFontSize: CGFloat) -> CGFloat {
+        max(4, baseFontSize * token.fontScale)
+    }
+
+    private func composedFont(_ token: MenuBarRenderedToken, size: CGFloat) -> NSFont {
+        let weight: NSFont.Weight
+        switch token.weight {
+        case .regular: weight = .regular
+        case .medium: weight = .medium
+        case .semibold: weight = .semibold
+        }
+        return token.monospacedDigits
+            ? NSFont.monospacedDigitSystemFont(ofSize: size, weight: weight)
+            : NSFont.systemFont(ofSize: size, weight: weight)
+    }
+
+    /// A composed block's colour and its cache key, both from the one shared
+    /// palette the editor's preview draws with. Keeping the decision in a
+    /// single place is the only thing stopping the preview and the bar from
+    /// disagreeing about what `.automatic` means.
+    private func composedPaint(
+        _ role: MenuBarTokenColorRole,
+        strip: ComposedStrip,
+        settings: AppSettings
+    ) -> MenuBarStripPaint {
+        MenuBarStripPalette.paint(
+            for: role,
+            quotas: strip.quotas,
+            displayMode: settings.displayMode
+        )
     }
 
     /// The status item always *speaks* one clause per quota window, even when
@@ -924,10 +1306,21 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         to button: NSStatusBarButton,
         kind: MenuBarItemKind
     ) {
-        let body = pieces.map(\.spokenDescription).joined(separator: " · ")
+        applyStatusDescription(
+            body: pieces.map(\.spokenDescription).joined(separator: " · "),
+            to: button,
+            kind: kind
+        )
+    }
+
+    private func applyStatusDescription(
+        body: String,
+        to button: NSStatusBarButton,
+        kind: MenuBarItemKind
+    ) {
         let description = body.isEmpty
-            ? "\(kind.label) quota"
-            : "\(kind.label) quota: \(body)"
+            ? L10n.MenuBar.spokenTitle(kind: kind.label)
+            : L10n.MenuBar.spokenTitleBody(kind: kind.label, body: body)
         button.setAccessibilityLabel(description)
         if button.toolTip != description { button.toolTip = description }
     }
@@ -1108,11 +1501,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return attributed
     }
 
+    /// One naming seam for both strips — the field list and the composed one
+    /// must not call the same bucket different things.
     private func label(for field: MenuBarFieldOption, bucket: QuotaBucket, itemSettings: MenuBarItemSettings) -> String {
-        let custom = itemSettings.customLabels[field.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let custom, !custom.isEmpty { return custom }
-        if field.defaultLabel != bucket.shortLabel { return bucket.shortLabel }
-        return field.defaultLabel
+        MenuBarStripResolver.label(for: field, bucket: bucket, itemSettings: itemSettings)
     }
 
     private func menuTextPiece(
@@ -1199,23 +1591,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// painted logos invisible on the opposite menu bar. Small fonts (the
     /// two-row layout) cap the icon at 10pt — a 12pt attachment grew the
     /// line and pushed the second row out of the bar.
-    private func brandAttachment(for tool: ToolType, fontSize: CGFloat, font: NSFont) -> NSAttributedString? {
-        let side: CGFloat = (fontSize + 3).rounded()
-        let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
-        let key = "\(tool.rawValue).\(side).\(appearance.name.rawValue)"
-        let image: NSImage?
-        if let cached = brandAttachmentImages[key] {
-            image = cached
-        } else {
-            image = ProviderBrandIcon.image(
-                for: tool,
-                size: NSSize(width: side, height: side),
-                tint: NSColor.labelColor,
-                appearance: appearance
-            )
-            brandAttachmentImages[key] = image
-        }
-        guard let image else { return nil }
+    private func brandAttachment(
+        for tool: ToolType,
+        fontSize: CGFloat,
+        font: NSFont,
+        tint: NSColor = .labelColor,
+        tintKey: String = "label"
+    ) -> NSAttributedString? {
+        let side = MenuBarStripMetrics.singleRowGlyphSide(fontSize: fontSize)
+        guard let image = brandImage(for: tool, side: side, tint: tint, tintKey: tintKey) else { return nil }
+        return attachment(image: image, side: side, font: font)
+    }
+
+    /// One glyph run, vertically centered on the font's cap height.
+    private func attachment(image: NSImage, side: CGFloat, font: NSFont) -> NSAttributedString {
         let attachment = NSTextAttachment()
         attachment.image = image
         let yOffset = (font.capHeight - side) / 2
@@ -1223,16 +1612,90 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return NSAttributedString(attachment: attachment)
     }
 
+    /// A composed glyph block as a text attachment: a provider's brand mark,
+    /// or Vibe Bar's own icon for a block seeded from the Icon Only layout.
+    private func glyphAttachment(
+        _ glyph: MenuBarRenderedToken.Glyph,
+        fontSize: CGFloat,
+        font: NSFont,
+        tint: NSColor,
+        tintKey: String
+    ) -> NSAttributedString? {
+        switch glyph {
+        case let .provider(tool):
+            return brandAttachment(
+                for: tool, fontSize: fontSize, font: font, tint: tint, tintKey: tintKey
+            )
+        case .app:
+            let side = MenuBarStripMetrics.singleRowGlyphSide(fontSize: fontSize)
+            guard let image = appGlyphImage(side: side, tint: tint, tintKey: tintKey) else {
+                return nil
+            }
+            return attachment(image: image, side: side, font: font)
+        }
+    }
+
+    /// The same glyph as a raw image, for the two-row rasterizer.
+    private func glyphImage(
+        _ glyph: MenuBarRenderedToken.Glyph,
+        side: CGFloat,
+        tint: NSColor,
+        tintKey: String
+    ) -> NSImage? {
+        switch glyph {
+        case let .provider(tool):
+            return brandLogoImage(for: tool, side: side, tint: tint, tintKey: tintKey)
+        case .app:
+            return appGlyphImage(side: side, tint: tint, tintKey: tintKey)
+        }
+    }
+
+    /// Vibe Bar's own mark, cached beside the provider marks on the same key
+    /// shape so the two never collide.
+    private func appGlyphImage(side: CGFloat, tint: NSColor, tintKey: String) -> NSImage? {
+        let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
+        let key = "vibebar.\(side).\(appearance.name.rawValue).\(tintKey)"
+        if let cached = brandAttachmentImages[key] { return cached }
+        let image = ProviderBrandIcon.image(
+            for: MenuBarItemKind.compact,
+            size: NSSize(width: side, height: side),
+            tint: tint,
+            appearance: appearance
+        )
+        brandAttachmentImages[key] = image
+        return image
+    }
+
     /// Raw logo image for the two-row rasterizer's manual drawing — same
     /// cache the attachment path uses.
-    private func brandLogoImage(for tool: ToolType, side: CGFloat) -> NSImage? {
+    private func brandLogoImage(
+        for tool: ToolType,
+        side: CGFloat,
+        tint: NSColor = .labelColor,
+        tintKey: String = "label"
+    ) -> NSImage? {
+        brandImage(for: tool, side: side, tint: tint, tintKey: tintKey)
+    }
+
+    /// Rasterized brand mark, cached by tool, point size, appearance, and the
+    /// tint's *role* — a composed strip can paint a logo in a fixed colour or
+    /// in a quota's live verdict colour, and those must not collide in the
+    /// cache with the plain label-coloured one. `tintKey` is the role name
+    /// rather than the `NSColor`, whose description is not a stable key for a
+    /// dynamic system colour.
+    private func brandImage(
+        for tool: ToolType,
+        side: CGFloat,
+        tint: NSColor,
+        tintKey: String
+    ) -> NSImage? {
         let appearance = compactStatusItem?.button?.effectiveAppearance ?? NSApp.effectiveAppearance
-        let key = "\(tool.rawValue).\(side).\(appearance.name.rawValue)"
+        let key = "\(tool.rawValue).\(side).\(appearance.name.rawValue).\(tintKey)"
         if let cached = brandAttachmentImages[key] { return cached }
         let image = ProviderBrandIcon.image(
             for: tool,
             size: NSSize(width: side, height: side),
-            tint: NSColor.labelColor,
+            tint: tint,
             appearance: appearance
         )
         brandAttachmentImages[key] = image
@@ -1252,7 +1715,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // This layout draws no percentages, so it skips the piece walk (and
         // its per-bucket forecasts) entirely — which also means it must clear
         // any live description a previous layout left on the button.
-        let idleToolTip = "\(kind.label) quota"
+        let idleToolTip = L10n.MenuBar.spokenTitle(kind: kind.label)
         if button.toolTip != idleToolTip { button.toolTip = idleToolTip }
     }
 
@@ -1273,25 +1736,58 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     nonisolated private static func cellWidth(_ cell: TwoRowMenuCell) -> CGFloat {
-        let logoWidth = cell.logo == nil
-            ? 0
-            : MenuBarStatusMetrics.twoRowLogoSide + MenuBarStatusMetrics.twoRowLogoGap
-        return logoWidth + cell.text.size().width
+        let runWidths = cell.runs.map { run -> Double in
+            switch run {
+            case let .logo(image): return Double(image.size.width)
+            case let .text(text): return Double(text.size().width)
+            }
+        }
+        return CGFloat(MenuBarStripGeometry.cellWidth(
+            runWidths: runWidths,
+            gap: Double(cell.runGap)
+        ))
+    }
+
+    /// Tallest text run in the cell; a logo-only cell falls back to the logo
+    /// box so its row band does not collapse to nothing.
+    nonisolated private static func cellHeight(_ cell: TwoRowMenuCell) -> CGFloat {
+        var textHeight: CGFloat = 0
+        var glyphHeight: CGFloat = 0
+        for run in cell.runs {
+            switch run {
+            case let .logo(image): glyphHeight = max(glyphHeight, image.size.height)
+            case let .text(text): textHeight = max(textHeight, text.size().height)
+            }
+        }
+        // A glyph-only row still needs a band, and a composed glyph sized up
+        // by its block must not be measured as the built-in 8pt mark.
+        return max(textHeight, glyphHeight)
+    }
+
+    /// Stacked height of a set of row cells, including the deliberate
+    /// negative line spacing that tucks the two bands together.
+    nonisolated private static func twoRowContentHeight(_ cells: [TwoRowMenuCell]) -> CGFloat {
+        cells.reduce(0) { $0 + cellHeight($1) }
+            + MenuBarStatusMetrics.twoRowLineSpacing * CGFloat(max(0, cells.count - 1))
+    }
+
+    /// Height the rasterized image actually has for content, after padding.
+    /// Shared with the preview so both fit against the same canvas.
+    nonisolated private static func twoRowAvailableHeight() -> CGFloat {
+        MenuBarStripMetrics.twoRowAvailableHeight()
     }
 
     private func twoRowImage(for columns: [TwoRowMenuColumn], appearance: NSAppearance) -> NSImage {
-        let columnSizes = columns.map { column -> (top: NSSize, bottom: NSSize?, width: CGFloat) in
-            let topSize = column.top.text.size()
-            let bottomSize = column.bottom?.text.size()
-            return (
-                top: topSize,
-                bottom: bottomSize,
+        let columnSizes = columns.map { column -> (top: CGFloat, bottom: CGFloat?, width: CGFloat) in
+            (
+                top: Self.cellHeight(column.top),
+                bottom: column.bottom.map(Self.cellHeight),
                 width: ceil(max(Self.cellWidth(column.top), column.bottom.map(Self.cellWidth) ?? 0))
             )
         }
 
-        let topRowHeight = ceil(columnSizes.map(\.top.height).max() ?? 0)
-        let bottomRowHeight = ceil(columnSizes.compactMap { $0.bottom?.height }.max() ?? 0)
+        let topRowHeight = ceil(columnSizes.map(\.top).max() ?? 0)
+        let bottomRowHeight = ceil(columnSizes.compactMap { $0.bottom }.max() ?? 0)
         let hasBottomRow = columns.contains { $0.bottom != nil }
         let contentHeight = hasBottomRow
             ? topRowHeight + bottomRowHeight + MenuBarStatusMetrics.twoRowLineSpacing
@@ -1324,21 +1820,28 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             func drawCell(_ cell: TwoRowMenuCell, at origin: NSPoint, rowHeight: CGFloat, columnWidth: CGFloat) {
                 let width = Self.cellWidth(cell)
                 var x = origin.x + floor((columnWidth - width) / 2)
-                if let logo = cell.logo {
-                    let side = MenuBarStatusMetrics.twoRowLogoSide
-                    // Centered in the row's own band, clamped to the canvas —
-                    // never handed to the text system, whose attachment line
-                    // box would not fit two rows in this height.
-                    let logoY = max(0, origin.y + floor((rowHeight - side) / 2))
-                    logo.draw(
-                        in: NSRect(x: x, y: logoY, width: side, height: side),
-                        from: .zero,
-                        operation: .sourceOver,
-                        fraction: 1
-                    )
-                    x += side + MenuBarStatusMetrics.twoRowLogoGap
+                for (index, run) in cell.runs.enumerated() {
+                    if index > 0 { x += cell.runGap }
+                    switch run {
+                    case let .logo(logo):
+                        let size = logo.size
+                        // Centered in the row's own band, clamped to the
+                        // canvas — never handed to the text system, whose
+                        // attachment line box would not fit two rows in this
+                        // height.
+                        let logoY = max(0, origin.y + floor((rowHeight - size.height) / 2))
+                        logo.draw(
+                            in: NSRect(x: x, y: logoY, width: size.width, height: size.height),
+                            from: .zero,
+                            operation: .sourceOver,
+                            fraction: 1
+                        )
+                        x += size.width
+                    case let .text(text):
+                        text.draw(at: NSPoint(x: x, y: origin.y))
+                        x += text.size().width
+                    }
                 }
-                cell.text.draw(at: NSPoint(x: x, y: origin.y))
             }
 
             var x = MenuBarStatusMetrics.twoRowHorizontalPadding
@@ -1361,8 +1864,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 } else {
                     drawCell(
                         column.top,
-                        at: NSPoint(x: x, y: floor((imageHeight - sizes.top.height) / 2)),
-                        rowHeight: sizes.top.height,
+                        at: NSPoint(x: x, y: floor((imageHeight - sizes.top) / 2)),
+                        rowHeight: sizes.top,
                         columnWidth: sizes.width
                     )
                 }
@@ -1414,28 +1917,19 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// observations, cached cycle history, and a rebased cost snapshot — and
     /// only the handful of buckets the user put in the menu bar are asked for.
     private func forecastVerdict(for tool: ToolType, bucket: QuotaBucket) -> QuotaPaceForecast.Verdict? {
-        guard let accountId = environment.account(for: tool)?.id else { return nil }
-        let snapshot = environment.costService.snapshot(for: tool)
-        return environment.quotaService.paceForecast(
-            accountId: accountId,
-            bucket: bucket,
-            activityHeatmap: snapshot?.heatmap,
-            dailyActivity: snapshot?.dailyHistory ?? [],
-            now: Date(),
-            allowsPostResetGrace: true
-        )?.verdict
+        paceForecast(for: tool, bucket: bucket)?.verdict
     }
 
-    /// AppKit twin of `QuotaForecastPalette`. System colors rather than the
-    /// popover's literal RGB values: the menu bar has to stay legible against
-    /// light, dark, and tinted wallpapers, and these are the exact colors the
-    /// pre-forecast menu bar used.
+    /// The whole forecast, not just its verdict: a composed strip can print
+    /// the projection and the run-out ETA, which the field path never needed.
+    private func paceForecast(for tool: ToolType, bucket: QuotaBucket) -> QuotaPaceForecast? {
+        MenuBarStripResolver.paceForecast(for: tool, bucket: bucket, environment: environment)
+    }
+
+    /// AppKit twin of `QuotaForecastPalette`, via the one palette the composed
+    /// strip and its preview also read — the field path and the composer must
+    /// paint an identical percentage identically.
     private static func nsColor(for color: MenuBarPercentColor) -> NSColor {
-        switch color {
-        case .healthy: return NSColor.systemGreen
-        case .surplus: return NSColor.systemBlue
-        case .watch: return NSColor.systemOrange
-        case .risk: return NSColor.systemRed
-        }
+        MenuBarStripPalette.nsColor(.quota(color))
     }
 }
