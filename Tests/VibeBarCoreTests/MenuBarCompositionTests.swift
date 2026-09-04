@@ -2134,6 +2134,25 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(composed.tokens[1].style.size, .regular)
     }
 
+    func testAnUnknownQuotaMetricKeepsTheBlockAsWritten() throws {
+        // Substituting a readable metric looked like graceful degradation and
+        // was destructive: the next save wrote the substitute back, so a round
+        // trip through an older build permanently changed what the user chose.
+        let composed = try decodeComposition(tokens: [
+            tokenJSON(
+                kind: #"{"type":"quota","fieldId":"claude.weekly","metric":"vibes"}"#
+            )
+        ])
+        XCTAssertEqual(composed.tokens.count, 1, "the block is kept")
+        guard case .unsupported = composed.tokens[0].kind else {
+            return XCTFail("an unknown metric must be preserved, not substituted")
+        }
+        // And handed back byte-for-byte, which is the whole point.
+        let round = try JSONEncoder().encode(composed)
+        let json = String(decoding: round, as: UTF8.self)
+        XCTAssertTrue(json.contains("vibes"), "the original metric survives a save")
+    }
+
     func testAnUnknownBlockKindIsKeptVerbatimRatherThanDeleted() throws {
         let composed = try decodeComposition(tokens: [
             tokenJSON(),

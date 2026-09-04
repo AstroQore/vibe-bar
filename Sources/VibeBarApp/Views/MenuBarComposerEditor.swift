@@ -671,6 +671,11 @@ struct MenuBarComposerEditor: View {
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
             dragComposition = composition
+            // The identity goes with it. `displayedComposition` prefers the
+            // drag snapshot while a token is being dragged, so leaving the id
+            // set kept the editor and the preview showing the old blocks after
+            // Start over while the status item had already changed.
+            draggedTokenId = nil
             dragCancelTask = nil
         }
     }
@@ -854,6 +859,8 @@ private struct MenuBarTokenInspector: View {
                 Text(L10n.MenuBar.composerBlockText).frame(width: 62, alignment: .leading)
                 DebouncedSettingsTextField(
                     prompt: L10n.MenuBar.composerTextPlaceholder,
+                    pending: pending,
+                    pendingKey: "text.\(token.id)",
                     value: Binding(
                         get: { text },
                         set: { value in
@@ -878,6 +885,8 @@ private struct MenuBarTokenInspector: View {
                 Text(L10n.MenuBar.composerBlockSeparator).frame(width: 62, alignment: .leading)
                 DebouncedSettingsTextField(
                     prompt: " · ",
+                    pending: pending,
+                    pendingKey: "separator.\(token.id)",
                     value: Binding(
                         get: { separator },
                         set: { value in update { $0.kind = .separator(value) } }

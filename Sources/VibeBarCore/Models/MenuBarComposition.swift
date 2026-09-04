@@ -1726,9 +1726,12 @@ extension MenuBarToken.Kind: Codable {
         case .quota:
             return .quota(
                 fieldId: try c.decode(String.self, forKey: .fieldId),
-                // An unknown metric from a newer build reads as the plain
-                // percentage rather than dropping the block.
-                metric: (try? c.decode(MenuBarQuotaMetric.self, forKey: .metric)) ?? .displayPercent
+                // An unknown metric throws, so the block is preserved whole
+                // rather than silently becoming a percentage. Defaulting here
+                // looked like graceful degradation and was destructive: the
+                // next save wrote the substitute back, so a round trip through
+                // an older build permanently changed what the user chose.
+                metric: try c.decode(MenuBarQuotaMetric.self, forKey: .metric)
             )
         case .space:
             return .space
