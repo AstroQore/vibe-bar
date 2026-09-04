@@ -393,7 +393,12 @@ struct SessionFiltersBar: View {
                             count: model.harnessCounts[harness] ?? 0
                         ))
                     } icon: {
-                        ToolBrandIconView(tool: harness.brandTool, size: 12, brandColored: true)
+                        // Monochrome on purpose, unlike the list this menu
+                        // filters. A highlighted menu row is painted in the
+                        // *user's* accent colour, which can be any hue, so no
+                        // fixed brand tint can be guaranteed legible on it —
+                        // and the label spells the harness out anyway.
+                        ToolBrandIconView(tool: harness.brandTool, size: 12)
                     }
                 }
             }
