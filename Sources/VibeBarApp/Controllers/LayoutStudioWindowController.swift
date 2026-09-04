@@ -240,15 +240,16 @@ final class StudioPointer: ObservableObject {
 }
 
 /// One edit the studio can take back: what the subject's saved state was
-/// just before.
-enum StudioUndo {
+/// just before. `nil` is a real state — a page never arranged, a window
+/// that did not exist.
+enum StudioUndo: Equatable {
     case page(PageLayoutPageID, StoredPageLayout?)
-    case miniWindow(MiniWindowConfig)
+    case miniWindow(UUID, MiniWindowConfig?)
 
     var subject: LayoutStudioWindowController.Subject {
         switch self {
         case let .page(page, _): return .popoverPage(page)
-        case let .miniWindow(config): return .miniWindow(config.id)
+        case let .miniWindow(id, _): return .miniWindow(id)
         }
     }
 }

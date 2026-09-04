@@ -48,6 +48,8 @@ struct LayoutStudioView: View {
     @State private var settling: StudioSettling?
     /// A cancelled drag's gesture is still down; nothing restarts it.
     @State private var isDragCancelled = false
+    /// An undo writes the saved state too; that write is not a new step.
+    @State private var isUndoing = false
     @State private var isHintShown = false
     @State private var hintGeneration = 0
     /// The merged field catalog, rebuilt when the registry changes rather
@@ -93,6 +95,16 @@ struct LayoutStudioView: View {
             drag = nil
             settling = nil
             showHint()
+        }
+        // Every write to the subject's saved state — a drop on the stage, a
+        // pill, a control in the inspector — is one undo step, in the order
+        // it happened. Watching the state rather than the gesture is what
+        // keeps an inspector edit from being swallowed by the undo of the
+        // stage edit before it.
+        .onChange(of: savedState) { old, new in
+            guard !isUndoing, old.subject == new.subject, old.state != new.state else { return }
+            model.undoStack.append(old.state)
+            if model.undoStack.count > 40 { model.undoStack.removeFirst() }
         }
         .onChange(of: quotaService.fieldRegistry) { _, _ in rebuildFieldOptions() }
         .vibeBarControlFocus()
@@ -823,6 +835,26 @@ struct LayoutStudioView: View {
         }
     }
 
+    // MARK: - Undo
+
+    private struct SavedState: Equatable {
+        let subject: LayoutStudioWindowController.Subject
+        let state: StudioUndo
+    }
+
+    /// What the subject's saved state is right now — the value undo watches.
+    private var savedState: SavedState {
+        switch model.subject {
+        case let .popoverPage(page):
+            return SavedState(subject: model.subject, state: .page(page, layoutModel.storedLayout(for: page)))
+        case let .miniWindow(id):
+            return SavedState(
+                subject: model.subject,
+                state: .miniWindow(id, miniConfig(id))
+            )
+        }
+    }
+
     // MARK: - Commits
 
     private func commitPage(
@@ -842,7 +874,6 @@ struct LayoutStudioView: View {
             columns: columns,
             measuredHeights: layoutModel.measuredHeights(for: page)
         )
-        pushUndo(.page(page, layoutModel.storedLayout(for: page)))
         layoutModel.applyStudioArrangement(
             config,
             segments: segments,
@@ -854,25 +885,17 @@ struct LayoutStudioView: View {
 
     private func commitMini(_ current: StudioDrag, id: UUID, order: [String]) {
         guard let config = miniConfig(id) else { return }
-        pushUndo(.miniWindow(config))
         updateMini(id) { $0.fieldIds = order }
     }
 
     private func commitRemoval(_ current: StudioDrag) {
         switch model.subject {
         case let .popoverPage(page):
-            pushUndo(.page(page, layoutModel.storedLayout(for: page)))
             layoutModel.setHidden(true, for: PageLayoutModuleID(rawValue: current.item), page: page)
         case let .miniWindow(id):
             guard let config = miniConfig(id) else { return }
-            pushUndo(.miniWindow(config))
             updateMini(id) { $0.fieldIds.removeAll { $0 == current.item } }
         }
-    }
-
-    private func pushUndo(_ entry: StudioUndo) {
-        model.undoStack.append(entry)
-        if model.undoStack.count > 40 { model.undoStack.removeFirst() }
     }
 
     private func undo() {
@@ -880,13 +903,19 @@ struct LayoutStudioView: View {
         if entry.subject != model.subject {
             model.subject = entry.subject
         }
+        isUndoing = true
+        defer { isUndoing = false }
         withAnimation(Self.reflow) {
             switch entry {
             case let .page(page, stored):
                 layoutModel.restoreStoredLayout(stored, for: page)
-            case let .miniWindow(config):
+            case let .miniWindow(id, config):
                 var settings = settingsStore.settings
-                settings.miniWindow.upsert(config)
+                if let config {
+                    settings.miniWindow.upsert(config)
+                } else {
+                    settings.miniWindow.windows.removeAll { $0.id == id }
+                }
                 settingsStore.settings = settings
             }
         }
@@ -933,11 +962,9 @@ struct LayoutStudioView: View {
         withAnimation(Self.reflow) {
             switch model.subject {
             case let .popoverPage(page):
-                pushUndo(.page(page, layoutModel.storedLayout(for: page)))
                 layoutModel.setHidden(false, for: PageLayoutModuleID(rawValue: item.id), page: page)
             case let .miniWindow(id):
                 guard let config = miniConfig(id) else { return }
-                pushUndo(.miniWindow(config))
                 updateMini(id) { config in
                     if !config.fieldIds.contains(item.id) { config.fieldIds.append(item.id) }
                 }
@@ -1036,7 +1063,6 @@ struct LayoutStudioView: View {
                             help: modeLabel(candidate)
                         ) {
                             guard candidate != mode else { return }
-                            pushUndo(.page(page, layoutModel.storedLayout(for: page)))
                             withAnimation(Self.reflow) {
                                 layoutModel.setMode(
                                     candidate, for: page,
@@ -1059,7 +1085,6 @@ struct LayoutStudioView: View {
                             group: .ratio,
                             help: ratioLabel(candidate)
                         ) {
-                            pushUndo(.page(page, layoutModel.storedLayout(for: page)))
                             withAnimation(Self.reflow) {
                                 layoutModel.setRatio(
                                     candidate, for: page,
@@ -1087,7 +1112,6 @@ struct LayoutStudioView: View {
                             help: candidate.label
                         ) {
                             guard candidate != config.displayMode else { return }
-                            pushUndo(.miniWindow(config))
                             withAnimation(Self.reflow) {
                                 updateMini(id) { $0.displayMode = candidate }
                             }
