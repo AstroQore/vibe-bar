@@ -3220,6 +3220,16 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(composition.segments.count, before)
     }
 
+    func testAMoveToAnUnknownTargetChangesNothing() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        let before = composition
+        composition.move(tokens[1].id, before: UUID())
+        XCTAssertEqual(composition, before, "a move to nowhere must not rearrange the strip")
+        composition.move(tokens[0].id, before: UUID())
+        XCTAssertEqual(composition, before)
+    }
+
     func testUngroupingLeavesEveryBlockWhereItWas() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[1].id, tokens[2].id])

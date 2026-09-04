@@ -1140,10 +1140,18 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// the invariant the group is holding.
     public mutating func move(_ id: UUID, before target: UUID) {
         let run = groupedRun(of: id)
-        guard !run.contains(target) else { return }
+        // Both ends checked before anything is lifted. Validating the target
+        // afterwards could not recover: the source is already out, so the
+        // "put it back" lookup finds nothing and strands the run in a segment
+        // of its own — a move to nowhere would rearrange the strip.
+        guard !run.contains(target),
+              location(of: target) != nil,
+              let origin = location(of: id)
+        else { return }
         let lifted = lift(run)
-        guard !lifted.isEmpty, let destination = location(of: target) else {
-            reinsert(lifted, at: location(of: id))
+        guard !lifted.isEmpty else { return }
+        guard let destination = location(of: target) else {
+            reinsert(lifted, at: origin)
             return
         }
         segments[destination.segment][destination.row]
