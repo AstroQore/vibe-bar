@@ -415,47 +415,76 @@ struct MenuBarComposerEditor: View {
     ) -> some View {
         let address = MenuBarComposition.RowAddress(segment: segment.id, row: row)
         let tokens = segment[row]
-        if tokens.isEmpty {
-            // A group with one empty row is an empty group; an empty row
-            // inside a stacked one is a row waiting to be filled. Two
-            // sentences, because they are two different situations.
-            Text(
-                segment.isStacked
-                    ? L10n.MenuBar.composerRowEmpty
-                    : L10n.MenuBar.composerGroupEmpty
-            )
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .frame(minWidth: 96, minHeight: 22, alignment: .leading)
-            .contentShape(Rectangle())
-            .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
-        } else {
-            MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
-                ForEach(tokens) { token in
-                    chip(token, availability: availability)
-                        .onDrag {
-                            // A queued colour or threshold has to land first:
-                            // the drop writes this snapshot back wholesale, so
-                            // an edit missing from it would be undone by the
-                            // drag that followed it.
-                            pendingCommit.flush()
-                            dragEnteredTarget()
-                            draggedNewToken = nil
-                            draggedTokenId = token.id
-                            // Snapshot the committed order; every crossing
-                            // reorders this copy, and only the drop writes.
-                            dragComposition = self.composition
-                            return blockItemProvider(token)
-                        }
-                        .onDrop(of: [.menuBarBlock], delegate: chipDrop(.before(token.id)))
-                }
-                // Trailing landing strip, so a block can be dragged to the end
-                // of this row without having to hit its last chip.
+        // Keyed on the committed row, like the empty strip above and for the
+        // same reason: staging a block fills the drawn row at once, and
+        // switching on that would unmount this target mid-drag — releasing
+        // over the part of the placeholder the new chip does not cover would
+        // then roll the insertion back and add nothing.
+        if committedRowIsEmpty(address) {
+            ZStack(alignment: .topLeading) {
                 Color.clear
-                    .frame(width: 16, height: 22)
+                    .frame(minWidth: 96, minHeight: 22)
                     .contentShape(Rectangle())
                     .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
+                if tokens.isEmpty {
+                    // A group with one empty row is an empty group; an empty
+                    // row inside a stacked one is a row waiting to be filled.
+                    // Two sentences, because they are two different situations.
+                    Text(
+                        segment.isStacked
+                            ? L10n.MenuBar.composerRowEmpty
+                            : L10n.MenuBar.composerGroupEmpty
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(minWidth: 96, minHeight: 22, alignment: .leading)
+                } else {
+                    chipFlow(tokens, address: address, availability: availability)
+                }
             }
+        } else {
+            chipFlow(tokens, address: address, availability: availability)
+        }
+    }
+
+    /// Whether the row this address names holds nothing in the *committed*
+    /// arrangement — what decides whether the placeholder's stable drop target
+    /// is mounted, independent of anything a live drag has staged.
+    private func committedRowIsEmpty(_ address: MenuBarComposition.RowAddress) -> Bool {
+        guard let index = composition.segmentIndex(of: address.segment) else { return false }
+        return composition.segments[index][address.row].isEmpty
+    }
+
+    private func chipFlow(
+        _ tokens: [MenuBarToken],
+        address: MenuBarComposition.RowAddress,
+        availability: MenuBarComposition.Availability
+    ) -> some View {
+        MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
+            ForEach(tokens) { token in
+                chip(token, availability: availability)
+                    .onDrag {
+                        // A queued colour or threshold has to land first:
+                        // the drop writes this snapshot back wholesale, so
+                        // an edit missing from it would be undone by the
+                        // drag that followed it.
+                        pendingCommit.flush()
+                        dragEnteredTarget()
+                        draggedNewToken = nil
+                        draggedTokenId = token.id
+                        // Snapshot the committed order; every crossing
+                        // reorders this copy, and only the drop writes.
+                        dragComposition = self.composition
+                        return blockItemProvider(token)
+                    }
+                    .onDrop(of: [.menuBarBlock], delegate: chipDrop(.before(token.id)))
+            }
+            // Trailing landing strip, so a block can be dragged to the end
+            // of this row without having to hit its last chip.
+            Color.clear
+                .frame(width: 16, height: 22)
+                .contentShape(Rectangle())
+                .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
         }
     }
 
