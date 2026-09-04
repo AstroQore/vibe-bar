@@ -1150,10 +1150,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
             "claude.five_hour": "C5h",
             "claude.weekly": "Cwk"
         ]
-        // The title flag used to be the third half of this signature. It is
-        // gone, and the two renamed-label lists left are the specific half
-        // anyway — nobody reaches `O5h`/`Owk`/`C5h`/`Cwk` by hand.
-        if migrated.selectedFieldIds == oldDefaultFieldIds,
+        // All three parts of the signature, the retired title flag included:
+        // this replaces the whole item, so something that merely *looks* like
+        // the old default must not match it.
+        if migrated.legacyShowsTitle == true,
+           migrated.selectedFieldIds == oldDefaultFieldIds,
            migrated.customLabels == oldDefaultLabels {
             return defaultMenuBarItems.first { $0.kind == .compact }!
         }

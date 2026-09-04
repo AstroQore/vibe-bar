@@ -153,6 +153,21 @@ public enum MenuBarFieldStyle: String, Codable, CaseIterable, Identifiable, Send
 public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
     public var kind: MenuBarItemKind
     public var isVisible: Bool
+    /// The retired "Show title text" flag: decoded, never written, never read
+    /// by anything that draws.
+    ///
+    /// It survives only as the discriminator in
+    /// `AppSettings.migratedMenuBarItem`, which recognises one specific legacy
+    /// compact default and replaces it wholesale. Two of the three things that
+    /// identified that default are still here; without the third, an item that
+    /// kept the old field ids and the old renamed labels but had the toggle
+    /// *off* — one click away, no hand-typed labels needed — would be mistaken
+    /// for it and lose its layout, visibility, styles, merge setting and
+    /// composed strip.
+    ///
+    /// It decays safely: dropped on the next write, so a later launch reads
+    /// `nil` and the migration declines rather than fires.
+    public private(set) var legacyShowsTitle: Bool?
     public var layout: MenuBarLayout
     public var selectedFieldIds: [String]
     public var customLabels: [String: String]
@@ -264,6 +279,8 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case kind
         case isVisible
+        /// Retired; decoded into `legacyShowsTitle` and never encoded.
+        case showTitle
         case layout
         case selectedFieldIds
         case customLabels
@@ -277,6 +294,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.kind = try c.decode(MenuBarItemKind.self, forKey: .kind)
         self.isVisible = try c.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
+        self.legacyShowsTitle = try c.decodeIfPresent(Bool.self, forKey: .showTitle)
         // `try?`: an unknown layout from a newer build used to throw, and
         // `LossyMenuBarItem` turns that into a dropped item — which discards
         // the field selection, every rename, every per-field style *and* the

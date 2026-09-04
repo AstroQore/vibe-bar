@@ -841,6 +841,45 @@ final class AppSettingsTests: XCTestCase {
         ])
     }
 
+    func testAnOldDefaultWithTheTitleOffIsNotTreatedAsUntouched() throws {
+        // Same field ids and same renamed labels as the legacy default, but
+        // the title toggle was off — one click, no hand-typed labels. The
+        // migration replaces the *whole* item, so this must not match it: the
+        // layout, the styles and the composed strip are the user's.
+        let json = """
+        {
+          "displayMode": "remaining",
+          "refreshIntervalSeconds": 600,
+          "launchAtLogin": false,
+          "menuBarTextEnabled": true,
+          "mockEnabled": false,
+          "menuBarItems": [
+            {
+              "kind": "compact",
+              "isVisible": true,
+              "showTitle": false,
+              "layout": "twoRows",
+              "selectedFieldIds": ["codex.five_hour", "codex.weekly", "claude.five_hour", "claude.weekly"],
+              "customLabels": {
+                "codex.five_hour": "O5h",
+                "codex.weekly": "Owk",
+                "claude.five_hour": "C5h",
+                "claude.weekly": "Cwk"
+              }
+            }
+          ]
+        }
+        """
+
+        let compact = try JSONDecoder()
+            .decode(AppSettings.self, from: Data(json.utf8))
+            .menuBarItem(.compact)
+
+        XCTAssertEqual(compact.layout, .twoRows, "the chosen layout was replaced")
+        XCTAssertEqual(compact.customLabels["codex.five_hour"], "O5h", "the renames were discarded")
+        XCTAssertEqual(compact.selectedFieldIds.count, 4)
+    }
+
     func testOldCompactDefaultMigratesToOverviewIconOnly() throws {
         let json = """
         {
