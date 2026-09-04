@@ -174,6 +174,43 @@ public enum L10n {
 
     private static let missSentinel = "\u{0}vibebar.l10n.miss"
 
+    /// Where a `.lproj` may live, in the order they are tried.
+    ///
+    /// `Bundle.module` is a trap, not a lookup. SwiftPM generates an accessor
+    /// that knows two locations — the absolute build directory of the machine
+    /// that compiled it, and a bundle sitting beside `Bundle.main.bundleURL` —
+    /// and calls `fatalError` when neither exists. A packaged app is exactly
+    /// that case: the CI build directory is gone, and the resource bundle is
+    /// under `Contents/Resources` because a file outside `Contents` makes
+    /// codesign reject the app.
+    ///
+    /// Listing it beside `Bundle.main` therefore did not make it a fallback —
+    /// building the array evaluated it, so the trap fired before the bundle
+    /// that had the answer was ever consulted. On a developer's Mac the build
+    /// directory the accessor names is still there, which is why this only
+    /// failed once installed. `PricingResolver` already navigates the same
+    /// hazard; this is the same rule, said once more where the second caller
+    /// needed it.
+    private static func hostBundles() -> [Bundle] {
+        var hosts: [Bundle] = [.main]
+        if let resources = Bundle.main.resourceURL,
+           let embedded = Bundle(
+               url: resources.appendingPathComponent(
+                   "VibeBar_VibeBarCore.bundle",
+                   isDirectory: true
+               )
+           )
+        {
+            hosts.append(embedded)
+        }
+        if Bundle.main.bundleURL.pathExtension != "app" {
+            // Not installed: `swift test` and `swift run` are the hosts whose
+            // build directory the accessor actually names.
+            hosts.append(.module)
+        }
+        return hosts
+    }
+
     /// The `.lproj` sub-bundle for `code`, memoized.
     ///
     /// Two hosts, one lookup: a packaged `Vibe Bar.app` carries the
@@ -185,7 +222,7 @@ public enum L10n {
     private static func bundle(for code: String) -> Bundle? {
         bundles.withLock { cache in
             if let cached = cache[code] { return cached.bundle }
-            let resolved = [Bundle.main, Bundle.module]
+            let resolved = hostBundles()
                 .compactMap { host -> String? in
                     if let exact = host.path(forResource: code, ofType: "lproj") {
                         return exact
