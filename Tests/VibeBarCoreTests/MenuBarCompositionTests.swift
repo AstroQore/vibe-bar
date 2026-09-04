@@ -3269,6 +3269,34 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(reloaded.groupedRun(of: tokens[0].id), [tokens[0].id])
     }
 
+    func testASelectionAcrossTwoRowsIsNotARun() {
+        var (composition, tokens) = composedRun()
+        var segment = composition.segments[0]
+        let moved = Array(segment.top[2...])
+        segment.top.removeSubrange(2...)
+        segment.bottom = moved
+        composition.segments[0] = segment
+        XCTAssertFalse(composition.canGroup([tokens[1].id, tokens[2].id]),
+                       "one block per row is not side by side")
+        XCTAssertNil(composition.group([tokens[1].id, tokens[2].id]))
+    }
+
+    func testAPresetCarryingABrokenRunLandsUnbound() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[0].id, tokens[1].id, tokens[2].id])
+        var segment = composition.segments[0]
+        // What a preset file with one member's binding lost looks like.
+        segment.top[1].groupID = nil
+        let preset = MenuBarSegmentPreset(name: "broken", segment: segment)
+
+        var target = MenuBarComposition(isEnabled: true)
+        target.appendSegment(preset.segment())
+        let landed = target.segments[0].top
+        XCTAssertFalse(target.isGrouped(landed[0].id),
+                       "two blocks with a stranger between them are not a run")
+        XCTAssertTrue(landed.allSatisfy { $0.groupID == nil })
+    }
+
     func testUngroupingLeavesEveryBlockWhereItWas() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[1].id, tokens[2].id])

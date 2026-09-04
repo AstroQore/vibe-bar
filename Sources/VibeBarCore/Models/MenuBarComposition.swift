@@ -1265,16 +1265,32 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     private func contiguousRun(
         _ ids: [UUID]
     ) -> (segment: Int, row: MenuBarSegment.Row, offsets: [Int])? {
-        let unique = Set(ids)
-        guard unique.count > 1 else { return nil }
-        let placed = unique.compactMap { location(of: $0) }
-        guard placed.count == unique.count,
-              let first = placed.first,
-              placed.allSatisfy({ $0.segment == first.segment && $0.row == first.row })
-        else { return nil }
-        let offsets = placed.map(\.offset).sorted()
+        let wanted = Set(ids)
+        guard wanted.count > 1 else { return nil }
+        // One walk of the strip rather than `location(of:)` per id, which
+        // scans it each time: this runs on every redraw while a selection is
+        // being built, and a big selection on a big strip made that quadratic.
+        var home: (segment: Int, row: MenuBarSegment.Row)?
+        var offsets: [Int] = []
+        for segmentIndex in segments.indices {
+            for row in MenuBarSegment.Row.allCases {
+                for (offset, token) in segments[segmentIndex][row].enumerated()
+                where wanted.contains(token.id) {
+                    if let home {
+                        // A selection spanning two rows is not a run, and
+                        // finding that out early costs nothing.
+                        guard home == (segmentIndex, row) else { return nil }
+                    } else {
+                        home = (segmentIndex, row)
+                    }
+                    offsets.append(offset)
+                }
+            }
+        }
+        guard let home, offsets.count == wanted.count else { return nil }
+        offsets.sort()
         guard offsets.last! - offsets.first! == offsets.count - 1 else { return nil }
-        return (first.segment, first.row, offsets)
+        return (home.segment, home.row, offsets)
     }
 
     /// Unbind the run `id` belongs to. The blocks stay exactly where they are.
@@ -1351,6 +1367,10 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     @discardableResult
     public mutating func appendSegment(_ segment: MenuBarSegment = MenuBarSegment()) -> UUID {
         segments.append(segment)
+        // Presets arrive through here, and they carry blocks this composition
+        // has never normalized: a preset whose own file lost one member's
+        // binding would land as a run with a stranger through it.
+        normalizeGroups()
         return segment.id
     }
 
