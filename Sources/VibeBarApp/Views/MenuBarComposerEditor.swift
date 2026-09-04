@@ -301,6 +301,21 @@ struct MenuBarComposerEditor: View {
                     }
                     .disabled(index == 0)
                     Divider()
+                    // The two row interactions, on the group rather than in
+                    // the palette: a row is a container, so opening and
+                    // closing one is something you do *to a column*. Removing
+                    // one says where its blocks go, which is why the label
+                    // says "merge" rather than "remove" — nothing is deleted.
+                    if segment.isStacked {
+                        Button(L10n.MenuBar.composerGroupRemoveRow) {
+                            mutate { $0.removeRow(fromSegment: segment.id) }
+                        }
+                    } else {
+                        Button(L10n.MenuBar.composerGroupAddRow) {
+                            mutate { $0.addRow(toSegment: segment.id) }
+                        }
+                    }
+                    Divider()
                     Button(L10n.MenuBar.composerPresetSave) {
                         presetDraftName = ""
                         savingPresetFrom = segment.id
@@ -321,39 +336,16 @@ struct MenuBarComposerEditor: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
             }
-            if segment.isEmpty {
-                Text(L10n.MenuBar.composerGroupEmpty)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .frame(minWidth: 96, minHeight: 22, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onDrop(of: [.text], delegate: chipDrop(.endOf(segment.id)))
-            } else {
-                MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
-                    ForEach(segment.tokens) { token in
-                        chip(token, availability: availability)
-                            .onDrag {
-                                // A queued colour or threshold has to land
-                                // first: the drop writes this snapshot back
-                                // wholesale, so an edit missing from it would
-                                // be undone by the drag that followed it.
-                                pendingCommit.flush()
-                                dragEnteredTarget()
-                                draggedTokenId = token.id
-                                // Snapshot the committed order; every crossing
-                                // reorders this copy, and only the drop writes.
-                                dragComposition = self.composition
-                                return NSItemProvider(object: token.id.uuidString as NSString)
-                            }
-                            .onDrop(of: [.text], delegate: chipDrop(.before(token.id)))
-                    }
-                    // Trailing landing strip, so a block can be dragged to the
-                    // end of this group without having to hit its last chip.
-                    Color.clear
-                        .frame(width: 16, height: 22)
-                        .contentShape(Rectangle())
-                        .onDrop(of: [.text], delegate: chipDrop(.endOf(segment.id)))
-                }
+            // One list of chips per row, so a row is somewhere blocks live
+            // rather than a marker sitting among them. Each row is its own
+            // drop target: dragging between the two rows of one group and
+            // dragging between groups are the same gesture.
+            rowStrip(segment, row: .top, availability: availability)
+            if segment.isStacked {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.10))
+                    .frame(height: 0.5)
+                rowStrip(segment, row: .bottom, availability: availability)
             }
         }
         .padding(.horizontal, 6)
@@ -366,6 +358,58 @@ struct MenuBarComposerEditor: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
         )
+    }
+
+    /// One row of one group: its chips, and the empty space after them.
+    @ViewBuilder
+    private func rowStrip(
+        _ segment: MenuBarSegment,
+        row: MenuBarSegment.Row,
+        availability: MenuBarComposition.Availability
+    ) -> some View {
+        let address = MenuBarComposition.RowAddress(segment: segment.id, row: row)
+        let tokens = segment[row]
+        if tokens.isEmpty {
+            // A group with one empty row is an empty group; an empty row
+            // inside a stacked one is a row waiting to be filled. Two
+            // sentences, because they are two different situations.
+            Text(
+                segment.isStacked
+                    ? L10n.MenuBar.composerRowEmpty
+                    : L10n.MenuBar.composerGroupEmpty
+            )
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .frame(minWidth: 96, minHeight: 22, alignment: .leading)
+            .contentShape(Rectangle())
+            .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
+        } else {
+            MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
+                ForEach(tokens) { token in
+                    chip(token, availability: availability)
+                        .onDrag {
+                            // A queued colour or threshold has to land first:
+                            // the drop writes this snapshot back wholesale, so
+                            // an edit missing from it would be undone by the
+                            // drag that followed it.
+                            pendingCommit.flush()
+                            dragEnteredTarget()
+                            draggedTokenId = token.id
+                            // Snapshot the committed order; every crossing
+                            // reorders this copy, and only the drop writes.
+                            dragComposition = self.composition
+                            return NSItemProvider(object: token.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: chipDrop(.before(token.id)))
+                }
+                // Trailing landing strip, so a block can be dragged to the end
+                // of this row without having to hit its last chip.
+                Color.clear
+                    .frame(width: 16, height: 22)
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
+            }
+        }
     }
 
     private func chipDrop(_ target: MenuBarChipDropTarget) -> MenuBarChipDropDelegate {
@@ -466,7 +510,6 @@ struct MenuBarComposerEditor: View {
         case .quota: return "percent"
         case .space: return "space"
         case .separator: return "line.diagonal"
-        case .lineBreak: return "return"
         case .appIcon: return "menubar.rectangle"
         case .unsupported: return "questionmark.square.dashed"
         }
@@ -490,8 +533,6 @@ struct MenuBarComposerEditor: View {
         case let .separator(separator):
             let trimmed = separator.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? L10n.MenuBar.composerBlockGap : trimmed
-        case .lineBreak:
-            return L10n.MenuBar.composerBlockNewRow
         case .appIcon:
             return L10n.MenuBar.composerBlockAppIcon
         case .unsupported:
@@ -554,18 +595,10 @@ struct MenuBarComposerEditor: View {
                 paletteButton(title: L10n.MenuBar.composerBlockSeparator, icon: "line.diagonal") {
                     add(.newSeparator())
                 }
-                paletteButton(title: L10n.MenuBar.composerBlockNewRow, icon: "return") {
-                    add(.newLineBreak())
-                }
-                // Two rows is all the status item can draw, and a group is one
-                // column with two rows of its own — so the cap is asked of the
-                // group the block would land in, not of the whole strip.
-                .disabled(!composition.canAddLineBreak(toSegment: targetSegment))
-                .help(
-                    composition.canAddLineBreak(toSegment: targetSegment)
-                        ? L10n.MenuBar.composerNewRowHelp
-                        : L10n.MenuBar.composerNewRowCapped
-                )
+                // No "New row" block here on purpose. A row is a place blocks
+                // live, not a block you insert — giving a group its second row
+                // is an action on the group, and it lives in the group's own
+                // menu beside move, merge and remove.
                 paletteButton(
                     title: L10n.MenuBar.composerGroupAdd,
                     icon: "rectangle.split.2x1"
@@ -653,8 +686,11 @@ struct MenuBarComposerEditor: View {
                     caption(L10n.MenuBar.composerSelected)
                     Spacer(minLength: 8)
                     // Only where it would do something: a block that already
-                    // starts its group has no group to start.
-                    if (composition.location(of: id)?.offset ?? 0) > 0 {
+                    // starts its group has no group to start, and a column is
+                    // cut through its top row — see `splitSegment`.
+                    if let location = composition.location(of: id),
+                       location.row == .top,
+                       location.offset > 0 {
                         Button(L10n.MenuBar.composerGroupSplitHere) {
                             mutate { $0.splitSegment(before: id) }
                         }
@@ -816,8 +852,8 @@ struct MenuBarComposerEditor: View {
         // is disabled until they type something instead.
         let name = presetDraftName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        let tokens = composition.segments[index].tokens
-        mutatePresets { $0.append(MenuBarSegmentPreset(name: name, tokens: tokens)) }
+        let segment = composition.segments[index]
+        mutatePresets { $0.append(MenuBarSegmentPreset(name: name, segment: segment)) }
     }
 
     /// The pointer is over a drop target again, so the drag is still live.
@@ -871,16 +907,26 @@ struct MenuBarComposerEditor: View {
         mutate { $0.segments = segments }
     }
 
-    /// Where a new block goes: into the group the user is working in, else at
-    /// the end of the strip.
-    private var targetSegment: Int? {
-        selection.flatMap { composition.location(of: $0)?.segment }
-            ?? composition.segments.indices.last
+    /// Where a new block goes: into the row the user is working in, else at
+    /// the end of the strip — which, in a stacked last column, is its bottom
+    /// row rather than its top one.
+    private var targetRow: MenuBarComposition.RowAddress? {
+        if let selection, let location = composition.location(of: selection) {
+            return MenuBarComposition.RowAddress(
+                segment: composition.segments[location.segment].id,
+                row: location.row
+            )
+        }
+        guard let last = composition.segments.last else { return nil }
+        return MenuBarComposition.RowAddress(
+            segment: last.id,
+            row: last.isStacked ? .bottom : .top
+        )
     }
 
     private func add(_ token: MenuBarToken) {
-        let segment = targetSegment
-        mutate { $0.append(token, toSegment: segment) }
+        let row = targetRow
+        mutate { $0.append(token, to: row) }
         selection = token.id
     }
 
@@ -973,10 +1019,10 @@ private struct MenuBarTokenInspector: View {
 
     @State private var fixedDraft: Color = .accentColor
 
-    /// Whether this block puts anything on screen. A row break does not.
+    /// Whether this block puts anything on screen.
     private var drawsInk: Bool {
         switch token.kind {
-        case .lineBreak, .unsupported: return false
+        case .unsupported: return false
         default: return true
         }
     }
@@ -1014,9 +1060,9 @@ private struct MenuBarTokenInspector: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             contentControls
-            // A row break draws no ink, so colour, size and weight would be
-            // controls that quietly do nothing. Its rule still applies — a
-            // conditional break is the whole point of putting one on it.
+            // A block this build cannot read draws no ink, so colour, size and
+            // weight would be controls that quietly do nothing. Its rule is
+            // still shown, because the rule is this build's to evaluate.
             if drawsInk {
                 Divider().opacity(0.4)
                 colorControls
@@ -1133,11 +1179,6 @@ private struct MenuBarTokenInspector: View {
             Text(L10n.MenuBar.composerSpaceDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-        case .lineBreak:
-            Text(L10n.MenuBar.composerNewRowDetail)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
         case .appIcon:
             Text(L10n.MenuBar.composerAppIconDetail)
                 .font(.caption2)
@@ -1546,17 +1587,20 @@ private struct DebouncedPercentStepper: View {
 
 // MARK: - Drag and drop
 
-/// Where a drop lands: in front of a chip, or at the end of a group.
+/// Where a drop lands: in front of a chip, or at the end of a row.
 ///
-/// A flattened index cannot say which side of a group boundary it means, and a
-/// drag onto the first chip of a group has to land *in* that group or the
-/// gesture does nothing — so the target names the group instead.
+/// A flattened index cannot say which side of a boundary it means, and a drag
+/// onto the first chip of a row has to land *in* that row or the gesture does
+/// nothing — so the target names the row instead. It is a row rather than a
+/// group because a stacked column has two of them, and the empty space after
+/// the top row's last chip is not the same place as the empty space after the
+/// bottom row's.
 enum MenuBarChipDropTarget {
     case before(UUID)
-    case endOf(UUID)
+    case endOf(MenuBarComposition.RowAddress)
 }
 
-/// Reorder onto a chip, or onto a group's trailing landing strip. The move
+/// Reorder onto a chip, or onto a row's trailing landing strip. The move
 /// itself is `MenuBarComposition.move`, so the delegate decides only *where*,
 /// never *how*.
 private struct MenuBarChipDropDelegate: DropDelegate {
@@ -1572,13 +1616,12 @@ private struct MenuBarChipDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         entered()
-        guard let dragged, let composition = provisional else { return }
+        guard let dragged, provisional != nil else { return }
         switch target {
         case let .before(id):
             provisional?.move(dragged, before: id)
-        case let .endOf(id):
-            guard let segment = composition.segmentIndex(of: id) else { return }
-            provisional?.move(dragged, toEndOfSegment: segment)
+        case let .endOf(address):
+            provisional?.move(dragged, toEndOf: address)
         }
     }
 

@@ -434,9 +434,6 @@
   "menuBar.composer.block.logo": {
     "value": "图标"
   },
-  "menuBar.composer.block.newRow": {
-    "value": "换行"
-  },
   "menuBar.composer.block.quota": {
     "value": "额度"
   },
@@ -456,7 +453,7 @@
     "value": "来自更新版本"
   },
   "menuBar.composer.blocks": {
-    "value": "积木 · 拖动可重新排序或在分组间移动"
+    "value": "积木 · 拖动可重新排序，或在行与分组之间移动"
   },
   "menuBar.composer.blocks.empty": {
     "value": "尚无积木。可从下方面板添加。"
@@ -519,7 +516,10 @@
     "value": "新建分组"
   },
   "menuBar.composer.group.addHelp": {
-    "value": "每个分组是条带中的一列。分组内的换行会让该列上下堆叠。"
+    "value": "每个分组是条带中的一列。为分组添加第二行可让该列上下堆叠。"
+  },
+  "menuBar.composer.group.addRow": {
+    "value": "添加第二行"
   },
   "menuBar.composer.group.empty": {
     "value": "空分组，可将积木拖入。"
@@ -535,6 +535,9 @@
   },
   "menuBar.composer.group.remove": {
     "value": "删除分组及其积木"
+  },
+  "menuBar.composer.group.removeRow": {
+    "value": "将第二行并入第一行"
   },
   "menuBar.composer.group.splitHere": {
     "value": "从此处开始新分组"
@@ -584,15 +587,6 @@
   "menuBar.composer.mode.label": {
     "value": "样式"
   },
-  "menuBar.composer.newRow.capped": {
-    "value": "菜单栏最多显示两行。"
-  },
-  "menuBar.composer.newRow.detail": {
-    "value": "结束第一行并开始第二行。可在下方设置条件，仅在该额度满足条件时换行。"
-  },
-  "menuBar.composer.newRow.help": {
-    "value": "将菜单栏内容拆成第二行。"
-  },
   "menuBar.composer.palette": {
     "value": "添加积木"
   },
@@ -637,6 +631,9 @@
   },
   "menuBar.composer.removeTarget": {
     "value": "拖到此处移除"
+  },
+  "menuBar.composer.row.empty": {
+    "value": "空行，可将积木拖入。"
   },
   "menuBar.composer.rule.always": {
     "value": "始终显示"

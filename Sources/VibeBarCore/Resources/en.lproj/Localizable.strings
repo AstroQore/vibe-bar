@@ -428,9 +428,6 @@
 /* A block showing a provider's brand mark. */
 "menuBar.composer.block.logo" = "Logo";
 
-/* A block that ends one row and starts the next. */
-"menuBar.composer.block.newRow" = "New row";
-
 /* A block showing a number read from a quota. */
 "menuBar.composer.block.quota" = "Quota";
 
@@ -450,7 +447,7 @@
 "menuBar.composer.block.unsupported" = "From a newer version";
 
 /* Caption over the reorderable list of blocks. */
-"menuBar.composer.blocks" = "Blocks — drag to reorder or to move between groups";
+"menuBar.composer.blocks" = "Blocks — drag to reorder, or to move between rows and groups";
 
 /* Shown when the strip has no blocks. */
 "menuBar.composer.blocks.empty" = "No blocks yet. Add one from the palette below.";
@@ -513,7 +510,10 @@
 "menuBar.composer.group.add" = "New group";
 
 /* Tooltip on the New group button. */
-"menuBar.composer.group.addHelp" = "Each group is one column of the strip. A row break inside a group stacks that column.";
+"menuBar.composer.group.addHelp" = "Each group is one column of the strip. Give a group a second row to stack that column.";
+
+/* Menu item giving a group a second row. */
+"menuBar.composer.group.addRow" = "Add a second row";
 
 /* Shown inside a group that has no blocks yet. */
 "menuBar.composer.group.empty" = "Empty group — drag a block in.";
@@ -529,6 +529,9 @@
 
 /* Menu action deleting a group and the blocks in it. */
 "menuBar.composer.group.remove" = "Remove group and its blocks";
+
+/* Menu item closing a group's second row; its blocks join the end of the first. */
+"menuBar.composer.group.removeRow" = "Merge the second row up";
 
 /* Button starting a new group at the selected block. */
 "menuBar.composer.group.splitHere" = "Start a group here";
@@ -578,15 +581,6 @@
 /* Segmented control choosing how the menu-bar strip is built. */
 "menuBar.composer.mode.label" = "Strip";
 
-/* Tooltip on the New row palette button once both rows are used. */
-"menuBar.composer.newRow.capped" = "The menu bar can only draw two rows.";
-
-/* What a new-row block does, and that it accepts a rule. */
-"menuBar.composer.newRow.detail" = "Ends the first row and starts the second. Give it a rule below to split only when that quota says so.";
-
-/* Tooltip on the New row palette button when a second row is still available. */
-"menuBar.composer.newRow.help" = "Split the strip into a second row.";
-
 /* Caption over the list of blocks that can be added. */
 "menuBar.composer.palette" = "Add a block";
 
@@ -631,6 +625,9 @@
 
 /* Drop target that deletes the dragged block. */
 "menuBar.composer.removeTarget" = "Drag here to remove";
+
+/* Shown inside a group's second row while it holds no blocks. */
+"menuBar.composer.row.empty" = "Empty row — drag a block in.";
 
 /* Visibility rule: the block is always shown. */
 "menuBar.composer.rule.always" = "Always";

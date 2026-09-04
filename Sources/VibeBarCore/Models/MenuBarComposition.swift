@@ -114,8 +114,6 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         /// composer could not seed an Icon Only item with what the user is
         /// actually looking at.
         case appIcon
-        /// Ends the current row and starts the next one. Never draws.
-        case lineBreak
         /// A block written by a build that knew something this one does not —
         /// a kind it has never heard of, or a provider added after it shipped.
         /// Kept exactly as found and handed back on the next save, because the
@@ -375,10 +373,6 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         MenuBarToken(kind: .separator(" · "), style: .divider)
     }
 
-    public static func newLineBreak() -> MenuBarToken {
-        MenuBarToken(kind: .lineBreak)
-    }
-
     /// One of each, for the test that pins the invariant above.
     public static func paletteSamples(
         tool: ToolType = .claude,
@@ -386,7 +380,7 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
     ) -> [MenuBarToken] {
         [
             newAppIcon(), newLogo(tool), newText(),
-            newQuota(fieldId: fieldId), newSpace(), newSeparator(), newLineBreak()
+            newQuota(fieldId: fieldId), newSpace(), newSeparator()
         ]
     }
 
@@ -420,57 +414,128 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
 
 // MARK: - Segment
 
+/// A stored column's rows, however they were written.
+///
+/// A group and a saved group spell them identically, and the migration off the
+/// break marker is the kind of thing that goes subtly wrong in the second copy
+/// — so both read it here. `top`/`bottom` is what this build writes; a file
+/// with neither is one whose rows were still a single list with a marker in
+/// the middle, and it is split there.
+///
+/// Lossy per block throughout: one unreadable block must not take a row with
+/// it.
+private struct StoredMenuBarRows: Decodable {
+    let top: [MenuBarToken]
+    let bottom: [MenuBarToken]?
+
+    private enum CodingKeys: String, CodingKey {
+        case top
+        case bottom
+        case tokens
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        guard let storedTop = (try? c.decodeIfPresent([LossyMenuBarToken].self, forKey: .top))
+            .flatMap({ $0 })
+        else {
+            let stored = try c.decodeIfPresent([MenuBarFlatToken].self, forKey: .tokens) ?? []
+            (top, bottom) = MenuBarFlatToken.rows(stored)
+            return
+        }
+        top = storedTop.compactMap(\.value)
+        bottom = (try? c.decodeIfPresent([LossyMenuBarToken].self, forKey: .bottom))
+            .flatMap { $0 }?
+            .compactMap(\.value)
+    }
+}
+
 /// One group of blocks — what the strip draws as a single *column*.
 ///
-/// A segment is the only thing in the model that can say "these blocks belong
-/// over each other": the blocks before its row break go on top, the ones after
-/// it underneath, and the pair is one column of the two-row rasterizer — the
-/// same structure `twoRowMenuColumns` has always handed it. A segment with no
-/// break is a one-cell column, which the rasterizer centres across both rows.
+/// A column holds its rows as two containers: `top`, and `bottom` when the
+/// column stacks. That is the whole of the row model. It used to be one list
+/// with a `.lineBreak` block in the middle, and the difference is not
+/// cosmetic — a marker in a list can be dragged, duplicated, given a colour,
+/// and written twice, so every one of those had to be forbidden somewhere.
+/// Two containers cannot express a third row, a row break in the wrong place,
+/// or a block that is neither above nor below.
 ///
-/// A composition with one segment is exactly the strip the composer drew
-/// before segments existed, and that is what every stored composition decodes
-/// to.
+/// A column with no bottom row is a one-cell column, which the rasterizer
+/// centres across both rows — the same structure `twoRowMenuColumns` has
+/// always handed it.
 public struct MenuBarSegment: Identifiable, Codable, Equatable, Sendable {
+    /// Which of a column's two rows. There is no third case, and that is the
+    /// point: `MenuBarComposition.maximumRows` is a fact about this type now
+    /// rather than a rule something has to remember to check.
+    public enum Row: String, Codable, CaseIterable, Sendable {
+        case top
+        case bottom
+    }
+
     public var id: UUID
-    public var tokens: [MenuBarToken]
+    public var top: [MenuBarToken]
+    /// Nil when the column does not stack. Empty-but-present is a row the user
+    /// opened and has not filled yet; it is kept, because a row that vanished
+    /// on the next launch would be a control that does not hold.
+    public var bottom: [MenuBarToken]?
 
-    public init(id: UUID = UUID(), tokens: [MenuBarToken] = []) {
+    public init(id: UUID = UUID(), top: [MenuBarToken] = [], bottom: [MenuBarToken]? = nil) {
         self.id = id
-        self.tokens = tokens
+        self.top = top
+        self.bottom = bottom
     }
 
-    /// Where a segment's row break falls, given a predicate that says which
-    /// blocks count as one.
+    /// A one-row column. The shape most callers want — a seed, a fixture, a
+    /// preset with nothing stacked.
+    public init(id: UUID = UUID(), tokens: [MenuBarToken]) {
+        self.init(id: id, top: tokens, bottom: nil)
+    }
+
+    public var isStacked: Bool { bottom != nil }
+    public var isEmpty: Bool { top.isEmpty && (bottom?.isEmpty ?? true) }
+
+    /// Every block in this column, in reading order: the top cell, then the
+    /// bottom one.
+    public var tokens: [MenuBarToken] { top + (bottom ?? []) }
+
+    public subscript(row: Row) -> [MenuBarToken] {
+        get { row == .top ? top : (bottom ?? []) }
+        set {
+            switch row {
+            case .top: top = newValue
+            case .bottom: bottom = newValue
+            }
+        }
+    }
+
+    /// Which row a block is in, and where inside it.
+    public func position(of id: UUID) -> (row: Row, offset: Int)? {
+        if let offset = top.firstIndex(where: { $0.id == id }) { return (.top, offset) }
+        if let offset = bottom?.firstIndex(where: { $0.id == id }) { return (.bottom, offset) }
+        return nil
+    }
+
+    /// Open the second row. No-op when the column already stacks.
+    public mutating func addRow() {
+        guard bottom == nil else { return }
+        bottom = []
+    }
+
+    /// Close the second row, its blocks joining the end of the first.
     ///
-    /// Two callers with two predicates rather than two implementations: the
-    /// codec and the editor split on `.lineBreak`, the planner splits on a
-    /// `.lineBreak` whose *rule* is currently met — a conditional break is the
-    /// point of putting one on a block. A second break inside one segment
-    /// cannot open a third row (the status item has two), so its blocks stay
-    /// on the bottom row, exactly the folding the flat model already did.
-    public static func split(
-        _ tokens: [MenuBarToken],
-        isBreak: (MenuBarToken) -> Bool
-    ) -> (top: [MenuBarToken], bottom: [MenuBarToken]?) {
-        guard let index = tokens.firstIndex(where: isBreak) else { return (tokens, nil) }
-        return (
-            Array(tokens[..<index]),
-            Array(tokens[tokens.index(after: index)...])
-        )
+    /// Nothing is deleted: a row is a place blocks live, so removing the place
+    /// has to say where they go, and the row above is the only answer that
+    /// keeps the reading order the column already had.
+    public mutating func removeRow() {
+        guard let bottom else { return }
+        top.append(contentsOf: bottom)
+        self.bottom = nil
     }
-
-    /// The blocks above and below this segment's row break, ignoring rules.
-    public var rows: (top: [MenuBarToken], bottom: [MenuBarToken]?) {
-        Self.split(tokens) { $0.kind == .lineBreak }
-    }
-
-    public var hasRowBreak: Bool { tokens.contains { $0.kind == .lineBreak } }
-    public var isEmpty: Bool { tokens.isEmpty }
 
     private enum CodingKeys: String, CodingKey {
         case id
-        case tokens
+        case top
+        case bottom
     }
 
     /// Same tolerance the composition's own token list has always had: one
@@ -479,8 +544,16 @@ public struct MenuBarSegment: Identifiable, Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
-        let stored = try c.decodeIfPresent([LossyMenuBarToken].self, forKey: .tokens) ?? []
-        self.tokens = stored.compactMap(\.value)
+        let rows = try StoredMenuBarRows(from: decoder)
+        self.top = rows.top
+        self.bottom = rows.bottom
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(top, forKey: .top)
+        try c.encodeIfPresent(bottom, forKey: .bottom)
     }
 }
 
@@ -496,37 +569,63 @@ public struct MenuBarSegmentPreset: Identifiable, Codable, Equatable, Sendable {
     /// The user's own words. Stored verbatim and never translated, for the
     /// reason `MenuBarToken.newText` spells out.
     public var name: String
-    public var tokens: [MenuBarToken]
+    /// A saved group is a saved column, rows and all — a preset that came back
+    /// flat would not be the group the user pointed at when they saved it.
+    public var top: [MenuBarToken]
+    public var bottom: [MenuBarToken]?
 
-    public init(id: UUID = UUID(), name: String, tokens: [MenuBarToken]) {
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        top: [MenuBarToken],
+        bottom: [MenuBarToken]? = nil
+    ) {
         self.id = id
         self.name = name
-        self.tokens = tokens
+        self.top = top
+        self.bottom = bottom
+    }
+
+    public init(id: UUID = UUID(), name: String, segment: MenuBarSegment) {
+        self.init(id: id, name: name, top: segment.top, bottom: segment.bottom)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id
         case name
-        case tokens
+        case top
+        case bottom
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
         self.name = (try? c.decode(String.self, forKey: .name)) ?? ""
-        let stored = try c.decodeIfPresent([LossyMenuBarToken].self, forKey: .tokens) ?? []
-        self.tokens = stored.compactMap(\.value)
+        let rows = try StoredMenuBarRows(from: decoder)
+        self.top = rows.top
+        self.bottom = rows.bottom
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(top, forKey: .top)
+        try c.encodeIfPresent(bottom, forKey: .bottom)
     }
 
     /// A copy of this preset's blocks with fresh identities, ready to become a
     /// segment. Two insertions of one preset are two groups the editor can
     /// drag apart, the same rule `duplicate` follows.
     public func segment() -> MenuBarSegment {
-        MenuBarSegment(tokens: tokens.map { token in
-            var copy = token
-            copy.id = UUID()
-            return copy
-        })
+        func copies(_ tokens: [MenuBarToken]) -> [MenuBarToken] {
+            tokens.map { token in
+                var copy = token
+                copy.id = UUID()
+                return copy
+            }
+        }
+        return MenuBarSegment(top: copies(top), bottom: bottom.map(copies))
     }
 }
 
@@ -550,7 +649,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         /// Today's proportions, with breathing room between blocks.
         case roomy
         /// Two stacked rows, drawn by the same rasterizer the two-row layout
-        /// uses. Seeds with a `.lineBreak` in the middle.
+        /// uses. Seeds each column with a second row.
         case twoColumn
 
         public var title: String {
@@ -635,10 +734,9 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     }
 
     /// The status item is ~22pt tall: two rows is the most the rasterizer can
-    /// fit legibly, so a third `.lineBreak` is ignored and its blocks continue
-    /// on the second row. Stage 2's editor should stop offering a break past
-    /// this rather than letting the user build a row that cannot appear.
-    public static let maximumRows = 2
+    /// fit legibly. `MenuBarSegment.Row` is what enforces it — this constant
+    /// is the number the renderers size against, not a limit anything checks.
+    public static let maximumRows = MenuBarSegment.Row.allCases.count
 
     public static let fontScaleRange: ClosedRange<Double> = 0.6...1.6
     public static let tokenSpacingRange: ClosedRange<Double> = 0...4
@@ -703,47 +801,50 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// Choose a template, and take the row structure it describes with it.
     ///
     /// A template is mostly spacing and type size, but "Two rows" is a claim
-    /// about shape, and `plan` builds rows from `.lineBreak` blocks alone —
-    /// so setting the enum without touching the blocks left the picker
-    /// promising two rows and drawing one. Selecting it splits the strip;
-    /// selecting a single-row template joins it back up.
+    /// about shape — so setting the enum without touching the blocks left the
+    /// picker promising two rows and drawing one. Selecting it opens a second
+    /// row and moves the tail of a column into it; selecting a single-row
+    /// template folds every second row back up.
     ///
     /// The split lands where the seed would put it: at the seam between the
     /// two halves of the entries, taking over the divider that was already
-    /// there rather than adding a second one. Collapsing restores that
-    /// divider, so the two directions round-trip.
+    /// there rather than leaving it at the end of a row. Folding back restores
+    /// that divider, so the two directions round-trip.
     public mutating func setTemplate(_ newTemplate: Template) {
         template = newTemplate
         if newTemplate.seedsSecondRow {
-            guard lineBreakCount == 0 else { return }
+            guard !segments.contains(where: \.isStacked) else { return }
             // The seam is looked for inside each group, longest first: a
             // strip the user has already grouped has its columns, and the one
             // with the most to say is the one worth stacking. An ungrouped
             // strip is one group, which is the case this rule was written for.
             guard let target = segments.indices.max(by: {
-                segments[$0].tokens.count < segments[$1].tokens.count
+                segments[$0].top.count < segments[$1].top.count
             }) else { return }
-            guard let seam = Self.rowSeamIndex(in: segments[target].tokens) else { return }
-            switch segments[target].tokens[seam].kind {
-            case .space, .separator:
-                segments[target].tokens[seam] = MenuBarToken(kind: .lineBreak)
-            default:
-                segments[target].tokens.insert(MenuBarToken(kind: .lineBreak), at: seam)
+            var top = segments[target].top
+            guard let seam = Self.rowSeamIndex(in: top) else { return }
+            var moved = Array(top[seam...])
+            top.removeSubrange(seam...)
+            // The spacing in front of the second half is the boundary the row
+            // break takes over, so it goes rather than dangling at a row end.
+            switch moved.first?.kind {
+            case .space, .separator: moved.removeFirst()
+            default: break
             }
+            segments[target].top = top
+            segments[target].bottom = moved
         } else {
-            guard let inline = newTemplate.inlineSeparator else {
-                // Nothing is drawn between entries on this template; the
-                // strip's own spacing does the work, so the break just goes.
-                for index in segments.indices {
-                    segments[index].tokens.removeAll { $0.kind == .lineBreak }
+            for index in segments.indices {
+                guard let bottom = segments[index].bottom else { continue }
+                segments[index].bottom = nil
+                guard !bottom.isEmpty else { continue }
+                // Restore whatever this template draws between two entries
+                // sharing a row. Nothing on a template that separates by
+                // spacing alone — the strip's own gaps do the work there.
+                if let inline = newTemplate.inlineSeparator, !segments[index].top.isEmpty {
+                    segments[index].top.append(MenuBarToken(kind: inline, style: .divider))
                 }
-                return
-            }
-            for segment in segments.indices {
-                for index in segments[segment].tokens.indices
-                where segments[segment].tokens[index].kind == .lineBreak {
-                    segments[segment].tokens[index] = MenuBarToken(kind: inline, style: .divider)
-                }
+                segments[index].top.append(contentsOf: bottom)
             }
         }
     }
@@ -788,7 +889,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     private static func blockStartIndices(in tokens: [MenuBarToken]) -> [Int] {
         tokens.indices.filter { index in
             switch tokens[index].kind {
-            case .space, .separator, .lineBreak: return false
+            case .space, .separator: return false
             default: return true
             }
         }
@@ -799,7 +900,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         var sawValue = true
         for (index, token) in tokens.enumerated() {
             switch token.kind {
-            case .space, .separator, .lineBreak:
+            case .space, .separator:
                 continue
             case let .quota(_, metric) where metric != .label:
                 sawValue = true
@@ -867,36 +968,46 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     // chip should not also be the thing that decides what dropping it means,
     // and none of this is testable once it is tangled with a gesture.
 
-    /// Where a block sits: which group, and where inside it.
+    /// Where a block sits: which group, which of its rows, and where inside
+    /// that row.
     public struct Location: Equatable, Sendable {
         public var segment: Int
+        public var row: MenuBarSegment.Row
         public var offset: Int
+
+        public init(segment: Int, row: MenuBarSegment.Row, offset: Int) {
+            self.segment = segment
+            self.row = row
+            self.offset = offset
+        }
+    }
+
+    /// One row of one group, named the way a drop target has to name it.
+    ///
+    /// By the group's identity rather than its index, because the editor holds
+    /// this across a drag that reorders the groups underneath it.
+    public struct RowAddress: Hashable, Sendable {
+        public var segment: UUID
+        public var row: MenuBarSegment.Row
+
+        public init(segment: UUID, row: MenuBarSegment.Row) {
+            self.segment = segment
+            self.row = row
+        }
     }
 
     public func location(of id: UUID) -> Location? {
         for (segment, group) in segments.enumerated() {
-            if let offset = group.tokens.firstIndex(where: { $0.id == id }) {
-                return Location(segment: segment, offset: offset)
+            if let position = group.position(of: id) {
+                return Location(segment: segment, row: position.row, offset: position.offset)
             }
-        }
-        return nil
-    }
-
-    /// A block's position in the flattened strip, for callers that reason
-    /// about the strip as one list — a spoken description, a test, an
-    /// availability walk.
-    public func index(of id: UUID) -> Int? {
-        var base = 0
-        for group in segments {
-            if let offset = group.tokens.firstIndex(where: { $0.id == id }) { return base + offset }
-            base += group.tokens.count
         }
         return nil
     }
 
     public func token(_ id: UUID) -> MenuBarToken? {
         for group in segments {
-            if let token = group.tokens.first(where: { $0.id == id }) { return token }
+            if let position = group.position(of: id) { return group[position.row][position.offset] }
         }
         return nil
     }
@@ -904,43 +1015,38 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// Change one block in place, wherever it lives.
     public mutating func updateToken(_ id: UUID, _ change: (inout MenuBarToken) -> Void) {
         guard let location = location(of: id) else { return }
-        change(&segments[location.segment].tokens[location.offset])
+        change(&segments[location.segment][location.row][location.offset])
     }
 
-    /// Insert at a flattened index, clamped into range so a drop past either
-    /// end lands at that end instead of trapping. A boundary index belongs to
-    /// the group that starts there.
-    public mutating func insert(_ token: MenuBarToken, at index: Int) {
-        let clamped = Swift.max(0, Swift.min(index, tokens.count))
-        var base = 0
-        for segment in segments.indices {
-            let count = segments[segment].tokens.count
-            if clamped <= base + count {
-                segments[segment].tokens.insert(token, at: clamped - base)
-                return
-            }
-            base += count
-        }
-        segments.append(MenuBarSegment(tokens: [token]))
-    }
-
-    /// Append to the last group, opening one when the strip has none.
+    /// Append to the last row of the last group, opening a group when the
+    /// strip has none. "The end of the strip" in the order it is read.
     public mutating func append(_ token: MenuBarToken) {
-        append(token, toSegment: segments.indices.last)
-    }
-
-    public mutating func append(_ token: MenuBarToken, toSegment segment: Int?) {
-        guard let segment, segments.indices.contains(segment) else {
+        guard let segment = segments.indices.last else {
             segments.append(MenuBarSegment(tokens: [token]))
             return
         }
-        segments[segment].tokens.append(token)
+        append(token, to: RowAddress(
+            segment: segments[segment].id,
+            row: segments[segment].isStacked ? .bottom : .top
+        ))
+    }
+
+    public mutating func append(_ token: MenuBarToken, to address: RowAddress?) {
+        guard let address, let segment = segmentIndex(of: address.segment) else {
+            segments.append(MenuBarSegment(tokens: [token]))
+            return
+        }
+        // A row that has since been closed took its blocks up with it, so a
+        // block aimed at it belongs where they went rather than in a group of
+        // its own.
+        let row: MenuBarSegment.Row = segments[segment].isStacked ? address.row : .top
+        segments[segment][row].append(token)
     }
 
     @discardableResult
     public mutating func remove(_ id: UUID) -> Bool {
         guard let location = location(of: id) else { return false }
-        segments[location.segment].tokens.remove(at: location.offset)
+        segments[location.segment][location.row].remove(at: location.offset)
         return true
     }
 
@@ -951,52 +1057,45 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     @discardableResult
     public mutating func duplicate(_ id: UUID) -> UUID? {
         guard let location = location(of: id) else { return nil }
-        var copy = segments[location.segment].tokens[location.offset]
+        var copy = segments[location.segment][location.row][location.offset]
         copy.id = UUID()
-        segments[location.segment].tokens.insert(copy, at: location.offset + 1)
+        segments[location.segment][location.row].insert(copy, at: location.offset + 1)
         return copy.id
     }
 
-    /// Move `id` so it ends up at `index` in the *resulting* flattened list.
-    ///
-    /// Stated in terms of the result rather than the source array on purpose:
-    /// "insert before element N" changes meaning halfway through a drag once
-    /// the dragged block has been lifted out, which is where reorder
-    /// off-by-ones come from.
-    public mutating func move(_ id: UUID, to index: Int) {
-        guard let location = location(of: id) else { return }
-        let token = segments[location.segment].tokens.remove(at: location.offset)
-        insert(token, at: index)
-    }
-
-    /// Move `id` into `target`'s group, immediately before it. No-op when they
+    /// Move `id` into `target`'s row, immediately before it. No-op when they
     /// are the same block.
     ///
-    /// Group-relative rather than flattened, because a flattened index cannot
+    /// Row-relative rather than flattened, because a flattened index cannot
     /// say which side of a boundary it means — and a drag onto the first chip
-    /// of a group has to land *in* that group or the gesture does nothing.
+    /// of a row has to land *in* that row or the gesture does nothing.
     public mutating func move(_ id: UUID, before target: UUID) {
         guard id != target,
               let from = location(of: id),
               let destination = location(of: target)
         else { return }
-        let token = segments[from.segment].tokens.remove(at: from.offset)
+        let token = segments[from.segment][from.row].remove(at: from.offset)
         var offset = destination.offset
         // Dragging rightwards past the target lands *on* it once the source
         // has been lifted out; dragging leftwards lands in front of it.
-        if from.segment == destination.segment, from.offset < destination.offset {
+        if from.segment == destination.segment, from.row == destination.row,
+           from.offset < destination.offset {
             offset -= 1
         }
-        let bounded = Swift.max(0, Swift.min(offset, segments[destination.segment].tokens.count))
-        segments[destination.segment].tokens.insert(token, at: bounded)
+        let row = segments[destination.segment][destination.row]
+        segments[destination.segment][destination.row]
+            .insert(token, at: Swift.max(0, Swift.min(offset, row.count)))
     }
 
-    /// Move `id` to the end of a group — the trailing landing strip a drag
-    /// aims at when it is past every chip.
-    public mutating func move(_ id: UUID, toEndOfSegment segment: Int) {
-        guard segments.indices.contains(segment), let from = location(of: id) else { return }
-        let token = segments[from.segment].tokens.remove(at: from.offset)
-        segments[segment].tokens.append(token)
+    /// Move `id` to the end of a row — the trailing landing strip a drag aims
+    /// at when it is past every chip.
+    public mutating func move(_ id: UUID, toEndOf address: RowAddress) {
+        guard let destination = segmentIndex(of: address.segment),
+              address.row == .top || segments[destination].isStacked,
+              let from = location(of: id)
+        else { return }
+        let token = segments[from.segment][from.row].remove(at: from.offset)
+        segments[destination][address.row].append(token)
     }
 
     // MARK: Groups
@@ -1030,40 +1129,68 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         segments.insert(segment, at: destination)
     }
 
-    /// Start a new group at `id`, which becomes its first block.
+    /// Give a group a second row.
     ///
-    /// The blocks after it come along: splitting is a boundary, not a lift.
+    /// Per group, not per strip: every group is its own column with its own
+    /// two rows, so a group beside a stacked one can still be given a row.
+    @discardableResult
+    public mutating func addRow(toSegment id: UUID) -> Bool {
+        guard let index = segmentIndex(of: id), !segments[index].isStacked else { return false }
+        segments[index].addRow()
+        return true
+    }
+
+    /// Close a group's second row, its blocks joining the end of the first.
+    @discardableResult
+    public mutating func removeRow(fromSegment id: UUID) -> Bool {
+        guard let index = segmentIndex(of: id), segments[index].isStacked else { return false }
+        segments[index].removeRow()
+        return true
+    }
+
+    /// Whether `segment` can still be given a second row.
+    public func canAddRow(toSegment id: UUID) -> Bool {
+        guard let index = segmentIndex(of: id) else { return false }
+        return !segments[index].isStacked
+    }
+
+    /// Start a new group at `id`, which becomes the first block of its top row.
+    ///
+    /// The blocks after it come along, and so does the second row: splitting a
+    /// column is a vertical cut, not a lift. Only offered inside a top row —
+    /// cutting through a bottom row alone would leave one group with a hole
+    /// where its first cell should be, which is not a column the strip can
+    /// draw and not a shape the editor should let anyone build.
     public mutating func splitSegment(before id: UUID) {
-        guard let location = location(of: id), location.offset > 0 else { return }
-        let moved = Array(segments[location.segment].tokens[location.offset...])
-        segments[location.segment].tokens.removeSubrange(location.offset...)
-        segments.insert(MenuBarSegment(tokens: moved), at: location.segment + 1)
+        guard let location = location(of: id),
+              location.row == .top,
+              location.offset > 0
+        else { return }
+        let moved = Array(segments[location.segment].top[location.offset...])
+        segments[location.segment].top.removeSubrange(location.offset...)
+        let bottom = segments[location.segment].bottom
+        segments[location.segment].bottom = nil
+        segments.insert(
+            MenuBarSegment(top: moved, bottom: bottom),
+            at: location.segment + 1
+        )
     }
 
     /// Fold a group into the one before it. The inverse of `splitSegment`.
+    ///
+    /// Row by row: the folded group's top joins the previous group's top and
+    /// its bottom joins the previous group's bottom, so two stacked columns
+    /// merge into one stacked column rather than into one long row.
     public mutating func mergeSegmentIntoPrevious(_ id: UUID) {
         guard let index = segmentIndex(of: id), index > 0 else { return }
         let folded = segments.remove(at: index)
-        segments[index - 1].tokens.append(contentsOf: folded.tokens)
-    }
-
-    public var lineBreakCount: Int {
-        tokens.reduce(0) { $0 + ($1.kind == .lineBreak ? 1 : 0) }
-    }
-
-    /// Whether another row can still be drawn in `segment`.
-    ///
-    /// Per group, not per strip: every group is its own column with its own
-    /// two rows, so a second break in one group is the one the status item
-    /// silently folds away — a break in the group next to it is not.
-    public func canAddLineBreak(toSegment segment: Int?) -> Bool {
-        guard let segment, segments.indices.contains(segment) else { return true }
-        return !segments[segment].hasRowBreak
-    }
-
-    /// Whether another row can still be drawn at the end of the strip.
-    public var canAddLineBreak: Bool {
-        canAddLineBreak(toSegment: segments.indices.last)
+        segments[index - 1].top.append(contentsOf: folded.top)
+        guard let bottom = folded.bottom else { return }
+        if segments[index - 1].bottom == nil {
+            segments[index - 1].bottom = bottom
+        } else {
+            segments[index - 1].bottom?.append(contentsOf: bottom)
+        }
     }
 
     // MARK: Availability
@@ -1235,7 +1362,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         // two long rows, which lost the pairing (`5 Hours` no longer sat above
         // `Weekly`) and could not give the title a column of its own — the
         // divergence this function used to have to apologise for. A group *is*
-        // a column, and a group with no row break is the one-cell column the
+        // a column, and a group with one row is the one-cell column the
         // rasterizer centres across both rows, so the title fits the model
         // now instead of leading the first row.
         if item.layout == .twoRows || template.seedsSecondRow, runs.count > 1 {
@@ -1243,16 +1370,15 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             if let title { segments.append(MenuBarSegment(tokens: [title])) }
             var index = 0
             while index < runs.count {
-                var tokens = seedRunTokens(runs[index], item: item, groupCatalogLabel: groupCatalogLabel)
-                if index + 1 < runs.count {
-                    tokens.append(MenuBarToken(kind: .lineBreak))
-                    tokens.append(contentsOf: seedRunTokens(
+                let top = seedRunTokens(runs[index], item: item, groupCatalogLabel: groupCatalogLabel)
+                let bottom = index + 1 < runs.count
+                    ? seedRunTokens(
                         runs[index + 1],
                         item: item,
                         groupCatalogLabel: groupCatalogLabel
-                    ))
-                }
-                segments.append(MenuBarSegment(tokens: tokens))
+                    )
+                    : nil
+                segments.append(MenuBarSegment(top: top, bottom: bottom))
                 index += 2
             }
             // Nothing between two columns: the rasterizer spaces them, which
@@ -1390,9 +1516,10 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         // is the flattened mirror below, and it is the *only* thing a build
         // that predates segments knows how to read or write — so a file that
         // has been through one carries `tokens` and no `segments`, and its
-        // whole strip decodes as a single group. That is the honest maximum:
-        // the blocks all survive the round trip, the grouping cannot, and
-        // nothing here rewrites a block to make up the difference.
+        // whole strip decodes as a single group, its rows taken from where the
+        // break marker sat. That is the honest maximum: the blocks all survive
+        // the round trip, the grouping cannot, and nothing here rewrites a
+        // block to make up the difference.
         //
         // Lossy per token throughout: a block kind a future build introduces
         // is dropped rather than taking the whole settings file down with it.
@@ -1401,9 +1528,11 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         if let storedSegments {
             self.segments = storedSegments.compactMap(\.value)
         } else {
-            let stored = try c.decodeIfPresent([LossyMenuBarToken].self, forKey: .tokens) ?? []
-            let tokens = stored.compactMap(\.value)
-            self.segments = tokens.isEmpty ? [] : [MenuBarSegment(tokens: tokens)]
+            let stored = try c.decodeIfPresent([MenuBarFlatToken].self, forKey: .tokens) ?? []
+            let rows = MenuBarFlatToken.rows(stored)
+            self.segments = rows.top.isEmpty && (rows.bottom?.isEmpty ?? true)
+                ? []
+                : [MenuBarSegment(top: rows.top, bottom: rows.bottom)]
         }
         // `try?`, not `try`: a malformed number here used to throw, and the
         // item's own decoder catches that into `composition = nil` — losing
@@ -1419,38 +1548,106 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         try c.encode(isEnabled, forKey: .isEnabled)
         try c.encode(template, forKey: .template)
         try c.encode(segments, forKey: .segments)
-        // The mirror. A build without segments reads this key and only this
-        // key, and a downgrade that finds nothing in it draws an empty status
-        // item and then writes that emptiness back — which is how this feature
-        // deleted a user's blocks once already. So every block is written
-        // twice, and the shape chosen is the one that survives best: each
-        // group's top row in order, then the row break, then each group's
-        // bottom row. An older build reads that as the two rows it has always
-        // drawn, in the reading order the columns had.
+        // The mirror. A build without rows or groups reads this key and only
+        // this key, and a downgrade that finds nothing in it draws an empty
+        // status item and then writes that emptiness back — which is how this
+        // feature deleted a user's blocks once already. So every block is
+        // written twice, and the shape chosen is the one that survives best:
+        // every group's top row in order, then the break marker, then every
+        // group's bottom row. An older build reads that as the two rows it has
+        // always drawn, in the reading order the columns had.
         try c.encode(flattenedTokens, forKey: .tokens)
         try c.encodeIfPresent(fontScale, forKey: .fontScale)
         try c.encodeIfPresent(tokenSpacing, forKey: .tokenSpacing)
     }
 
-    /// The strip as one list, for a reader that has no idea what a group is.
+    /// The strip as one list, for a reader that has no idea what a group or a
+    /// row container is.
     ///
-    /// Content-faithful and nothing more: it does not materialise the divider
-    /// this build draws between two groups on a one-row strip. That divider is
-    /// a rule, not a block, and writing it into the mirror would hand the user
-    /// separator blocks they never made the first time the file came back.
-    var flattenedTokens: [MenuBarToken] {
-        // One group is the shape this file has always had, so it is written
-        // back untouched — same blocks, same ids, same row break with its own
-        // rule on it.
-        if segments.count <= 1 { return segments.first?.tokens ?? [] }
-        let split = segments.map(\.rows)
-        guard split.contains(where: { $0.bottom != nil }) else { return segments.flatMap(\.tokens) }
-        // The first group's own break, so a conditional one keeps its rule and
-        // its identity. The others have no room in a list with one row break.
-        let joiner = segments
-            .compactMap { $0.tokens.first { $0.kind == .lineBreak } }
-            .first ?? MenuBarToken(kind: .lineBreak)
-        return split.flatMap(\.top) + [joiner] + split.compactMap(\.bottom).flatMap { $0 }
+    /// Content-faithful and nothing more: it materialises neither the divider
+    /// this build draws between two groups on a one-row strip, nor a break
+    /// with nothing after it. Both are rules rather than blocks, and writing
+    /// either into the mirror would hand the user something they never made
+    /// the first time the file came back.
+    var flattenedTokens: [MenuBarFlatToken] {
+        let tops = segments.flatMap(\.top).map(MenuBarFlatToken.token)
+        let bottoms = segments.compactMap(\.bottom).flatMap { $0 }.map(MenuBarFlatToken.token)
+        guard !bottoms.isEmpty else { return tops }
+        return tops + [.rowBreak] + bottoms
+    }
+}
+
+/// One entry of the flat `tokens` list: a block, or the marker that ends the
+/// first row.
+///
+/// The marker is a wire value, not a block. `MenuBarToken.Kind` used to carry a
+/// `.lineBreak` case, and every place that had to refuse it — the palette, the
+/// inspector, the size and colour controls, the planner's row split, the
+/// per-group cap — was a rule about a value the type still allowed. Rows are
+/// containers now, so the marker exists only where it is actually needed: on
+/// the way out, so a build that reads nothing but the flat list still draws two
+/// rows, and on the way in, so a file written before rows were containers
+/// splits where its break sat.
+enum MenuBarFlatToken: Codable {
+    /// Nil for an entry this build could not read at all; dropped, the way
+    /// `LossyMenuBarToken` drops one.
+    case token(MenuBarToken?)
+    case rowBreak
+
+    /// What a row break is spelled as in a stored file. Unchanged from when it
+    /// was a `Kind` discriminator, because that is exactly what an older build
+    /// is looking for.
+    static let rowBreakDiscriminator = "lineBreak"
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+    }
+
+    private enum KindKeys: String, CodingKey {
+        case type
+    }
+
+    init(from decoder: Decoder) throws {
+        if let c = try? decoder.container(keyedBy: CodingKeys.self),
+           let kind = try? c.nestedContainer(keyedBy: KindKeys.self, forKey: .kind),
+           (try? kind.decode(String.self, forKey: .type)) == Self.rowBreakDiscriminator {
+            self = .rowBreak
+            return
+        }
+        self = .token(try? MenuBarToken(from: decoder))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case let .token(token):
+            try token?.encode(to: encoder)
+        case .rowBreak:
+            // Kind and nothing else. Every build that can read this list at
+            // all defaults the identity, the style and the rule when they are
+            // absent, so the marker adds no bytes that change between saves.
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            var kind = c.nestedContainer(keyedBy: KindKeys.self, forKey: .kind)
+            try kind.encode(Self.rowBreakDiscriminator, forKey: .type)
+        }
+    }
+
+    /// A stored flat list as the two rows it describes.
+    ///
+    /// A second marker cannot open a third row, so its blocks stay on the
+    /// bottom — exactly the folding the flat model already did when it met one.
+    static func rows(_ entries: [MenuBarFlatToken]) -> (top: [MenuBarToken], bottom: [MenuBarToken]?) {
+        var top: [MenuBarToken] = []
+        var bottom: [MenuBarToken]?
+        for entry in entries {
+            switch entry {
+            case .rowBreak:
+                if bottom == nil { bottom = [] }
+            case let .token(token):
+                guard let token else { continue }
+                if bottom == nil { top.append(token) } else { bottom?.append(token) }
+            }
+        }
+        return (top, bottom)
     }
 }
 
@@ -1771,25 +1968,21 @@ public extension MenuBarComposition {
         var columns: [MenuBarRenderColumn] = []
         var spokenColumns: [String] = []
         for segment in segments {
-            // The rule is checked on the break itself, before the split: a
-            // conditional break is the point — stay on one row normally, split
-            // to two when a quota goes critical.
-            let split = MenuBarSegment.split(segment.tokens) {
-                $0.kind == .lineBreak && Self.isVisible($0.visibility, quotas: quotas)
-            }
             // A seeded strip draws `5 Hours` and then `5 Hours 73% used`. That
             // is what the bar has always looked like, so the block keeps
             // drawing — but read aloud it stutters every field name, so it
-            // stops speaking. Per group: a name at the end of one column does
-            // not name the number at the top of the next.
-            let echoed = Self.labelEchoTokenIds(
-                tokens: segment.tokens,
-                quotas: quotas,
-                displayMode: displayMode,
-                now: now
-            )
-            let top = cell(split.top, echoed: echoed)
-            let bottom = split.bottom.map { cell($0, echoed: echoed) }
+            // stops speaking. Per row: a name at the end of one cell does not
+            // name the number at the start of the next.
+            func echoes(_ tokens: [MenuBarToken]) -> Set<UUID> {
+                Self.labelEchoTokenIds(
+                    tokens: tokens,
+                    quotas: quotas,
+                    displayMode: displayMode,
+                    now: now
+                )
+            }
+            let top = cell(segment.top, echoed: echoes(segment.top))
+            let bottom = segment.bottom.map { cell($0, echoed: echoes($0)) }
 
             // A cell whose blocks all fell away is not a cell. A group left
             // with only its lower cell collapses to a one-cell column rather
@@ -2028,8 +2221,6 @@ public extension MenuBarComposition {
         case let .separator(separator):
             guard !separator.isEmpty else { return nil }
             return TokenContent(text: MenuBarToken.truncated(separator), glyph: nil, spoken: nil)
-        case .lineBreak:
-            return nil
         case .unsupported:
             // Nothing to draw: this build does not know what it is. It is on
             // the strip only so the next save hands it back.
@@ -2221,7 +2412,7 @@ extension MenuBarToken.Kind: Codable {
     }
 
     private enum Discriminator: String, Codable {
-        case logo, text, quota, space, separator, lineBreak, appIcon
+        case logo, text, quota, space, separator, appIcon
     }
 
     public init(from decoder: Decoder) throws {
@@ -2263,8 +2454,6 @@ extension MenuBarToken.Kind: Codable {
             ))
         case .separator:
             return .separator(try c.decode(String.self, forKey: .text))
-        case .lineBreak:
-            return .lineBreak
         case .appIcon:
             return .appIcon
         }
@@ -2299,8 +2488,6 @@ extension MenuBarToken.Kind: Codable {
         case let .separator(separator):
             try c.encode(Discriminator.separator, forKey: .type)
             try c.encode(separator, forKey: .text)
-        case .lineBreak:
-            try c.encode(Discriminator.lineBreak, forKey: .type)
         case .appIcon:
             try c.encode(Discriminator.appIcon, forKey: .type)
         case .unsupported:

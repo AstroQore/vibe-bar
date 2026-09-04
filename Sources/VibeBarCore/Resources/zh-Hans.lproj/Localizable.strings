@@ -428,9 +428,6 @@
 /* A block showing a provider's brand mark. */
 "menuBar.composer.block.logo" = "图标";
 
-/* A block that ends one row and starts the next. */
-"menuBar.composer.block.newRow" = "换行";
-
 /* A block showing a number read from a quota. */
 "menuBar.composer.block.quota" = "额度";
 
@@ -450,7 +447,7 @@
 "menuBar.composer.block.unsupported" = "来自更新版本";
 
 /* Caption over the reorderable list of blocks. */
-"menuBar.composer.blocks" = "积木 · 拖动可重新排序或在分组间移动";
+"menuBar.composer.blocks" = "积木 · 拖动可重新排序，或在行与分组之间移动";
 
 /* Shown when the strip has no blocks. */
 "menuBar.composer.blocks.empty" = "尚无积木。可从下方面板添加。";
@@ -513,7 +510,10 @@
 "menuBar.composer.group.add" = "新建分组";
 
 /* Tooltip on the New group button. */
-"menuBar.composer.group.addHelp" = "每个分组是条带中的一列。分组内的换行会让该列上下堆叠。";
+"menuBar.composer.group.addHelp" = "每个分组是条带中的一列。为分组添加第二行可让该列上下堆叠。";
+
+/* Menu item giving a group a second row. */
+"menuBar.composer.group.addRow" = "添加第二行";
 
 /* Shown inside a group that has no blocks yet. */
 "menuBar.composer.group.empty" = "空分组，可将积木拖入。";
@@ -529,6 +529,9 @@
 
 /* Menu action deleting a group and the blocks in it. */
 "menuBar.composer.group.remove" = "删除分组及其积木";
+
+/* Menu item closing a group's second row; its blocks join the end of the first. */
+"menuBar.composer.group.removeRow" = "将第二行并入第一行";
 
 /* Button starting a new group at the selected block. */
 "menuBar.composer.group.splitHere" = "从此处开始新分组";
@@ -578,15 +581,6 @@
 /* Segmented control choosing how the menu-bar strip is built. */
 "menuBar.composer.mode.label" = "样式";
 
-/* Tooltip on the New row palette button once both rows are used. */
-"menuBar.composer.newRow.capped" = "菜单栏最多显示两行。";
-
-/* What a new-row block does, and that it accepts a rule. */
-"menuBar.composer.newRow.detail" = "结束第一行并开始第二行。可在下方设置条件，仅在该额度满足条件时换行。";
-
-/* Tooltip on the New row palette button when a second row is still available. */
-"menuBar.composer.newRow.help" = "将菜单栏内容拆成第二行。";
-
 /* Caption over the list of blocks that can be added. */
 "menuBar.composer.palette" = "添加积木";
 
@@ -631,6 +625,9 @@
 
 /* Drop target that deletes the dragged block. */
 "menuBar.composer.removeTarget" = "拖到此处移除";
+
+/* Shown inside a group's second row while it holds no blocks. */
+"menuBar.composer.row.empty" = "空行，可将积木拖入。";
 
 /* Visibility rule: the block is always shown. */
 "menuBar.composer.rule.always" = "始终显示";

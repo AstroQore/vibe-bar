@@ -626,10 +626,6 @@
     "comment": "A block showing a provider's brand mark.",
     "value": "Logo"
   },
-  "menuBar.composer.block.newRow": {
-    "comment": "A block that ends one row and starts the next.",
-    "value": "New row"
-  },
   "menuBar.composer.block.quota": {
     "comment": "A block showing a number read from a quota.",
     "value": "Quota"
@@ -656,7 +652,7 @@
   },
   "menuBar.composer.blocks": {
     "comment": "Caption over the reorderable list of blocks.",
-    "value": "Blocks — drag to reorder or to move between groups"
+    "value": "Blocks — drag to reorder, or to move between rows and groups"
   },
   "menuBar.composer.blocks.empty": {
     "comment": "Shown when the strip has no blocks.",
@@ -740,7 +736,11 @@
   },
   "menuBar.composer.group.addHelp": {
     "comment": "Tooltip on the New group button.",
-    "value": "Each group is one column of the strip. A row break inside a group stacks that column."
+    "value": "Each group is one column of the strip. Give a group a second row to stack that column."
+  },
+  "menuBar.composer.group.addRow": {
+    "comment": "Menu item giving a group a second row.",
+    "value": "Add a second row"
   },
   "menuBar.composer.group.empty": {
     "comment": "Shown inside a group that has no blocks yet.",
@@ -761,6 +761,10 @@
   "menuBar.composer.group.remove": {
     "comment": "Menu action deleting a group and the blocks in it.",
     "value": "Remove group and its blocks"
+  },
+  "menuBar.composer.group.removeRow": {
+    "comment": "Menu item closing a group's second row; its blocks join the end of the first.",
+    "value": "Merge the second row up"
   },
   "menuBar.composer.group.splitHere": {
     "comment": "Button starting a new group at the selected block.",
@@ -829,18 +833,6 @@
     "comment": "Segmented control choosing how the menu-bar strip is built.",
     "value": "Strip"
   },
-  "menuBar.composer.newRow.capped": {
-    "comment": "Tooltip on the New row palette button once both rows are used.",
-    "value": "The menu bar can only draw two rows."
-  },
-  "menuBar.composer.newRow.detail": {
-    "comment": "What a new-row block does, and that it accepts a rule.",
-    "value": "Ends the first row and starts the second. Give it a rule below to split only when that quota says so."
-  },
-  "menuBar.composer.newRow.help": {
-    "comment": "Tooltip on the New row palette button when a second row is still available.",
-    "value": "Split the strip into a second row."
-  },
   "menuBar.composer.palette": {
     "comment": "Caption over the list of blocks that can be added.",
     "value": "Add a block"
@@ -900,6 +892,10 @@
   "menuBar.composer.removeTarget": {
     "comment": "Drop target that deletes the dragged block.",
     "value": "Drag here to remove"
+  },
+  "menuBar.composer.row.empty": {
+    "comment": "Shown inside a group's second row while it holds no blocks.",
+    "value": "Empty row — drag a block in."
   },
   "menuBar.composer.rule.always": {
     "comment": "Visibility rule: the block is always shown.",

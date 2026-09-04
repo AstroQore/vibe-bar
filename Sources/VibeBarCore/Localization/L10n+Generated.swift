@@ -601,10 +601,6 @@ extension L10n {
         public static var composerBlockLogo: String {
             L10n.string("menuBar.composer.block.logo")
         }
-        /// `menuBar.composer.block.newRow` — New row
-        public static var composerBlockNewRow: String {
-            L10n.string("menuBar.composer.block.newRow")
-        }
         /// `menuBar.composer.block.quota` — Quota
         public static var composerBlockQuota: String {
             L10n.string("menuBar.composer.block.quota")
@@ -629,7 +625,7 @@ extension L10n {
         public static var composerBlockUnsupported: String {
             L10n.string("menuBar.composer.block.unsupported")
         }
-        /// `menuBar.composer.blocks` — Blocks — drag to reorder or to move between groups
+        /// `menuBar.composer.blocks` — Blocks — drag to reorder, or to move between rows and groups
         public static var composerBlocks: String {
             L10n.string("menuBar.composer.blocks")
         }
@@ -713,9 +709,13 @@ extension L10n {
         public static var composerGroupAdd: String {
             L10n.string("menuBar.composer.group.add")
         }
-        /// `menuBar.composer.group.addHelp` — Each group is one column of the strip. A row break inside a group stacks that column.
+        /// `menuBar.composer.group.addHelp` — Each group is one column of the strip. Give a group a second row to stack that column.
         public static var composerGroupAddHelp: String {
             L10n.string("menuBar.composer.group.addHelp")
+        }
+        /// `menuBar.composer.group.addRow` — Add a second row
+        public static var composerGroupAddRow: String {
+            L10n.string("menuBar.composer.group.addRow")
         }
         /// `menuBar.composer.group.empty` — Empty group — drag a block in.
         public static var composerGroupEmpty: String {
@@ -736,6 +736,10 @@ extension L10n {
         /// `menuBar.composer.group.remove` — Remove group and its blocks
         public static var composerGroupRemove: String {
             L10n.string("menuBar.composer.group.remove")
+        }
+        /// `menuBar.composer.group.removeRow` — Merge the second row up
+        public static var composerGroupRemoveRow: String {
+            L10n.string("menuBar.composer.group.removeRow")
         }
         /// `menuBar.composer.group.splitHere` — Start a group here
         public static var composerGroupSplitHere: String {
@@ -801,18 +805,6 @@ extension L10n {
         public static var composerModeLabel: String {
             L10n.string("menuBar.composer.mode.label")
         }
-        /// `menuBar.composer.newRow.capped` — The menu bar can only draw two rows.
-        public static var composerNewRowCapped: String {
-            L10n.string("menuBar.composer.newRow.capped")
-        }
-        /// `menuBar.composer.newRow.detail` — Ends the first row and starts the second. Give it a rule below to split only when that quota says so.
-        public static var composerNewRowDetail: String {
-            L10n.string("menuBar.composer.newRow.detail")
-        }
-        /// `menuBar.composer.newRow.help` — Split the strip into a second row.
-        public static var composerNewRowHelp: String {
-            L10n.string("menuBar.composer.newRow.help")
-        }
         /// `menuBar.composer.palette` — Add a block
         public static var composerPalette: String {
             L10n.string("menuBar.composer.palette")
@@ -872,6 +864,10 @@ extension L10n {
         /// `menuBar.composer.removeTarget` — Drag here to remove
         public static var composerRemoveTarget: String {
             L10n.string("menuBar.composer.removeTarget")
+        }
+        /// `menuBar.composer.row.empty` — Empty row — drag a block in.
+        public static var composerRowEmpty: String {
+            L10n.string("menuBar.composer.row.empty")
         }
         /// `menuBar.composer.rule.always` — Always
         public static var composerRuleAlways: String {
@@ -6353,7 +6349,6 @@ extension L10n {
         "menuBar.composer.block.emptyText",
         "menuBar.composer.block.gap",
         "menuBar.composer.block.logo",
-        "menuBar.composer.block.newRow",
         "menuBar.composer.block.quota",
         "menuBar.composer.block.separator",
         "menuBar.composer.block.space",
@@ -6382,11 +6377,13 @@ extension L10n {
         "menuBar.composer.field.weight",
         "menuBar.composer.group.add",
         "menuBar.composer.group.addHelp",
+        "menuBar.composer.group.addRow",
         "menuBar.composer.group.empty",
         "menuBar.composer.group.mergeLeft",
         "menuBar.composer.group.moveLeft",
         "menuBar.composer.group.moveRight",
         "menuBar.composer.group.remove",
+        "menuBar.composer.group.removeRow",
         "menuBar.composer.group.splitHere",
         "menuBar.composer.group.title",
         "menuBar.composer.metric.displayPercent",
@@ -6403,9 +6400,6 @@ extension L10n {
         "menuBar.composer.mode.default",
         "menuBar.composer.mode.defaultCaption",
         "menuBar.composer.mode.label",
-        "menuBar.composer.newRow.capped",
-        "menuBar.composer.newRow.detail",
-        "menuBar.composer.newRow.help",
         "menuBar.composer.palette",
         "menuBar.composer.preset.insertHelp",
         "menuBar.composer.preset.name",
@@ -6421,6 +6415,7 @@ extension L10n {
         "menuBar.composer.preview.light",
         "menuBar.composer.preview.twoRowScaling",
         "menuBar.composer.removeTarget",
+        "menuBar.composer.row.empty",
         "menuBar.composer.rule.always",
         "menuBar.composer.rule.whenForecast",
         "menuBar.composer.rule.whenRemainingAtMost",
