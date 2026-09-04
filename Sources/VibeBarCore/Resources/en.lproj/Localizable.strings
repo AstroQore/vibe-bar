@@ -2057,11 +2057,23 @@
 /* Settings row label for the in-app language override */
 "settings.language.title" = "Language";
 
+/* Button that opens the full-size layout studio window */
+"settings.layout.openStudio" = "Open Studio";
+
+/* Tooltip for the studio button */
+"settings.layout.openStudioHelp" = "Arrange this surface beside a full-size, live preview of it.";
+
 /* Caption over the live popover preview in the layout editor */
 "settings.layout.preview" = "Preview";
 
 /* Shown when a layout page has no popover tab to draw */
 "settings.layout.previewUnavailable" = "This page has no popover tab to preview.";
+
+/* Caption marking the studio preview as live */
+"settings.layout.studioLive" = "Live";
+
+/* Title of the layout studio window */
+"settings.layout.studioTitle" = "Layout Studio";
 
 /* Toggle label */
 "settings.mcp.allowRefresh" = "Allow agents to refresh quota";

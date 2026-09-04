@@ -13,6 +13,7 @@ extension Notification.Name {
 /// runtime-discovered buckets — and its own arrangement, reordered by drag
 /// the way the Layout editor arranges popover cards.
 struct MiniWindowsSettingsSection: View {
+    @Environment(\.isInLayoutStudio) private var isInLayoutStudio
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var quotaService: QuotaService
@@ -31,10 +32,6 @@ struct MiniWindowsSettingsSection: View {
     @State private var mergedOptionsById: [String: MenuBarFieldOption] = [:]
     /// Field ids whose bucket the live quota cache currently returns.
     @State private var liveFieldIds: Set<String> = []
-    /// How much room the preview has. Measured rather than fixed: the styles
-    /// range from a narrow rail to a row that wants the width of a screen, and
-    /// a guessed number shrinks the wide ones to illegibility.
-    @State private var previewWidth: CGFloat = 480
 
     private enum NamingScope: Hashable {
         case shared
@@ -254,7 +251,7 @@ struct MiniWindowsSettingsSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        windowPreview(config)
+        windowSkeleton(config)
 
         if namingScope == .style {
             Text(L10n.Settings.miniWindowOverridesStyle(mode: config.displayMode.label))
@@ -278,32 +275,67 @@ struct MiniWindowsSettingsSection: View {
     /// renaming a field lands here immediately — which is the whole point of
     /// arranging something you cannot see. Its two callbacks are inert; this
     /// is a picture of the window, not a second copy of it to drive.
-    private func windowPreview(_ config: MiniWindowConfig) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(L10n.Settings.miniWindowPreview)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .textCase(.uppercase)
-                .tracking(0.6)
-            ScaledPreview(width: previewWidth) {
-                MiniQuotaWindowView(
-                    configID: config.id,
-                    onClose: {},
-                    onToggleDisplayMode: {}
+    /// A skeleton of the window, and the way out to the real one.
+    ///
+    /// Deliberately not the live view. This pane's width belongs to the
+    /// controls, and a mini window laid out at its own width either spills
+    /// over them or shrinks past reading — the skeleton fits, and what it
+    /// shows is exactly what this pane edits: how many fields there are, how
+    /// they fold into SubProviders, and in what order. Seeing the real thing
+    /// is the studio's job.
+    private func windowSkeleton(_ config: MiniWindowConfig) -> some View {
+        let groups = arrangeGroups(arrangeRows(config))
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(L10n.Settings.miniWindowPreview)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                Spacer(minLength: 8)
+                if !isInLayoutStudio {
+                    LayoutStudioButton {
+                        LayoutStudioWindowController.shared.open(
+                            subject: .miniWindow(config.id),
+                            environment: environment
+                        )
+                    }
+                }
+            }
+            if groups.isEmpty {
+                Text(L10n.Settings.miniWindowNoFieldsSelected)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            } else {
+                MenuBarChipFlow(spacing: 8, lineSpacing: 6) {
+                    ForEach(groups) { group in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(subProviderDisplayName(group))
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                            HStack(spacing: 3) {
+                                ForEach(group.rows) { row in
+                                    Capsule()
+                                        .fill(Theme.providerAccent(for: group.tool).opacity(0.55))
+                                        .frame(width: 16, height: 5)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.10), lineWidth: 0.7)
                 )
             }
-            .padding(6)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.background.secondary)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { previewWidth = max(120, $0 - 12) }
     }
 
     private func modePicker(_ config: MiniWindowConfig) -> some View {

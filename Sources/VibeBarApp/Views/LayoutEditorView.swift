@@ -27,6 +27,7 @@ import VibeBarCore
 ///   packer or the balancer, and a drag deciding it would be discarded on the
 ///   next measurement.
 struct LayoutEditorView: View {
+    @Environment(\.isInLayoutStudio) private var isInLayoutStudio
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var layoutModel: PageLayoutModel
@@ -133,7 +134,7 @@ struct LayoutEditorView: View {
                         mode: mode,
                         descriptors: descriptors
                     )
-                    preview(page: page)
+                    previewColumnStack(page: page, arrangement: arrangement, blocks: blocks)
                 }
             }
             Text(footnote(page: page, mode: mode))
@@ -1252,38 +1253,41 @@ struct LayoutEditorView: View {
 
     // MARK: - Preview
 
-    private func preview(page: PageLayoutPageID) -> some View {
-        // The popover itself, drawn at the width it opens at and scaled to
-        // fit. This used to be a stack of grey rectangles standing in for the
-        // cards: it showed the *shape* the segment boxes produce, which is
-        // true but is not what anyone is arranging for. The boxes beside it
-        // say what the ordering constraint is; this says what it looks like.
-        VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.Settings.layoutPreview)
+    private func preview(
+        arrangement: PageLayoutArrangement,
+        blocks: [PageLayoutModuleID: Block]
+    ) -> some View {
+        // Exactly what the popover will draw: the two continuous columns, from
+        // the same arrangement call the popover makes. The zones beside this
+        // show the segment boxes; this shows what they produce, which is a page
+        // with no boundary in it at all.
+        let flowed = arrangement.flattened
+        let pageHeight = (0..<PageLayoutConfig.columnCount)
+            .map { index in flowed.column(index).reduce(0.0) { $0 + (blocks[$1]?.height ?? 0) } }
+            .max() ?? 0
+        let scale = min(0.12, Self.previewColumnHeight / max(1, pageHeight))
+        let width: CGFloat = 150
+        let gap: CGFloat = 4
+        let leftWidth = (width - gap) * ratioFraction(arrangement.ratio)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Preview")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Group {
-                if let tab = OverviewPage.allCases.first(where: { $0.layoutPageID == page }) {
-                    ScaledPreview(width: Self.previewWidth, maxHeight: Self.previewColumnHeight) {
-                        PopoverRoot(
-                            width: Self.popoverPreviewWidth,
-                            onContentHeightChange: { _ in },
-                            onToggleMiniWindow: {},
-                            initialPage: tab
-                        )
-                    }
-                    // `PopoverRoot` applies `initialPage` once, on a state it
-                    // owns; without a new identity, switching the page picker
-                    // would leave the preview on the page it opened with.
-                    .id(tab)
-                } else {
-                    Text(L10n.Settings.layoutPreviewUnavailable)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .frame(width: Self.previewWidth, alignment: .leading)
+            VStack(alignment: .leading, spacing: 5) {
+                // Stand-in for the popover's title band, so the preview reads
+                // as the popover rather than as two loose stacks.
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.primary.opacity(0.14))
+                    .frame(height: 7)
+                HStack(alignment: .top, spacing: gap) {
+                    previewColumn(flowed.column(0), blocks: blocks, scale: scale)
+                        .frame(width: leftWidth)
+                    previewColumn(flowed.column(1), blocks: blocks, scale: scale)
+                        .frame(width: max(0, width - gap - leftWidth))
                 }
             }
             .padding(7)
+            .frame(width: width + 14, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.primary.opacity(0.05))
@@ -1293,13 +1297,47 @@ struct LayoutEditorView: View {
                     .stroke(Color.primary.opacity(0.10), lineWidth: 0.7)
             )
         }
-        .fixedSize(horizontal: true, vertical: false)
     }
 
-    /// What the popover actually opens at, so the preview wraps and packs its
-    /// columns exactly as the real page will before being scaled down.
-    private static let popoverPreviewWidth: CGFloat = 420
-    private static let previewWidth: CGFloat = 210
+    /// The schematic, and the way out to the full-size one.
+    ///
+    /// The skeleton is what belongs here: it fits the space a settings pane
+    /// has, and reading structure is what arranging needs. Seeing the real
+    /// thing needs room this pane does not have — that is the studio's job.
+    private func previewColumnStack(
+        page: PageLayoutPageID,
+        arrangement: PageLayoutArrangement,
+        blocks: [PageLayoutModuleID: Block]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            preview(arrangement: arrangement, blocks: blocks)
+            if !isInLayoutStudio {
+                LayoutStudioButton {
+                    LayoutStudioWindowController.shared.open(
+                        subject: .popoverPage(page),
+                        environment: environment
+                    )
+                }
+            }
+        }
+    }
+
+    private func previewColumn(
+        _ moduleIDs: [PageLayoutModuleID],
+        blocks: [PageLayoutModuleID: Block],
+        scale: Double
+    ) -> some View {
+        VStack(spacing: 2) {
+            ForEach(moduleIDs, id: \.self) { moduleID in
+                if let block = blocks[moduleID] {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(block.descriptor.accent.color.opacity(0.55))
+                        .frame(height: max(3, CGFloat(block.height * scale)))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
 
     private func ratioFraction(_ ratio: PageColumnRatio) -> CGFloat {
         CGFloat(ratio.leftFraction)

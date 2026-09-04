@@ -2057,11 +2057,23 @@
 /* Settings row label for the in-app language override */
 "settings.language.title" = "语言";
 
+/* Button that opens the full-size layout studio window */
+"settings.layout.openStudio" = "打开工作台";
+
+/* Tooltip for the studio button */
+"settings.layout.openStudioHelp" = "在整尺寸的实时预览旁边排布这个界面。";
+
 /* Caption over the live popover preview in the layout editor */
 "settings.layout.preview" = "预览";
 
 /* Shown when a layout page has no popover tab to draw */
 "settings.layout.previewUnavailable" = "该页面没有可预览的 popover 标签页。";
+
+/* Caption marking the studio preview as live */
+"settings.layout.studioLive" = "实时";
+
+/* Title of the layout studio window */
+"settings.layout.studioTitle" = "布局工作台";
 
 /* Toggle label */
 "settings.mcp.allowRefresh" = "允许 agent 刷新额度";

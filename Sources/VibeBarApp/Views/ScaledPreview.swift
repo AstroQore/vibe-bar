@@ -1,4 +1,5 @@
 import SwiftUI
+import VibeBarCore
 
 /// A real view, drawn at its natural size and shrunk to fit a width.
 ///
@@ -39,5 +40,37 @@ struct ScaledPreview<Content: View>: View {
             .clipped()
             .allowsHitTesting(false)
             .accessibilityHidden(true)
+    }
+}
+
+private struct LayoutStudioKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Whether the editor being drawn is already inside the studio.
+    ///
+    /// The door out of Settings is the same view, so without this it offers
+    /// to open the room it is standing in.
+    var isInLayoutStudio: Bool {
+        get { self[LayoutStudioKey.self] }
+        set { self[LayoutStudioKey.self] = newValue }
+    }
+}
+
+/// The door from a settings pane to the full-size editor.
+struct LayoutStudioButton: View {
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            Label(
+                L10n.Settings.layoutOpenStudio,
+                systemImage: "rectangle.inset.filled.on.rectangle"
+            )
+            .font(.caption)
+        }
+        .buttonStyle(.vibeBar)
+        .help(L10n.Settings.layoutOpenStudioHelp)
     }
 }

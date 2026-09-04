@@ -2111,11 +2111,23 @@
   "settings.language.title": {
     "value": "语言"
   },
+  "settings.layout.openStudio": {
+    "value": "打开工作台"
+  },
+  "settings.layout.openStudioHelp": {
+    "value": "在整尺寸的实时预览旁边排布这个界面。"
+  },
   "settings.layout.preview": {
     "value": "预览"
   },
   "settings.layout.previewUnavailable": {
     "value": "该页面没有可预览的 popover 标签页。"
+  },
+  "settings.layout.studioLive": {
+    "value": "实时"
+  },
+  "settings.layout.studioTitle": {
+    "value": "布局工作台"
   },
   "settings.mcp.allowRefresh": {
     "value": "允许 agent 刷新额度"

@@ -2852,6 +2852,14 @@ extension L10n {
         public static var languageTitle: String {
             L10n.string("settings.language.title")
         }
+        /// `settings.layout.openStudio` — Open Studio
+        public static var layoutOpenStudio: String {
+            L10n.string("settings.layout.openStudio")
+        }
+        /// `settings.layout.openStudioHelp` — Arrange this surface beside a full-size, live preview of it.
+        public static var layoutOpenStudioHelp: String {
+            L10n.string("settings.layout.openStudioHelp")
+        }
         /// `settings.layout.preview` — Preview
         public static var layoutPreview: String {
             L10n.string("settings.layout.preview")
@@ -2859,6 +2867,14 @@ extension L10n {
         /// `settings.layout.previewUnavailable` — This page has no popover tab to preview.
         public static var layoutPreviewUnavailable: String {
             L10n.string("settings.layout.previewUnavailable")
+        }
+        /// `settings.layout.studioLive` — Live
+        public static var layoutStudioLive: String {
+            L10n.string("settings.layout.studioLive")
+        }
+        /// `settings.layout.studioTitle` — Layout Studio
+        public static var layoutStudioTitle: String {
+            L10n.string("settings.layout.studioTitle")
         }
         /// `settings.mcp.allowRefresh` — Allow agents to refresh quota
         public static var mcpAllowRefresh: String {
@@ -7028,8 +7044,12 @@ extension L10n {
         "settings.language.caption",
         "settings.language.system",
         "settings.language.title",
+        "settings.layout.openStudio",
+        "settings.layout.openStudioHelp",
         "settings.layout.preview",
         "settings.layout.previewUnavailable",
+        "settings.layout.studioLive",
+        "settings.layout.studioTitle",
         "settings.mcp.allowRefresh",
         "settings.mcp.allowRefreshDetail",
         "settings.mcp.allowSkills",
