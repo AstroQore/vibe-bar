@@ -426,7 +426,11 @@ struct MiniWindowsSettingsSection: View {
             ForEach(sections) { section in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
-                        ToolBrandIconView(tool: section.tool, size: 13)
+                        QuotaBrandIconView(
+                            tool: section.tool,
+                            bucketID: section.entries.first?.option.bucketId,
+                            size: 13
+                        )
                             .opacity(0.85)
                         Text(section.title)
                             .font(.caption)
@@ -591,7 +595,8 @@ struct MiniWindowsSettingsSection: View {
                 ForEach(groups) { group in
                     if let company = group.companyName {
                         HStack(spacing: 6) {
-                            ToolBrandIconView(tool: group.tool, size: 12)
+                            // `companyName` is `vendorName` — an L1 heading.
+                            CompanyBrandIconView(tool: group.tool, size: 12)
                                 .opacity(0.85)
                             Text(company)
                                 .font(.caption2)

@@ -68,7 +68,7 @@ struct UsageCompositionCards: View {
         let tint = Theme.providerAccent(for: company)
         return VStack(spacing: 5) {
             HStack(spacing: 7) {
-                ToolBrandBadge(tool: company, iconSize: 12, containerSize: 19)
+                CompanyBrandBadge(tool: company, iconSize: 12, containerSize: 19)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.harness.displayName)
                         .font(.system(size: density.subtitleFontSize, weight: .semibold))

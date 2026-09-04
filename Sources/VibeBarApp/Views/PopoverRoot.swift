@@ -414,10 +414,13 @@ private struct OverviewSwitchIcon: View {
         // Overview with 13pt for the rest, and ProviderBrandIconView
         // for codex/claude with ToolBrandIconView for gemini/grok,
         // made the row read "高低不齐" (uneven baselines / sizes).
-        // One renderer (`ToolBrandIconView` driven off the L2-
-        // representative ToolType) keeps every tab visually pinned to
-        // the same baseline. Overview and Misc still get SF symbols
-        // because they aren't single-provider tabs.
+        // One renderer keeps every tab visually pinned to the same
+        // baseline. Overview and Misc still get SF symbols because
+        // they aren't single-provider tabs.
+        //
+        // The strip labels L1 companies, so it draws L1 marks:
+        // `CompanyBrandIconView` gives Google AI and SpaceXAI their own
+        // rather than borrowing Gemini's spark and Grok's slash.
         Group {
             switch page {
             case .overview:
@@ -434,9 +437,9 @@ private struct OverviewSwitchIcon: View {
             case .claude:
                 ToolBrandIconView(tool: .claude, size: Self.iconSize)
             case .googleAI:
-                ToolBrandIconView(tool: .gemini, size: Self.iconSize)
+                CompanyBrandIconView(tool: .gemini, size: Self.iconSize)
             case .grok:
-                ToolBrandIconView(tool: .grok, size: Self.iconSize)
+                CompanyBrandIconView(tool: .grok, size: Self.iconSize)
             }
         }
         .opacity(isSelected ? 1 : 0.72)
@@ -956,7 +959,7 @@ private struct GrokCombinedCard: View {
 
                 if showsGrokBot {
                     HStack(alignment: .center, spacing: 6) {
-                        ToolBrandIconView(tool: .grok, size: 13)
+                        BrandMarkIconView(mark: .grokBot, size: 13)
                             .opacity(0.85)
                         Text("Grok Bot")
                             .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))

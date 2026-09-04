@@ -111,7 +111,8 @@ struct MenuBarFieldsEditor: View {
             ForEach(runs(shown)) { run in
                 if let company = run.companyName {
                     HStack(spacing: 6) {
-                        ToolBrandIconView(tool: run.tool, size: 12)
+                        // `companyName` is `vendorName` — an L1 heading.
+                        CompanyBrandIconView(tool: run.tool, size: 12)
                             .opacity(0.85)
                         Text(company)
                             .font(.caption2)
@@ -241,7 +242,11 @@ struct MenuBarFieldsEditor: View {
             ForEach(Array(sections.enumerated()), id: \.offset) { _, pair in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
-                        ToolBrandIconView(tool: pair.section.tool, size: 13)
+                        QuotaBrandIconView(
+                            tool: pair.section.tool,
+                            bucketID: pair.section.fields.first?.bucketId,
+                            size: 13
+                        )
                             .opacity(0.85)
                         Text(pair.section.title)
                             .font(.caption)
