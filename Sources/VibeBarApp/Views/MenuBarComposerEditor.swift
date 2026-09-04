@@ -39,6 +39,14 @@ struct MenuBarComposerEditor: View {
     /// path. The reorder is kept here while the drag is live and committed
     /// once, on drop.
     @State private var dragComposition: MenuBarComposition?
+    /// A block dragged straight out of the palette. It exists only in this
+    /// property until the drag reaches a drop target — nothing is inserted,
+    /// nothing is displayed, and a drag released over empty space simply
+    /// leaves it behind.
+    @State private var draggedNewToken: MenuBarToken?
+    /// The quota section whose buckets are showing. Only one at a time: the
+    /// palette is a strip of chips, and seven open sections is a wall.
+    @State private var openQuotaSection: String?
     /// Fires shortly after the pointer leaves every drop target. SwiftUI has
     /// no "drag cancelled" callback, so a release outside the strip is
     /// inferred from the pointer leaving and not coming back.
@@ -394,6 +402,7 @@ struct MenuBarComposerEditor: View {
                             // drag that followed it.
                             pendingCommit.flush()
                             dragEnteredTarget()
+                            draggedNewToken = nil
                             draggedTokenId = token.id
                             // Snapshot the committed order; every crossing
                             // reorders this copy, and only the drop writes.
@@ -417,6 +426,8 @@ struct MenuBarComposerEditor: View {
             target: target,
             dragged: $draggedTokenId,
             provisional: $dragComposition,
+            pendingNew: $draggedNewToken,
+            committed: { composition },
             commit: { commitDrag() },
             entered: { dragEnteredTarget() },
             exited: { dragLeftTarget() }
@@ -557,47 +568,26 @@ struct MenuBarComposerEditor: View {
             caption(L10n.MenuBar.composerPalette)
             paletteGroup(L10n.MenuBar.composerBlockLogo) {
                 paletteButton(title: L10n.MenuBar.composerBlockAppIcon, icon: "menubar.rectangle") {
-                    add(.newAppIcon())
+                    MenuBarToken.newAppIcon()
                 }
                 ForEach(paletteLogoTools, id: \.self) { tool in
                     paletteButton(title: tool.menuTitle, icon: nil, tool: tool) {
-                        add(.newLogo(tool))
+                        MenuBarToken.newLogo(tool)
                     }
                 }
             }
             paletteGroup(L10n.MenuBar.composerBlockText) {
                 paletteButton(title: L10n.MenuBar.composerBlockText, icon: "textformat") {
-                    add(.newText())
+                    MenuBarToken.newText()
                 }
             }
-            paletteGroup(L10n.MenuBar.composerBlockQuota) {
-                ForEach(paletteQuotaSections) { section in
-                    Menu {
-                        ForEach(section.options) { option in
-                            Button(option.displayTitle) {
-                                add(.newQuota(fieldId: option.id))
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            QuotaBrandIconView(
-                                tool: section.tool,
-                                bucketID: section.options.first?.bucketId,
-                                size: 11
-                            )
-                            Text(section.title).font(.system(size: 11, weight: .medium))
-                        }
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                }
-            }
+            paletteQuotaGroup()
             paletteGroup(L10n.MenuBar.composerBlockStructure) {
                 paletteButton(title: L10n.MenuBar.composerBlockSpace, icon: "space") {
-                    add(.newSpace())
+                    MenuBarToken.newSpace()
                 }
                 paletteButton(title: L10n.MenuBar.composerBlockSeparator, icon: "line.diagonal") {
-                    add(.newSeparator())
+                    MenuBarToken.newSeparator()
                 }
                 // No "New row" block here on purpose. A row is a place blocks
                 // live, not a block you insert — giving a group its second row
@@ -612,6 +602,42 @@ struct MenuBarComposerEditor: View {
                 .help(L10n.MenuBar.composerGroupAddHelp)
             }
             presetsRow()
+        }
+    }
+
+    /// Quota blocks, one section per L2 SubProvider.
+    ///
+    /// These used to be dropdown menus. A menu item cannot be dragged — it
+    /// lives in an AppKit popup — so every quota block had to be added first
+    /// and dragged second, which is the two-gesture problem this whole change
+    /// is about, and quota blocks are most of what anyone adds. Opening a
+    /// section in place costs one click and makes its buckets ordinary
+    /// draggable chips.
+    @ViewBuilder
+    private func paletteQuotaGroup() -> some View {
+        paletteGroup(L10n.MenuBar.composerBlockQuota) {
+            ForEach(paletteQuotaSections) { section in
+                paletteButton(
+                    title: section.title,
+                    icon: nil,
+                    tool: section.tool,
+                    bucketID: section.options.first?.bucketId,
+                    isOpen: openQuotaSection == section.id
+                ) {
+                    openQuotaSection = openQuotaSection == section.id ? nil : section.id
+                }
+            }
+        }
+        if let open = paletteQuotaSections.first(where: { $0.id == openQuotaSection }) {
+            // No caption: the open section chip above already names it, and
+            // the empty label column keeps these aligned with every other row.
+            paletteGroup("") {
+                ForEach(open.options) { option in
+                    paletteButton(title: option.displayTitle, icon: "gauge.with.needle") {
+                        MenuBarToken.newQuota(fieldId: option.id)
+                    }
+                }
+            }
         }
     }
 
@@ -652,16 +678,46 @@ struct MenuBarComposerEditor: View {
         }
     }
 
+    /// A palette entry for a single block: click to append it, or drag it
+    /// straight where you want it.
+    ///
+    /// Dragging used to mean adding first and dragging second, which is two
+    /// gestures for one intent and left the block at the end of the strip if
+    /// you stopped after the first.
     private func paletteButton(
         title: String,
         icon: String?,
         tool: ToolType? = nil,
+        make: @escaping () -> MenuBarToken
+    ) -> some View {
+        paletteButton(title: title, icon: icon, tool: tool) { add(make()) }
+            .onDrag {
+                // Same flush as a chip drag: the drop writes the whole
+                // snapshot back, so a queued edit missing from it would be
+                // undone by this drag.
+                pendingCommit.flush()
+                let token = make()
+                draggedTokenId = nil
+                dragComposition = nil
+                draggedNewToken = token
+                return NSItemProvider(object: token.id.uuidString as NSString)
+            }
+    }
+
+    private func paletteButton(
+        title: String,
+        icon: String?,
+        tool: ToolType? = nil,
+        bucketID: String? = nil,
+        isOpen: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 if let tool {
-                    ToolBrandIconView(tool: tool, size: 11)
+                    // Bucket-aware: a quota section riding another company's
+                    // account draws its own mark, not the account holder's.
+                    QuotaBrandIconView(tool: tool, bucketID: bucketID, size: 11)
                 } else if let icon {
                     Image(systemName: icon).font(.system(size: 9, weight: .semibold))
                 }
@@ -671,7 +727,7 @@ struct MenuBarComposerEditor: View {
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                    .fill(Color.primary.opacity(isOpen ? 0.14 : 0.06))
             )
         }
         .buttonStyle(.plain)
@@ -1632,6 +1688,11 @@ private struct MenuBarChipDropDelegate: DropDelegate {
     @Binding var dragged: UUID?
     /// Reordered in place on every crossing. Local state, not settings.
     @Binding var provisional: MenuBarComposition?
+    /// A block dragged out of the palette, waiting for its first target.
+    @Binding var pendingNew: MenuBarToken?
+    /// The committed order, to seed a provisional that does not exist yet
+    /// because this drag started in the palette rather than on a chip.
+    let committed: () -> MenuBarComposition
     let commit: () -> Void
     let entered: () -> Void
     let exited: () -> Void
@@ -1640,6 +1701,32 @@ private struct MenuBarChipDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         entered()
+        // First target a palette drag reaches: the block joins the
+        // provisional order here, and from the next crossing on it is an
+        // ordinary dragged chip. Landing it on arrival rather than at the
+        // drag's start is what lets a drag released over nothing add nothing
+        // — there is no speculative insertion to undo.
+        if dragged == nil, let new = pendingNew {
+            var order = provisional ?? committed()
+            switch target {
+            case let .before(id):
+                guard let at = order.location(of: id) else { return }
+                // Into the target's own row first, so the move that follows
+                // is a same-row reorder and cannot leave an empty group
+                // behind the way appending to a new one would.
+                order.append(new, to: MenuBarComposition.RowAddress(
+                    segment: order.segments[at.segment].id,
+                    row: at.row
+                ))
+                order.move(new.id, before: id)
+            case let .endOf(address):
+                order.append(new, to: address)
+            }
+            provisional = order
+            dragged = new.id
+            pendingNew = nil
+            return
+        }
         guard let dragged, provisional != nil else { return }
         switch target {
         case let .before(id):
