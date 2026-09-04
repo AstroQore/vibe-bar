@@ -332,6 +332,7 @@ struct MiniLedgerLayout: View {
         .padding(.leading, MiniLedgerMetrics.rowIndent)
         .frame(height: MiniLedgerMetrics.rowHeight)
         .help(miniEntryHelp(entry))
+        .surfaceItem(entry.id)
     }
 }
 
@@ -508,6 +509,7 @@ struct MiniStripLayout: View {
                 percent: Int(percent.rounded())
             )
         )
+        .surfaceItem(entry.id)
     }
 
     /// The menu bar's single-line style, one cell per bucket: full label
@@ -536,6 +538,7 @@ struct MiniStripLayout: View {
                 percent: Int(percent.rounded())
             )
         )
+        .surfaceItem(entry.id)
     }
 }
 
@@ -655,6 +658,7 @@ struct MiniTileLayout: View {
         }
         .frame(width: MiniTileMetrics.tileWidth, height: MiniTileMetrics.tileHeight)
         .help(miniTileHelp(entry))
+        .surfaceItem(entry.id)
     }
 }
 

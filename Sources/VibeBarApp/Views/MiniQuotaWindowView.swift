@@ -31,11 +31,18 @@ struct MiniQuotaWindowView: View {
     /// a settings change or the panel clock's 30 s tick, which made timer- or
     /// button-driven refreshes feel laggy compared to the popover.
     @EnvironmentObject var quotaService: QuotaService
+    /// Present only on the Layout Studio's stage — the field order a drag in
+    /// flight is proposing, drawn instead of the saved one.
+    @Environment(\.studioMiniOrderOverride) private var orderOverride
 
     private var config: MiniWindowConfig {
-        settingsStore.settings.miniWindow.config(id: configID)
+        var config = settingsStore.settings.miniWindow.config(id: configID)
             ?? settingsStore.settings.miniWindow.windows.first
             ?? MiniWindowConfig(name: "Mini", fieldIds: [])
+        if let orderOverride, orderOverride.windowID == configID {
+            config.fieldIds = orderOverride.fieldIds
+        }
+        return config
     }
 
     var body: some View {
@@ -891,6 +898,7 @@ private struct MiniBranchRingCell: View {
     var body: some View {
         content(now: now)
             .frame(width: MiniRingMetrics.cellWidth)
+            .surfaceItem(cell.field.id)
     }
 
     @ViewBuilder
@@ -1018,6 +1026,7 @@ private struct MiniRingCell: View {
     var body: some View {
         content(now: now)
             .frame(width: MiniRingMetrics.cellWidth)
+            .surfaceItem(cell.field.id)
     }
 
     @ViewBuilder
@@ -1289,6 +1298,7 @@ private struct MiniCompactPrimaryGroup: View {
                     MiniCompactBarCell(
                         data: MiniCompactCellData(
                             id: cell.id,
+                            fieldID: cell.field.id,
                             tool: cell.tool,
                             title: cell.resolvedLabel,
                             bucket: cell.bucket,
@@ -1318,6 +1328,7 @@ private struct MiniCompactBranchGroup: View {
                     MiniCompactBarCell(
                         data: MiniCompactCellData(
                             id: cell.id,
+                            fieldID: cell.field.id,
                             tool: cell.tool,
                             title: cell.title,
                             bucket: cell.bucket,
@@ -1365,6 +1376,9 @@ private struct MiniCompactGroupShell<Content: View>: View {
 
 private struct MiniCompactCellData: Identifiable {
     let id: String
+    /// The field this cell draws — what the arrangement stores, and what the
+    /// Layout Studio picks the cell up by.
+    let fieldID: String
     let tool: ToolType
     let title: String
     let bucket: QuotaBucket?
@@ -1383,6 +1397,7 @@ private struct MiniCompactBarCell: View {
     var body: some View {
         content(now: now)
             .frame(width: MiniCompactMetrics.cellWidth)
+            .surfaceItem(data.fieldID)
     }
 
     @ViewBuilder

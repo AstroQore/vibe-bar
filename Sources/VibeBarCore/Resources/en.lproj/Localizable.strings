@@ -2081,17 +2081,77 @@
 /* Shown when a layout page has no popover tab to draw */
 "settings.layout.previewUnavailable" = "This page has no popover tab to preview.";
 
+/* One-line hint for a mini window style (Focus, Rail) that arranges itself */
+"settings.layout.studioHintFixedStyle" = "This style arranges itself. Add or remove fields from the tray below, or open the controls.";
+
+/* One-line hint shown when the studio opens on a mini window whose cells can be dragged */
+"settings.layout.studioHintMini" = "Drag a gauge to reorder it. Drop it on the well below to take it out of the window.";
+
+/* One-line hint shown when the studio opens on a popover page */
+"settings.layout.studioHintPage" = "Drag a card to move it. Drop it on the well below to hide it.";
+
+/* Arranging mode in the studio's mode pill */
+"settings.layout.studioModeAuto" = "Auto";
+
+/* Arranging mode in the studio's mode pill */
+"settings.layout.studioModeCompact" = "Compact";
+
+/* Arranging mode in the studio's mode pill */
+"settings.layout.studioModeManual" = "Manual";
+
+/* Tooltip for a column-width split */
+"settings.layout.studioRatioEqual" = "Equal columns";
+
+/* Tooltip for a column-width split */
+"settings.layout.studioRatioNarrowWide" = "Narrow left, wide right";
+
+/* Tooltip for a column-width split */
+"settings.layout.studioRatioWideNarrow" = "Wide left, narrow right";
+
+/* Menu section in the studio's subject picker: the mini windows */
+"settings.layout.studioSubjectMiniWindows" = "Mini windows";
+
+/* Menu section in the studio's subject picker: the popover's pages */
+"settings.layout.studioSubjectPages" = "Popover pages";
+
 /* Title of the layout studio window */
 "settings.layout.studioTitle" = "Layout Studio";
 
 /* Tooltip for the button that hides the studio's controls */
 "settings.layout.studioToggleInspector" = "Show or hide the controls";
 
-/* Zoom control: draw the surface at its own size */
-"settings.layout.studioZoomActual" = "Actual size";
+/* Tooltip for a not-shown field's chip in the tray */
+"settings.layout.studioTrayAddHelp" = "Click to add it at the end, or drag it into the window.";
+
+/* Caption of the tray of hidden cards under a page */
+"settings.layout.studioTrayHidden" = "Hidden";
+
+/* Caption of the tray of fields a mini window is not showing */
+"settings.layout.studioTrayNotShown" = "Not shown";
+
+/* Tooltip for a hidden card's chip in the tray */
+"settings.layout.studioTrayShowHelp" = "Click to show it where it was, or drag it onto the page.";
+
+/* Tooltip for the studio's undo button */
+"settings.layout.studioUndo" = "Undo the last change (⌘Z)";
+
+/* Drop target shown under a page while a card is being dragged */
+"settings.layout.studioWellHide" = "Hide";
+
+/* Drop target shown under a mini window while a gauge is being dragged */
+"settings.layout.studioWellRemove" = "Remove";
 
 /* Zoom control: shrink the surface to fit the stage */
 "settings.layout.studioZoomFit" = "Fit";
+
+/* Tooltip for the zoom readout, which resets the zoom to fit the stage */
+"settings.layout.studioZoomFitHelp" = "Fit to the window (⌘0)";
+
+/* Tooltip for the studio's zoom-in button */
+"settings.layout.studioZoomIn" = "Zoom in (⌘+)";
+
+/* Tooltip for the studio's zoom-out button */
+"settings.layout.studioZoomOut" = "Zoom out (⌘−)";
 
 /* Toggle label */
 "settings.mcp.allowRefresh" = "Allow agents to refresh quota";

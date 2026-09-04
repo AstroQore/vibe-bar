@@ -315,11 +315,7 @@ struct LayoutEditorView: View {
     }
 
     private func modeIcon(_ mode: PageLayoutMode) -> String {
-        switch mode {
-        case .auto: "wand.and.stars"
-        case .compact: "arrow.down.forward.and.arrow.up.backward"
-        case .manual: "hand.point.up.left"
-        }
+        mode.symbolName
     }
 
     private func modeHelp(_ mode: PageLayoutMode, page: PageLayoutPageID) -> String {

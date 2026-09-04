@@ -488,6 +488,8 @@ private struct OverviewWaterfall: View {
     @EnvironmentObject var quotaService: QuotaService
     @EnvironmentObject var costService: CostUsageService
     @State private var masonrySession = ColumnMasonryLayout.Session()
+    /// Present only on the Layout Studio's stage — see `StudioPageOverride`.
+    @Environment(\.studioPageOverride) private var studioPageOverride
 
     private let page = PageLayoutPageID.overview
 
@@ -527,7 +529,15 @@ private struct OverviewWaterfall: View {
         // `PageLayoutPacker`, band by band, one arranged by hand — through the
         // same path, so the two can never diverge in anything but their source
         // of column order.
-        if layoutModel.mode(for: page) == .auto {
+        //
+        // On the Studio's stage every mode draws through the fixed-column
+        // path — with the arrangement a drag is proposing, or with the
+        // resolved one, which for `auto` is the same planner answer the
+        // balancer would produce. Starting a drag must not switch layouts
+        // under the pointer.
+        if let override = studioPageOverride, override.page == page {
+            arrangedWaterfall(descriptors: descriptors, context: context, arrangement: override.arrangement)
+        } else if layoutModel.mode(for: page) == .auto {
             balancedWaterfall(descriptors: descriptors, context: context)
         } else {
             arrangedWaterfall(descriptors: descriptors, context: context)
@@ -536,11 +546,15 @@ private struct OverviewWaterfall: View {
 
     /// The page as it was arranged — by the user in `manual`, by the packer in
     /// `compact`: fixed order, saved column widths.
+    ///
+    /// - Parameter arrangement: what to draw instead of the resolved
+    ///   arrangement; the Studio passes the one a drag is proposing.
     private func arrangedWaterfall(
         descriptors: [PageModuleDescriptor],
-        context: OverviewModuleContext
+        context: OverviewModuleContext,
+        arrangement: PageLayoutArrangement? = nil
     ) -> some View {
-        let resolved = layoutModel.arrangement(
+        let resolved = arrangement ?? layoutModel.arrangement(
             for: page,
             descriptors: descriptors,
             spacing: Double(density.interSectionSpacing)
@@ -1687,6 +1701,8 @@ private struct ProviderDetailView: View {
     /// captures them. Ticking never re-derives the page.
     @EnvironmentObject var quotaService: QuotaService
     @EnvironmentObject var costService: CostUsageService
+    /// Present only on the Layout Studio's stage — see `StudioPageOverride`.
+    @Environment(\.studioPageOverride) private var studioPageOverride
 
     var body: some View {
         let page = PageLayoutPageID.detail(tool)
@@ -1698,7 +1714,8 @@ private struct ProviderDetailView: View {
         // `auto` returns the page's built-in split here, so a provider page
         // needs no second branch: every mode renders the same fixed-order
         // columns, only their contents differ.
-        let resolved = layoutModel.arrangement(
+        let proposed = studioPageOverride?.page == page ? studioPageOverride?.arrangement : nil
+        let resolved = proposed ?? layoutModel.arrangement(
             for: page,
             descriptors: descriptors,
             spacing: Double(density.interSectionSpacing)
@@ -1728,7 +1745,11 @@ private struct ProviderDetailView: View {
                 // widths they have always had. The ratio presets take over in
                 // the other two modes — including `compact`, where the ratio
                 // is one of the inputs the packer balanced against.
-                widths: layoutModel.isCustomized(page)
+                //
+                // A drag on the Studio's stage lands the page in `manual`,
+                // so the columns take the ratio widths from the moment a
+                // card lifts rather than jumping to them at the drop.
+                widths: layoutModel.isCustomized(page) || proposed != nil
                     ? PageColumnWidths(density: density, ratio: resolved.ratio)
                     : ProviderDetailColumnWidths(density: density).columnWidths,
                 spacing: density.interSectionSpacing,

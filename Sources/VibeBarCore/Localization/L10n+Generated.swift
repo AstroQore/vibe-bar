@@ -2888,6 +2888,50 @@ extension L10n {
         public static var layoutPreviewUnavailable: String {
             L10n.string("settings.layout.previewUnavailable")
         }
+        /// `settings.layout.studioHintFixedStyle` — This style arranges itself. Add or remove fields from the tray below, or open the controls.
+        public static var layoutStudioHintFixedStyle: String {
+            L10n.string("settings.layout.studioHintFixedStyle")
+        }
+        /// `settings.layout.studioHintMini` — Drag a gauge to reorder it. Drop it on the well below to take it out of the window.
+        public static var layoutStudioHintMini: String {
+            L10n.string("settings.layout.studioHintMini")
+        }
+        /// `settings.layout.studioHintPage` — Drag a card to move it. Drop it on the well below to hide it.
+        public static var layoutStudioHintPage: String {
+            L10n.string("settings.layout.studioHintPage")
+        }
+        /// `settings.layout.studioModeAuto` — Auto
+        public static var layoutStudioModeAuto: String {
+            L10n.string("settings.layout.studioModeAuto")
+        }
+        /// `settings.layout.studioModeCompact` — Compact
+        public static var layoutStudioModeCompact: String {
+            L10n.string("settings.layout.studioModeCompact")
+        }
+        /// `settings.layout.studioModeManual` — Manual
+        public static var layoutStudioModeManual: String {
+            L10n.string("settings.layout.studioModeManual")
+        }
+        /// `settings.layout.studioRatioEqual` — Equal columns
+        public static var layoutStudioRatioEqual: String {
+            L10n.string("settings.layout.studioRatioEqual")
+        }
+        /// `settings.layout.studioRatioNarrowWide` — Narrow left, wide right
+        public static var layoutStudioRatioNarrowWide: String {
+            L10n.string("settings.layout.studioRatioNarrowWide")
+        }
+        /// `settings.layout.studioRatioWideNarrow` — Wide left, narrow right
+        public static var layoutStudioRatioWideNarrow: String {
+            L10n.string("settings.layout.studioRatioWideNarrow")
+        }
+        /// `settings.layout.studioSubjectMiniWindows` — Mini windows
+        public static var layoutStudioSubjectMiniWindows: String {
+            L10n.string("settings.layout.studioSubjectMiniWindows")
+        }
+        /// `settings.layout.studioSubjectPages` — Popover pages
+        public static var layoutStudioSubjectPages: String {
+            L10n.string("settings.layout.studioSubjectPages")
+        }
         /// `settings.layout.studioTitle` — Layout Studio
         public static var layoutStudioTitle: String {
             L10n.string("settings.layout.studioTitle")
@@ -2896,13 +2940,49 @@ extension L10n {
         public static var layoutStudioToggleInspector: String {
             L10n.string("settings.layout.studioToggleInspector")
         }
-        /// `settings.layout.studioZoomActual` — Actual size
-        public static var layoutStudioZoomActual: String {
-            L10n.string("settings.layout.studioZoomActual")
+        /// `settings.layout.studioTrayAddHelp` — Click to add it at the end, or drag it into the window.
+        public static var layoutStudioTrayAddHelp: String {
+            L10n.string("settings.layout.studioTrayAddHelp")
+        }
+        /// `settings.layout.studioTrayHidden` — Hidden
+        public static var layoutStudioTrayHidden: String {
+            L10n.string("settings.layout.studioTrayHidden")
+        }
+        /// `settings.layout.studioTrayNotShown` — Not shown
+        public static var layoutStudioTrayNotShown: String {
+            L10n.string("settings.layout.studioTrayNotShown")
+        }
+        /// `settings.layout.studioTrayShowHelp` — Click to show it where it was, or drag it onto the page.
+        public static var layoutStudioTrayShowHelp: String {
+            L10n.string("settings.layout.studioTrayShowHelp")
+        }
+        /// `settings.layout.studioUndo` — Undo the last change (⌘Z)
+        public static var layoutStudioUndo: String {
+            L10n.string("settings.layout.studioUndo")
+        }
+        /// `settings.layout.studioWellHide` — Hide
+        public static var layoutStudioWellHide: String {
+            L10n.string("settings.layout.studioWellHide")
+        }
+        /// `settings.layout.studioWellRemove` — Remove
+        public static var layoutStudioWellRemove: String {
+            L10n.string("settings.layout.studioWellRemove")
         }
         /// `settings.layout.studioZoomFit` — Fit
         public static var layoutStudioZoomFit: String {
             L10n.string("settings.layout.studioZoomFit")
+        }
+        /// `settings.layout.studioZoomFitHelp` — Fit to the window (⌘0)
+        public static var layoutStudioZoomFitHelp: String {
+            L10n.string("settings.layout.studioZoomFitHelp")
+        }
+        /// `settings.layout.studioZoomIn` — Zoom in (⌘+)
+        public static var layoutStudioZoomIn: String {
+            L10n.string("settings.layout.studioZoomIn")
+        }
+        /// `settings.layout.studioZoomOut` — Zoom out (⌘−)
+        public static var layoutStudioZoomOut: String {
+            L10n.string("settings.layout.studioZoomOut")
         }
         /// `settings.mcp.allowRefresh` — Allow agents to refresh quota
         public static var mcpAllowRefresh: String {
@@ -7081,10 +7161,30 @@ extension L10n {
         "settings.layout.openStudioHelp",
         "settings.layout.preview",
         "settings.layout.previewUnavailable",
+        "settings.layout.studioHintFixedStyle",
+        "settings.layout.studioHintMini",
+        "settings.layout.studioHintPage",
+        "settings.layout.studioModeAuto",
+        "settings.layout.studioModeCompact",
+        "settings.layout.studioModeManual",
+        "settings.layout.studioRatioEqual",
+        "settings.layout.studioRatioNarrowWide",
+        "settings.layout.studioRatioWideNarrow",
+        "settings.layout.studioSubjectMiniWindows",
+        "settings.layout.studioSubjectPages",
         "settings.layout.studioTitle",
         "settings.layout.studioToggleInspector",
-        "settings.layout.studioZoomActual",
+        "settings.layout.studioTrayAddHelp",
+        "settings.layout.studioTrayHidden",
+        "settings.layout.studioTrayNotShown",
+        "settings.layout.studioTrayShowHelp",
+        "settings.layout.studioUndo",
+        "settings.layout.studioWellHide",
+        "settings.layout.studioWellRemove",
         "settings.layout.studioZoomFit",
+        "settings.layout.studioZoomFitHelp",
+        "settings.layout.studioZoomIn",
+        "settings.layout.studioZoomOut",
         "settings.mcp.allowRefresh",
         "settings.mcp.allowRefreshDetail",
         "settings.mcp.allowSkills",
