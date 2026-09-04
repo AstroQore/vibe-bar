@@ -950,6 +950,23 @@ final class MenuBarCompositionTests: XCTestCase {
         }
     }
 
+    func testATwoRowTitleLeadsTheFirstRow() {
+        // A named exception, not a gap. The field renderer gives the title a
+        // column of its own that spans both rows; a composition is a linear
+        // list with row breaks and cannot express that. The title leads the
+        // first row instead, which keeps it on screen and first in reading
+        // order. If blocks ever gain a row span, this is the test that says
+        // to revisit the seed.
+        var item = layoutItem(.twoRows, fields: ["claude.five_hour", "claude.weekly"])
+        item.showTitle = true
+        let seeded = MenuBarComposition.seeded(template: .matching(.twoRows), from: item)
+        XCTAssertEqual(seeded.tokens.first?.kind, .text(item.kind.title))
+        let kinds = seeded.tokens.map(\.kind)
+        let breakIndex = kinds.firstIndex(of: .lineBreak)
+        XCTAssertNotNil(breakIndex, "a two-row seed needs a row break")
+        XCTAssertGreaterThan(breakIndex ?? 0, 0, "the title belongs above the break")
+    }
+
     func testASeedNeverAppliesAStyleItsLayoutIgnores() {
         // Single line draws words only. A saved logo style must not put a logo
         // on a strip that has never shown one.

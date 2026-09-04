@@ -411,7 +411,11 @@ struct MenuBarStripView: View {
                     .font(.system(size: baseFontSize, weight: .regular).monospacedDigit())
                     .foregroundStyle(.tertiary)
             } else {
-                VStack(alignment: .leading, spacing: 0) {
+                // Centred, because `twoRowImage` centres each cell inside the
+                // column's shared width. An odd number of entries leaves the
+                // second row narrower, and a preview that left-aligns it shows
+                // the user something the menu bar will not draw.
+                VStack(alignment: .center, spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                         rowView(row)
                     }

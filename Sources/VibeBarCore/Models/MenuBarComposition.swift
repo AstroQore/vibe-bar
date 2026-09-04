@@ -904,6 +904,17 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         var tokens: [MenuBarToken] = []
 
         if item.showTitle {
+            // The one divergence the seed cannot avoid, named rather than
+            // hidden. `twoRowMenuColumns` gives the title a column of its own
+            // with no second cell, which the rasterizer centres across both
+            // rows. A composition is a linear list of blocks with row breaks
+            // and has no way to say "spans both rows"; giving it one would be
+            // a new concept in the model, the codec, the rasterizer, the
+            // preview and the editor, to reproduce the vertical placement of a
+            // two-character label in a surface built for rearranging blocks.
+            // So the title leads the first row. Pinned by
+            // `testATwoRowTitleLeadsTheFirstRow` — if blocks ever gain a row
+            // span, that test is where to revisit this.
             tokens.append(MenuBarToken(kind: .text(item.kind.title), style: .label))
         }
 
