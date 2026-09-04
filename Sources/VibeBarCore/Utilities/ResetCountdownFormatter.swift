@@ -1,16 +1,6 @@
 import Foundation
 
 public enum ResetCountdownFormatter {
-    /// 1-based month index → its abbreviated name in the current language.
-    /// A `DateFormatter` would also do this, but it would do it with the
-    /// *system* locale, which is not necessarily the language the user
-    /// picked for this app (`AppSettings.language`). One catalog keeps the
-    /// month name and the sentence it sits inside speaking together.
-    static func shortMonthName(_ month: Int) -> String? {
-        guard (1...12).contains(month) else { return nil }
-        return L10n.string("common.date.month.\(month)")
-    }
-
     /// Formats a future reset date as a compact human countdown:
     /// "5d", "2d 4h", "3h 16m", "12m", "<1m", "now".
     /// Returns nil if `resetAt` is nil.
@@ -40,9 +30,10 @@ public enum ResetCountdownFormatter {
     }
 
     /// Combines the compact countdown with the concrete local reset time.
-    /// Same-day resets stay compact ("3h 16m · 18:30"); later resets include
-    /// the calendar date ("2d 4h · Jul 24, 09:00") so the user never has to
-    /// mentally derive the exact reset from a relative duration.
+    /// Under `ResetTimeFormat.automatic` same-day resets stay compact
+    /// ("3h 16m · 18:30") and later ones name the day ("2d 4h · Fri, Jul 24
+    /// at 09:00"), so the user never has to mentally derive the exact reset
+    /// from a relative duration.
     public static func stringWithAbsoluteTime(
         from resetAt: Date?,
         now: Date = Date(),
@@ -50,43 +41,36 @@ public enum ResetCountdownFormatter {
         timeZone: TimeZone = .current
     ) -> String? {
         guard let resetAt, let countdown = string(from: resetAt, now: now) else { return nil }
-        guard let absolute = absoluteTime(
-            for: resetAt,
-            now: now,
-            calendar: calendar,
-            timeZone: timeZone
-        ) else { return countdown }
+        let absolute = absoluteTime(for: resetAt, now: now, calendar: calendar, timeZone: timeZone)
         return "\(countdown) · \(absolute)"
     }
 
-    /// The concrete local reset time on its own — "17:05" for a same-day
-    /// reset, "Aug 17, 17:05" later in the same year, "Aug 17, 2026, 17:05"
-    /// beyond it. Returns nil only when the date cannot be decomposed.
+    /// The concrete local reset time on its own, in the shape `format` asks
+    /// for — "17:05", "Fri 17:05", "Aug 17 at 17:05", "Fri, Aug 17, 2026 at
+    /// 17:05".
+    ///
+    /// `ResetTimeFormat` decides which components appear; the year is this
+    /// function's call, because a reset in another year has to say so
+    /// whatever the user picked. Everything below the skeleton is CLDR's:
+    /// separators, word order and where the weekday sits all differ between
+    /// English and Chinese, and none of them is composed here.
     public static func absoluteTime(
         for resetAt: Date,
         now: Date,
+        format: ResetTimeFormat = .default,
         calendar: Calendar = .current,
         timeZone: TimeZone = .current
-    ) -> String? {
+    ) -> String {
         var calendar = calendar
         calendar.timeZone = timeZone
 
-        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: resetAt)
-        guard let year = components.year,
-              let month = components.month,
-              let day = components.day,
-              let hour = components.hour,
-              let minute = components.minute,
-              let monthName = shortMonthName(month) else { return nil }
-        let time = String(format: "%02d:%02d", hour, minute)
-        if calendar.isDate(resetAt, inSameDayAs: now) {
-            return time
-        } else if calendar.component(.year, from: resetAt) == calendar.component(.year, from: now) {
-            return L10n.Common.dateMonthDayTime(month: monthName, day: day, time: time)
-        }
-        return L10n.Common.dateMonthDayYearTime(
-            month: monthName, day: day, year: String(year), time: time
-        )
+        let resolved = format.resolved(for: resetAt, now: now, calendar: calendar)
+        let includesYear = calendar.component(.year, from: resetAt)
+            != calendar.component(.year, from: now)
+        return AppLocale.dateFormatter(
+            template: resolved.skeleton(includesYear: includesYear),
+            timeZone: timeZone
+        ).string(from: resetAt)
     }
 
     /// One bucket's reset line, decided here so every surface treats a window
@@ -109,16 +93,12 @@ public enum ResetCountdownFormatter {
         guard let resetAt else { return nil }
         let absolute = absoluteTime(for: resetAt, now: now, calendar: calendar, timeZone: timeZone)
         if now.timeIntervalSince(resetAt) > max(0, graceSeconds) {
-            return ResetStatus(
-                isExpired: true,
-                label: absolute.map { L10n.Quota.resetPassedAt(time: $0) }
-                    ?? L10n.Quota.resetPassed
-            )
+            return ResetStatus(isExpired: true, label: L10n.Quota.resetPassedAt(time: absolute))
         }
         guard let countdown = string(from: resetAt, now: now) else { return nil }
         // The interpunct join is punctuation, not a sentence: both languages
         // read it the same way, so only the frame around it is translated.
-        let detail = absolute.map { "\(countdown) · \($0)" } ?? countdown
+        let detail = "\(countdown) · \(absolute)"
         return ResetStatus(isExpired: false, label: L10n.Quota.resetIn(duration: detail))
     }
 

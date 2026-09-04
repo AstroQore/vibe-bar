@@ -20,48 +20,6 @@
   "common.copy": {
     "value": "复制"
   },
-  "common.date.month.1": {
-    "value": "1月"
-  },
-  "common.date.month.10": {
-    "value": "10月"
-  },
-  "common.date.month.11": {
-    "value": "11月"
-  },
-  "common.date.month.12": {
-    "value": "12月"
-  },
-  "common.date.month.2": {
-    "value": "2月"
-  },
-  "common.date.month.3": {
-    "value": "3月"
-  },
-  "common.date.month.4": {
-    "value": "4月"
-  },
-  "common.date.month.5": {
-    "value": "5月"
-  },
-  "common.date.month.6": {
-    "value": "6月"
-  },
-  "common.date.month.7": {
-    "value": "7月"
-  },
-  "common.date.month.8": {
-    "value": "8月"
-  },
-  "common.date.month.9": {
-    "value": "9月"
-  },
-  "common.date.monthDayTime": {
-    "value": "{month}{day}日 {time}"
-  },
-  "common.date.monthDayYearTime": {
-    "value": "{year}年{month}{day}日 {time}"
-  },
   "common.delete": {
     "value": "删除"
   },
@@ -500,6 +458,12 @@
   "menuBar.composer.field.provider": {
     "value": "厂商"
   },
+  "menuBar.composer.field.resetFormat": {
+    "value": "格式"
+  },
+  "menuBar.composer.field.resetFormatHelp": {
+    "value": "自动格式在重置仍处于当日时只显示时间。"
+  },
   "menuBar.composer.field.show": {
     "value": "显示条件"
   },
@@ -589,6 +553,24 @@
   },
   "menuBar.composer.removeTarget": {
     "value": "拖到此处移除"
+  },
+  "menuBar.composer.resetFormat.automatic": {
+    "value": "自动"
+  },
+  "menuBar.composer.resetFormat.date": {
+    "value": "日期"
+  },
+  "menuBar.composer.resetFormat.dateTime": {
+    "value": "日期与时间"
+  },
+  "menuBar.composer.resetFormat.time": {
+    "value": "时间"
+  },
+  "menuBar.composer.resetFormat.weekdayDateTime": {
+    "value": "星期、日期与时间"
+  },
+  "menuBar.composer.resetFormat.weekdayTime": {
+    "value": "星期与时间"
   },
   "menuBar.composer.rule.always": {
     "value": "始终显示"
@@ -1648,9 +1630,6 @@
   },
   "quota.reset.in": {
     "value": "距重置 {duration}"
-  },
-  "quota.reset.passed": {
-    "value": "重置时间已过"
   },
   "quota.reset.passedAt": {
     "value": "重置时间已过 · {time}"

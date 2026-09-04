@@ -23,48 +23,6 @@
 /* Button that copies the adjacent value to the clipboard. */
 "common.copy" = "复制";
 
-/* Abbreviated month name used inside an absolute reset time */
-"common.date.month.1" = "1月";
-
-/* Abbreviated month name */
-"common.date.month.10" = "10月";
-
-/* Abbreviated month name */
-"common.date.month.11" = "11月";
-
-/* Abbreviated month name */
-"common.date.month.12" = "12月";
-
-/* Abbreviated month name */
-"common.date.month.2" = "2月";
-
-/* Abbreviated month name */
-"common.date.month.3" = "3月";
-
-/* Abbreviated month name */
-"common.date.month.4" = "4月";
-
-/* Abbreviated month name */
-"common.date.month.5" = "5月";
-
-/* Abbreviated month name */
-"common.date.month.6" = "6月";
-
-/* Abbreviated month name */
-"common.date.month.7" = "7月";
-
-/* Abbreviated month name */
-"common.date.month.8" = "8月";
-
-/* Abbreviated month name */
-"common.date.month.9" = "9月";
-
-/* Absolute time later this year: month name, day of month, HH:mm */
-"common.date.monthDayTime" = "%1$@%2$lld日 %3$@";
-
-/* Absolute time in another year: month name, day of month, year, HH:mm. The year is a string, not an int: an int is grouped by the locale and 2027 would read as 2,027. */
-"common.date.monthDayYearTime" = "%3$@年%1$@%2$lld日 %4$@";
-
 /* Button that performs a deletion the user has already confirmed. */
 "common.delete" = "删除";
 
@@ -494,6 +452,12 @@
 /* Picker choosing which provider's logo a block shows. */
 "menuBar.composer.field.provider" = "厂商";
 
+/* Label for the picker that chooses how a Resets at block prints its date and time */
+"menuBar.composer.field.resetFormat" = "格式";
+
+/* Tooltip on the reset-time format picker, explaining the Automatic option */
+"menuBar.composer.field.resetFormatHelp" = "自动格式在重置仍处于当日时只显示时间。";
+
 /* Picker choosing when a block is on screen. */
 "menuBar.composer.field.show" = "显示条件";
 
@@ -583,6 +547,24 @@
 
 /* Drop target that deletes the dragged block. */
 "menuBar.composer.removeTarget" = "拖到此处移除";
+
+/* Reset-time format: the time alone today, the weekday and date after that */
+"menuBar.composer.resetFormat.automatic" = "自动";
+
+/* Reset-time format showing only the calendar date, e.g. Sep 7 */
+"menuBar.composer.resetFormat.date" = "日期";
+
+/* Reset-time format showing the date and the time, e.g. Sep 7 at 12:01 */
+"menuBar.composer.resetFormat.dateTime" = "日期与时间";
+
+/* Reset-time format showing only the clock time, e.g. 12:01 */
+"menuBar.composer.resetFormat.time" = "时间";
+
+/* Reset-time format showing the weekday, the date and the time, e.g. Mon, Sep 7 at 12:01 */
+"menuBar.composer.resetFormat.weekdayDateTime" = "星期、日期与时间";
+
+/* Reset-time format showing the weekday and the time, e.g. Mon 12:01 */
+"menuBar.composer.resetFormat.weekdayTime" = "星期与时间";
 
 /* Visibility rule: the block is always shown. */
 "menuBar.composer.rule.always" = "始终显示";
@@ -1624,9 +1606,6 @@
 
 /* Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time */
 "quota.reset.in" = "距重置 %1$@";
-
-/* A bucket whose reset time is behind us and which has not refreshed */
-"quota.reset.passed" = "重置时间已过";
 
 /* Reset passed, with the absolute time it should have happened */
 "quota.reset.passedAt" = "重置时间已过 · %1$@";
