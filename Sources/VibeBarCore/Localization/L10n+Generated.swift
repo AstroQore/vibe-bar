@@ -40,6 +40,62 @@ extension L10n {
         public static var copy: String {
             L10n.string("common.copy")
         }
+        /// `common.date.month.1` — Jan
+        public static var dateMonth1: String {
+            L10n.string("common.date.month.1")
+        }
+        /// `common.date.month.10` — Oct
+        public static var dateMonth10: String {
+            L10n.string("common.date.month.10")
+        }
+        /// `common.date.month.11` — Nov
+        public static var dateMonth11: String {
+            L10n.string("common.date.month.11")
+        }
+        /// `common.date.month.12` — Dec
+        public static var dateMonth12: String {
+            L10n.string("common.date.month.12")
+        }
+        /// `common.date.month.2` — Feb
+        public static var dateMonth2: String {
+            L10n.string("common.date.month.2")
+        }
+        /// `common.date.month.3` — Mar
+        public static var dateMonth3: String {
+            L10n.string("common.date.month.3")
+        }
+        /// `common.date.month.4` — Apr
+        public static var dateMonth4: String {
+            L10n.string("common.date.month.4")
+        }
+        /// `common.date.month.5` — May
+        public static var dateMonth5: String {
+            L10n.string("common.date.month.5")
+        }
+        /// `common.date.month.6` — Jun
+        public static var dateMonth6: String {
+            L10n.string("common.date.month.6")
+        }
+        /// `common.date.month.7` — Jul
+        public static var dateMonth7: String {
+            L10n.string("common.date.month.7")
+        }
+        /// `common.date.month.8` — Aug
+        public static var dateMonth8: String {
+            L10n.string("common.date.month.8")
+        }
+        /// `common.date.month.9` — Sep
+        public static var dateMonth9: String {
+            L10n.string("common.date.month.9")
+        }
+        /// `common.date.monthDayTime` — {month} {day}, {time}
+        public static func dateMonthDayTime(month: String, day: Int, time: String) -> String {
+            L10n.string("common.date.monthDayTime", month, day, time)
+        }
+        /// `common.date.monthDayYearTime` — {month} {day}, {year}, {time}
+        public static func dateMonthDayYearTime(month: String, day: Int, year: String, time: String) -> String {
+            L10n.string("common.date.monthDayYearTime", month, day, year, time)
+        }
         /// `common.delete` — Delete
         public static var delete: String {
             L10n.string("common.delete")
@@ -681,6 +737,50 @@ extension L10n {
         public static var composerFieldWeight: String {
             L10n.string("menuBar.composer.field.weight")
         }
+        /// `menuBar.composer.group.add` — New group
+        public static var composerGroupAdd: String {
+            L10n.string("menuBar.composer.group.add")
+        }
+        /// `menuBar.composer.group.addHelp` — Each group is one column of the strip. Give a group a second row to stack that column.
+        public static var composerGroupAddHelp: String {
+            L10n.string("menuBar.composer.group.addHelp")
+        }
+        /// `menuBar.composer.group.addRow` — Add a second row
+        public static var composerGroupAddRow: String {
+            L10n.string("menuBar.composer.group.addRow")
+        }
+        /// `menuBar.composer.group.empty` — Empty group — drag a block in.
+        public static var composerGroupEmpty: String {
+            L10n.string("menuBar.composer.group.empty")
+        }
+        /// `menuBar.composer.group.mergeLeft` — Merge into the group before it
+        public static var composerGroupMergeLeft: String {
+            L10n.string("menuBar.composer.group.mergeLeft")
+        }
+        /// `menuBar.composer.group.moveLeft` — Move left
+        public static var composerGroupMoveLeft: String {
+            L10n.string("menuBar.composer.group.moveLeft")
+        }
+        /// `menuBar.composer.group.moveRight` — Move right
+        public static var composerGroupMoveRight: String {
+            L10n.string("menuBar.composer.group.moveRight")
+        }
+        /// `menuBar.composer.group.remove` — Remove group and its blocks
+        public static var composerGroupRemove: String {
+            L10n.string("menuBar.composer.group.remove")
+        }
+        /// `menuBar.composer.group.removeRow` — Merge the second row up
+        public static var composerGroupRemoveRow: String {
+            L10n.string("menuBar.composer.group.removeRow")
+        }
+        /// `menuBar.composer.group.splitHere` — Start a group here
+        public static var composerGroupSplitHere: String {
+            L10n.string("menuBar.composer.group.splitHere")
+        }
+        /// `menuBar.composer.group.title` — Group {index}
+        public static func composerGroupTitle(index: Int) -> String {
+            L10n.string("menuBar.composer.group.title", index)
+        }
         /// `menuBar.composer.metric.displayPercent` — Percent (follows setting)
         public static var composerMetricDisplayPercent: String {
             L10n.string("menuBar.composer.metric.displayPercent")
@@ -753,6 +853,34 @@ extension L10n {
         public static var composerPalette: String {
             L10n.string("menuBar.composer.palette")
         }
+        /// `menuBar.composer.preset.insertHelp` — Insert this group at the end of the strip.
+        public static var composerPresetInsertHelp: String {
+            L10n.string("menuBar.composer.preset.insertHelp")
+        }
+        /// `menuBar.composer.preset.name` — Name
+        public static var composerPresetName: String {
+            L10n.string("menuBar.composer.preset.name")
+        }
+        /// `menuBar.composer.preset.remove` — Remove preset
+        public static var composerPresetRemove: String {
+            L10n.string("menuBar.composer.preset.remove")
+        }
+        /// `menuBar.composer.preset.save` — Save as preset…
+        public static var composerPresetSave: String {
+            L10n.string("menuBar.composer.preset.save")
+        }
+        /// `menuBar.composer.preset.saveConfirm` — Save
+        public static var composerPresetSaveConfirm: String {
+            L10n.string("menuBar.composer.preset.saveConfirm")
+        }
+        /// `menuBar.composer.preset.saveTitle` — Save this group
+        public static var composerPresetSaveTitle: String {
+            L10n.string("menuBar.composer.preset.saveTitle")
+        }
+        /// `menuBar.composer.presets` — Saved groups
+        public static var composerPresets: String {
+            L10n.string("menuBar.composer.presets")
+        }
         /// `menuBar.composer.preview` — Preview
         public static var composerPreview: String {
             L10n.string("menuBar.composer.preview")
@@ -805,6 +933,10 @@ extension L10n {
         public static var composerResetFormatWeekdayTime: String {
             L10n.string("menuBar.composer.resetFormat.weekdayTime")
         }
+        /// `menuBar.composer.row.empty` — Empty row — drag a block in.
+        public static var composerRowEmpty: String {
+            L10n.string("menuBar.composer.row.empty")
+        }
         /// `menuBar.composer.rule.always` — Always
         public static var composerRuleAlways: String {
             L10n.string("menuBar.composer.rule.always")
@@ -840,6 +972,14 @@ extension L10n {
         /// `menuBar.composer.space.detail` — A gap one space wide. Size changes how wide.
         public static var composerSpaceDetail: String {
             L10n.string("menuBar.composer.space.detail")
+        }
+        /// `menuBar.composer.space.width` — Width
+        public static var composerSpaceWidth: String {
+            L10n.string("menuBar.composer.space.width")
+        }
+        /// `menuBar.composer.space.widthValue` — {count, plural, one {1 space} other {# spaces}}
+        public static func composerSpaceWidthValue(count: Int) -> String {
+            L10n.string("menuBar.composer.space.widthValue", count)
         }
         /// `menuBar.composer.startOver` — Start over from the current strip…
         public static var composerStartOver: String {
@@ -2224,6 +2364,14 @@ extension L10n {
         /// `quota.perModelLimits` — {count, plural, one {1 per-model limit} other {# per-model limits}} · open {provider} for details
         public static func perModelLimits(count: Int, provider: String) -> String {
             L10n.string("quota.perModelLimits", count, provider)
+        }
+        /// `quota.reset.in` — resets in {duration}
+        public static func resetIn(duration: String) -> String {
+            L10n.string("quota.reset.in", duration)
+        }
+        /// `quota.reset.passed` — reset passed
+        public static var resetPassed: String {
+            L10n.string("quota.reset.passed")
         }
         /// `quota.reset.passedAt` — reset passed · {time}
         public static func resetPassedAt(time: String) -> String {
@@ -6163,6 +6311,20 @@ extension L10n {
         "common.clear",
         "common.copied",
         "common.copy",
+        "common.date.month.1",
+        "common.date.month.10",
+        "common.date.month.11",
+        "common.date.month.12",
+        "common.date.month.2",
+        "common.date.month.3",
+        "common.date.month.4",
+        "common.date.month.5",
+        "common.date.month.6",
+        "common.date.month.7",
+        "common.date.month.8",
+        "common.date.month.9",
+        "common.date.monthDayTime",
+        "common.date.monthDayYearTime",
         "common.delete",
         "common.dismiss",
         "common.done",
@@ -6321,6 +6483,17 @@ extension L10n {
         "menuBar.composer.field.size",
         "menuBar.composer.field.verdicts",
         "menuBar.composer.field.weight",
+        "menuBar.composer.group.add",
+        "menuBar.composer.group.addHelp",
+        "menuBar.composer.group.addRow",
+        "menuBar.composer.group.empty",
+        "menuBar.composer.group.mergeLeft",
+        "menuBar.composer.group.moveLeft",
+        "menuBar.composer.group.moveRight",
+        "menuBar.composer.group.remove",
+        "menuBar.composer.group.removeRow",
+        "menuBar.composer.group.splitHere",
+        "menuBar.composer.group.title",
         "menuBar.composer.metric.displayPercent",
         "menuBar.composer.metric.forecastPercent",
         "menuBar.composer.metric.label",
@@ -6339,6 +6512,13 @@ extension L10n {
         "menuBar.composer.newRow.detail",
         "menuBar.composer.newRow.help",
         "menuBar.composer.palette",
+        "menuBar.composer.preset.insertHelp",
+        "menuBar.composer.preset.name",
+        "menuBar.composer.preset.remove",
+        "menuBar.composer.preset.save",
+        "menuBar.composer.preset.saveConfirm",
+        "menuBar.composer.preset.saveTitle",
+        "menuBar.composer.presets",
         "menuBar.composer.preview",
         "menuBar.composer.preview.dark",
         "menuBar.composer.preview.empty",
@@ -6352,6 +6532,7 @@ extension L10n {
         "menuBar.composer.resetFormat.time",
         "menuBar.composer.resetFormat.weekdayDateTime",
         "menuBar.composer.resetFormat.weekdayTime",
+        "menuBar.composer.row.empty",
         "menuBar.composer.rule.always",
         "menuBar.composer.rule.whenForecast",
         "menuBar.composer.rule.whenRemainingAtMost",
@@ -6361,6 +6542,8 @@ extension L10n {
         "menuBar.composer.size.regular",
         "menuBar.composer.size.small",
         "menuBar.composer.space.detail",
+        "menuBar.composer.space.width",
+        "menuBar.composer.space.widthValue",
         "menuBar.composer.startOver",
         "menuBar.composer.startOver.confirm",
         "menuBar.composer.startOver.confirmMessage",
@@ -6704,6 +6887,8 @@ extension L10n {
         "quota.pace.runsOutIn",
         "quota.pace.runsOutShort",
         "quota.perModelLimits",
+        "quota.reset.in",
+        "quota.reset.passed",
         "quota.reset.passedAt",
         "quota.resetCredits.available",
         "quota.resetCredits.availableWithExpiry",
@@ -7693,6 +7878,7 @@ extension L10n {
         "common.updated.daysAgo",
         "common.updated.hoursAgo",
         "common.updated.minutesAgo",
+        "menuBar.composer.space.widthValue",
         "quota.forecast.metric.comparableCycles",
         "quota.forecast.metric.recentIntervals",
         "quota.history.curveCount",

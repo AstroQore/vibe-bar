@@ -20,6 +20,48 @@
   "common.copy": {
     "value": "复制"
   },
+  "common.date.month.1": {
+    "value": "1月"
+  },
+  "common.date.month.10": {
+    "value": "10月"
+  },
+  "common.date.month.11": {
+    "value": "11月"
+  },
+  "common.date.month.12": {
+    "value": "12月"
+  },
+  "common.date.month.2": {
+    "value": "2月"
+  },
+  "common.date.month.3": {
+    "value": "3月"
+  },
+  "common.date.month.4": {
+    "value": "4月"
+  },
+  "common.date.month.5": {
+    "value": "5月"
+  },
+  "common.date.month.6": {
+    "value": "6月"
+  },
+  "common.date.month.7": {
+    "value": "7月"
+  },
+  "common.date.month.8": {
+    "value": "8月"
+  },
+  "common.date.month.9": {
+    "value": "9月"
+  },
+  "common.date.monthDayTime": {
+    "value": "{month}{day}日 {time}"
+  },
+  "common.date.monthDayYearTime": {
+    "value": "{year}年{month}{day}日 {time}"
+  },
   "common.delete": {
     "value": "删除"
   },
@@ -494,6 +536,39 @@
   "menuBar.composer.field.weight": {
     "value": "字重"
   },
+  "menuBar.composer.group.add": {
+    "value": "新建分组"
+  },
+  "menuBar.composer.group.addHelp": {
+    "value": "每个分组是条带中的一列。为分组添加第二行可让该列上下堆叠。"
+  },
+  "menuBar.composer.group.addRow": {
+    "value": "添加第二行"
+  },
+  "menuBar.composer.group.empty": {
+    "value": "空分组，可将积木拖入。"
+  },
+  "menuBar.composer.group.mergeLeft": {
+    "value": "并入前一个分组"
+  },
+  "menuBar.composer.group.moveLeft": {
+    "value": "向左移动"
+  },
+  "menuBar.composer.group.moveRight": {
+    "value": "向右移动"
+  },
+  "menuBar.composer.group.remove": {
+    "value": "删除分组及其积木"
+  },
+  "menuBar.composer.group.removeRow": {
+    "value": "将第二行并入第一行"
+  },
+  "menuBar.composer.group.splitHere": {
+    "value": "从此处开始新分组"
+  },
+  "menuBar.composer.group.title": {
+    "value": "分组 {index}"
+  },
   "menuBar.composer.metric.displayPercent": {
     "value": "百分比（跟随设置）"
   },
@@ -548,6 +623,27 @@
   "menuBar.composer.palette": {
     "value": "添加积木"
   },
+  "menuBar.composer.preset.insertHelp": {
+    "value": "在条带末尾插入该分组。"
+  },
+  "menuBar.composer.preset.name": {
+    "value": "名称"
+  },
+  "menuBar.composer.preset.remove": {
+    "value": "删除预设"
+  },
+  "menuBar.composer.preset.save": {
+    "value": "存为预设…"
+  },
+  "menuBar.composer.preset.saveConfirm": {
+    "value": "保存"
+  },
+  "menuBar.composer.preset.saveTitle": {
+    "value": "保存该分组"
+  },
+  "menuBar.composer.presets": {
+    "value": "已存分组"
+  },
   "menuBar.composer.preview": {
     "value": "预览"
   },
@@ -587,6 +683,9 @@
   "menuBar.composer.resetFormat.weekdayTime": {
     "value": "星期与时间"
   },
+  "menuBar.composer.row.empty": {
+    "value": "空行，可将积木拖入。"
+  },
   "menuBar.composer.rule.always": {
     "value": "始终显示"
   },
@@ -613,6 +712,12 @@
   },
   "menuBar.composer.space.detail": {
     "value": "宽度为一个空格的间隔。字号决定其宽度。"
+  },
+  "menuBar.composer.space.width": {
+    "value": "宽度"
+  },
+  "menuBar.composer.space.widthValue": {
+    "value": "{count, plural, other {# 个空格}}"
   },
   "menuBar.composer.startOver": {
     "value": "从当前样式重新开始…"
@@ -1642,6 +1747,12 @@
   },
   "quota.perModelLimits": {
     "value": "{count, plural, other {# 个}}按模型的限额 · 打开 {provider} 查看详情"
+  },
+  "quota.reset.in": {
+    "value": "距重置 {duration}"
+  },
+  "quota.reset.passed": {
+    "value": "重置时间已过"
   },
   "quota.reset.passedAt": {
     "value": "重置时间已过 · {time}"

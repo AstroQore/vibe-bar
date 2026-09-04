@@ -27,6 +27,68 @@
     "comment": "Button that copies the adjacent value to the clipboard.",
     "value": "Copy"
   },
+  "common.date.month.1": {
+    "comment": "Abbreviated month name used inside an absolute reset time",
+    "value": "Jan"
+  },
+  "common.date.month.10": {
+    "comment": "Abbreviated month name",
+    "value": "Oct"
+  },
+  "common.date.month.11": {
+    "comment": "Abbreviated month name",
+    "value": "Nov"
+  },
+  "common.date.month.12": {
+    "comment": "Abbreviated month name",
+    "value": "Dec"
+  },
+  "common.date.month.2": {
+    "comment": "Abbreviated month name",
+    "value": "Feb"
+  },
+  "common.date.month.3": {
+    "comment": "Abbreviated month name",
+    "value": "Mar"
+  },
+  "common.date.month.4": {
+    "comment": "Abbreviated month name",
+    "value": "Apr"
+  },
+  "common.date.month.5": {
+    "comment": "Abbreviated month name",
+    "value": "May"
+  },
+  "common.date.month.6": {
+    "comment": "Abbreviated month name",
+    "value": "Jun"
+  },
+  "common.date.month.7": {
+    "comment": "Abbreviated month name",
+    "value": "Jul"
+  },
+  "common.date.month.8": {
+    "comment": "Abbreviated month name",
+    "value": "Aug"
+  },
+  "common.date.month.9": {
+    "comment": "Abbreviated month name",
+    "value": "Sep"
+  },
+  "common.date.monthDayTime": {
+    "args": {
+      "day": "int"
+    },
+    "comment": "Absolute time later this year: month name, day of month, HH:mm",
+    "value": "{month} {day}, {time}"
+  },
+  "common.date.monthDayYearTime": {
+    "args": {
+      "day": "int"
+    },
+    "comment": "Absolute time in another year: month name, day of month, year, HH:mm. The year is a string, not an int: an int is grouped by the locale and 2027 would read as 2,027.",
+    "value": "{month} {day}, {year}, {time}"
+  },
   "common.delete": {
     "comment": "Button that performs a deletion the user has already confirmed.",
     "value": "Delete"
@@ -717,6 +779,53 @@
     "comment": "Picker choosing a block's type weight.",
     "value": "Weight"
   },
+  "menuBar.composer.group.add": {
+    "comment": "Palette button adding an empty group to the strip.",
+    "value": "New group"
+  },
+  "menuBar.composer.group.addHelp": {
+    "comment": "Tooltip on the New group button.",
+    "value": "Each group is one column of the strip. Give a group a second row to stack that column."
+  },
+  "menuBar.composer.group.addRow": {
+    "comment": "Menu item giving a group a second row.",
+    "value": "Add a second row"
+  },
+  "menuBar.composer.group.empty": {
+    "comment": "Shown inside a group that has no blocks yet.",
+    "value": "Empty group — drag a block in."
+  },
+  "menuBar.composer.group.mergeLeft": {
+    "comment": "Menu action folding a group into the one before it.",
+    "value": "Merge into the group before it"
+  },
+  "menuBar.composer.group.moveLeft": {
+    "comment": "Menu action moving a group one place earlier.",
+    "value": "Move left"
+  },
+  "menuBar.composer.group.moveRight": {
+    "comment": "Menu action moving a group one place later.",
+    "value": "Move right"
+  },
+  "menuBar.composer.group.remove": {
+    "comment": "Menu action deleting a group and the blocks in it.",
+    "value": "Remove group and its blocks"
+  },
+  "menuBar.composer.group.removeRow": {
+    "comment": "Menu item closing a group's second row; its blocks join the end of the first.",
+    "value": "Merge the second row up"
+  },
+  "menuBar.composer.group.splitHere": {
+    "comment": "Button starting a new group at the selected block.",
+    "value": "Start a group here"
+  },
+  "menuBar.composer.group.title": {
+    "args": {
+      "index": "int"
+    },
+    "comment": "Header over one group of blocks. Index counts from 1.",
+    "value": "Group {index}"
+  },
   "menuBar.composer.metric.displayPercent": {
     "comment": "Quota metric: whichever percentage the app-wide Used/Remaining setting selects.",
     "value": "Percent (follows setting)"
@@ -789,6 +898,34 @@
     "comment": "Caption over the list of blocks that can be added.",
     "value": "Add a block"
   },
+  "menuBar.composer.preset.insertHelp": {
+    "comment": "Tooltip on a saved group.",
+    "value": "Insert this group at the end of the strip."
+  },
+  "menuBar.composer.preset.name": {
+    "comment": "Text field for the name of a saved group.",
+    "value": "Name"
+  },
+  "menuBar.composer.preset.remove": {
+    "comment": "Menu action deleting a saved group.",
+    "value": "Remove preset"
+  },
+  "menuBar.composer.preset.save": {
+    "comment": "Menu action saving a group to use again.",
+    "value": "Save as preset…"
+  },
+  "menuBar.composer.preset.saveConfirm": {
+    "comment": "Button confirming the name of a saved group.",
+    "value": "Save"
+  },
+  "menuBar.composer.preset.saveTitle": {
+    "comment": "Title of the dialog naming a saved group.",
+    "value": "Save this group"
+  },
+  "menuBar.composer.presets": {
+    "comment": "Caption over the saved groups that can be inserted.",
+    "value": "Saved groups"
+  },
   "menuBar.composer.preview": {
     "comment": "Caption over the live preview of the composed strip.",
     "value": "Preview"
@@ -841,6 +978,10 @@
     "comment": "Reset-time format showing the weekday and the time, e.g. Mon 12:01",
     "value": "Weekday and time"
   },
+  "menuBar.composer.row.empty": {
+    "comment": "Shown inside a group's second row while it holds no blocks.",
+    "value": "Empty row — drag a block in."
+  },
   "menuBar.composer.rule.always": {
     "comment": "Visibility rule: the block is always shown.",
     "value": "Always"
@@ -876,6 +1017,17 @@
   "menuBar.composer.space.detail": {
     "comment": "What a space block does.",
     "value": "A gap one space wide. Size changes how wide."
+  },
+  "menuBar.composer.space.width": {
+    "comment": "Stepper choosing how wide a space block is.",
+    "value": "Width"
+  },
+  "menuBar.composer.space.widthValue": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "How wide a space block is, in space characters.",
+    "value": "{count, plural, one {1 space} other {# spaces}}"
   },
   "menuBar.composer.startOver": {
     "comment": "Button rebuilding every block from the default strip.",
@@ -2437,6 +2589,14 @@
     },
     "comment": "Compact summary shown when per-model limits are collapsed; provider is a SubProvider name",
     "value": "{count, plural, one {1 per-model limit} other {# per-model limits}} · open {provider} for details"
+  },
+  "quota.reset.in": {
+    "comment": "Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time",
+    "value": "resets in {duration}"
+  },
+  "quota.reset.passed": {
+    "comment": "A bucket whose reset time is behind us and which has not refreshed",
+    "value": "reset passed"
   },
   "quota.reset.passedAt": {
     "comment": "Reset passed, with the absolute time it should have happened",

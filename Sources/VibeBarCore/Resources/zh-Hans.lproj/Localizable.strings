@@ -23,6 +23,48 @@
 /* Button that copies the adjacent value to the clipboard. */
 "common.copy" = "复制";
 
+/* Abbreviated month name used inside an absolute reset time */
+"common.date.month.1" = "1月";
+
+/* Abbreviated month name */
+"common.date.month.10" = "10月";
+
+/* Abbreviated month name */
+"common.date.month.11" = "11月";
+
+/* Abbreviated month name */
+"common.date.month.12" = "12月";
+
+/* Abbreviated month name */
+"common.date.month.2" = "2月";
+
+/* Abbreviated month name */
+"common.date.month.3" = "3月";
+
+/* Abbreviated month name */
+"common.date.month.4" = "4月";
+
+/* Abbreviated month name */
+"common.date.month.5" = "5月";
+
+/* Abbreviated month name */
+"common.date.month.6" = "6月";
+
+/* Abbreviated month name */
+"common.date.month.7" = "7月";
+
+/* Abbreviated month name */
+"common.date.month.8" = "8月";
+
+/* Abbreviated month name */
+"common.date.month.9" = "9月";
+
+/* Absolute time later this year: month name, day of month, HH:mm */
+"common.date.monthDayTime" = "%1$@%2$lld日 %3$@";
+
+/* Absolute time in another year: month name, day of month, year, HH:mm. The year is a string, not an int: an int is grouped by the locale and 2027 would read as 2,027. */
+"common.date.monthDayYearTime" = "%3$@年%1$@%2$lld日 %4$@";
+
 /* Button that performs a deletion the user has already confirmed. */
 "common.delete" = "删除";
 
@@ -479,6 +521,39 @@
 /* Picker choosing a block's type weight. */
 "menuBar.composer.field.weight" = "字重";
 
+/* Palette button adding an empty group to the strip. */
+"menuBar.composer.group.add" = "新建分组";
+
+/* Tooltip on the New group button. */
+"menuBar.composer.group.addHelp" = "每个分组是条带中的一列。为分组添加第二行可让该列上下堆叠。";
+
+/* Menu item giving a group a second row. */
+"menuBar.composer.group.addRow" = "添加第二行";
+
+/* Shown inside a group that has no blocks yet. */
+"menuBar.composer.group.empty" = "空分组，可将积木拖入。";
+
+/* Menu action folding a group into the one before it. */
+"menuBar.composer.group.mergeLeft" = "并入前一个分组";
+
+/* Menu action moving a group one place earlier. */
+"menuBar.composer.group.moveLeft" = "向左移动";
+
+/* Menu action moving a group one place later. */
+"menuBar.composer.group.moveRight" = "向右移动";
+
+/* Menu action deleting a group and the blocks in it. */
+"menuBar.composer.group.remove" = "删除分组及其积木";
+
+/* Menu item closing a group's second row; its blocks join the end of the first. */
+"menuBar.composer.group.removeRow" = "将第二行并入第一行";
+
+/* Button starting a new group at the selected block. */
+"menuBar.composer.group.splitHere" = "从此处开始新分组";
+
+/* Header over one group of blocks. Index counts from 1. */
+"menuBar.composer.group.title" = "分组 %1$lld";
+
 /* Quota metric: whichever percentage the app-wide Used/Remaining setting selects. */
 "menuBar.composer.metric.displayPercent" = "百分比（跟随设置）";
 
@@ -533,6 +608,27 @@
 /* Caption over the list of blocks that can be added. */
 "menuBar.composer.palette" = "添加积木";
 
+/* Tooltip on a saved group. */
+"menuBar.composer.preset.insertHelp" = "在条带末尾插入该分组。";
+
+/* Text field for the name of a saved group. */
+"menuBar.composer.preset.name" = "名称";
+
+/* Menu action deleting a saved group. */
+"menuBar.composer.preset.remove" = "删除预设";
+
+/* Menu action saving a group to use again. */
+"menuBar.composer.preset.save" = "存为预设…";
+
+/* Button confirming the name of a saved group. */
+"menuBar.composer.preset.saveConfirm" = "保存";
+
+/* Title of the dialog naming a saved group. */
+"menuBar.composer.preset.saveTitle" = "保存该分组";
+
+/* Caption over the saved groups that can be inserted. */
+"menuBar.composer.presets" = "已存分组";
+
 /* Caption over the live preview of the composed strip. */
 "menuBar.composer.preview" = "预览";
 
@@ -572,6 +668,9 @@
 /* Reset-time format showing the weekday and the time, e.g. Mon 12:01 */
 "menuBar.composer.resetFormat.weekdayTime" = "星期与时间";
 
+/* Shown inside a group's second row while it holds no blocks. */
+"menuBar.composer.row.empty" = "空行，可将积木拖入。";
+
 /* Visibility rule: the block is always shown. */
 "menuBar.composer.rule.always" = "始终显示";
 
@@ -598,6 +697,9 @@
 
 /* What a space block does. */
 "menuBar.composer.space.detail" = "宽度为一个空格的间隔。字号决定其宽度。";
+
+/* Stepper choosing how wide a space block is. */
+"menuBar.composer.space.width" = "宽度";
 
 /* Button rebuilding every block from the default strip. */
 "menuBar.composer.startOver" = "从当前样式重新开始…";
@@ -1609,6 +1711,12 @@
 
 /* Compact projection in the mini window: when the quota is estimated to be exhausted */
 "quota.pace.runsOutShort" = "%1$@耗尽";
+
+/* Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time */
+"quota.reset.in" = "距重置 %1$@";
+
+/* A bucket whose reset time is behind us and which has not refreshed */
+"quota.reset.passed" = "重置时间已过";
 
 /* Reset passed, with the absolute time it should have happened */
 "quota.reset.passedAt" = "重置时间已过 · %1$@";
