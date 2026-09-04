@@ -430,8 +430,8 @@ private struct OverviewSwitchIcon: View {
         // they aren't single-provider tabs.
         //
         // The strip labels L1 companies, so it draws L1 marks:
-        // `CompanyBrandIconView` gives Google AI and SpaceXAI their own
-        // rather than borrowing Gemini's spark and Grok's slash.
+        // `CompanyBrandIconView` gives Anthropic, Google AI and SpaceXAI
+        // their own rather than borrowing Claude's, Gemini's and Grok's.
         Group {
             switch page {
             case .overview:
@@ -444,9 +444,9 @@ private struct OverviewSwitchIcon: View {
                 Image(systemName: "server.rack")
                     .font(.system(size: Self.iconSize, weight: .medium))
             case .openAI:
-                ToolBrandIconView(tool: .codex, size: Self.iconSize)
+                CompanyBrandIconView(tool: .codex, size: Self.iconSize)
             case .claude:
-                ToolBrandIconView(tool: .claude, size: Self.iconSize)
+                CompanyBrandIconView(tool: .claude, size: Self.iconSize)
             case .googleAI:
                 CompanyBrandIconView(tool: .gemini, size: Self.iconSize)
             case .grok:
