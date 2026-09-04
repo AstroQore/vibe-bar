@@ -55,6 +55,7 @@ MIGRATED = [
     "Sources/VibeBarCore/Models/ServiceStatus.swift",
     "Sources/VibeBarCore/Models/ResetHistoryComparison.swift",
     "Sources/VibeBarCore/Utilities/ResetCountdownFormatter.swift",
+    "Sources/VibeBarCore/Utilities/ResetTimeFormat.swift",
     "Sources/VibeBarCore/Utilities/QuotaFreshnessLabel.swift",
     "Sources/VibeBarApp/Views/EmptyStateView.swift",
     "Sources/VibeBarApp/Views/CostSummaryRow.swift",

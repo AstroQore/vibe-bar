@@ -27,68 +27,6 @@
     "comment": "Button that copies the adjacent value to the clipboard.",
     "value": "Copy"
   },
-  "common.date.month.1": {
-    "comment": "Abbreviated month name used inside an absolute reset time",
-    "value": "Jan"
-  },
-  "common.date.month.10": {
-    "comment": "Abbreviated month name",
-    "value": "Oct"
-  },
-  "common.date.month.11": {
-    "comment": "Abbreviated month name",
-    "value": "Nov"
-  },
-  "common.date.month.12": {
-    "comment": "Abbreviated month name",
-    "value": "Dec"
-  },
-  "common.date.month.2": {
-    "comment": "Abbreviated month name",
-    "value": "Feb"
-  },
-  "common.date.month.3": {
-    "comment": "Abbreviated month name",
-    "value": "Mar"
-  },
-  "common.date.month.4": {
-    "comment": "Abbreviated month name",
-    "value": "Apr"
-  },
-  "common.date.month.5": {
-    "comment": "Abbreviated month name",
-    "value": "May"
-  },
-  "common.date.month.6": {
-    "comment": "Abbreviated month name",
-    "value": "Jun"
-  },
-  "common.date.month.7": {
-    "comment": "Abbreviated month name",
-    "value": "Jul"
-  },
-  "common.date.month.8": {
-    "comment": "Abbreviated month name",
-    "value": "Aug"
-  },
-  "common.date.month.9": {
-    "comment": "Abbreviated month name",
-    "value": "Sep"
-  },
-  "common.date.monthDayTime": {
-    "args": {
-      "day": "int"
-    },
-    "comment": "Absolute time later this year: month name, day of month, HH:mm",
-    "value": "{month} {day}, {time}"
-  },
-  "common.date.monthDayYearTime": {
-    "args": {
-      "day": "int"
-    },
-    "comment": "Absolute time in another year: month name, day of month, year, HH:mm. The year is a string, not an int: an int is grouped by the locale and 2027 would read as 2,027.",
-    "value": "{month} {day}, {year}, {time}"
-  },
   "common.delete": {
     "comment": "Button that performs a deletion the user has already confirmed.",
     "value": "Delete"
@@ -119,6 +57,43 @@
     },
     "comment": "Compact countdown, days and hours",
     "value": "{days}d {hours}h"
+  },
+  "common.duration.full.days": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 day} other {# days}}"
+  },
+  "common.duration.full.daysHours": {
+    "args": {
+      "days": "string",
+      "hours": "string"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{days} and {hours}"
+  },
+  "common.duration.full.hours": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 hour} other {# hours}}"
+  },
+  "common.duration.full.hoursMinutes": {
+    "args": {
+      "hours": "string",
+      "minutes": "string"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{hours} and {minutes}"
+  },
+  "common.duration.full.minutes": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 minute} other {# minutes}}"
   },
   "common.duration.hours": {
     "args": {
@@ -714,6 +689,14 @@
     "comment": "Picker choosing which provider's logo a block shows.",
     "value": "Provider"
   },
+  "menuBar.composer.field.resetFormat": {
+    "comment": "Label for the picker that chooses how a Resets at block prints its date and time",
+    "value": "Format"
+  },
+  "menuBar.composer.field.resetFormatHelp": {
+    "comment": "Tooltip on the reset-time format picker, explaining the Automatic option",
+    "value": "Automatic prints only the time while the reset is still today."
+  },
   "menuBar.composer.field.show": {
     "comment": "Picker choosing when a block is on screen.",
     "value": "Show"
@@ -833,6 +816,30 @@
   "menuBar.composer.removeTarget": {
     "comment": "Drop target that deletes the dragged block.",
     "value": "Drag here to remove"
+  },
+  "menuBar.composer.resetFormat.automatic": {
+    "comment": "Reset-time format: the time alone today, the weekday and date after that",
+    "value": "Automatic"
+  },
+  "menuBar.composer.resetFormat.date": {
+    "comment": "Reset-time format showing only the calendar date, e.g. Sep 7",
+    "value": "Date"
+  },
+  "menuBar.composer.resetFormat.dateTime": {
+    "comment": "Reset-time format showing the date and the time, e.g. Sep 7 at 12:01",
+    "value": "Date and time"
+  },
+  "menuBar.composer.resetFormat.time": {
+    "comment": "Reset-time format showing only the clock time, e.g. 12:01",
+    "value": "Time"
+  },
+  "menuBar.composer.resetFormat.weekdayDateTime": {
+    "comment": "Reset-time format showing the weekday, the date and the time, e.g. Mon, Sep 7 at 12:01",
+    "value": "Weekday, date and time"
+  },
+  "menuBar.composer.resetFormat.weekdayTime": {
+    "comment": "Reset-time format showing the weekday and the time, e.g. Mon 12:01",
+    "value": "Weekday and time"
   },
   "menuBar.composer.rule.always": {
     "comment": "Visibility rule: the block is always shown.",
@@ -2430,14 +2437,6 @@
     },
     "comment": "Compact summary shown when per-model limits are collapsed; provider is a SubProvider name",
     "value": "{count, plural, one {1 per-model limit} other {# per-model limits}} · open {provider} for details"
-  },
-  "quota.reset.in": {
-    "comment": "Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time",
-    "value": "resets in {duration}"
-  },
-  "quota.reset.passed": {
-    "comment": "A bucket whose reset time is behind us and which has not refreshed",
-    "value": "reset passed"
   },
   "quota.reset.passedAt": {
     "comment": "Reset passed, with the absolute time it should have happened",

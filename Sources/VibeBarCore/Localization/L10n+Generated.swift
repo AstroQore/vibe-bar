@@ -40,62 +40,6 @@ extension L10n {
         public static var copy: String {
             L10n.string("common.copy")
         }
-        /// `common.date.month.1` — Jan
-        public static var dateMonth1: String {
-            L10n.string("common.date.month.1")
-        }
-        /// `common.date.month.10` — Oct
-        public static var dateMonth10: String {
-            L10n.string("common.date.month.10")
-        }
-        /// `common.date.month.11` — Nov
-        public static var dateMonth11: String {
-            L10n.string("common.date.month.11")
-        }
-        /// `common.date.month.12` — Dec
-        public static var dateMonth12: String {
-            L10n.string("common.date.month.12")
-        }
-        /// `common.date.month.2` — Feb
-        public static var dateMonth2: String {
-            L10n.string("common.date.month.2")
-        }
-        /// `common.date.month.3` — Mar
-        public static var dateMonth3: String {
-            L10n.string("common.date.month.3")
-        }
-        /// `common.date.month.4` — Apr
-        public static var dateMonth4: String {
-            L10n.string("common.date.month.4")
-        }
-        /// `common.date.month.5` — May
-        public static var dateMonth5: String {
-            L10n.string("common.date.month.5")
-        }
-        /// `common.date.month.6` — Jun
-        public static var dateMonth6: String {
-            L10n.string("common.date.month.6")
-        }
-        /// `common.date.month.7` — Jul
-        public static var dateMonth7: String {
-            L10n.string("common.date.month.7")
-        }
-        /// `common.date.month.8` — Aug
-        public static var dateMonth8: String {
-            L10n.string("common.date.month.8")
-        }
-        /// `common.date.month.9` — Sep
-        public static var dateMonth9: String {
-            L10n.string("common.date.month.9")
-        }
-        /// `common.date.monthDayTime` — {month} {day}, {time}
-        public static func dateMonthDayTime(month: String, day: Int, time: String) -> String {
-            L10n.string("common.date.monthDayTime", month, day, time)
-        }
-        /// `common.date.monthDayYearTime` — {month} {day}, {year}, {time}
-        public static func dateMonthDayYearTime(month: String, day: Int, year: String, time: String) -> String {
-            L10n.string("common.date.monthDayYearTime", month, day, year, time)
-        }
         /// `common.delete` — Delete
         public static var delete: String {
             L10n.string("common.delete")
@@ -119,6 +63,26 @@ extension L10n {
         /// `common.duration.daysHours` — {days}d {hours}h
         public static func durationDaysHours(days: Int, hours: Int) -> String {
             L10n.string("common.duration.daysHours", days, hours)
+        }
+        /// `common.duration.full.days` — {count, plural, one {1 day} other {# days}}
+        public static func durationFullDays(count: Int) -> String {
+            L10n.string("common.duration.full.days", count)
+        }
+        /// `common.duration.full.daysHours` — {days} and {hours}
+        public static func durationFullDaysHours(days: String, hours: String) -> String {
+            L10n.string("common.duration.full.daysHours", days, hours)
+        }
+        /// `common.duration.full.hours` — {count, plural, one {1 hour} other {# hours}}
+        public static func durationFullHours(count: Int) -> String {
+            L10n.string("common.duration.full.hours", count)
+        }
+        /// `common.duration.full.hoursMinutes` — {hours} and {minutes}
+        public static func durationFullHoursMinutes(hours: String, minutes: String) -> String {
+            L10n.string("common.duration.full.hoursMinutes", hours, minutes)
+        }
+        /// `common.duration.full.minutes` — {count, plural, one {1 minute} other {# minutes}}
+        public static func durationFullMinutes(count: Int) -> String {
+            L10n.string("common.duration.full.minutes", count)
         }
         /// `common.duration.hours` — {hours}h
         public static func durationHours(hours: Int) -> String {
@@ -689,6 +653,14 @@ extension L10n {
         public static var composerFieldProvider: String {
             L10n.string("menuBar.composer.field.provider")
         }
+        /// `menuBar.composer.field.resetFormat` — Format
+        public static var composerFieldResetFormat: String {
+            L10n.string("menuBar.composer.field.resetFormat")
+        }
+        /// `menuBar.composer.field.resetFormatHelp` — Automatic prints only the time while the reset is still today.
+        public static var composerFieldResetFormatHelp: String {
+            L10n.string("menuBar.composer.field.resetFormatHelp")
+        }
         /// `menuBar.composer.field.show` — Show
         public static var composerFieldShow: String {
             L10n.string("menuBar.composer.field.show")
@@ -808,6 +780,30 @@ extension L10n {
         /// `menuBar.composer.removeTarget` — Drag here to remove
         public static var composerRemoveTarget: String {
             L10n.string("menuBar.composer.removeTarget")
+        }
+        /// `menuBar.composer.resetFormat.automatic` — Automatic
+        public static var composerResetFormatAutomatic: String {
+            L10n.string("menuBar.composer.resetFormat.automatic")
+        }
+        /// `menuBar.composer.resetFormat.date` — Date
+        public static var composerResetFormatDate: String {
+            L10n.string("menuBar.composer.resetFormat.date")
+        }
+        /// `menuBar.composer.resetFormat.dateTime` — Date and time
+        public static var composerResetFormatDateTime: String {
+            L10n.string("menuBar.composer.resetFormat.dateTime")
+        }
+        /// `menuBar.composer.resetFormat.time` — Time
+        public static var composerResetFormatTime: String {
+            L10n.string("menuBar.composer.resetFormat.time")
+        }
+        /// `menuBar.composer.resetFormat.weekdayDateTime` — Weekday, date and time
+        public static var composerResetFormatWeekdayDateTime: String {
+            L10n.string("menuBar.composer.resetFormat.weekdayDateTime")
+        }
+        /// `menuBar.composer.resetFormat.weekdayTime` — Weekday and time
+        public static var composerResetFormatWeekdayTime: String {
+            L10n.string("menuBar.composer.resetFormat.weekdayTime")
         }
         /// `menuBar.composer.rule.always` — Always
         public static var composerRuleAlways: String {
@@ -2228,14 +2224,6 @@ extension L10n {
         /// `quota.perModelLimits` — {count, plural, one {1 per-model limit} other {# per-model limits}} · open {provider} for details
         public static func perModelLimits(count: Int, provider: String) -> String {
             L10n.string("quota.perModelLimits", count, provider)
-        }
-        /// `quota.reset.in` — resets in {duration}
-        public static func resetIn(duration: String) -> String {
-            L10n.string("quota.reset.in", duration)
-        }
-        /// `quota.reset.passed` — reset passed
-        public static var resetPassed: String {
-            L10n.string("quota.reset.passed")
         }
         /// `quota.reset.passedAt` — reset passed · {time}
         public static func resetPassedAt(time: String) -> String {
@@ -6175,26 +6163,17 @@ extension L10n {
         "common.clear",
         "common.copied",
         "common.copy",
-        "common.date.month.1",
-        "common.date.month.10",
-        "common.date.month.11",
-        "common.date.month.12",
-        "common.date.month.2",
-        "common.date.month.3",
-        "common.date.month.4",
-        "common.date.month.5",
-        "common.date.month.6",
-        "common.date.month.7",
-        "common.date.month.8",
-        "common.date.month.9",
-        "common.date.monthDayTime",
-        "common.date.monthDayYearTime",
         "common.delete",
         "common.dismiss",
         "common.done",
         "common.dragToReorder",
         "common.duration.days",
         "common.duration.daysHours",
+        "common.duration.full.days",
+        "common.duration.full.daysHours",
+        "common.duration.full.hours",
+        "common.duration.full.hoursMinutes",
+        "common.duration.full.minutes",
         "common.duration.hours",
         "common.duration.hoursMinutes",
         "common.duration.lessThanMinute",
@@ -6335,6 +6314,8 @@ extension L10n {
         "menuBar.composer.field.monospacedDigitsHelp",
         "menuBar.composer.field.offlineOption",
         "menuBar.composer.field.provider",
+        "menuBar.composer.field.resetFormat",
+        "menuBar.composer.field.resetFormatHelp",
         "menuBar.composer.field.show",
         "menuBar.composer.field.shows",
         "menuBar.composer.field.size",
@@ -6365,6 +6346,12 @@ extension L10n {
         "menuBar.composer.preview.light",
         "menuBar.composer.preview.twoRowScaling",
         "menuBar.composer.removeTarget",
+        "menuBar.composer.resetFormat.automatic",
+        "menuBar.composer.resetFormat.date",
+        "menuBar.composer.resetFormat.dateTime",
+        "menuBar.composer.resetFormat.time",
+        "menuBar.composer.resetFormat.weekdayDateTime",
+        "menuBar.composer.resetFormat.weekdayTime",
         "menuBar.composer.rule.always",
         "menuBar.composer.rule.whenForecast",
         "menuBar.composer.rule.whenRemainingAtMost",
@@ -6717,8 +6704,6 @@ extension L10n {
         "quota.pace.runsOutIn",
         "quota.pace.runsOutShort",
         "quota.perModelLimits",
-        "quota.reset.in",
-        "quota.reset.passed",
         "quota.reset.passedAt",
         "quota.resetCredits.available",
         "quota.resetCredits.availableWithExpiry",
@@ -7702,6 +7687,9 @@ extension L10n {
     /// Keys whose value is a plural and therefore lives in the
     /// `.stringsdict` rather than the `.strings` file.
     static let pluralKeys: [String] = [
+        "common.duration.full.days",
+        "common.duration.full.hours",
+        "common.duration.full.minutes",
         "common.updated.daysAgo",
         "common.updated.hoursAgo",
         "common.updated.minutesAgo",
