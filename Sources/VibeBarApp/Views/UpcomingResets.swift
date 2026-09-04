@@ -184,7 +184,7 @@ struct ResetLaneView: View {
                 countdown: ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—",
                 // Same renderer as every other absolute reset time in the app,
                 // so the date reads as a date in whichever language is on.
-                absolute: ResetCountdownFormatter.absoluteTime(for: event.resetAt, now: now) ?? "—"
+                absolute: ResetCountdownFormatter.absoluteTime(for: event.resetAt, now: now)
             ))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)

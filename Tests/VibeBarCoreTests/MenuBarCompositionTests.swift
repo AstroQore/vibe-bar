@@ -67,6 +67,36 @@ final class MenuBarCompositionTests: XCTestCase {
         )
     }
 
+    /// A one-group strip whose column stacks. What a `.lineBreak` in the
+    /// middle of a flat list used to describe, said in the model that
+    /// replaced it.
+    private func stacked(
+        top: [MenuBarToken],
+        bottom: [MenuBarToken],
+        template: MenuBarComposition.Template = .roomy
+    ) -> MenuBarComposition {
+        MenuBarComposition(
+            isEnabled: true,
+            template: template,
+            segments: [MenuBarSegment(top: top, bottom: bottom)]
+        )
+    }
+
+    private func planStacked(
+        top: [MenuBarToken],
+        bottom: [MenuBarToken],
+        quotas: [MenuBarQuotaSnapshot],
+        displayMode: DisplayMode = .used,
+        colorBasis: MenuBarColorBasis = .actual
+    ) -> MenuBarRenderPlan {
+        stacked(top: top, bottom: bottom).plan(
+            quotas: quotas,
+            displayMode: displayMode,
+            colorBasis: colorBasis,
+            now: reference
+        )
+    }
+
     private func texts(_ plan: MenuBarRenderPlan) -> [[String]] {
         plan.rows.map { $0.tokens.compactMap(\.text) }
     }
@@ -106,7 +136,13 @@ final class MenuBarCompositionTests: XCTestCase {
             windowSeconds: 3600
         )
         XCTAssertEqual(
-            MenuBarComposition.value(of: .pace, in: snapshot, displayMode: .used, now: reference),
+            MenuBarComposition.value(
+                of: .pace,
+                in: snapshot,
+                displayMode: .used,
+                resetFormat: .default,
+                now: reference
+            ),
             "±0%"
         )
         XCTAssertEqual(
@@ -114,6 +150,7 @@ final class MenuBarCompositionTests: XCTestCase {
                 of: .pace,
                 in: snapshot,
                 displayMode: .used,
+                resetFormat: .default,
                 now: reference.addingTimeInterval(900)
             ),
             "-25%"
@@ -147,10 +184,54 @@ final class MenuBarCompositionTests: XCTestCase {
         // `resetAt` is the local wall time, so derive the expectation from the
         // same calendar the formatter uses rather than hard-coding a zone.
         let parts = Calendar.current.dateComponents([.hour, .minute], from: resetAt)
+        let wallTime = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        // Default is `.automatic`, and this reset is still today, so the block
+        // prints the bare time — the same width it printed before weekdays
+        // existed.
+        XCTAssertEqual(metric(.resetAt, quota(resetAt: resetAt)), wallTime)
+        XCTAssertEqual(metric(.resetAt, quota(resetAt: resetAt), format: .time), wallTime)
+    }
+
+    /// The per-block format is read from the block's own style, so two blocks
+    /// on the same quota can print the same reset differently.
+    func testTheResetAtBlockPrintsTheFormatItsOwnStyleAsksFor() {
+        let resetAt = reference.addingTimeInterval(3600 * 30)
+        let snapshot = quota(resetAt: resetAt)
+        let weekday = AppLocale.string(resetAt, template: "EEE")
+
+        XCTAssertEqual(metric(.resetAt, snapshot, format: .weekdayTime)?.contains(weekday), true)
+        XCTAssertEqual(metric(.resetAt, snapshot, format: .dateTime)?.contains(weekday), false)
+        // Date only prints no clock time at all.
         XCTAssertEqual(
-            metric(.resetAt, quota(resetAt: resetAt)),
-            String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+            metric(.resetAt, snapshot, format: .date),
+            AppLocale.string(resetAt, template: "MMMd")
         )
+    }
+
+    func testAStyleFromANewerBuildKeepsItsBlockAndFallsBackToTheDefaultFormat() {
+        // A format this build has never heard of is a cosmetic unknown, not a
+        // reason to lose the block: the strip keeps the quota and prints it in
+        // the default shape. `Kind.metric` is the opposite call on purpose —
+        // an unknown *metric* would silently show the wrong number.
+        let json = """
+        {"id":"\(UUID().uuidString)",
+         "kind":{"type":"quota","fieldId":"claude.weekly","metric":"resetAt"},
+         "style":{"color":{"type":"primary"},"size":"regular","weight":"medium",
+                  "monospacedDigits":false,"resetFormat":"stardate"}}
+        """
+        let token = try? JSONDecoder().decode(MenuBarToken.self, from: Data(json.utf8))
+        XCTAssertEqual(token?.kind, .quota(fieldId: "claude.weekly", metric: .resetAt))
+        XCTAssertEqual(token?.style.resetFormat, .default)
+    }
+
+    func testAResetFormatSurvivesASettingsRoundTrip() {
+        let token = MenuBarToken(
+            kind: .quota(fieldId: "claude.weekly", metric: .resetAt),
+            style: MenuBarToken.Style(resetFormat: .weekdayDateTime)
+        )
+        let data = try? JSONEncoder().encode(token)
+        let restored = data.flatMap { try? JSONDecoder().decode(MenuBarToken.self, from: $0) }
+        XCTAssertEqual(restored?.style.resetFormat, .weekdayDateTime)
     }
 
     func testLabelMetricPrintsTheQuotasOwnName() {
@@ -158,11 +239,16 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertNil(metric(.label, quota(label: "   ")))
     }
 
-    private func metric(_ metric: MenuBarQuotaMetric, _ snapshot: MenuBarQuotaSnapshot) -> String? {
+    private func metric(
+        _ metric: MenuBarQuotaMetric,
+        _ snapshot: MenuBarQuotaSnapshot,
+        format: ResetTimeFormat = .default
+    ) -> String? {
         MenuBarComposition.value(
             of: metric,
             in: snapshot,
             displayMode: .remaining,
+            resetFormat: format,
             now: reference
         )
     }
@@ -236,33 +322,20 @@ final class MenuBarCompositionTests: XCTestCase {
 
     // MARK: - Plan
 
-    func testRowsSplitOnLineBreak() {
-        let rendered = plan(
-            [
-                MenuBarToken(kind: .text("top")),
-                MenuBarToken(kind: .lineBreak),
-                MenuBarToken(kind: .text("bottom"))
-            ],
-            quotas: []
-        )
-        XCTAssertEqual(texts(rendered), [["top"], ["bottom"]])
-    }
-
-    func testAThirdRowFoldsBackIntoTheSecond() {
-        // The status item cannot draw a third band; its blocks stay visible on
-        // the second row rather than disappearing.
-        let rendered = plan(
-            [
-                MenuBarToken(kind: .text("one")),
-                MenuBarToken(kind: .lineBreak),
-                MenuBarToken(kind: .text("two")),
-                MenuBarToken(kind: .lineBreak),
-                MenuBarToken(kind: .text("three"))
-            ],
+    func testAStackedGroupDrawsOneRowPerContainer() {
+        let rendered = planStacked(
+            top: [MenuBarToken(kind: .text("top"))],
+            bottom: [MenuBarToken(kind: .text("bottom"))],
             quotas: []
         )
         XCTAssertEqual(rendered.rows.count, MenuBarComposition.maximumRows)
-        XCTAssertEqual(texts(rendered), [["one"], ["two", "three"]])
+        XCTAssertEqual(texts(rendered), [["top"], ["bottom"]])
+    }
+
+    func testAGroupWithNoSecondRowDrawsOne() {
+        let rendered = plan([MenuBarToken(kind: .text("only"))], quotas: [])
+        XCTAssertEqual(texts(rendered), [["only"]])
+        XCTAssertNil(rendered.columns.first?.bottom)
     }
 
     func testAnUnavailableQuotaDropsOnlyItsOwnBlock() {
@@ -465,13 +538,14 @@ final class MenuBarCompositionTests: XCTestCase {
     // MARK: - Spoken description
 
     func testTheStripIsDescribedInWordsNotInTheDrawnShorthand() {
-        let rendered = plan(
-            [
+        let rendered = planStacked(
+            top: [
                 MenuBarToken(kind: .logo(.claude)),
                 MenuBarToken(kind: .quota(fieldId: "claude.five_hour", metric: .displayPercent)),
                 MenuBarToken(kind: .separator("/"), style: .divider),
-                MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .resetsIn)),
-                MenuBarToken(kind: .lineBreak),
+                MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .resetsIn))
+            ],
+            bottom: [
                 MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .forecastPercent))
             ],
             quotas: [
@@ -569,9 +643,9 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertTrue(seeded.tokens.contains { $0.kind == .text("C5") })
     }
 
-    func testTwoColumnTemplateSeedsALineBreak() {
+    func testTwoColumnTemplateSeedsASecondRow() {
         let seeded = MenuBarComposition.seeded(template: .twoColumn, from: fieldItem())
-        XCTAssertTrue(seeded.tokens.contains { $0.kind == .lineBreak })
+        XCTAssertTrue(seeded.segments.contains(where: \.isStacked))
         let rendered = seeded.plan(
             quotas: [quota("claude.five_hour"), quota("claude.weekly", label: "Weekly")],
             displayMode: .used,
@@ -603,7 +677,7 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertFalse(seededKinds?.isEmpty ?? true)
 
         // The user edits their strip.
-        item.composition?.tokens.append(MenuBarToken(kind: .text("!")))
+        item.composition?.append(MenuBarToken(kind: .text("!")))
         let edited = item.composition?.tokens.map(\.kind)
 
         item.setComposedStripEnabled(false)
@@ -623,7 +697,7 @@ final class MenuBarCompositionTests: XCTestCase {
     func testReseedIsTheOnlyThingThatReplacesAStrip() {
         var item = fieldItem()
         item.setComposedStripEnabled(true)
-        item.composition?.tokens = [MenuBarToken(kind: .text("mine"))]
+        item.composition?.setSingleSegment([MenuBarToken(kind: .text("mine"))])
         item.reseedComposedStrip(template: .twoColumn)
         XCTAssertNotEqual(item.composition?.tokens.map(\.kind), [.text("mine")])
         XCTAssertEqual(item.composition?.template, .twoColumn)
@@ -641,14 +715,13 @@ final class MenuBarCompositionTests: XCTestCase {
         ])
     }
 
-    func testInsertClampsInsteadOfTrapping() {
+    func testAppendLandsAtTheEndOfTheStripInReadingOrder() {
         var composed = editable()
-        composed.insert(MenuBarToken(kind: .text("front")), at: -5)
-        composed.insert(MenuBarToken(kind: .text("back")), at: 999)
-        XCTAssertEqual(
-            composed.tokens.map(\.kind),
-            [.text("front"), .text("a"), .text("b"), .text("c"), .text("back")]
-        )
+        composed.addRow(toSegment: composed.segments[0].id)
+        composed.append(MenuBarToken(kind: .text("under")))
+        // The end of a stacked column is its lower cell, not the end of its
+        // upper one.
+        XCTAssertEqual(composed.segments[0].bottom?.map(\.kind), [.text("under")])
     }
 
     func testRemoveReportsWhetherItFoundAnything() {
@@ -672,18 +745,6 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertNil(composed.duplicate(UUID()))
     }
 
-    func testMoveIsStatedInTermsOfTheResultingList() {
-        var composed = editable()
-        let a = composed.tokens[0].id
-        composed.move(a, to: 2)
-        XCTAssertEqual(composed.tokens.map(\.kind), [.text("b"), .text("c"), .text("a")])
-        composed.move(a, to: 0)
-        XCTAssertEqual(composed.tokens.map(\.kind), [.text("a"), .text("b"), .text("c")])
-        // Out of range clamps to the ends rather than trapping.
-        composed.move(a, to: 99)
-        XCTAssertEqual(composed.tokens.last?.kind, .text("a"))
-    }
-
     func testMoveBeforeWorksInBothDragDirections() {
         var composed = editable()
         let a = composed.tokens[0].id
@@ -700,13 +761,28 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(composed.tokens.map(\.kind), [.text("c"), .text("b"), .text("a")])
     }
 
-    func testLineBreaksStopBeingOfferedAtTheRowCap() {
+    func testASecondRowIsOfferedOnceAndOpensEmpty() {
         var composed = composition([MenuBarToken(kind: .text("a"))])
-        XCTAssertTrue(composed.canAddLineBreak)
-        composed.append(MenuBarToken(kind: .lineBreak))
-        XCTAssertEqual(composed.lineBreakCount, 1)
-        // One break is two rows, which is all the status item can draw.
-        XCTAssertFalse(composed.canAddLineBreak)
+        let group = composed.segments[0].id
+        XCTAssertTrue(composed.canAddRow(toSegment: group))
+        XCTAssertTrue(composed.addRow(toSegment: group))
+        // Opened, not filled: the row is a place blocks are dragged into.
+        XCTAssertEqual(composed.segments[0].bottom, [])
+        // Two rows is all the status item can draw, and all the type can hold.
+        XCTAssertFalse(composed.canAddRow(toSegment: group))
+        XCTAssertFalse(composed.addRow(toSegment: group))
+    }
+
+    func testClosingARowKeepsItsBlocksOnTheRowAbove() {
+        var composed = stacked(
+            top: [MenuBarToken(kind: .text("a"))],
+            bottom: [MenuBarToken(kind: .text("b"))]
+        )
+        let group = composed.segments[0].id
+        XCTAssertTrue(composed.removeRow(fromSegment: group))
+        XCTAssertFalse(composed.segments[0].isStacked)
+        XCTAssertEqual(composed.segments[0].top.map(\.kind), [.text("a"), .text("b")])
+        XCTAssertFalse(composed.removeRow(fromSegment: group))
     }
 
     // MARK: - Availability
@@ -904,25 +980,37 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(seeded.tokens.map(\.kind), [.appIcon])
     }
 
-    func testTwoRowsSeedsTwoRowsSplitTheWayTheLayoutSplitsThem() {
+    func testTwoRowsSeedsOneGroupPerColumnTheWayTheLayoutPacksThem() {
+        // The two-row layout packs entries into two-cell columns. Before
+        // groups existed the seed had to flatten that into two long rows,
+        // which drew the same words in the same order but lost the pairing —
+        // nothing said `codex.weekly` sat under `codex.five_hour`. A group is
+        // a column now, so the seed says it.
         let seeded = MenuBarComposition.seeded(
             template: .matching(.twoRows),
             from: layoutItem(.twoRows)
         )
-        let rendered = seeded.plan(
-            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
-        )
-        XCTAssertEqual(rendered.rows.count, 2)
-        // The two-row layout packs entries into two-cell columns, so its top
-        // row reads entries 0, 2, … and its bottom row 1, 3, ….
-        let kinds = seeded.tokens.map(\.kind)
-        guard let breakIndex = kinds.firstIndex(of: .lineBreak) else {
-            return XCTFail("a two-row seed needs a row break")
+        XCTAssertEqual(seeded.segments.count, 2)
+        let paired = seeded.segments.map { segment -> [String?] in
+            [
+                segment.top.map(\.kind).compactMap(quotaFieldId).first,
+                segment.bottom?.map(\.kind).compactMap(quotaFieldId).first
+            ]
         }
-        let top = kinds[..<breakIndex].compactMap(quotaFieldId)
-        let bottom = kinds[(breakIndex + 1)...].compactMap(quotaFieldId)
-        XCTAssertEqual(top, ["codex.five_hour", "claude.five_hour"])
-        XCTAssertEqual(bottom, ["codex.weekly", "claude.weekly"])
+        XCTAssertEqual(paired, [
+            ["codex.five_hour", "codex.weekly"],
+            ["claude.five_hour", "claude.weekly"]
+        ])
+        // ...and the plan hands the rasterizer exactly those columns.
+        let rendered = seeded.plan(
+            quotas: ["codex.five_hour", "codex.weekly", "claude.five_hour", "claude.weekly"]
+                .map { quota($0) },
+            displayMode: .used,
+            colorBasis: .actual,
+            now: reference
+        )
+        XCTAssertEqual(rendered.columns.count, 2)
+        XCTAssertTrue(rendered.isTwoRow)
     }
 
     func testEverySeedUsesTheSameSeparatorRuleTheRendererDoes() {
@@ -939,7 +1027,7 @@ final class MenuBarCompositionTests: XCTestCase {
             )
             let separators = seeded.tokens.map(\.kind).filter {
                 if case .separator = $0 { return true }
-                return $0 == .space
+                return $0 == .space(width: 1)
             }
             let expected = MenuBarFieldStripRules.separator(for: layout)
             XCTAssertEqual(
@@ -963,7 +1051,7 @@ final class MenuBarCompositionTests: XCTestCase {
         ])
         composed.isEnabled = true
         composed.setTemplate(.twoColumn)
-        XCTAssertEqual(composed.lineBreakCount, 1, "Two rows must add a break")
+        XCTAssertEqual(composed.segments.filter(\.isStacked).count, 1, "Two rows must open a row")
         XCTAssertEqual(rowCount(composed), 2)
     }
 
@@ -973,24 +1061,29 @@ final class MenuBarCompositionTests: XCTestCase {
         var composed = composition([MenuBarToken(kind: .text("only"))])
         composed.isEnabled = true
         composed.setTemplate(.twoColumn)
-        XCTAssertEqual(composed.lineBreakCount, 0)
+        XCTAssertFalse(composed.segments.contains(where: \.isStacked))
     }
 
-    func testATwoRowTitleLeadsTheFirstRow() {
-        // A named exception, not a gap. The field renderer gives the title a
-        // column of its own that spans both rows; a composition is a linear
-        // list with row breaks and cannot express that. The title leads the
-        // first row instead, which keeps it on screen and first in reading
-        // order. If blocks ever gain a row span, this is the test that says
-        // to revisit the seed.
+    func testATwoRowTitleGetsAColumnOfItsOwn() {
+        // This used to be the seed's one named divergence: the field renderer
+        // gives the title a column with no second cell, which the rasterizer
+        // centres across both rows, and a flat list of blocks had no way to
+        // say that — so the title led the first row instead. A group with one
+        // row *is* that column, so the divergence is gone rather than
+        // documented.
         var item = layoutItem(.twoRows, fields: ["claude.five_hour", "claude.weekly"])
         item.showTitle = true
         let seeded = MenuBarComposition.seeded(template: .matching(.twoRows), from: item)
-        XCTAssertEqual(seeded.tokens.first?.kind, .text(item.kind.title))
-        let kinds = seeded.tokens.map(\.kind)
-        let breakIndex = kinds.firstIndex(of: .lineBreak)
-        XCTAssertNotNil(breakIndex, "a two-row seed needs a row break")
-        XCTAssertGreaterThan(breakIndex ?? 0, 0, "the title belongs above the break")
+        XCTAssertEqual(seeded.segments.first?.tokens.map(\.kind), [.text(item.kind.title)])
+        XCTAssertEqual(seeded.segments.first?.isStacked, false)
+        let rendered = seeded.plan(
+            quotas: ["claude.five_hour", "claude.weekly"].map { quota($0) },
+            displayMode: .used,
+            colorBasis: .actual,
+            now: reference
+        )
+        XCTAssertNil(rendered.columns.first?.bottom, "the title cell spans the height")
+        XCTAssertNotNil(rendered.columns.dropFirst().first?.bottom, "the entries still stack")
     }
 
     func testASeedNeverAppliesAStyleItsLayoutIgnores() {
@@ -1180,10 +1273,6 @@ final class MenuBarCompositionTests: XCTestCase {
         provisional.move(ids[0], before: ids[2])
         provisional.move(ids[0], before: ids[3])
 
-        var single = base
-        single.move(ids[0], to: 2)
-
-        XCTAssertEqual(provisional.tokens.map(\.kind), single.tokens.map(\.kind))
         XCTAssertEqual(
             provisional.tokens.map(\.kind),
             [.text("b"), .text("c"), .text("a"), .text("d")]
@@ -1191,7 +1280,7 @@ final class MenuBarCompositionTests: XCTestCase {
         // The committed value is the provisional one — one assignment, not one
         // per crossing.
         var committed = base
-        committed.tokens = provisional.tokens
+        committed.segments = provisional.segments
         XCTAssertEqual(committed.tokens.map(\.id), provisional.tokens.map(\.id))
         // ...and the source of truth was never touched while the drag ran.
         XCTAssertEqual(base.tokens.map(\.kind), [.text("a"), .text("b"), .text("c"), .text("d")])
@@ -1313,11 +1402,10 @@ final class MenuBarCompositionTests: XCTestCase {
         )
         XCTAssertEqual(custom.spokenDescription, "Claude, 5 Hours 40% used")
 
-        // A row break between them means the label is heading its own row.
-        let split = plan(
-            [
-                MenuBarToken(kind: .text("5 Hours")),
-                MenuBarToken(kind: .lineBreak),
+        // A row boundary between them means the label is heading its own row.
+        let split = planStacked(
+            top: [MenuBarToken(kind: .text("5 Hours"))],
+            bottom: [
                 MenuBarToken(kind: .quota(fieldId: "claude.five_hour", metric: .displayPercent))
             ],
             quotas: quotas
@@ -1336,7 +1424,7 @@ final class MenuBarCompositionTests: XCTestCase {
         let spaced = plan(
             [
                 MenuBarToken(kind: .text("Weekly")),
-                MenuBarToken(kind: .space),
+                MenuBarToken(kind: .space(width: 1)),
                 MenuBarToken(kind: .separator(":")),
                 MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .displayPercent))
             ],
@@ -1369,89 +1457,6 @@ final class MenuBarCompositionTests: XCTestCase {
             quotas: []
         )
         XCTAssertEqual(rendered.spokenDescription, "5 Hours")
-    }
-
-    // MARK: - A row break obeys its own rule (review thread 1)
-
-    private func conditionalBreakTokens(percent: Double) -> [MenuBarToken] {
-        [
-            MenuBarToken(kind: .text("top")),
-            MenuBarToken(
-                kind: .lineBreak,
-                visibility: .whenUsedAtLeast(fieldId: "claude.weekly", percent: percent)
-            ),
-            MenuBarToken(kind: .text("bottom"))
-        ]
-    }
-
-    func testAConditionalRowBreakSplitsOnlyWhenItsRuleIsMet() {
-        // The point of a conditional break: one row normally, two when a quota
-        // goes critical. Evaluating visibility after handling the break made it
-        // split unconditionally.
-        let calm = [quota("claude.weekly", label: "Weekly", used: 40, display: 40)]
-        XCTAssertEqual(
-            texts(plan(conditionalBreakTokens(percent: 90), quotas: calm)),
-            [["top", "bottom"]]
-        )
-
-        let critical = [quota("claude.weekly", label: "Weekly", used: 95, display: 95)]
-        XCTAssertEqual(
-            texts(plan(conditionalBreakTokens(percent: 90), quotas: critical)),
-            [["top"], ["bottom"]]
-        )
-    }
-
-    func testAnUnconditionalRowBreakStillAlwaysSplits() {
-        let rendered = plan(
-            [
-                MenuBarToken(kind: .text("top")),
-                MenuBarToken(kind: .lineBreak),
-                MenuBarToken(kind: .text("bottom"))
-            ],
-            quotas: []
-        )
-        XCTAssertEqual(texts(rendered), [["top"], ["bottom"]])
-    }
-
-    func testARowBreakWhoseRuleCannotBeEvaluatedStillSplits() {
-        // Same contract as every other block: a rule the inputs cannot answer
-        // does not suppress. A strip that silently stopped splitting because a
-        // provider went quiet would look broken.
-        let rendered = plan(conditionalBreakTokens(percent: 90), quotas: [])
-        XCTAssertEqual(texts(rendered), [["top"], ["bottom"]])
-    }
-
-    func testAHiddenRowBreakDoesNotSpendTheRowBudget() {
-        // The cap is on rows actually opened, so a break that never fires must
-        // not use up the one split the status item can draw.
-        let calm = [quota("claude.weekly", label: "Weekly", used: 10, display: 10)]
-        let rendered = plan(
-            [
-                MenuBarToken(kind: .text("a")),
-                MenuBarToken(
-                    kind: .lineBreak,
-                    visibility: .whenUsedAtLeast(fieldId: "claude.weekly", percent: 90)
-                ),
-                MenuBarToken(kind: .text("b")),
-                MenuBarToken(kind: .lineBreak),
-                MenuBarToken(kind: .text("c"))
-            ],
-            quotas: calm
-        )
-        XCTAssertEqual(texts(rendered), [["a", "b"], ["c"]])
-    }
-
-    func testARowBreaksRuleIsPartOfWhatTheStripDependsOn() {
-        // The renderer resolves only the quotas `quotaRequirements` names, so a
-        // rule on a break has to be in there or it could never be evaluated.
-        let composed = composition([
-            MenuBarToken(
-                kind: .lineBreak,
-                visibility: .whenForecast(fieldId: "claude.weekly", verdicts: [.atRisk])
-            )
-        ])
-        XCTAssertEqual(composed.referencedFieldIds, ["claude.weekly"])
-        XCTAssertEqual(composed.quotaRequirements.first?.needsForecast, true)
     }
 
     // MARK: - A label is only silenced when its quota speaks (review thread 1)
@@ -1648,8 +1653,8 @@ final class MenuBarCompositionTests: XCTestCase {
 
         // The queued colour write, expressed as the field it owns.
         func edit(_ change: (inout MenuBarToken) -> Void) {
-            guard let index = composed.index(of: id) else { return XCTFail("token went missing") }
-            change(&composed.tokens[index])
+            guard composed.token(id) != nil else { return XCTFail("token went missing") }
+            composed.updateToken(id) { change(&$0) }
         }
         edit { $0.style.color = .hex("#ff0000") }
         // ...then the threshold, from a control that never saw the colour.
@@ -1676,10 +1681,10 @@ final class MenuBarCompositionTests: XCTestCase {
         ])
         let stale = composed.tokens[0]
 
-        composed.tokens[0].style.color = .hex("#ff0000")
+        composed.updateToken(stale.id) { $0.style.color = .hex("#ff0000") }
         var replacement = stale
         replacement.visibility = .whenUsedAtLeast(fieldId: "claude.weekly", percent: 40)
-        composed.tokens[0] = replacement
+        composed.updateToken(stale.id) { $0 = replacement }
 
         XCTAssertEqual(composed.tokens[0].style.color, .primary, "this is the regression")
     }
@@ -1903,7 +1908,7 @@ final class MenuBarCompositionTests: XCTestCase {
     func testChoosingTwoRowsActuallyProducesTwoRows() {
         // The picker's own description says "Two stacked rows in one status
         // item". Setting the enum alone left the strip single-row, because
-        // rows come from `.lineBreak` blocks and nothing had added one.
+        // nothing had opened a second row on any of its columns.
         var composed = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
         composed.isEnabled = true
         XCTAssertEqual(rowCount(composed), 1)
@@ -1914,14 +1919,16 @@ final class MenuBarCompositionTests: XCTestCase {
     }
 
     func testTheSplitTakesOverTheDividerRatherThanJoiningIt() {
-        // The break lands where the seed would put it, replacing the divider
-        // between the two entries instead of leaving a dangling one.
+        // The row boundary lands where the seed would put it, swallowing the
+        // divider between the two entries instead of leaving a dangling one.
         var composed = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
         composed.setTemplate(.twoColumn)
-        XCTAssertEqual(composed.tokens.map(\.kind), [
+        XCTAssertEqual(composed.segments.count, 1)
+        XCTAssertEqual(composed.segments[0].top.map(\.kind), [
             .quota(fieldId: "claude.five_hour", metric: .label),
-            .quota(fieldId: "claude.five_hour", metric: .displayPercent),
-            .lineBreak,
+            .quota(fieldId: "claude.five_hour", metric: .displayPercent)
+        ])
+        XCTAssertEqual(composed.segments[0].bottom?.map(\.kind), [
             .quota(fieldId: "claude.weekly", metric: .label),
             .quota(fieldId: "claude.weekly", metric: .displayPercent)
         ])
@@ -1933,10 +1940,10 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(rowCount(composed), 2)
 
         composed.setTemplate(.roomy)
-        XCTAssertEqual(composed.lineBreakCount, 0)
+        XCTAssertFalse(composed.segments.contains(where: \.isStacked))
         XCTAssertEqual(rowCount(composed), 1)
-        // The divider the break took over comes back, so the entries are still
-        // separated rather than run together.
+        // The divider the row boundary took over comes back, so the entries
+        // are still separated rather than run together.
         XCTAssertTrue(composed.tokens.contains { $0.kind == .separator("·") })
     }
 
@@ -1954,22 +1961,23 @@ final class MenuBarCompositionTests: XCTestCase {
         // the spacing to do the work rather than inserting punctuation.
         var composed = MenuBarComposition.seeded(template: .twoColumn, from: layoutItem(.twoRows))
         composed.setTemplate(.compact)
-        XCTAssertEqual(composed.lineBreakCount, 0)
+        XCTAssertFalse(composed.segments.contains(where: \.isStacked))
         XCTAssertFalse(composed.tokens.contains { $0.kind == .separator("·") })
-        XCTAssertFalse(composed.tokens.contains { $0.kind == .space })
+        XCTAssertFalse(composed.tokens.contains { $0.kind == .space(width: 1) })
     }
 
-    func testChoosingTwoRowsTwiceDoesNotAddASecondBreak() {
+    func testChoosingTwoRowsTwiceDoesNotSplitAgain() {
         var composed = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
         composed.setTemplate(.twoColumn)
+        let split = composed.segments
         composed.setTemplate(.twoColumn)
-        XCTAssertEqual(composed.lineBreakCount, 1)
+        XCTAssertEqual(composed.segments, split)
     }
 
     func testAStripWithNothingToSplitIsLeftAlone() {
         var composed = composition([MenuBarToken(kind: .text("only"))])
         composed.setTemplate(.twoColumn)
-        XCTAssertEqual(composed.lineBreakCount, 0)
+        XCTAssertFalse(composed.segments.contains(where: \.isStacked))
         XCTAssertEqual(composed.tokens.map(\.kind), [.text("only")])
         XCTAssertEqual(composed.template, .twoColumn)
     }
@@ -2052,7 +2060,7 @@ final class MenuBarCompositionTests: XCTestCase {
 
         func storedStrings() -> [String] {
             var seeded = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
-            seeded.tokens.append(contentsOf: MenuBarToken.paletteSamples())
+            for sample in MenuBarToken.paletteSamples() { seeded.append(sample) }
             return seeded.tokens.compactMap { token in
                 switch token.kind {
                 case let .text(value): return value
@@ -2303,9 +2311,10 @@ final class MenuBarCompositionTests: XCTestCase {
                 style: .init(color: .hex("#FF8000"), size: .small, weight: .regular, monospacedDigits: true),
                 visibility: .whenForecast(fieldId: "codex.weekly", verdicts: [.atRisk, .watch])
             ),
-            MenuBarToken(kind: .space),
-            MenuBarToken(kind: .separator(" · "), style: .divider),
-            MenuBarToken(kind: .lineBreak),
+            MenuBarToken(kind: .space(width: 1)),
+            MenuBarToken(kind: .separator(" · "), style: .divider)
+        ]
+        let underneath = [
             MenuBarToken(
                 kind: .quota(fieldId: "codex.five_hour", metric: .pace),
                 style: .init(color: .followsQuota(fieldId: "codex.five_hour", basis: .forecast)),
@@ -2315,7 +2324,7 @@ final class MenuBarCompositionTests: XCTestCase {
         let composed = MenuBarComposition(
             isEnabled: true,
             template: .twoColumn,
-            tokens: tokens,
+            segments: [MenuBarSegment(top: tokens, bottom: underneath)],
             fontScale: 1.1,
             tokenSpacing: 0.5
         )
@@ -2344,7 +2353,7 @@ final class MenuBarCompositionTests: XCTestCase {
         )
         var item = settings.menuBarItem(.compact)
         item.setComposedStripEnabled(true, template: .compact)
-        item.composition?.tokens.append(MenuBarToken(kind: .text("tail")))
+        item.composition?.append(MenuBarToken(kind: .text("tail")))
         settings.setMenuBarItem(item)
 
         let decoded = try JSONDecoder().decode(
@@ -2415,5 +2424,719 @@ final class MenuBarCompositionTests: XCTestCase {
         """
         let decoded = try JSONDecoder().decode(MenuBarComposition.self, from: Data(json.utf8))
         XCTAssertEqual(decoded.tokens[0].visibility, .always)
+    }
+
+    // MARK: - Groups
+
+    private func grouped(_ groups: [[MenuBarToken]]) -> MenuBarComposition {
+        columns(groups.map { MenuBarSegment(tokens: $0) })
+    }
+
+    private func columns(_ segments: [MenuBarSegment]) -> MenuBarComposition {
+        MenuBarComposition(isEnabled: true, template: .twoColumn, segments: segments)
+    }
+
+    func testEachGroupIsOneColumnAndASecondRowStacksIt() {
+        let composed = columns([
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("a"))],
+                bottom: [MenuBarToken(kind: .text("b"))]
+            ),
+            MenuBarSegment(tokens: [MenuBarToken(kind: .text("c"))])
+        ])
+        let rendered = composed.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
+        )
+        XCTAssertEqual(rendered.columns.count, 2)
+        XCTAssertEqual(rendered.columns[0].top.tokens.compactMap(\.text), ["a"])
+        XCTAssertEqual(rendered.columns[0].bottom?.tokens.compactMap(\.text), ["b"])
+        // One row, so this column has one cell — what the rasterizer centres
+        // across both rows.
+        XCTAssertEqual(rendered.columns[1].top.tokens.compactMap(\.text), ["c"])
+        XCTAssertNil(rendered.columns[1].bottom)
+    }
+
+    func testAGroupWhoseBlocksAllFellAwayLeavesTheOthersAlone() {
+        let composed = grouped([
+            [MenuBarToken(kind: .quota(fieldId: "gone.bucket", metric: .displayPercent))],
+            [MenuBarToken(kind: .text("kept"))]
+        ])
+        let rendered = composed.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
+        )
+        XCTAssertEqual(rendered.columns.count, 1)
+        XCTAssertEqual(rendered.columns[0].top.tokens.compactMap(\.text), ["kept"])
+    }
+
+    func testAGroupLeftWithOnlyItsLowerCellBecomesAOneCellColumn() {
+        // Not a column with a hole in it: the upper cell's only block is
+        // hidden by its rule, and a cell with nothing in it is not a cell.
+        let composed = columns([MenuBarSegment(
+            top: [MenuBarToken(
+                kind: .text("hidden"),
+                visibility: .whenUsedAtLeast(fieldId: "claude.weekly", percent: 90)
+            )],
+            bottom: [MenuBarToken(kind: .text("shown"))]
+        )])
+        let rendered = composed.plan(
+            quotas: [quota("claude.weekly", used: 10)],
+            displayMode: .used,
+            colorBasis: .actual,
+            now: reference
+        )
+        XCTAssertEqual(rendered.columns.count, 1)
+        XCTAssertNil(rendered.columns[0].bottom)
+        XCTAssertEqual(rendered.columns[0].top.tokens.compactMap(\.text), ["shown"])
+    }
+
+    func testAOneRowStripSeparatesItsGroupsTheWayItsTemplateDoes() {
+        // The same table the seed reads, so a hand-grouped strip is divided
+        // the way the layout it came from divides its entries.
+        for template in MenuBarComposition.Template.allCases {
+            let composed = MenuBarComposition(
+                isEnabled: true,
+                template: template,
+                segments: [
+                    MenuBarSegment(tokens: [MenuBarToken(kind: .text("a"))]),
+                    MenuBarSegment(tokens: [MenuBarToken(kind: .text("b"))])
+                ]
+            )
+            let rendered = composed.plan(
+                quotas: [], displayMode: .used, colorBasis: .actual, now: reference
+            )
+            XCTAssertFalse(rendered.isTwoRow, "\(template)")
+            let expected: String?
+            if case let .separator(text)? = MenuBarFieldStripRules
+                .separator(for: template.seededFrom) {
+                expected = text
+            } else {
+                expected = nil
+            }
+            XCTAssertEqual(rendered.columnSeparator, expected, "\(template)")
+        }
+    }
+
+    func testAStripIsSpokenColumnByColumn() {
+        let composed = columns([
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("a"))],
+                bottom: [MenuBarToken(kind: .text("b"))]
+            ),
+            MenuBarSegment(tokens: [MenuBarToken(kind: .text("c"))])
+        ])
+        let rendered = composed.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual, now: reference
+        )
+        XCTAssertEqual(rendered.spokenDescription, "a · b · c")
+    }
+
+    func testABlockMovesBetweenGroupsAndTheGroupsSurviveIt() {
+        var composed = grouped([
+            [MenuBarToken(kind: .text("a")), MenuBarToken(kind: .text("b"))],
+            [MenuBarToken(kind: .text("c"))]
+        ])
+        let moved = composed.segments[0].tokens[1].id
+        let target = composed.segments[1].tokens[0].id
+        composed.move(moved, before: target)
+        XCTAssertEqual(composed.segments.map { $0.tokens.map(\.kind) }, [
+            [.text("a")],
+            [.text("b"), .text("c")]
+        ])
+        // ...and back again, onto the end of the first group's top row.
+        composed.move(moved, toEndOf: .init(segment: composed.segments[0].id, row: .top))
+        XCTAssertEqual(composed.segments.map { $0.tokens.map(\.kind) }, [
+            [.text("a"), .text("b")],
+            [.text("c")]
+        ])
+    }
+
+    func testABlockMovesBetweenTheTwoRowsOfOneGroup() {
+        // The same gesture as a move between groups, because a row is a
+        // container the drop target can name.
+        var composed = columns([MenuBarSegment(
+            top: [MenuBarToken(kind: .text("a")), MenuBarToken(kind: .text("b"))],
+            bottom: [MenuBarToken(kind: .text("c"))]
+        )])
+        let group = composed.segments[0].id
+        let moved = composed.segments[0].top[1].id
+        composed.move(moved, toEndOf: .init(segment: group, row: .bottom))
+        XCTAssertEqual(composed.segments[0].top.map(\.kind), [.text("a")])
+        XCTAssertEqual(composed.segments[0].bottom?.map(\.kind), [.text("c"), .text("b")])
+        // ...and in front of a chip in the row above.
+        composed.move(moved, before: composed.segments[0].top[0].id)
+        XCTAssertEqual(composed.segments[0].top.map(\.kind), [.text("b"), .text("a")])
+        XCTAssertEqual(composed.segments[0].bottom?.map(\.kind), [.text("c")])
+    }
+
+    func testARowThatDoesNotExistIsNotADropTarget() {
+        var composed = grouped([
+            [MenuBarToken(kind: .text("a"))],
+            [MenuBarToken(kind: .text("b"))]
+        ])
+        let before = composed.segments
+        composed.move(
+            composed.segments[0].top[0].id,
+            toEndOf: .init(segment: composed.segments[1].id, row: .bottom)
+        )
+        XCTAssertEqual(composed.segments, before)
+    }
+
+    func testSplittingAndMergingAreInverses() {
+        var composed = grouped([[
+            MenuBarToken(kind: .text("a")),
+            MenuBarToken(kind: .text("b")),
+            MenuBarToken(kind: .text("c"))
+        ]])
+        let pivot = composed.segments[0].tokens[1].id
+        composed.splitSegment(before: pivot)
+        XCTAssertEqual(composed.segments.map { $0.tokens.map(\.kind) }, [
+            [.text("a")],
+            [.text("b"), .text("c")]
+        ])
+        composed.mergeSegmentIntoPrevious(composed.segments[1].id)
+        XCTAssertEqual(composed.segments.map { $0.tokens.map(\.kind) }, [
+            [.text("a"), .text("b"), .text("c")]
+        ])
+    }
+
+    func testSplittingAtTheFirstBlockOfAGroupIsANoOp() {
+        var composed = grouped([[MenuBarToken(kind: .text("a")), MenuBarToken(kind: .text("b"))]])
+        composed.splitSegment(before: composed.segments[0].tokens[0].id)
+        XCTAssertEqual(composed.segments.count, 1)
+    }
+
+    func testSplittingCutsAColumnVerticallyAndMergingPutsItBack() {
+        // A column is cut through its top row and its lower cell comes along,
+        // so both halves are still columns the strip can draw.
+        var composed = columns([MenuBarSegment(
+            top: [MenuBarToken(kind: .text("a")), MenuBarToken(kind: .text("b"))],
+            bottom: [MenuBarToken(kind: .text("c"))]
+        )])
+        composed.splitSegment(before: composed.segments[0].top[1].id)
+        XCTAssertEqual(composed.segments.map { $0.top.map(\.kind) }, [[.text("a")], [.text("b")]])
+        XCTAssertEqual(composed.segments.map { $0.bottom?.map(\.kind) }, [nil, [.text("c")]])
+
+        composed.mergeSegmentIntoPrevious(composed.segments[1].id)
+        XCTAssertEqual(composed.segments.count, 1)
+        XCTAssertEqual(composed.segments[0].top.map(\.kind), [.text("a"), .text("b")])
+        XCTAssertEqual(composed.segments[0].bottom?.map(\.kind), [.text("c")])
+    }
+
+    func testAColumnIsNotCutThroughItsLowerRow() {
+        var composed = columns([MenuBarSegment(
+            top: [MenuBarToken(kind: .text("a"))],
+            bottom: [MenuBarToken(kind: .text("b")), MenuBarToken(kind: .text("c"))]
+        )])
+        let before = composed.segments
+        composed.splitSegment(before: composed.segments[0].bottom![1].id)
+        XCTAssertEqual(composed.segments, before)
+    }
+
+    func testMergingTwoStackedColumnsJoinsThemRowByRow() {
+        var composed = columns([
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("a"))],
+                bottom: [MenuBarToken(kind: .text("b"))]
+            ),
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("c"))],
+                bottom: [MenuBarToken(kind: .text("d"))]
+            )
+        ])
+        composed.mergeSegmentIntoPrevious(composed.segments[1].id)
+        XCTAssertEqual(composed.segments.count, 1)
+        XCTAssertEqual(composed.segments[0].top.map(\.kind), [.text("a"), .text("c")])
+        XCTAssertEqual(composed.segments[0].bottom?.map(\.kind), [.text("b"), .text("d")])
+    }
+
+    func testGroupsReorderAndTheEndsAreNoOpsRatherThanTraps() {
+        var composed = grouped([
+            [MenuBarToken(kind: .text("a"))],
+            [MenuBarToken(kind: .text("b"))],
+            [MenuBarToken(kind: .text("c"))]
+        ])
+        let first = composed.segments[0].id
+        composed.moveSegment(first, by: -1)
+        XCTAssertEqual(composed.segments.first?.id, first)
+        composed.moveSegment(first, by: 2)
+        XCTAssertEqual(composed.segments.map { $0.tokens.map(\.kind) }, [
+            [.text("b")], [.text("c")], [.text("a")]
+        ])
+        composed.moveSegment(first, by: 9)
+        XCTAssertEqual(composed.segments.last?.id, first)
+    }
+
+    func testTheRowCapIsPerGroupBecauseEveryGroupHasItsOwnTwoRows() {
+        let composed = columns([
+            MenuBarSegment(top: [MenuBarToken(kind: .text("a"))], bottom: []),
+            MenuBarSegment(tokens: [MenuBarToken(kind: .text("b"))])
+        ])
+        XCTAssertFalse(composed.canAddRow(toSegment: composed.segments[0].id))
+        XCTAssertTrue(composed.canAddRow(toSegment: composed.segments[1].id))
+    }
+
+    // MARK: - Groups survive a settings file, and a downgrade
+
+    func testAStoredStripFromBeforeGroupsDecodesAsOneGroupWithItsRows() throws {
+        let json = """
+        {"isEnabled":true,"template":"twoColumn","tokens":[
+          {"kind":{"type":"text","text":"a"}},
+          {"kind":{"type":"lineBreak"}},
+          {"kind":{"type":"text","text":"b"}}
+        ]}
+        """
+        let decoded = try JSONDecoder().decode(MenuBarComposition.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.segments.count, 1)
+        XCTAssertEqual(decoded.segments[0].top.map(\.kind), [.text("a")])
+        XCTAssertEqual(decoded.segments[0].bottom?.map(\.kind), [.text("b")])
+    }
+
+    func testAStoredGroupWithABreakInItDecodesIntoTwoRows() throws {
+        // The shape this branch's own dev builds wrote: groups existed, rows
+        // did not, so the break sat inside the group's one list.
+        let json = """
+        {"isEnabled":true,"template":"twoColumn","segments":[
+          {"tokens":[
+            {"kind":{"type":"text","text":"a"}},
+            {"kind":{"type":"lineBreak"}},
+            {"kind":{"type":"text","text":"b"}},
+            {"kind":{"type":"lineBreak"}},
+            {"kind":{"type":"text","text":"c"}}
+          ]}
+        ]}
+        """
+        let decoded = try JSONDecoder().decode(MenuBarComposition.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.segments.count, 1)
+        XCTAssertEqual(decoded.segments[0].top.map(\.kind), [.text("a")])
+        // A second marker cannot open a third row, so its blocks stay on the
+        // bottom — the folding the flat model always did.
+        XCTAssertEqual(decoded.segments[0].bottom?.map(\.kind), [.text("b"), .text("c")])
+    }
+
+    func testAStoredPresetWithABreakInItDecodesIntoTwoRows() throws {
+        let json = """
+        {"name":"Claude","tokens":[
+          {"kind":{"type":"text","text":"a"}},
+          {"kind":{"type":"lineBreak"}},
+          {"kind":{"type":"text","text":"b"}}
+        ]}
+        """
+        let decoded = try JSONDecoder().decode(
+            MenuBarSegmentPreset.self,
+            from: Data(json.utf8)
+        )
+        XCTAssertEqual(decoded.top.map(\.kind), [.text("a")])
+        XCTAssertEqual(decoded.bottom?.map(\.kind), [.text("b")])
+        XCTAssertEqual(decoded.segment().bottom?.map(\.kind), [.text("b")])
+    }
+
+    func testGroupsRoundTripAndKeepTheirIdentities() throws {
+        let composed = columns([
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("a"))],
+                bottom: [MenuBarToken(kind: .text("b"))]
+            ),
+            MenuBarSegment(tokens: [MenuBarToken(kind: .text("c"))])
+        ])
+        let decoded = try JSONDecoder().decode(
+            MenuBarComposition.self,
+            from: try JSONEncoder().encode(composed)
+        )
+        XCTAssertEqual(decoded.segments.map(\.id), composed.segments.map(\.id))
+        XCTAssertEqual(
+            decoded.segments.map { $0.tokens.map(\.id) },
+            composed.segments.map { $0.tokens.map(\.id) }
+        )
+    }
+
+    func testABuildWithoutGroupsStillFindsEveryBlock() throws {
+        // The one that has already gone wrong once: a downgrade that reads
+        // nothing draws an empty status item and then saves that emptiness
+        // over the user's strip. It reads `tokens`, so `tokens` is written
+        // too — every block, in the reading order the columns had.
+        let composed = columns([
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("a"))],
+                bottom: [MenuBarToken(kind: .text("b"))]
+            ),
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("c"))],
+                bottom: [MenuBarToken(kind: .text("d"))]
+            ),
+            MenuBarSegment(tokens: [MenuBarToken(kind: .appIcon)])
+        ])
+        let downgraded = try downgrade(composed)
+        let expected: [MenuBarToken.Kind] = [
+            .text("a"), .text("c"), .appIcon, .text("b"), .text("d")
+        ]
+        XCTAssertEqual(
+            downgraded.tokens.map(\.kind),
+            expected,
+            "top cells then bottom cells, nothing dropped"
+        )
+        // ...and it lands as the two rows the columns were read in, because
+        // the marker an older build looks for was written between them.
+        XCTAssertEqual(downgraded.segments.count, 1)
+        XCTAssertEqual(
+            downgraded.segments[0].top.map(\.kind),
+            [.text("a"), .text("c"), .appIcon]
+        )
+        XCTAssertEqual(downgraded.segments[0].bottom?.map(\.kind), [.text("b"), .text("d")])
+        // Every block, with the identity it had. The grouping is what a build
+        // without groups cannot hold; nothing else is lost.
+        XCTAssertEqual(Set(downgraded.tokens.map(\.id)), Set(composed.tokens.map(\.id)))
+    }
+
+    /// The composition an older build would decode: everything this one wrote,
+    /// minus the key it has never heard of.
+    private func downgrade(_ composed: MenuBarComposition) throws -> MenuBarComposition {
+        var object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: try JSONEncoder().encode(composed))
+                as? [String: Any]
+        )
+        XCTAssertNotNil(object["segments"], "this build reads groups")
+        object.removeValue(forKey: "segments")
+        return try JSONDecoder().decode(
+            MenuBarComposition.self,
+            from: try JSONSerialization.data(withJSONObject: object)
+        )
+    }
+
+    func testAOneRowStripWritesNoRowBreakAtAll() throws {
+        // The mirror is content-faithful: nothing that would come back as a
+        // block the user never made, and a break with nothing under it is one.
+        let composed = grouped([
+            [MenuBarToken(kind: .text("a"))],
+            [MenuBarToken(kind: .text("b"))]
+        ])
+        let encoded = String(decoding: try JSONEncoder().encode(composed), as: UTF8.self)
+        XCTAssertFalse(encoded.contains(MenuBarFlatToken.rowBreakDiscriminator))
+        let downgraded = try downgrade(composed)
+        XCTAssertFalse(downgraded.segments[0].isStacked)
+        XCTAssertEqual(downgraded.tokens.map(\.kind), [.text("a"), .text("b")])
+    }
+
+    func testAnEmptySecondRowIsNotWrittenIntoTheMirror() throws {
+        // An opened-but-unfilled row is kept in `segments`, where it means
+        // something; in the flat list it would be a trailing marker naming a
+        // row with nothing in it.
+        let composed = columns([MenuBarSegment(
+            top: [MenuBarToken(kind: .text("a"))],
+            bottom: []
+        )])
+        XCTAssertEqual(
+            try JSONDecoder()
+                .decode(MenuBarComposition.self, from: try JSONEncoder().encode(composed))
+                .segments[0].bottom,
+            [],
+            "this build keeps the row the user opened"
+        )
+        let downgraded = try downgrade(composed)
+        XCTAssertFalse(downgraded.segments[0].isStacked)
+        XCTAssertEqual(downgraded.tokens.map(\.kind), [.text("a")])
+    }
+
+    func testAStripThatComesBackFromAnOlderBuildKeepsItsRows() throws {
+        // The full round trip: this build writes, an older one reads its flat
+        // list and saves it again, this one reads that. The grouping is gone,
+        // the rows and every block are not.
+        let composed = columns([
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("a"))],
+                bottom: [MenuBarToken(kind: .text("b"))]
+            ),
+            MenuBarSegment(tokens: [MenuBarToken(kind: .appIcon)])
+        ])
+        let returned = try downgrade(try downgrade(composed))
+        XCTAssertEqual(returned.segments[0].top.map(\.kind), [.text("a"), .appIcon])
+        XCTAssertEqual(returned.segments[0].bottom?.map(\.kind), [.text("b")])
+        XCTAssertEqual(Set(returned.tokens.map(\.id)), Set(composed.tokens.map(\.id)))
+    }
+
+    // MARK: - Saved groups
+
+    func testAPresetInsertsAsANewGroupWithFreshIdentities() {
+        let tokens = [
+            MenuBarToken(kind: .text("VB")),
+            MenuBarToken(kind: .quota(fieldId: "claude.weekly", metric: .displayPercent))
+        ]
+        let preset = MenuBarSegmentPreset(name: "Claude", top: tokens)
+        var composed = grouped([[MenuBarToken(kind: .text("a"))]])
+        composed.appendSegment(preset.segment())
+        composed.appendSegment(preset.segment())
+        XCTAssertEqual(composed.segments.count, 3)
+        XCTAssertEqual(composed.segments[1].tokens.map(\.kind), tokens.map(\.kind))
+        // Two insertions are two groups the editor can drag apart, the same
+        // rule `duplicate` follows.
+        XCTAssertTrue(
+            Set(composed.segments[1].tokens.map(\.id))
+                .isDisjoint(with: Set(composed.segments[2].tokens.map(\.id)))
+        )
+        XCTAssertTrue(
+            Set(composed.segments[1].tokens.map(\.id))
+                .isDisjoint(with: Set(tokens.map(\.id)))
+        )
+    }
+
+    func testAPresetKeepsAQuotaThisMacNoLongerReturns() throws {
+        // Not filtered on the way in or out. Inserted, it is a block like any
+        // other and the availability warning already explains it.
+        let preset = MenuBarSegmentPreset(
+            name: "Old",
+            top: [MenuBarToken(kind: .quota(fieldId: "gone.bucket", metric: .displayPercent))]
+        )
+        let decoded = try JSONDecoder().decode(
+            MenuBarSegmentPreset.self,
+            from: try JSONEncoder().encode(preset)
+        )
+        XCTAssertEqual(decoded.top.map(\.kind), preset.top.map(\.kind))
+
+        var composed = grouped([[]])
+        composed.appendSegment(decoded.segment())
+        let availability = composed.availability(liveFieldIds: ["claude.weekly"])
+        XCTAssertEqual(availability.missingFieldIds, ["gone.bucket"])
+        XCTAssertEqual(availability.silentTokenIds.count, 1)
+    }
+
+    func testPresetsSurviveAReseedAndASettingsRoundTrip() throws {
+        var item = fieldItem()
+        item.segmentPresets = [
+            MenuBarSegmentPreset(
+                name: "Claude",
+                top: [MenuBarToken(kind: .text("VB"))],
+                bottom: [MenuBarToken(kind: .appIcon)]
+            )
+        ]
+        item.setComposedStripEnabled(true)
+        item.reseedComposedStrip(template: .twoColumn)
+        XCTAssertEqual(item.segmentPresets.map(\.name), ["Claude"])
+        let decoded = try JSONDecoder().decode(
+            MenuBarItemSettings.self,
+            from: try JSONEncoder().encode(item)
+        )
+        XCTAssertEqual(decoded.segmentPresets, item.segmentPresets)
+    }
+
+    // MARK: - Space width
+
+    func testASpaceDrawsAsManySpacesAsItIsWide() {
+        let rendered = plan(
+            [MenuBarToken(kind: .space(width: 4))],
+            quotas: []
+        )
+        XCTAssertEqual(rendered.rows[0].tokens.compactMap(\.text), ["    "])
+        // Still not spoken: a gap is not a word.
+        XCTAssertEqual(rendered.spokenDescription, "")
+    }
+
+    func testANewSpaceIsOneWideAndAnOutOfRangeOneIsClamped() {
+        XCTAssertEqual(MenuBarToken.newSpace().kind, .space(width: 1))
+        let wide = plan([MenuBarToken(kind: .space(width: 99))], quotas: [])
+        XCTAssertEqual(
+            wide.rows[0].tokens.compactMap(\.text),
+            [String(repeating: " ", count: MenuBarToken.spaceWidthRange.upperBound)]
+        )
+    }
+
+    func testASpaceWidthRoundTripsAndADowngradeStillDrawsASpace() throws {
+        let composed = composition([MenuBarToken(kind: .space(width: 5))])
+        let encoded = try JSONEncoder().encode(composed)
+        XCTAssertEqual(
+            try JSONDecoder().decode(MenuBarComposition.self, from: encoded).tokens[0].kind,
+            .space(width: 5)
+        )
+        // An older build reads the discriminator and ignores the width: the
+        // block survives one space wide rather than becoming unsupported.
+        let json = """
+        {"isEnabled":true,"template":"roomy","tokens":[{"kind":{"type":"space"}}]}
+        """
+        let old = try JSONDecoder().decode(MenuBarComposition.self, from: Data(json.utf8))
+        XCTAssertEqual(old.tokens.map(\.kind), [.space(width: 1)])
+    }
+
+    func testADefaultWidthWritesTheBytesTheFileAlreadyHad() throws {
+        // A strip that predates the width control must not start producing a
+        // diff on every save just because the model grew a field.
+        let encoded = try JSONEncoder().encode(
+            composition([MenuBarToken(kind: .space(width: 1))])
+        )
+        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("width"))
+    }
+
+    // MARK: - A size choice costs only the block that made it
+
+    func testASpanningColumnIsFittedAgainstTheWholeCanvasNotTheTopRow() {
+        // A one-cell column is centred across both bands, so its height is the
+        // whole canvas. Counting it in the top row's demand let a Large title
+        // cap every stacked top cell — and capped the title itself as though
+        // it had half the room it actually has.
+        var composed = columns([
+            MenuBarSegment(top: [MenuBarToken(kind: .text("VB"), style: .init(size: .large))]),
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("a"))],
+                bottom: [MenuBarToken(kind: .text("b"))]
+            )
+        ])
+        composed.fontScale = 1
+        // The nominal canvas, where it bites: two rows plus their spacing are
+        // already over budget with nothing resized, so a stacked cell is
+        // shrunk to fit. A cell that spans both rows is not stacked and pays
+        // none of that — 18pt is the whole of its budget, and 1.2 fits.
+        let rendered = composed.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual,
+            now: reference, canvas: .nominalTwoRow
+        )
+        let spanning = rendered.columns[0].top.tokens[0].fontScale
+        let stackedTop = rendered.columns[1].top.tokens[0].fontScale
+        XCTAssertEqual(
+            spanning, 1.2, accuracy: 0.0001,
+            "a spanning cell must keep the size it asked for; the whole canvas is its row"
+        )
+        XCTAssertLessThan(
+            stackedTop, 1.0,
+            "the stacked rows still share one canvas and are still fitted to it"
+        )
+    }
+
+    private func twoRowScales(
+        top: MenuBarToken.SizeStep,
+        bottom: MenuBarToken.SizeStep,
+        compositionScale: Double = 1,
+        canvas: MenuBarStripCanvas = .nominalTwoRow
+    ) -> (top: Double, bottom: Double) {
+        var composed = columns([MenuBarSegment(
+            top: [MenuBarToken(kind: .text("a"), style: .init(size: top))],
+            bottom: [MenuBarToken(kind: .text("b"), style: .init(size: bottom))]
+        )])
+        composed.fontScale = compositionScale
+        let rendered = composed.plan(
+            quotas: [],
+            displayMode: .used,
+            colorBasis: .actual,
+            now: reference,
+            canvas: canvas
+        )
+        return (
+            rendered.columns[0].top.tokens[0].fontScale,
+            rendered.columns[0].bottom?.tokens[0].fontScale ?? 0
+        )
+    }
+
+    func testGrowingOneRowNeverChangesTheRowThatAskedForNothing() {
+        // The complaint, as a property. Choosing Large used to solve one
+        // uniform scale for the whole strip, so every block the user had not
+        // touched came out smaller than before they touched anything.
+        for canvas in [MenuBarStripCanvas.nominalTwoRow, roomierCanvas] {
+            for scale in [0.8, 1.0, 1.3, MenuBarComposition.fontScaleRange.upperBound] {
+                let untouched = twoRowScales(
+                    top: .regular, bottom: .regular, compositionScale: scale, canvas: canvas
+                )
+                for chosen in MenuBarToken.SizeStep.allCases {
+                    let after = twoRowScales(
+                        top: chosen, bottom: .regular, compositionScale: scale, canvas: canvas
+                    )
+                    let label = "\(chosen) at \(scale), canvas \(canvas.availableHeight)"
+                    // Never smaller. That is the whole rule: the cost of a
+                    // size choice lands on the block that made it.
+                    XCTAssertGreaterThanOrEqual(
+                        after.bottom, untouched.bottom - 1e-9,
+                        "the untouched row shrank for \(label)"
+                    )
+                    if chosen != .small {
+                        // Growing takes only from the surplus, so the row that
+                        // asked for nothing is exactly where it was. (A row
+                        // that asked to be *smaller* gives height back, and
+                        // the strip is allowed to stop squeezing the other
+                        // one — a bigger untouched row is not a cost.)
+                        XCTAssertEqual(
+                            after.bottom, untouched.bottom, accuracy: 1e-9,
+                            "the untouched row moved for \(label)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    func testABlockThatAsksToBeSmallerStillGetsSmaller() {
+        // The cap is a ceiling, never a floor: giving height back is always
+        // allowed, and it is what pays for the other row's growth.
+        let scales = twoRowScales(top: .small, bottom: .regular, canvas: roomierCanvas)
+        XCTAssertLessThan(scales.top, scales.bottom)
+    }
+
+    func testAGrowingRowGetsAsMuchAsTheCanvasCanPayForAndNoMore() {
+        let canvas = roomierCanvas
+        let grown = twoRowScales(top: .large, bottom: .regular, canvas: canvas)
+        XCTAssertGreaterThan(grown.top, 1, "there is surplus, so Large is larger")
+        XCTAssertLessThanOrEqual(
+            grown.top,
+            MenuBarToken.SizeStep.large.multiplier + 1e-9,
+            "and never larger than what was asked for"
+        )
+        let content = MenuBarStripGeometry.twoRowContentHeight(
+            rowFontSizes: [grown.top, grown.bottom].map { canvas.baseFontSize * $0 },
+            lineSpacing: canvas.lineSpacing,
+            lineHeightRatio: canvas.lineHeightRatio
+        )
+        XCTAssertLessThanOrEqual(content, canvas.availableHeight + 1e-9)
+    }
+
+    func testEveryCappedTwoRowStripFitsAndStaysLegible() {
+        // The property the uniform fit already had, restated over the caps:
+        // whatever the editor can produce still fits the canvas, and fitting
+        // never turns legible type into a smudge.
+        for canvas in [MenuBarStripCanvas.nominalTwoRow, roomierCanvas] {
+            for scale in [
+                MenuBarComposition.fontScaleRange.lowerBound, 1.0, 1.3,
+                MenuBarComposition.fontScaleRange.upperBound
+            ] {
+                for first in MenuBarToken.SizeStep.allCases {
+                    for second in MenuBarToken.SizeStep.allCases {
+                        let scales = twoRowScales(
+                            top: first, bottom: second, compositionScale: scale, canvas: canvas
+                        )
+                        let sizes = [scales.top, scales.bottom].map { canvas.baseFontSize * $0 }
+                        let content = MenuBarStripGeometry.twoRowContentHeight(
+                            rowFontSizes: sizes,
+                            lineSpacing: canvas.lineSpacing,
+                            lineHeightRatio: canvas.lineHeightRatio
+                        )
+                        let label = "scale \(scale), \(first)/\(second), canvas \(canvas.availableHeight)"
+                        XCTAssertLessThanOrEqual(content, canvas.availableHeight + 1e-9, "does not fit at \(label)")
+                        let requested = [first, second]
+                            .map { canvas.baseFontSize * scale * $0.multiplier }
+                        for (drawn, asked) in zip(sizes, requested)
+                        where asked >= MenuBarStripFit.legibleFontSize {
+                            XCTAssertGreaterThanOrEqual(
+                                drawn, MenuBarStripFit.legibleFontSize,
+                                "fitting made it illegible at \(label)"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testAOneRowStripIsNotFittedAtAll() {
+        // One row has the whole bar, so Large there simply is large.
+        let rendered = plan(
+            [MenuBarToken(kind: .text("a"), style: .init(size: .large))],
+            quotas: []
+        )
+        XCTAssertEqual(
+            rendered.rows[0].tokens[0].fontScale,
+            MenuBarToken.SizeStep.large.multiplier,
+            accuracy: 1e-9
+        )
+    }
+
+    /// A bar tall enough that two neutral rows fit with something to spare —
+    /// `nominalTwoRow` is the short bar, where they already do not.
+    private var roomierCanvas: MenuBarStripCanvas {
+        var canvas = MenuBarStripCanvas.nominalTwoRow
+        canvas.availableHeight = 24
+        return canvas
     }
 }

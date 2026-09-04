@@ -120,6 +120,43 @@
     "comment": "Compact countdown, days and hours",
     "value": "{days}d {hours}h"
   },
+  "common.duration.full.days": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 day} other {# days}}"
+  },
+  "common.duration.full.daysHours": {
+    "args": {
+      "days": "string",
+      "hours": "string"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{days} and {hours}"
+  },
+  "common.duration.full.hours": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 hour} other {# hours}}"
+  },
+  "common.duration.full.hoursMinutes": {
+    "args": {
+      "hours": "string",
+      "minutes": "string"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{hours} and {minutes}"
+  },
+  "common.duration.full.minutes": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 minute} other {# minutes}}"
+  },
   "common.duration.hours": {
     "args": {
       "hours": "int"
@@ -714,6 +751,14 @@
     "comment": "Picker choosing which provider's logo a block shows.",
     "value": "Provider"
   },
+  "menuBar.composer.field.resetFormat": {
+    "comment": "Label for the picker that chooses how a Resets at block prints its date and time",
+    "value": "Format"
+  },
+  "menuBar.composer.field.resetFormatHelp": {
+    "comment": "Tooltip on the reset-time format picker, explaining the Automatic option",
+    "value": "Automatic prints only the time while the reset is still today."
+  },
   "menuBar.composer.field.show": {
     "comment": "Picker choosing when a block is on screen.",
     "value": "Show"
@@ -733,6 +778,53 @@
   "menuBar.composer.field.weight": {
     "comment": "Picker choosing a block's type weight.",
     "value": "Weight"
+  },
+  "menuBar.composer.group.add": {
+    "comment": "Palette button adding an empty group to the strip.",
+    "value": "New group"
+  },
+  "menuBar.composer.group.addHelp": {
+    "comment": "Tooltip on the New group button.",
+    "value": "Each group is one column of the strip. Give a group a second row to stack that column."
+  },
+  "menuBar.composer.group.addRow": {
+    "comment": "Menu item giving a group a second row.",
+    "value": "Add a second row"
+  },
+  "menuBar.composer.group.empty": {
+    "comment": "Shown inside a group that has no blocks yet.",
+    "value": "Empty group — drag a block in."
+  },
+  "menuBar.composer.group.mergeLeft": {
+    "comment": "Menu action folding a group into the one before it.",
+    "value": "Merge into the group before it"
+  },
+  "menuBar.composer.group.moveLeft": {
+    "comment": "Menu action moving a group one place earlier.",
+    "value": "Move left"
+  },
+  "menuBar.composer.group.moveRight": {
+    "comment": "Menu action moving a group one place later.",
+    "value": "Move right"
+  },
+  "menuBar.composer.group.remove": {
+    "comment": "Menu action deleting a group and the blocks in it.",
+    "value": "Remove group and its blocks"
+  },
+  "menuBar.composer.group.removeRow": {
+    "comment": "Menu item closing a group's second row; its blocks join the end of the first.",
+    "value": "Merge the second row up"
+  },
+  "menuBar.composer.group.splitHere": {
+    "comment": "Button starting a new group at the selected block.",
+    "value": "Start a group here"
+  },
+  "menuBar.composer.group.title": {
+    "args": {
+      "index": "int"
+    },
+    "comment": "Header over one group of blocks. Index counts from 1.",
+    "value": "Group {index}"
   },
   "menuBar.composer.metric.displayPercent": {
     "comment": "Quota metric: whichever percentage the app-wide Used/Remaining setting selects.",
@@ -806,6 +898,34 @@
     "comment": "Caption over the list of blocks that can be added.",
     "value": "Add a block"
   },
+  "menuBar.composer.preset.insertHelp": {
+    "comment": "Tooltip on a saved group.",
+    "value": "Insert this group at the end of the strip."
+  },
+  "menuBar.composer.preset.name": {
+    "comment": "Text field for the name of a saved group.",
+    "value": "Name"
+  },
+  "menuBar.composer.preset.remove": {
+    "comment": "Menu action deleting a saved group.",
+    "value": "Remove preset"
+  },
+  "menuBar.composer.preset.save": {
+    "comment": "Menu action saving a group to use again.",
+    "value": "Save as preset…"
+  },
+  "menuBar.composer.preset.saveConfirm": {
+    "comment": "Button confirming the name of a saved group.",
+    "value": "Save"
+  },
+  "menuBar.composer.preset.saveTitle": {
+    "comment": "Title of the dialog naming a saved group.",
+    "value": "Save this group"
+  },
+  "menuBar.composer.presets": {
+    "comment": "Caption over the saved groups that can be inserted.",
+    "value": "Saved groups"
+  },
   "menuBar.composer.preview": {
     "comment": "Caption over the live preview of the composed strip.",
     "value": "Preview"
@@ -833,6 +953,34 @@
   "menuBar.composer.removeTarget": {
     "comment": "Drop target that deletes the dragged block.",
     "value": "Drag here to remove"
+  },
+  "menuBar.composer.resetFormat.automatic": {
+    "comment": "Reset-time format: the time alone today, the weekday and date after that",
+    "value": "Automatic"
+  },
+  "menuBar.composer.resetFormat.date": {
+    "comment": "Reset-time format showing only the calendar date, e.g. Sep 7",
+    "value": "Date"
+  },
+  "menuBar.composer.resetFormat.dateTime": {
+    "comment": "Reset-time format showing the date and the time, e.g. Sep 7 at 12:01",
+    "value": "Date and time"
+  },
+  "menuBar.composer.resetFormat.time": {
+    "comment": "Reset-time format showing only the clock time, e.g. 12:01",
+    "value": "Time"
+  },
+  "menuBar.composer.resetFormat.weekdayDateTime": {
+    "comment": "Reset-time format showing the weekday, the date and the time, e.g. Mon, Sep 7 at 12:01",
+    "value": "Weekday, date and time"
+  },
+  "menuBar.composer.resetFormat.weekdayTime": {
+    "comment": "Reset-time format showing the weekday and the time, e.g. Mon 12:01",
+    "value": "Weekday and time"
+  },
+  "menuBar.composer.row.empty": {
+    "comment": "Shown inside a group's second row while it holds no blocks.",
+    "value": "Empty row — drag a block in."
   },
   "menuBar.composer.rule.always": {
     "comment": "Visibility rule: the block is always shown.",
@@ -869,6 +1017,17 @@
   "menuBar.composer.space.detail": {
     "comment": "What a space block does.",
     "value": "A gap one space wide. Size changes how wide."
+  },
+  "menuBar.composer.space.width": {
+    "comment": "Stepper choosing how wide a space block is.",
+    "value": "Width"
+  },
+  "menuBar.composer.space.widthValue": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "How wide a space block is, in space characters.",
+    "value": "{count, plural, one {1 space} other {# spaces}}"
   },
   "menuBar.composer.startOver": {
     "comment": "Button rebuilding every block from the default strip.",

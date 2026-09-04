@@ -83,6 +83,12 @@
 /* Compact countdown, days and hours */
 "common.duration.daysHours" = "%1$lldd %2$lldh";
 
+/* Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar. */
+"common.duration.full.daysHours" = "%1$@ and %2$@";
+
+/* Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar. */
+"common.duration.full.hoursMinutes" = "%1$@ and %2$@";
+
 /* Compact countdown, whole hours only */
 "common.duration.hours" = "%1$lldh";
 
@@ -494,6 +500,12 @@
 /* Picker choosing which provider's logo a block shows. */
 "menuBar.composer.field.provider" = "Provider";
 
+/* Label for the picker that chooses how a Resets at block prints its date and time */
+"menuBar.composer.field.resetFormat" = "Format";
+
+/* Tooltip on the reset-time format picker, explaining the Automatic option */
+"menuBar.composer.field.resetFormatHelp" = "Automatic prints only the time while the reset is still today.";
+
 /* Picker choosing when a block is on screen. */
 "menuBar.composer.field.show" = "Show";
 
@@ -508,6 +520,39 @@
 
 /* Picker choosing a block's type weight. */
 "menuBar.composer.field.weight" = "Weight";
+
+/* Palette button adding an empty group to the strip. */
+"menuBar.composer.group.add" = "New group";
+
+/* Tooltip on the New group button. */
+"menuBar.composer.group.addHelp" = "Each group is one column of the strip. Give a group a second row to stack that column.";
+
+/* Menu item giving a group a second row. */
+"menuBar.composer.group.addRow" = "Add a second row";
+
+/* Shown inside a group that has no blocks yet. */
+"menuBar.composer.group.empty" = "Empty group — drag a block in.";
+
+/* Menu action folding a group into the one before it. */
+"menuBar.composer.group.mergeLeft" = "Merge into the group before it";
+
+/* Menu action moving a group one place earlier. */
+"menuBar.composer.group.moveLeft" = "Move left";
+
+/* Menu action moving a group one place later. */
+"menuBar.composer.group.moveRight" = "Move right";
+
+/* Menu action deleting a group and the blocks in it. */
+"menuBar.composer.group.remove" = "Remove group and its blocks";
+
+/* Menu item closing a group's second row; its blocks join the end of the first. */
+"menuBar.composer.group.removeRow" = "Merge the second row up";
+
+/* Button starting a new group at the selected block. */
+"menuBar.composer.group.splitHere" = "Start a group here";
+
+/* Header over one group of blocks. Index counts from 1. */
+"menuBar.composer.group.title" = "Group %1$lld";
 
 /* Quota metric: whichever percentage the app-wide Used/Remaining setting selects. */
 "menuBar.composer.metric.displayPercent" = "Percent (follows setting)";
@@ -563,6 +608,27 @@
 /* Caption over the list of blocks that can be added. */
 "menuBar.composer.palette" = "Add a block";
 
+/* Tooltip on a saved group. */
+"menuBar.composer.preset.insertHelp" = "Insert this group at the end of the strip.";
+
+/* Text field for the name of a saved group. */
+"menuBar.composer.preset.name" = "Name";
+
+/* Menu action deleting a saved group. */
+"menuBar.composer.preset.remove" = "Remove preset";
+
+/* Menu action saving a group to use again. */
+"menuBar.composer.preset.save" = "Save as preset…";
+
+/* Button confirming the name of a saved group. */
+"menuBar.composer.preset.saveConfirm" = "Save";
+
+/* Title of the dialog naming a saved group. */
+"menuBar.composer.preset.saveTitle" = "Save this group";
+
+/* Caption over the saved groups that can be inserted. */
+"menuBar.composer.presets" = "Saved groups";
+
 /* Caption over the live preview of the composed strip. */
 "menuBar.composer.preview" = "Preview";
 
@@ -583,6 +649,27 @@
 
 /* Drop target that deletes the dragged block. */
 "menuBar.composer.removeTarget" = "Drag here to remove";
+
+/* Reset-time format: the time alone today, the weekday and date after that */
+"menuBar.composer.resetFormat.automatic" = "Automatic";
+
+/* Reset-time format showing only the calendar date, e.g. Sep 7 */
+"menuBar.composer.resetFormat.date" = "Date";
+
+/* Reset-time format showing the date and the time, e.g. Sep 7 at 12:01 */
+"menuBar.composer.resetFormat.dateTime" = "Date and time";
+
+/* Reset-time format showing only the clock time, e.g. 12:01 */
+"menuBar.composer.resetFormat.time" = "Time";
+
+/* Reset-time format showing the weekday, the date and the time, e.g. Mon, Sep 7 at 12:01 */
+"menuBar.composer.resetFormat.weekdayDateTime" = "Weekday, date and time";
+
+/* Reset-time format showing the weekday and the time, e.g. Mon 12:01 */
+"menuBar.composer.resetFormat.weekdayTime" = "Weekday and time";
+
+/* Shown inside a group's second row while it holds no blocks. */
+"menuBar.composer.row.empty" = "Empty row — drag a block in.";
 
 /* Visibility rule: the block is always shown. */
 "menuBar.composer.rule.always" = "Always";
@@ -610,6 +697,9 @@
 
 /* What a space block does. */
 "menuBar.composer.space.detail" = "A gap one space wide. Size changes how wide.";
+
+/* Stepper choosing how wide a space block is. */
+"menuBar.composer.space.width" = "Width";
 
 /* Button rebuilding every block from the default strip. */
 "menuBar.composer.startOver" = "Start over from the current strip…";
