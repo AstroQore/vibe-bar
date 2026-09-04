@@ -155,5 +155,46 @@ fi
 
 codesign --verify --deep --strict "$APP_DIR"
 
+# Does the packaged app find its own resources?
+#
+# SwiftPM's generated `Bundle.module` accessor knows two places: a bundle
+# beside `Bundle.main.bundleURL`, and the absolute build directory of the
+# machine that compiled it. A packaged app has neither — the bundle goes under
+# Contents/Resources, because a file outside Contents makes codesign reject the
+# app — so any code that reaches `Bundle.module` traps. On the machine that
+# built it the second path still exists, which is exactly why this shipped
+# once: every local launch resolved through the build directory and only an
+# installed copy failed.
+#
+# So hide that directory and require the app to start without it, with a
+# surface rendered so the localized paths are actually exercised. A launch that
+# proves nothing is worse than no launch at all.
+smoke_home="$(mktemp -d)"
+mkdir -p "$smoke_home/.vibebar"
+: > "$smoke_home/VIBEBAR_DEMO_HOME.txt"
+mv "$CORE_RESOURCE_BUNDLE" "$CORE_RESOURCE_BUNDLE.packaging-smoke"
+restore_core_bundle() {
+    [[ -d "$CORE_RESOURCE_BUNDLE.packaging-smoke" ]] &&
+        mv "$CORE_RESOURCE_BUNDLE.packaging-smoke" "$CORE_RESOURCE_BUNDLE"
+    rm -rf "$smoke_home"
+}
+trap restore_core_bundle EXIT
+
+VIBEBAR_DEMO_HOME="$smoke_home" \
+VIBEBAR_DEMO_SURFACE=popover \
+    "$APP_DIR/Contents/MacOS/VibeBar" > "$smoke_home/launch.log" 2>&1 &
+smoke_pid=$!
+sleep 10
+if kill -0 "$smoke_pid" 2>/dev/null; then
+    kill "$smoke_pid" 2>/dev/null || true
+    wait "$smoke_pid" 2>/dev/null || true
+else
+    echo "Packaged app did not survive a launch without the build directory:" >&2
+    sed -n '1,10p' "$smoke_home/launch.log" >&2
+    exit 1
+fi
+restore_core_bundle
+trap - EXIT
+
 echo "==> done: $APP_DIR"
 echo "Run with: open \"$APP_DIR\""
