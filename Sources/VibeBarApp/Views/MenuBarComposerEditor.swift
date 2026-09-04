@@ -1789,6 +1789,19 @@ struct PendingPaletteBlock {
     /// when the next one arrives.
     static let deadline: TimeInterval = 30
 
+    /// Identifying the payload instead was tried twice and cost the feature
+    /// both times. A private `UTType` changes what the targets *match*, so
+    /// they refused their own blocks — that is the dev.69 outage. Tagging the
+    /// provider's `suggestedName` and checking it in `dropEntered` does not
+    /// survive the drag: measured in the running app, the receiving side sees
+    /// no name, so palette staging never fired. Reading the payload itself is
+    /// asynchronous and `dropEntered` is not.
+    ///
+    /// So the window is bounded rather than the payload identified. The worst
+    /// case left is narrow — abandon a palette drag over nothing, then within
+    /// half a minute drag text in from another app onto a chip, and that block
+    /// lands. It is one drag to the bin, and a guard that fails closed costs
+    /// the whole feature.
     var isLive: Bool { Date.now.timeIntervalSince(startedAt) < Self.deadline }
 }
 
