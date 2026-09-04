@@ -1245,6 +1245,40 @@ final class MenuBarCompositionTests: XCTestCase {
         }
     }
 
+    /// The regression this canvas height exists for: a composed strip nobody
+    /// resized came out ~8% smaller than the built-in two-row layout it was
+    /// seeded from. Both draw two neutral 9pt bands into the same image, so
+    /// the only thing that could separate them was a fit the composed path
+    /// applies and the field path does not — and it only fired because the
+    /// canvas had the rasterizer's vertical padding taken off it. The
+    /// rasterizer centres what it draws and never reserves that inset, so the
+    /// strip was being charged for space nothing was holding.
+    func testAnUntouchedTwoRowStripIsDrawnAtItsOwnFace() {
+        let canvas = MenuBarStripCanvas.nominalTwoRow
+        let neutral = MenuBarStripGeometry.twoRowContentHeight(
+            rowFontSizes: [canvas.baseFontSize, canvas.baseFontSize],
+            lineSpacing: canvas.lineSpacing,
+            lineHeightRatio: canvas.lineHeightRatio
+        )
+        XCTAssertEqual(
+            MenuBarStripFit.scale(
+                contentHeight: neutral,
+                availableHeight: canvas.availableHeight
+            ),
+            1,
+            accuracy: 1e-9,
+            "two neutral rows measure \(neutral) against \(canvas.availableHeight)"
+        )
+        // And the planner agrees: nobody grew anything, so nobody is capped.
+        let fit = MenuBarStripFit.fit(
+            rowScales: [1, 1],
+            neutralScale: 1,
+            canvas: canvas
+        )
+        XCTAssertEqual(fit.uniform, 1, accuracy: 1e-9)
+        XCTAssertTrue(fit.rowCaps.allSatisfy { $0 == .infinity })
+    }
+
     func testAStripThatFitsIsNotScaledAtAll() {
         XCTAssertEqual(MenuBarStripFit.scale(contentHeight: 16, availableHeight: 18), 1)
         XCTAssertEqual(MenuBarStripFit.scale(contentHeight: 18, availableHeight: 18), 1)

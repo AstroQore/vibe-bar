@@ -50,9 +50,18 @@ enum MenuBarStripMetrics {
     /// Points between two adjacent columns of a rasterized strip.
     static let twoRowColumnSpacing: CGFloat = 8
 
-    /// Height the rasterized image actually has for content, after padding.
+    /// Height the rasterized image actually has for content.
+    ///
+    /// The bar's own drawable height, and nothing subtracted for padding:
+    /// `twoRowVerticalPadding` only widens the image when the content is
+    /// *smaller* than the bar, and the rasterizer centres what it draws
+    /// rather than reserving that inset. Charging the fit for it made the
+    /// composed strip measure two neutral 9pt bands — 20pt with the negative
+    /// line spacing — against an 18pt box, so a strip that fits exactly was
+    /// told to shrink and came out ~8% below the built-in layout it was
+    /// seeded from.
     static func twoRowAvailableHeight() -> CGFloat {
-        max(18, NSStatusBar.system.thickness - 2) - twoRowVerticalPadding * 2
+        max(18, NSStatusBar.system.thickness - 2)
     }
 
     /// The canvas a stacked strip is planned against — this Mac's bar, not the
