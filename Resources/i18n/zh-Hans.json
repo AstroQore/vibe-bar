@@ -38,6 +38,21 @@
   "common.duration.daysHours": {
     "value": "{days} 天 {hours} 小时"
   },
+  "common.duration.full.days": {
+    "value": "{count, plural, other {# 天}}"
+  },
+  "common.duration.full.daysHours": {
+    "value": "{days} {hours}"
+  },
+  "common.duration.full.hours": {
+    "value": "{count, plural, other {# 小时}}"
+  },
+  "common.duration.full.hoursMinutes": {
+    "value": "{hours} {minutes}"
+  },
+  "common.duration.full.minutes": {
+    "value": "{count, plural, other {# 分钟}}"
+  },
   "common.duration.hours": {
     "value": "{hours} 小时"
   },

@@ -64,6 +64,26 @@ extension L10n {
         public static func durationDaysHours(days: Int, hours: Int) -> String {
             L10n.string("common.duration.daysHours", days, hours)
         }
+        /// `common.duration.full.days` — {count, plural, one {1 day} other {# days}}
+        public static func durationFullDays(count: Int) -> String {
+            L10n.string("common.duration.full.days", count)
+        }
+        /// `common.duration.full.daysHours` — {days} and {hours}
+        public static func durationFullDaysHours(days: String, hours: String) -> String {
+            L10n.string("common.duration.full.daysHours", days, hours)
+        }
+        /// `common.duration.full.hours` — {count, plural, one {1 hour} other {# hours}}
+        public static func durationFullHours(count: Int) -> String {
+            L10n.string("common.duration.full.hours", count)
+        }
+        /// `common.duration.full.hoursMinutes` — {hours} and {minutes}
+        public static func durationFullHoursMinutes(hours: String, minutes: String) -> String {
+            L10n.string("common.duration.full.hoursMinutes", hours, minutes)
+        }
+        /// `common.duration.full.minutes` — {count, plural, one {1 minute} other {# minutes}}
+        public static func durationFullMinutes(count: Int) -> String {
+            L10n.string("common.duration.full.minutes", count)
+        }
         /// `common.duration.hours` — {hours}h
         public static func durationHours(hours: Int) -> String {
             L10n.string("common.duration.hours", hours)
@@ -6149,6 +6169,11 @@ extension L10n {
         "common.dragToReorder",
         "common.duration.days",
         "common.duration.daysHours",
+        "common.duration.full.days",
+        "common.duration.full.daysHours",
+        "common.duration.full.hours",
+        "common.duration.full.hoursMinutes",
+        "common.duration.full.minutes",
         "common.duration.hours",
         "common.duration.hoursMinutes",
         "common.duration.lessThanMinute",
@@ -7662,6 +7687,9 @@ extension L10n {
     /// Keys whose value is a plural and therefore lives in the
     /// `.stringsdict` rather than the `.strings` file.
     static let pluralKeys: [String] = [
+        "common.duration.full.days",
+        "common.duration.full.hours",
+        "common.duration.full.minutes",
         "common.updated.daysAgo",
         "common.updated.hoursAgo",
         "common.updated.minutesAgo",

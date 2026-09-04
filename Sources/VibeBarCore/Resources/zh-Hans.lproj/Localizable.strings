@@ -41,6 +41,12 @@
 /* Compact countdown, days and hours */
 "common.duration.daysHours" = "%1$lld 天 %2$lld 小时";
 
+/* Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar. */
+"common.duration.full.daysHours" = "%1$@ %2$@";
+
+/* Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar. */
+"common.duration.full.hoursMinutes" = "%1$@ %2$@";
+
 /* Compact countdown, whole hours only */
 "common.duration.hours" = "%1$lld 小时";
 

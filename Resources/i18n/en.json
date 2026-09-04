@@ -58,6 +58,43 @@
     "comment": "Compact countdown, days and hours",
     "value": "{days}d {hours}h"
   },
+  "common.duration.full.days": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 day} other {# days}}"
+  },
+  "common.duration.full.daysHours": {
+    "args": {
+      "days": "string",
+      "hours": "string"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{days} and {hours}"
+  },
+  "common.duration.full.hours": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 hour} other {# hours}}"
+  },
+  "common.duration.full.hoursMinutes": {
+    "args": {
+      "hours": "string",
+      "minutes": "string"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{hours} and {minutes}"
+  },
+  "common.duration.full.minutes": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar.",
+    "value": "{count, plural, one {1 minute} other {# minutes}}"
+  },
   "common.duration.hours": {
     "args": {
       "hours": "int"

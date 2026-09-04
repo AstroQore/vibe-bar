@@ -4,7 +4,24 @@ public enum ResetCountdownFormatter {
     /// Formats a future reset date as a compact human countdown:
     /// "5d", "2d 4h", "3h 16m", "12m", "<1m", "now".
     /// Returns nil if `resetAt` is nil.
-    public static func string(from resetAt: Date?, now: Date = Date()) -> String? {
+    /// How much room the caller has for the words.
+    ///
+    /// Nearly every countdown in this app sits in a dense row, tile or
+    /// caption at 8.5–10pt with `lineLimit(1)` and a shrink factor, and the
+    /// compact form is what makes those fit. `.full` is for the handful of
+    /// places that give a countdown a whole line to itself — the forecast
+    /// sentence under a quota bar — where "2 days and 19 hours" reads as
+    /// English and "2d 19h" reads as a machine.
+    public enum DurationStyle: Sendable {
+        case compact
+        case full
+    }
+
+    public static func string(
+        from resetAt: Date?,
+        now: Date = Date(),
+        style: DurationStyle = .compact
+    ) -> String? {
         guard let resetAt else { return nil }
         let total = Int(resetAt.timeIntervalSince(now).rounded(.toNearestOrAwayFromZero))
         if total <= 0 { return L10n.Common.durationNow }
@@ -13,20 +30,45 @@ public enum ResetCountdownFormatter {
         let hours = (total % 86_400) / 3_600
         let minutes = (total % 3_600) / 60
 
-        if days >= 1 {
-            return hours > 0
-                ? L10n.Common.durationDaysHours(days: days, hours: hours)
-                : L10n.Common.durationDays(days: days)
+        switch style {
+        case .compact:
+            if days >= 1 {
+                return hours > 0
+                    ? L10n.Common.durationDaysHours(days: days, hours: hours)
+                    : L10n.Common.durationDays(days: days)
+            }
+            if hours >= 1 {
+                return minutes > 0
+                    ? L10n.Common.durationHoursMinutes(hours: hours, minutes: minutes)
+                    : L10n.Common.durationHours(hours: hours)
+            }
+            if minutes >= 1 {
+                return L10n.Common.durationMinutes(minutes: minutes)
+            }
+            return L10n.Common.durationLessThanMinute
+        case .full:
+            // Each unit is a plural of its own, and the pair is a key rather
+            // than a join: English wants "and" between them and Chinese wants
+            // nothing, which is not something a separator constant can say.
+            if days >= 1 {
+                let d = L10n.Common.durationFullDays(count: days)
+                guard hours > 0 else { return d }
+                return L10n.Common.durationFullDaysHours(
+                    days: d, hours: L10n.Common.durationFullHours(count: hours)
+                )
+            }
+            if hours >= 1 {
+                let h = L10n.Common.durationFullHours(count: hours)
+                guard minutes > 0 else { return h }
+                return L10n.Common.durationFullHoursMinutes(
+                    hours: h, minutes: L10n.Common.durationFullMinutes(count: minutes)
+                )
+            }
+            if minutes >= 1 {
+                return L10n.Common.durationFullMinutes(count: minutes)
+            }
+            return L10n.Common.durationLessThanMinute
         }
-        if hours >= 1 {
-            return minutes > 0
-                ? L10n.Common.durationHoursMinutes(hours: hours, minutes: minutes)
-                : L10n.Common.durationHours(hours: hours)
-        }
-        if minutes >= 1 {
-            return L10n.Common.durationMinutes(minutes: minutes)
-        }
-        return L10n.Common.durationLessThanMinute
     }
 
     /// Combines the compact countdown with the concrete local reset time.
