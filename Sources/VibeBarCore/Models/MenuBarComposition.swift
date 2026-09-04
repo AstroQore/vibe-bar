@@ -2943,10 +2943,11 @@ public enum MenuBarStripGeometry {
     public static let maximumTwoRowGlyphSide: Double = 12
 
     /// The two-row canvas as the status bar usually presents it: a 22pt bar
-    /// less the rasterizer's 2pt inset and 1pt of padding each side. The App
-    /// reads the real thickness at draw time; these exist so the fit property
-    /// can be asserted against the shape users actually get.
-    public static let nominalTwoRowAvailableHeight: Double = 18
+    /// less the rasterizer's 2pt inset. The App reads the real thickness at
+    /// draw time; these exist so the fit property can be asserted against the
+    /// shape users actually get. No padding comes off it — see
+    /// `MenuBarStripMetrics.twoRowAvailableHeight`.
+    public static let nominalTwoRowAvailableHeight: Double = 20
     public static let nominalTwoRowFontSize: Double = 9
     public static let nominalTwoRowLineSpacing: Double = -2
     public static let nominalLineHeightRatio: Double = 1.2
