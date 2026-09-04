@@ -2111,6 +2111,12 @@
   "settings.language.title": {
     "value": "语言"
   },
+  "settings.layout.preview": {
+    "value": "预览"
+  },
+  "settings.layout.previewUnavailable": {
+    "value": "该页面没有可预览的 popover 标签页。"
+  },
   "settings.mcp.allowRefresh": {
     "value": "允许 agent 刷新额度"
   },
@@ -2302,6 +2308,9 @@
   },
   "settings.miniWindow.position": {
     "value": "{position}"
+  },
+  "settings.miniWindow.preview": {
+    "value": "预览"
   },
   "settings.miniWindow.removeFromWindow": {
     "value": "从此窗口移除"

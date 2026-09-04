@@ -3151,6 +3151,14 @@
     "comment": "Settings row label for the in-app language override",
     "value": "Language"
   },
+  "settings.layout.preview": {
+    "comment": "Caption over the live popover preview in the layout editor",
+    "value": "Preview"
+  },
+  "settings.layout.previewUnavailable": {
+    "comment": "Shown when a layout page has no popover tab to draw",
+    "value": "This page has no popover tab to preview."
+  },
   "settings.mcp.allowRefresh": {
     "comment": "Toggle label",
     "value": "Allow agents to refresh quota"
@@ -3412,6 +3420,10 @@
     },
     "comment": "Ordinal badge showing a field's place in the order",
     "value": "{position}"
+  },
+  "settings.miniWindow.preview": {
+    "comment": "Caption over the live mini-window preview in Settings",
+    "value": "Preview"
   },
   "settings.miniWindow.removeFromWindow": {
     "comment": "Tooltip on a row's remove control",

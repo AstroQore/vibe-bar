@@ -31,6 +31,10 @@ struct MiniWindowsSettingsSection: View {
     @State private var mergedOptionsById: [String: MenuBarFieldOption] = [:]
     /// Field ids whose bucket the live quota cache currently returns.
     @State private var liveFieldIds: Set<String> = []
+    /// How much room the preview has. Measured rather than fixed: the styles
+    /// range from a narrow rail to a row that wants the width of a screen, and
+    /// a guessed number shrinks the wide ones to illegibility.
+    @State private var previewWidth: CGFloat = 480
 
     private enum NamingScope: Hashable {
         case shared
@@ -250,6 +254,8 @@ struct MiniWindowsSettingsSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        windowPreview(config)
+
         if namingScope == .style {
             Text(L10n.Settings.miniWindowOverridesStyle(mode: config.displayMode.label))
                 .font(.caption)
@@ -263,6 +269,41 @@ struct MiniWindowsSettingsSection: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         notShownList(config)
+    }
+
+    /// The window itself, drawn beside the list that arranges it.
+    ///
+    /// The real view, not a mock: `MiniQuotaWindowView` re-reads its config
+    /// from settings on every render, so picking a style, dragging a row or
+    /// renaming a field lands here immediately — which is the whole point of
+    /// arranging something you cannot see. Its two callbacks are inert; this
+    /// is a picture of the window, not a second copy of it to drive.
+    private func windowPreview(_ config: MiniWindowConfig) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L10n.Settings.miniWindowPreview)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+            ScaledPreview(width: previewWidth) {
+                MiniQuotaWindowView(
+                    configID: config.id,
+                    onClose: {},
+                    onToggleDisplayMode: {}
+                )
+            }
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.background.secondary)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { previewWidth = max(120, $0 - 12) }
     }
 
     private func modePicker(_ config: MiniWindowConfig) -> some View {

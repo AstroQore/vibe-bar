@@ -2852,6 +2852,14 @@ extension L10n {
         public static var languageTitle: String {
             L10n.string("settings.language.title")
         }
+        /// `settings.layout.preview` — Preview
+        public static var layoutPreview: String {
+            L10n.string("settings.layout.preview")
+        }
+        /// `settings.layout.previewUnavailable` — This page has no popover tab to preview.
+        public static var layoutPreviewUnavailable: String {
+            L10n.string("settings.layout.previewUnavailable")
+        }
         /// `settings.mcp.allowRefresh` — Allow agents to refresh quota
         public static var mcpAllowRefresh: String {
             L10n.string("settings.mcp.allowRefresh")
@@ -3107,6 +3115,10 @@ extension L10n {
         /// `settings.miniWindow.position` — {position}
         public static func miniWindowPosition(position: Int) -> String {
             L10n.string("settings.miniWindow.position", position)
+        }
+        /// `settings.miniWindow.preview` — Preview
+        public static var miniWindowPreview: String {
+            L10n.string("settings.miniWindow.preview")
         }
         /// `settings.miniWindow.removeFromWindow` — Remove from this window
         public static var miniWindowRemoveFromWindow: String {
@@ -7016,6 +7028,8 @@ extension L10n {
         "settings.language.caption",
         "settings.language.system",
         "settings.language.title",
+        "settings.layout.preview",
+        "settings.layout.previewUnavailable",
         "settings.mcp.allowRefresh",
         "settings.mcp.allowRefreshDetail",
         "settings.mcp.allowSkills",
@@ -7080,6 +7094,7 @@ extension L10n {
         "settings.miniWindow.overridesStyle",
         "settings.miniWindow.overridesWindow",
         "settings.miniWindow.position",
+        "settings.miniWindow.preview",
         "settings.miniWindow.removeFromWindow",
         "settings.miniWindow.removeHelp",
         "settings.miniWindow.stripDensity",

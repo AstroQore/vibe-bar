@@ -2057,6 +2057,12 @@
 /* Settings row label for the in-app language override */
 "settings.language.title" = "语言";
 
+/* Caption over the live popover preview in the layout editor */
+"settings.layout.preview" = "预览";
+
+/* Shown when a layout page has no popover tab to draw */
+"settings.layout.previewUnavailable" = "该页面没有可预览的 popover 标签页。";
+
 /* Toggle label */
 "settings.mcp.allowRefresh" = "允许 agent 刷新额度";
 
@@ -2248,6 +2254,9 @@
 
 /* Ordinal badge showing a field's place in the order */
 "settings.miniWindow.position" = "%1$lld";
+
+/* Caption over the live mini-window preview in Settings */
+"settings.miniWindow.preview" = "预览";
 
 /* Tooltip on a row's remove control */
 "settings.miniWindow.removeFromWindow" = "从此窗口移除";
