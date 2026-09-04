@@ -97,6 +97,7 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/LanguageSettingsSection.swift",
     "Sources/VibeBarApp/Views/Workbench/SessionListView.swift",
     "Sources/VibeBarApp/Views/Workbench/SessionManagerPage.swift",
+    "Sources/VibeBarApp/Views/Workbench/FilterPicker.swift",
     "Sources/VibeBarApp/Views/Workbench/TranscriptView.swift",
     "Sources/VibeBarApp/Controllers/SessionManagerModel.swift",
     "Sources/VibeBarApp/Controllers/SkillsManagerModel.swift",
@@ -403,7 +404,7 @@ COPY_ARGUMENTS = {
 # Argument labels that are never copy, even inside a text-rendering call.
 # `systemImage:` is an SF Symbol name; `tag:`/`id:` are identities.
 IDENTIFIER_ARGUMENTS = {
-    "systemImage", "image", "icon", "id", "tag", "key", "forKey", "table",
+    "systemImage", "systemName", "image", "icon", "id", "tag", "key", "forKey", "table",
     "bundle", "forResource", "withExtension", "named", "identifier",
     "separator", "format", "comment", "scheme", "host", "path", "rawValue",
     "toolNameOverride", "forGroupName", "bucketId", "accountId", "command",
@@ -481,7 +482,9 @@ def copy_member_spans(source: str):
         if match.group(1) not in COPY_MEMBERS:
             continue
         brace = source.find("{", match.end())
-        if brace == -1:
+        # A stored `var detail: String?` has no body; taking the next brace
+        # in the file would swallow whatever member happens to follow it.
+        if brace == -1 or source[match.end():brace].strip(" \t\n?!"):
             continue
         depth, index = 1, brace + 1
         while index < len(source) and depth:

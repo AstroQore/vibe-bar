@@ -8,7 +8,9 @@ import XCTest
 /// 1. Every presentation — the three hosting roots plus every `.sheet` and
 ///    `.popover` — opts into `vibeBarNoInitialFocus()`, so no surface opens
 ///    with a control pre-selected. Adding a presentation without the policy
-///    breaks the count on purpose.
+///    breaks the count on purpose. The `thenFocus:` form counts too: it runs
+///    the same clear and then hands focus to one named control, the search
+///    field of a picker that exists to be typed into.
 /// 2. The policy clears only the initial responder. It must never reorder
 ///    or rebuild the key-view loop, and never watch key-window changes —
 ///    that is what keeps Tab/arrow navigation intact and keeps an app
@@ -43,6 +45,7 @@ final class KeyboardFocusPolicyTests: XCTestCase {
 
         let policyCount = sources.values.reduce(0) {
             $0 + $1.numberOfOccurrences(of: ".vibeBarNoInitialFocus()")
+                + $1.numberOfOccurrences(of: ".vibeBarNoInitialFocus(thenFocus:")
         }
 
         XCTAssertEqual(
