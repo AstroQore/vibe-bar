@@ -3167,6 +3167,59 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertTrue(composition.isGrouped(tokens[1].id))
     }
 
+    func testRebindingAnOverlappingRunLeavesNoStragglers() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[0].id, tokens[1].id])
+        composition.group([tokens[1].id, tokens[2].id])
+        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[1].id, tokens[2].id])
+        XCTAssertFalse(composition.isGrouped(tokens[0].id))
+        let copy = try? XCTUnwrap(composition.duplicate(tokens[0].id))
+        XCTAssertNotNil(copy)
+        XCTAssertNil(composition.token(copy!)?.groupID,
+                     "a stale binding must not be copied onto the duplicate")
+    }
+
+    func testARunCutAcrossTwoRowsIsDissolvedWholesale() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[0].id, tokens[1].id, tokens[2].id, tokens[3].id])
+        // What a template change does: the seam moves half the row down.
+        var segment = composition.segments[0]
+        let moved = Array(segment.top[2...])
+        segment.top.removeSubrange(2...)
+        segment.bottom = moved
+        composition.segments[0] = segment
+        composition.normalizeGroups()
+        for token in tokens {
+            XCTAssertFalse(composition.isGrouped(token.id),
+                           "each half looks contiguous on its own, but the run is gone")
+        }
+    }
+
+    func testTheSamePresetInsertedTwiceMakesTwoSeparateRuns() throws {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        let preset = MenuBarSegmentPreset(name: "run", segment: composition.segments[0])
+        let first = preset.segment()
+        let second = preset.segment()
+        let firstGroups = Set(first.top.compactMap(\.groupID))
+        let secondGroups = Set(second.top.compactMap(\.groupID))
+        XCTAssertEqual(firstGroups.count, 1)
+        XCTAssertEqual(secondGroups.count, 1)
+        XCTAssertTrue(firstGroups.isDisjoint(with: secondGroups),
+                      "two copies of one preset must not share a binding")
+    }
+
+    func testTheSplitButtonAndTheSplitAgree() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        XCTAssertFalse(composition.canSplitSegment(before: tokens[0].id), "already first")
+        XCTAssertTrue(composition.canSplitSegment(before: tokens[1].id), "a run may start one")
+        XCTAssertFalse(composition.canSplitSegment(before: tokens[2].id), "would halve the run")
+        let before = composition.segments.count
+        composition.splitSegment(before: tokens[2].id)
+        XCTAssertEqual(composition.segments.count, before)
+    }
+
     func testUngroupingLeavesEveryBlockWhereItWas() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[1].id, tokens[2].id])

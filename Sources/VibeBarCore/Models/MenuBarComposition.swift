@@ -665,10 +665,22 @@ public struct MenuBarSegmentPreset: Identifiable, Codable, Equatable, Sendable {
     /// segment. Two insertions of one preset are two groups the editor can
     /// drag apart, the same rule `duplicate` follows.
     public func segment() -> MenuBarSegment {
+        // Fresh bindings as well as fresh identities, and one per original
+        // group so a run stays a run. Reusing the saved ids would make two
+        // copies of the same preset read as one group once they shared a row,
+        // and dragging either would move both.
+        var rebound: [UUID: UUID] = [:]
         func copies(_ tokens: [MenuBarToken]) -> [MenuBarToken] {
             tokens.map { token in
                 var copy = token
                 copy.id = UUID()
+                if let group = token.groupID {
+                    copy.groupID = rebound[group] ?? {
+                        let fresh = UUID()
+                        rebound[group] = fresh
+                        return fresh
+                    }()
+                }
                 return copy
             }
         }
@@ -859,6 +871,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// that divider, so the two directions round-trip.
     public mutating func setTemplate(_ newTemplate: Template) {
         template = newTemplate
+        defer { normalizeGroups() }
         if newTemplate.seedsSecondRow {
             guard !segments.contains(where: \.isStacked) else { return }
             // The seam is looked for inside each group, longest first: a
@@ -1206,6 +1219,10 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         for offset in run.offsets {
             segments[run.segment][run.row][offset].groupID = group
         }
+        // Binding B and C when A-B were bound leaves A holding an id nobody
+        // else has. It is not a group any more, and a stale one would be
+        // copied by `duplicate` and quietly bind the copy to nothing.
+        normalizeGroups()
         return group
     }
 
@@ -1254,25 +1271,46 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// Every structural mutation ends here, which is what lets the operations
     /// above stay simple: they move blocks, and this decides what survives.
     public mutating func normalizeGroups() {
+        // Every id, everywhere. A row-local pass cannot see a four-block group
+        // cut 2+2 by a template change: each half is contiguous inside its own
+        // row, so both would survive holding the same id, and a later merge
+        // would fuse two runs the user never bound together.
+        struct Placement { var row: (segment: Int, row: MenuBarSegment.Row); var offsets: [Int] }
+        var seen: [UUID: Placement] = [:]
+        var doomed: Set<UUID> = []
         for segmentIndex in segments.indices {
             for row in MenuBarSegment.Row.allCases {
-                var runs: [UUID: [Int]] = [:]
                 for (offset, token) in segments[segmentIndex][row].enumerated() {
                     guard let group = token.groupID else { continue }
-                    runs[group, default: []].append(offset)
-                }
-                for offsets in runs.values {
-                    let contiguous = offsets.last! - offsets.first! == offsets.count - 1
-                    guard offsets.count < 2 || !contiguous else { continue }
-                    for offset in offsets {
-                        segments[segmentIndex][row][offset].groupID = nil
+                    if var placement = seen[group] {
+                        guard placement.row == (segmentIndex, row) else {
+                            doomed.insert(group)
+                            continue
+                        }
+                        placement.offsets.append(offset)
+                        seen[group] = placement
+                    } else {
+                        seen[group] = Placement(row: (segmentIndex, row), offsets: [offset])
                     }
                 }
             }
         }
-        // A group split across rows leaves a valid-looking run on each side;
-        // one of them is a single block, and the pass above has already
-        // dissolved it. The other is a genuine run of what is left.
+        for (group, placement) in seen {
+            let offsets = placement.offsets.sorted()
+            let contiguous = offsets.last! - offsets.first! == offsets.count - 1
+            if offsets.count < 2 || !contiguous { doomed.insert(group) }
+        }
+        guard !doomed.isEmpty else { return }
+        for segmentIndex in segments.indices {
+            for row in MenuBarSegment.Row.allCases {
+                for offset in segments[segmentIndex][row].indices {
+                    guard let group = segments[segmentIndex][row][offset].groupID,
+                          doomed.contains(group)
+                    else { continue }
+                    segments[segmentIndex][row][offset].groupID = nil
+                }
+            }
+        }
     }
 
     // MARK: Segments
@@ -1338,15 +1376,22 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// cutting through a bottom row alone would leave one group with a hole
     /// where its first cell should be, which is not a column the strip can
     /// draw and not a shape the editor should let anyone build.
-    public mutating func splitSegment(before id: UUID) {
+    /// Whether `splitSegment(before:)` would do anything — the predicate the
+    /// button offering it reads, so a visible action is never a no-op.
+    ///
+    /// Never through a run: a group with half in each column would dissolve,
+    /// which is not what "start a segment here" says it does. A run's first
+    /// block may start a segment; a later member may not.
+    public func canSplitSegment(before id: UUID) -> Bool {
         guard let location = location(of: id),
               location.row == .top,
-              location.offset > 0,
-              // Never through a run: a group that ends up half in each column
-              // would dissolve, which is not what "start a segment here" says
-              // it does. The block starting a segment may be a run's first.
-              groupedRun(of: id).first == id
-        else { return }
+              location.offset > 0
+        else { return false }
+        return groupedRun(of: id).first == id
+    }
+
+    public mutating func splitSegment(before id: UUID) {
+        guard canSplitSegment(before: id), let location = location(of: id) else { return }
         let moved = Array(segments[location.segment].top[location.offset...])
         segments[location.segment].top.removeSubrange(location.offset...)
         let bottom = segments[location.segment].bottom

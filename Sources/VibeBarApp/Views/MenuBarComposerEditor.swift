@@ -888,12 +888,12 @@ struct MenuBarComposerEditor: View {
                 HStack(spacing: 8) {
                     caption(L10n.MenuBar.composerSelected)
                     Spacer(minLength: 8)
-                    // Only where it would do something: a block that already
-                    // starts its segment has no segment to start, and a column is
-                    // cut through its top row — see `splitSegment`.
-                    if let location = composition.location(of: id),
-                       location.row == .top,
-                       location.offset > 0 {
+                    // Only where it would do something — the model's own
+                    // predicate, so a visible action is never a no-op. A block
+                    // that already starts its segment has none to start, a
+                    // column is cut through its top row, and a cut through a
+                    // bound run is refused.
+                    if composition.canSplitSegment(before: id) {
                         Button(L10n.MenuBar.composerSegmentSplitHere) {
                             mutate { $0.splitSegment(before: id) }
                         }
