@@ -491,11 +491,11 @@ struct UsageBreakdownTables: View {
     }
 
     /// A request row is usage, so it names the harness that produced it, not
-    /// the quota SubProvider it bills against (AGENTS.md § 7.1). The badge
-    /// still follows the L1 company, matching the Harness Mix card.
+    /// the quota SubProvider it bills against (AGENTS.md § 7.1), and wears
+    /// that harness's own mark — matching the Harness Mix card.
     private func harnessCell(_ harness: Harness, _ column: UsageTableColumn) -> some View {
         HStack(spacing: 7) {
-            CompanyBrandBadge(tool: harness.company, iconSize: 13, containerSize: 16)
+            HarnessBrandBadge(harness: harness, iconSize: 13, containerSize: 16)
             Text(harness.displayName)
                 .font(bodyFont)
                 .lineLimit(1)
