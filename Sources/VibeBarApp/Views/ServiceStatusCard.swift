@@ -82,7 +82,7 @@ private struct ServiceStatusRow: View {
 
         VStack(alignment: .leading, spacing: density.statusComponentSpacing + 2) {
             HStack(alignment: .center, spacing: 8) {
-                ToolBrandBadge(
+                CompanyBrandBadge(
                     tool: tool,
                     iconSize: density.bucketTitleFontSize + 3,
                     containerSize: density.bucketTitleFontSize + 10

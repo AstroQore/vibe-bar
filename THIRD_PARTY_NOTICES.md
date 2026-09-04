@@ -42,6 +42,23 @@ portions is included in this repository at the local license link above.
   notice file is bundled.
 - Third-party code: none. The package has no dependencies of its own.
 
+## Bundled assets
+
+### Lobe Icons
+
+- Project: [lobehub/lobe-icons](https://github.com/lobehub/lobe-icons)
+- Use in Vibe Bar: `Resources/ProviderIcons/ProviderIcon-googleai.svg` is
+  Google's four-segment G taken from that project's `icons/google.svg`, with
+  the viewBox cropped to the mark and the brand colours dropped because the
+  renderer tints the shape. No other provider icon comes from this project.
+- License: [MIT](Resources/ThirdPartyLicenses/LobeIcons.txt)
+  ([upstream](https://github.com/lobehub/lobe-icons/blob/master/LICENSE))
+- Copyright: Copyright (c) 2023 LobeHub
+
+Brand marks in `Resources/ProviderIcons/` remain the trademarks of their
+respective owners; Vibe Bar draws them to identify the service a quota belongs
+to, and the license above covers only the copied vector artwork.
+
 ## Direct dependencies
 
 ### SweetCookieKit 0.5.2

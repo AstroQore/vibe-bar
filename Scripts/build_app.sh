@@ -106,7 +106,7 @@ for lang in en zh-Hans; do
         exit 1
     fi
 done
-for license_name in CodexBar SweetCookieKit Sparkle; do
+for license_name in CodexBar SweetCookieKit Sparkle LobeIcons; do
     if [[ ! -f "$APP_DIR/Contents/Resources/ThirdPartyLicenses/$license_name.txt" ]]; then
         echo "Packaged third-party license resources are incomplete." >&2
         exit 1

@@ -101,7 +101,7 @@ private struct OnboardingCoreProviderCard: View {
     var body: some View {
         CardShell(density: density) {
             HStack(spacing: 10) {
-                ToolBrandBadge(tool: tool, iconSize: 20, containerSize: 26)
+                CompanyBrandBadge(tool: tool, iconSize: 20, containerSize: 26)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(tool.vendorName)
                         .font(.system(size: 13, weight: .semibold))

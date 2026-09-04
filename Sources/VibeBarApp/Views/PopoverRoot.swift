@@ -221,14 +221,25 @@ struct ProviderSectionTitle: View {
     let subtitleFontSize: CGFloat
     var iconSize: CGFloat = 17
     var badgeSize: CGFloat = 24
+    /// Nearly every caller titles this with `vendorName` — an L1 company — so
+    /// the company mark is the default and a product-level heading opts out.
+    var showsCompanyMark: Bool = true
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            ToolBrandBadge(
-                tool: tool,
-                iconSize: iconSize,
-                containerSize: badgeSize
-            )
+            if showsCompanyMark {
+                CompanyBrandBadge(
+                    tool: tool,
+                    iconSize: iconSize,
+                    containerSize: badgeSize
+                )
+            } else {
+                ToolBrandBadge(
+                    tool: tool,
+                    iconSize: iconSize,
+                    containerSize: badgeSize
+                )
+            }
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text(title)
                     .font(.system(size: titleFontSize, weight: .semibold))
@@ -1037,7 +1048,9 @@ private struct GeminiCostEmptyCard: View {
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16,
-                    badgeSize: 24
+                    badgeSize: 24,
+                    // Titled with the product, so it keeps the product's mark.
+                    showsCompanyMark: false
                 )
                 Spacer(minLength: 4)
             }

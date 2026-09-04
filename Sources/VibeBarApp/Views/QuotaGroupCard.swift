@@ -45,6 +45,10 @@ struct QuotaGroupModule: Identifiable {
     /// Gemini Web, AntiGravity, Grok, Cursor, or Grok Bot).
     let linkedSectionTitle: String?
     let linkedSectionIconTool: ToolType?
+    /// The bucket the linked section starts at, so its header can wear the
+    /// SubProvider's own mark where it has one — Grok Bot rides Cursor's
+    /// account, and only the bucket says so.
+    var linkedSectionBucketID: String?
     /// Set on the first card of the page. It inherits the provider header —
     /// brand icon, product name, plan badge, refresh button — that the single
     /// pre-split card carried at the top.
@@ -150,9 +154,8 @@ enum QuotaGroupModuleBuilder {
                         )
                     },
                     linkedSectionTitle: linkedSectionTitle,
-                    linkedSectionIconTool: head.tool == .cursor && head.bucket.id == "grok_bot_weekly"
-                        ? .grok
-                        : head.tool,
+                    linkedSectionIconTool: head.tool,
+                    linkedSectionBucketID: head.bucket.id,
                     showsProviderHeader: modules.isEmpty
                 )
             )
@@ -270,7 +273,11 @@ struct QuotaGroupCard: View {
                 // divider; the card boundary does that now, so only the name
                 // and brand icon survive.
                 HStack(alignment: .center, spacing: 6) {
-                    ToolBrandIconView(tool: module.linkedSectionIconTool ?? module.tool, size: 13)
+                    QuotaBrandIconView(
+                        tool: module.linkedSectionIconTool ?? module.tool,
+                        bucketID: module.linkedSectionBucketID,
+                        size: 13
+                    )
                         .opacity(0.85)
                     Text(linkedSectionTitle)
                         .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
