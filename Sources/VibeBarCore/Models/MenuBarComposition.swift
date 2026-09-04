@@ -1174,16 +1174,25 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// Take a run of blocks out of the arrangement, in row order. Empty when
     /// the ids are not all present.
     private mutating func lift(_ ids: [UUID]) -> [MenuBarToken] {
-        let ordered = ids.compactMap { id -> (Location, MenuBarToken)? in
-            guard let at = location(of: id) else { return nil }
-            return (at, segments[at.segment][at.row][at.offset])
+        // One walk, like `contiguousRun`: this runs on every pointer crossing
+        // of a drag, and `location(of:)` per member scans the whole strip each
+        // time — quadratic in a group that spans most of it.
+        let wanted = Set(ids)
+        var found: [(Location, MenuBarToken)] = []
+        for segmentIndex in segments.indices {
+            for row in MenuBarSegment.Row.allCases {
+                for (offset, token) in segments[segmentIndex][row].enumerated()
+                where wanted.contains(token.id) {
+                    found.append((Location(segment: segmentIndex, row: row, offset: offset), token))
+                }
+            }
         }
-        guard ordered.count == ids.count else { return [] }
+        guard found.count == wanted.count else { return [] }
         // Back to front, so each removal leaves the offsets before it intact.
-        for (at, _) in ordered.sorted(by: { $0.0.offset > $1.0.offset }) {
+        for (at, _) in found.sorted(by: { $0.0.offset > $1.0.offset }) {
             segments[at.segment][at.row].remove(at: at.offset)
         }
-        return ordered.map(\.1)
+        return found.map(\.1)
     }
 
     /// Put a lifted run back where it came from, for a move that could not
