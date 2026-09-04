@@ -8,9 +8,9 @@ import XCTest
 /// and compares equal within one.
 final class LanguageStampTests: XCTestCase {
     private func withLanguage<T>(_ language: AppLanguage, _ body: () -> T) -> T {
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
-        L10n.languageOverride = language
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
+        AppLocalization.languageOverride = language
         return body()
     }
 

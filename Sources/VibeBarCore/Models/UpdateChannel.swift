@@ -14,18 +14,18 @@ public enum UpdateChannel: String, Codable, CaseIterable, Identifiable, Sendable
     public var label: String {
         switch self {
         case .main:
-            return L10n.Settings.updateChannelMain
+            return L10n.Settings.UpdateChannel.main
         case .dev:
-            return L10n.Settings.updateChannelDev
+            return L10n.Settings.UpdateChannel.dev
         }
     }
 
     public var detail: String {
         switch self {
         case .main:
-            return L10n.Settings.updateChannelMainDetail
+            return L10n.Settings.UpdateChannel.mainDetail
         case .dev:
-            return L10n.Settings.updateChannelDevDetail
+            return L10n.Settings.UpdateChannel.devDetail
         }
     }
 

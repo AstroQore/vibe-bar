@@ -969,10 +969,10 @@ final class ResetHistoryComparisonTests: XCTestCase {
     /// over. Every localized string on this type is derived on access, so a
     /// comparison built in one language reads correctly in the next.
     func testAComparisonBuiltInOneLanguageReadsInTheNext() {
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
 
-        L10n.languageOverride = .english
+        AppLocalization.languageOverride = .english
         let built = ResetHistoryComparison.build(
             inputs: [lane(samples: [
                 sample(bucketId: "weekly", endingDaysAgo: 7, used: 10),
@@ -987,7 +987,7 @@ final class ResetHistoryComparisonTests: XCTestCase {
         )
 
         // Same value, no rebuild — exactly what the view's memo hands back.
-        L10n.languageOverride = .simplifiedChinese
+        AppLocalization.languageOverride = .simplifiedChinese
         XCTAssertEqual(
             built.verdict,
             "Anthropic · Claude · 每周 有 1 次补额后超过一半未使用。"
@@ -1005,10 +1005,10 @@ final class ResetHistoryComparisonTests: XCTestCase {
     /// The lane and header text is derived too — same reason, and they sit
     /// on the same cached value.
     func testLaneAndTotalsTextFollowALanguageChangeOnACachedComparison() {
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
 
-        L10n.languageOverride = .english
+        AppLocalization.languageOverride = .english
         let built = ResetHistoryComparison.build(
             inputs: [lane(samples: [
                 sample(bucketId: "weekly", endingDaysAgo: 7, used: 60),
@@ -1020,7 +1020,7 @@ final class ResetHistoryComparisonTests: XCTestCase {
         XCTAssertTrue(built.totals.headline.contains("used"))
         XCTAssertTrue(built.lanes[0].wasteSummary.contains("avg wasted"))
 
-        L10n.languageOverride = .simplifiedChinese
+        AppLocalization.languageOverride = .simplifiedChinese
         XCTAssertTrue(
             built.totals.headline.contains("已用"),
             "totals headline stayed English: \(built.totals.headline)"
@@ -1034,7 +1034,7 @@ final class ResetHistoryComparisonTests: XCTestCase {
         // stay as their owners spell them, while `Weekly` is a generic
         // window word the reader should meet in their own language.
         XCTAssertEqual(built.lanes[0].label, "Anthropic · Claude · 每周")
-        L10n.languageOverride = .english
+        AppLocalization.languageOverride = .english
         XCTAssertEqual(built.lanes[0].label, "Anthropic · Claude · Weekly")
     }
 
@@ -1043,9 +1043,9 @@ final class ResetHistoryComparisonTests: XCTestCase {
     /// copy. Renaming Sonnet in Chinese would make this app and Vibe Bar
     /// Desktop disagree about what the reader is looking at.
     func testAModelNamedBucketIsNeverTranslatedInALaneLabel() {
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
-        L10n.languageOverride = .simplifiedChinese
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
+        AppLocalization.languageOverride = .simplifiedChinese
 
         let built = ResetHistoryComparison.build(
             inputs: [lane(
@@ -1070,9 +1070,9 @@ final class ResetHistoryComparisonTests: XCTestCase {
     /// two contract values that render to the same word would otherwise
     /// appear twice.
     func testAGroupAndBucketThatRenderTheSameArePrintedOnce() {
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
-        L10n.languageOverride = .simplifiedChinese
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
+        AppLocalization.languageOverride = .simplifiedChinese
 
         let built = ResetHistoryComparison.build(
             inputs: [lane(

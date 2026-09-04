@@ -11,12 +11,12 @@ final class ResetCountdownFormatterTests: XCTestCase {
     // say instead of whatever the machine running the suite is set to.
     override func setUp() {
         super.setUp()
-        restoreLanguage = L10n.languageOverride
-        L10n.languageOverride = .english
+        restoreLanguage = AppLocalization.languageOverride
+        AppLocalization.languageOverride = .english
     }
 
     override func tearDown() {
-        L10n.languageOverride = restoreLanguage
+        AppLocalization.languageOverride = restoreLanguage
         super.tearDown()
     }
 
@@ -189,7 +189,7 @@ final class ResetCountdownFormatterTests: XCTestCase {
     /// Chinese puts the weekday *after* the date and the year before the
     /// month, and no call site in this app knows that.
     func testChineseOrdersTheSamePartsItsOwnWay() {
-        L10n.languageOverride = .simplifiedChinese
+        AppLocalization.languageOverride = .simplifiedChinese
         let now = date(2026, 7, 21, 8, 0)
         let reset = date(2026, 7, 24, 12, 0)
 

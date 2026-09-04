@@ -55,9 +55,9 @@ struct SkillImportSheet: View {
     private var header: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.Workbench.skillsImportTitle)
+                Text(L10n.Workbench.Skills.Import.title)
                     .font(.system(size: density.titleFontSize, weight: .semibold))
-                Text(L10n.Workbench.skillsImportSubtitle)
+                Text(L10n.Workbench.Skills.Import.subtitle)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             }
@@ -88,7 +88,7 @@ struct SkillImportSheet: View {
                     if model.isBusy(SkillsManagerModel.BusyKey.importing) {
                         ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 12, height: 12)
                     }
-                    Text(L10n.Workbench.skillsImportApply(
+                    Text(L10n.Workbench.Skills.Import.apply(
                         count: report.adopted.count + adopting.count
                     ))
                 }
@@ -102,7 +102,7 @@ struct SkillImportSheet: View {
     }
 
     private func summary(_ report: SkillImportReport) -> String {
-        L10n.Workbench.skillsImportSummary(
+        L10n.Workbench.Skills.Import.summary(
             adopted: report.adopted.count,
             unmanaged: report.unmanagedDirectories.count,
             conflicts: report.conflicts.count
@@ -116,7 +116,7 @@ struct SkillImportSheet: View {
             DisclosureGroup(isExpanded: $showsExistingSkills) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        Text(L10n.Workbench.skillsImportKeepEvidenceFor)
+                        Text(L10n.Workbench.Skills.Import.keepEvidenceFor)
                             .font(.system(size: max(10, density.resetCountdownFontSize)))
                             .foregroundStyle(.tertiary)
                         SkillAppToggleRow(
@@ -126,7 +126,7 @@ struct SkillImportSheet: View {
                             glyphSize: 11,
                             spacing: 3,
                             helpOverride: {
-                                L10n.Workbench.skillsToggleHelpKeepLinks(app: $0.displayName)
+                                L10n.Workbench.Skills.ToggleHelp.keepLinks(app: $0.displayName)
                             }
                         )
                     }
@@ -150,13 +150,13 @@ struct SkillImportSheet: View {
                 .padding(.top, 8)
             } label: {
                 sectionHeader(
-                    L10n.Workbench.skillsImportAlreadyShared,
-                    detail: L10n.Workbench.skillsImportRecognizedCount(
+                    L10n.Workbench.Skills.Import.alreadyShared,
+                    detail: L10n.Workbench.Skills.Import.recognizedCount(
                         count: report.adopted.count
                     )
                 )
             }
-            Text(L10n.Workbench.skillsImportAlreadySharedDetail)
+            Text(L10n.Workbench.Skills.Import.alreadySharedDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
         }
@@ -167,10 +167,10 @@ struct SkillImportSheet: View {
     private func unmanagedSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             sectionHeader(
-                L10n.Workbench.skillsImportNeedsAdoption,
+                L10n.Workbench.Skills.Import.needsAdoption,
                 detail: AppLocale.number(report.unmanagedDirectories.count)
             )
-            Text(L10n.Workbench.skillsImportNeedsAdoptionDetail)
+            Text(L10n.Workbench.Skills.Import.needsAdoptionDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             ForEach(report.unmanagedDirectories, id: \.directoryName) { entry in
@@ -192,7 +192,7 @@ struct SkillImportSheet: View {
                     Text(entry.name ?? entry.directoryName)
                         .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                         .lineLimit(1)
-                    Text(L10n.Workbench.skillsImportFoundIn(
+                    Text(L10n.Workbench.Skills.Import.foundIn(
                         apps: entry.foundIn.map(\.displayName).joined(separator: ", ")
                     ))
                         .font(.system(size: max(10, density.resetCountdownFontSize)))
@@ -212,7 +212,7 @@ struct SkillImportSheet: View {
                 glyphSize: 11,
                 spacing: 3,
                 helpOverride: {
-                    L10n.Workbench.skillsToggleHelpLinkAfterAdopting(app: $0.displayName)
+                    L10n.Workbench.Skills.ToggleHelp.linkAfterAdopting(app: $0.displayName)
                 }
             )
         }
@@ -224,10 +224,10 @@ struct SkillImportSheet: View {
     private func unrecognizedSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             sectionHeader(
-                L10n.Workbench.skillsImportNotSkills,
+                L10n.Workbench.Skills.Import.notSkills,
                 detail: AppLocale.number(report.unrecognized.count)
             )
-            Text(L10n.Workbench.skillsImportNotSkillsDetail)
+            Text(L10n.Workbench.Skills.Import.notSkillsDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             Text(report.unrecognized.joined(separator: ", "))
@@ -240,10 +240,10 @@ struct SkillImportSheet: View {
     private func conflictsSection(_ report: SkillImportReport) -> some View {
         CardShell(density: density, spacing: density.cardSpacing) {
             sectionHeader(
-                L10n.Workbench.skillsImportConflicts,
-                detail: L10n.Workbench.skillsImportConflictsCount(count: report.conflicts.count)
+                L10n.Workbench.Skills.Import.conflicts,
+                detail: L10n.Workbench.Skills.Import.conflictsCount(count: report.conflicts.count)
             )
-            Text(L10n.Workbench.skillsImportConflictsDetail)
+            Text(L10n.Workbench.Skills.Import.conflictsDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             ForEach(report.conflicts, id: \.self) { conflict in

@@ -93,7 +93,7 @@ private struct MiscProviderCard: View {
             Spacer(minLength: 4)
             BorderlessIconButton(
                 systemImage: "arrow.clockwise",
-                help: L10n.Quota.miscRefreshProvider(provider: tool.menuTitle),
+                help: L10n.Quota.Misc.refreshProvider(provider: tool.menuTitle),
                 size: density.subtitleFontSize
             ) {
                 environment.refresh(instance)
@@ -196,7 +196,7 @@ private struct MiscProviderGroupCard: View {
                 Text(group.tool.menuTitle)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     .lineLimit(1)
-                Text(L10n.Quota.miscIndependentCopies(count: group.instances.count))
+                Text(L10n.Quota.Misc.independentCopies(count: group.instances.count))
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
@@ -204,7 +204,7 @@ private struct MiscProviderGroupCard: View {
             Spacer(minLength: 4)
             BorderlessIconButton(
                 systemImage: "arrow.clockwise",
-                help: L10n.Quota.miscRefreshCopies(provider: group.tool.menuTitle),
+                help: L10n.Quota.Misc.refreshCopies(provider: group.tool.menuTitle),
                 size: density.subtitleFontSize
             ) {
                 for instance in group.instances {
@@ -266,8 +266,8 @@ private struct MiscProviderInstanceStatusRow: View {
     @EnvironmentObject var quotaService: QuotaService
 
     private var accountID: String { AccountStore.miscAccountId(forInstanceID: instance.id) }
-    private var title: String { instance.displayTitle(fallback: L10n.Popover.miscCopyFallback(ordinal: ordinal)) }
-    private var refreshTitle: String { instance.displayTitle(fallback: L10n.Popover.miscCopyFallback(ordinal: ordinal)) }
+    private var title: String { instance.displayTitle(fallback: L10n.Popover.Misc.copyFallback(ordinal: ordinal)) }
+    private var refreshTitle: String { instance.displayTitle(fallback: L10n.Popover.Misc.copyFallback(ordinal: ordinal)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -278,7 +278,7 @@ private struct MiscProviderInstanceStatusRow: View {
                 Spacer(minLength: 4)
                 BorderlessIconButton(
                     systemImage: "arrow.clockwise",
-                    help: L10n.Quota.miscRefreshProvider(provider: refreshTitle),
+                    help: L10n.Quota.Misc.refreshProvider(provider: refreshTitle),
                     size: max(9, density.subtitleFontSize - 1)
                 ) {
                     environment.refresh(instance)
@@ -342,7 +342,7 @@ private struct MiscQuotaBody: View {
                 }
                 if let visibleError {
                     compactErrorText(
-                        L10n.Quota.updateFailed(reason: visibleError.userFacingMessage)
+                        L10n.Quota.Update.failed(reason: visibleError.userFacingMessage)
                     )
                 }
             }
@@ -423,7 +423,7 @@ private struct MiscQuotaBody: View {
                     .foregroundStyle(.tertiary)
             }
             if let countdown = ResetCountdownFormatter.stringWithAbsoluteTime(from: bucket.resetAt) {
-                Text(L10n.Quota.bucketResetsIn(when: countdown))
+                Text(L10n.Quota.Reset.`in`(when: countdown))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
@@ -442,7 +442,7 @@ private struct MiscQuotaBody: View {
 
     private var setupState: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.Quota.miscNotConfigured)
+            Text(L10n.Quota.Misc.notConfigured)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             Button {
@@ -450,7 +450,7 @@ private struct MiscQuotaBody: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "gearshape")
-                    Text(L10n.Quota.miscSetUpInSettings)
+                    Text(L10n.Quota.Misc.setUpInSettings)
                 }
                 .font(.system(size: density.subtitleFontSize, weight: .medium))
             }

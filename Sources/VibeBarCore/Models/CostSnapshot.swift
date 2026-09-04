@@ -630,11 +630,11 @@ public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
 
     public var label: String {
         switch self {
-        case .today: return L10n.Cost.timeframeToday
-        case .yesterday: return L10n.Cost.timeframeYesterday
-        case .week:  return L10n.Cost.timeframeWeek
-        case .month: return L10n.Cost.timeframeMonth
-        case .all:   return L10n.Cost.timeframeAll
+        case .today: return L10n.Cost.Timeframe.today
+        case .yesterday: return L10n.Cost.Timeframe.yesterday
+        case .week:  return L10n.Cost.Timeframe.week
+        case .month: return L10n.Cost.Timeframe.month
+        case .all:   return L10n.Cost.Timeframe.all
         }
     }
 
@@ -644,11 +644,11 @@ public enum CostTimeframe: String, CaseIterable, Identifiable, Sendable {
     /// rule about truncating the long one.
     public var shortLabel: String {
         switch self {
-        case .today: return L10n.Cost.timeframeToday
-        case .yesterday: return L10n.Cost.timeframeYesterday
-        case .week:  return L10n.Cost.timeframeWeekShort
-        case .month: return L10n.Cost.timeframeMonthShort
-        case .all:   return L10n.Cost.timeframeAll
+        case .today: return L10n.Cost.Timeframe.today
+        case .yesterday: return L10n.Cost.Timeframe.yesterday
+        case .week:  return L10n.Cost.Timeframe.weekShort
+        case .month: return L10n.Cost.Timeframe.monthShort
+        case .all:   return L10n.Cost.Timeframe.all
         }
     }
 

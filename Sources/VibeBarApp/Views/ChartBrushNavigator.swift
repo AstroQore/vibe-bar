@@ -60,7 +60,7 @@ struct ChartBrushNavigator<Mini: View>: View {
     /// purpose — the visible handle is a hairline, but a 10pt reach makes it
     /// catchable with a trackpad.
     var handleHitWidth: CGFloat = 10
-    var accessibilityDescription: String = L10n.Usage.chartNavigatorLabel
+    var accessibilityDescription: String = L10n.Usage.ChartNavigator.label
     @ViewBuilder var mini: (ChartBrushGeometry) -> Mini
 
     /// Which edge (if any) the in-flight drag grabbed. Classified once at the
@@ -119,13 +119,13 @@ struct ChartBrushNavigator<Mini: View>: View {
                 break
             }
         }
-        .accessibilityAction(named: L10n.Usage.chartNavigatorZoomIn) {
+        .accessibilityAction(named: L10n.Usage.ChartNavigator.zoomIn) {
             window = window.zoomed(scale: 1.6, around: window.visibleMidpoint)
         }
-        .accessibilityAction(named: L10n.Usage.chartNavigatorZoomOut) {
+        .accessibilityAction(named: L10n.Usage.ChartNavigator.zoomOut) {
             window = window.zoomed(scale: 0.625, around: window.visibleMidpoint)
         }
-        .accessibilityAction(named: L10n.Usage.chartNavigatorShowFullRange) {
+        .accessibilityAction(named: L10n.Usage.ChartNavigator.showFullRange) {
             window = window.jumped(toSpan: window.domainSpan)
         }
     }
@@ -133,7 +133,7 @@ struct ChartBrushNavigator<Mini: View>: View {
     private var accessibilityRangeValue: String {
         let start = AppLocale.string(window.visibleStart, dateStyle: .medium, timeStyle: .short)
         let end = AppLocale.string(window.visibleEnd, dateStyle: .medium, timeStyle: .short)
-        return L10n.Usage.chartNavigatorRange(start: start, end: end)
+        return L10n.Usage.ChartNavigator.range(start: start, end: end)
     }
 
     // MARK: - Overlay pieces
@@ -410,10 +410,10 @@ struct ChartRangePills: View {
     /// labels in whatever language the process launched in — and four tuples
     /// are cheaper to rebuild than a language-keyed cache is to reason about.
     private static var spans: [(String, TimeInterval)] {[
-        (L10n.Common.durationHours(hours: 6), 6 * 3_600),
-        (L10n.Common.durationHours(hours: 24), 24 * 3_600),
-        (L10n.Common.durationDays(days: 3), 3 * 86_400),
-        (L10n.Common.durationDays(days: 7), 7 * 86_400)
+        (L10n.Common.Duration.hours(hours: 6), 6 * 3_600),
+        (L10n.Common.Duration.hours(hours: 24), 24 * 3_600),
+        (L10n.Common.Duration.days(days: 3), 3 * 86_400),
+        (L10n.Common.Duration.days(days: 7), 7 * 86_400)
     ]}
 
     private var options: [Option] {
@@ -433,7 +433,7 @@ struct ChartRangePills: View {
         result.append(
             Option(
                 id: "all",
-                label: L10n.Cost.timeframeAll,
+                label: L10n.Cost.Timeframe.all,
                 span: nil,
                 isSelected: window.coversDomain
             )

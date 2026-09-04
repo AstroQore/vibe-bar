@@ -6,8 +6,8 @@ public enum DisplayMode: String, Codable, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .remaining: return L10n.Settings.displayModeRemaining
-        case .used: return L10n.Settings.displayModeUsed
+        case .remaining: return L10n.Settings.DisplayMode.remaining
+        case .used: return L10n.Settings.DisplayMode.used
         }
     }
 }

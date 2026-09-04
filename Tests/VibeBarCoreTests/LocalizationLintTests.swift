@@ -134,8 +134,8 @@ final class LocalizationLintTests: XCTestCase {
             // A stored static holding a catalog value: frozen in whatever
             // language the process launched in, which no other rule here sees.
             static let frozenPills: [(String, TimeInterval)] = [
-                (L10n.Common.durationHours(hours: 6), 6 * 3_600),
-                (L10n.Common.durationDays(days: 7), 7 * 86_400)
+                (L10n.Common.Duration.hours(hours: 6), 6 * 3_600),
+                (L10n.Common.Duration.days(days: 7), 7 * 86_400)
             ]
             static var frozenVar: String = L10n.Common.refresh
             static let frozenNames = [CostChartGranularity.hour.displayName]
@@ -148,7 +148,7 @@ final class LocalizationLintTests: XCTestCase {
             // QuotaGroupLabelLocalizer's table stays correct while looking
             // exactly like the bug.
             static let deferred: [String: () -> String] = [
-                "weekly": { L10n.Quota.groupWeekly }
+                "weekly": { L10n.Quota.Group.weekly }
             ]
 
             private func sectionLabel(_ text: String) -> some View { Text(text) }

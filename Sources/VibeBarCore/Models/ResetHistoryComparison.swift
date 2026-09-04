@@ -99,15 +99,15 @@ public enum ResetHistoryAxis: String, CaseIterable, Hashable, Sendable, Codable 
     /// not something an icon can carry.
     public var title: String {
         switch self {
-        case .cycle: L10n.Quota.resetHistoryAxisCycle
-        case .time: L10n.Quota.resetHistoryAxisTime
+        case .cycle: L10n.ResetHistory.Axis.cycle
+        case .time: L10n.ResetHistory.Axis.time
         }
     }
 
     public var help: String {
         switch self {
-        case .cycle: L10n.Quota.resetHistoryAxisCycleHelp
-        case .time: L10n.Quota.resetHistoryAxisTimeHelp
+        case .cycle: L10n.ResetHistory.Axis.cycleHelp
+        case .time: L10n.ResetHistory.Axis.timeHelp
         }
     }
 }
@@ -190,23 +190,23 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             case (.four, .cycle): "4"
             case (.eight, .cycle): "8"
             case (.twelve, .cycle): "12"
-            case (.four, .time): L10n.Quota.resetHistoryWindowFourWeeks
-            case (.eight, .time): L10n.Quota.resetHistoryWindowEightWeeks
-            case (.twelve, .time): L10n.Quota.resetHistoryWindowTwelveWeeks
-            case (.all, _): L10n.Quota.resetHistoryWindowAll
+            case (.four, .time): L10n.ResetHistory.Window.fourWeeks
+            case (.eight, .time): L10n.ResetHistory.Window.eightWeeks
+            case (.twelve, .time): L10n.ResetHistory.Window.twelveWeeks
+            case (.all, _): L10n.ResetHistory.Window.all
             }
         }
 
         public func spokenTitle(for axis: ResetHistoryAxis) -> String {
             switch (self, axis) {
-            case (.four, .cycle): L10n.Quota.resetHistorySpokenFourCycles
-            case (.eight, .cycle): L10n.Quota.resetHistorySpokenEightCycles
-            case (.twelve, .cycle): L10n.Quota.resetHistorySpokenTwelveCycles
-            case (.all, .cycle): L10n.Quota.resetHistorySpokenAllCycles
-            case (.four, .time): L10n.Quota.resetHistorySpokenFourWeeks
-            case (.eight, .time): L10n.Quota.resetHistorySpokenEightWeeks
-            case (.twelve, .time): L10n.Quota.resetHistorySpokenTwelveWeeks
-            case (.all, .time): L10n.Quota.resetHistorySpokenAllTime
+            case (.four, .cycle): L10n.ResetHistory.Spoken.fourCycles
+            case (.eight, .cycle): L10n.ResetHistory.Spoken.eightCycles
+            case (.twelve, .cycle): L10n.ResetHistory.Spoken.twelveCycles
+            case (.all, .cycle): L10n.ResetHistory.Spoken.allCycles
+            case (.four, .time): L10n.ResetHistory.Spoken.fourWeeks
+            case (.eight, .time): L10n.ResetHistory.Spoken.eightWeeks
+            case (.twelve, .time): L10n.ResetHistory.Spoken.twelveWeeks
+            case (.all, .time): L10n.ResetHistory.Spoken.allTime
             }
         }
     }
@@ -290,9 +290,9 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// Axis caption for a column: how many cycles back it is, and `now`
         /// for the live one. `nil` where the axis should stay quiet.
         public func axisLabel(forColumn column: Int) -> String? {
-            if column == currentColumn { return L10n.Quota.resetHistoryAxisNow }
+            if column == currentColumn { return L10n.ResetHistory.axisNow }
             guard column >= 0, column < completedColumnCount else { return nil }
-            return L10n.Quota.resetHistoryAxisCyclesBack(count: completedColumnCount - column)
+            return L10n.ResetHistory.axisCyclesBack(count: completedColumnCount - column)
         }
     }
 
@@ -329,9 +329,9 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// opposite things, so the copy says which (see `AGENTS.md` § 11).
         public var resetDescription: String {
             switch resetKind {
-            case .earlyClockRestarted: L10n.Quota.resetHistoryResetEarlyClockRestarted
-            case .earlyClockUnchanged: L10n.Quota.resetHistoryResetEarlyClockUnchanged
-            case .earlyUnclear: L10n.Quota.resetHistoryResetEarlyUnclear
+            case .earlyClockRestarted: L10n.ResetHistory.Reset.earlyClockRestarted
+            case .earlyClockUnchanged: L10n.ResetHistory.Reset.earlyClockUnchanged
+            case .earlyUnclear: L10n.ResetHistory.Reset.earlyUnclear
             case .onSchedule, .unobserved, nil: ""
             }
         }
@@ -451,11 +451,11 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// one-cycle lane cannot read as a settled habit.
         public var wasteSummary: String {
             guard let averageWastedPercent else {
-                return L10n.Quota.resetHistoryLaneNoCycles
+                return L10n.ResetHistory.noCompletedCycles
             }
             // No hand-rolled "cycle"/"cycles": the catalog carries the plural,
             // so Chinese — which has one form — never has to pick.
-            return L10n.Quota.resetHistoryLaneWasteSummary(
+            return L10n.ResetHistory.laneAverage(
                 percent: Self.percentText(averageWastedPercent),
                 count: averagedCycleCount
             )
@@ -465,7 +465,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// — a brand-new bucket, or one whose provider has not refilled since
         /// Vibe Bar first saw it.
         public var emptyStateText: String {
-            L10n.Quota.resetHistoryLaneEmptyState
+            L10n.ResetHistory.Lane.emptyState
         }
 
         static func percentText(_ value: Double) -> String {
@@ -486,8 +486,8 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         }
 
         public var headline: String {
-            guard cycleCount > 0 else { return L10n.Quota.resetHistoryTotalsNone }
-            return L10n.Quota.resetHistoryTotalsHeadline(
+            guard cycleCount > 0 else { return L10n.ResetHistory.Totals.none }
+            return L10n.ResetHistory.wastedSummary(
                 used: Lane.percentText(usedPercent),
                 wasted: Lane.percentText(wastedPercent),
                 count: cycleCount
@@ -562,7 +562,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
               lanes.contains(where: \.isTruncated)
         else { return nil }
         let deepest = lanes.map(\.windowCycleCount).max() ?? 0
-        return L10n.Quota.resetHistoryTruncation(
+        return L10n.ResetHistory.truncation(
             shown: plan.completedColumnCount, total: deepest
         )
     }
@@ -571,25 +571,25 @@ public struct ResetHistoryComparison: Equatable, Sendable {
     /// this is the only thing VoiceOver gets to read.
     public var accessibilitySummary: String {
         guard !lanes.isEmpty else {
-            return L10n.Quota.resetHistoryA11yEmpty(verdict: verdict)
+            return L10n.ResetHistory.A11y.empty(verdict: verdict)
         }
         let laneText = lanes.prefix(8).map { lane -> String in
             guard let wasted = lane.averageWastedPercent else {
-                return L10n.Quota.resetHistoryLaneSpokenNoCycles(label: lane.label)
+                return L10n.ResetHistory.Lane.spokenNoCycles(label: lane.label)
             }
-            return L10n.Quota.resetHistoryLaneSpokenWaste(
+            return L10n.ResetHistory.Lane.spokenWaste(
                 label: lane.label,
                 percent: Lane.percentText(wasted),
                 count: lane.averagedCycleCount
             )
         }.joined(separator: ". ")
         let more = lanes.count > 8
-            ? L10n.Quota.resetHistoryA11yMore(count: lanes.count - 8)
+            ? L10n.ResetHistory.A11y.more(count: lanes.count - 8)
             : ""
         // The note comes before the numbers on purpose: it is the caveat on
         // them, not a footnote to the lane list.
-        let truncation = truncationNote.map { L10n.Quota.resetHistoryA11yTruncation(note: $0) } ?? ""
-        return L10n.Quota.resetHistoryA11ySummary(
+        let truncation = truncationNote.map { L10n.ResetHistory.A11y.truncation(note: $0) } ?? ""
+        return L10n.ResetHistory.A11y.summary(
             window: window.spokenTitle(for: axis),
             truncation: truncation,
             headline: totals.headline,
@@ -931,10 +931,10 @@ public struct ResetHistoryComparison: Equatable, Sendable {
     /// 5. Everything is being spent; say so with the number, not a platitude.
     static func verdict(lanes: [Lane], totals: Totals) -> String {
         guard !lanes.isEmpty else {
-            return L10n.Quota.resetHistoryVerdictNoQuota
+            return L10n.ResetHistory.Verdict.noQuota
         }
         guard totals.cycleCount > 0 else {
-            return L10n.Quota.resetHistoryVerdictNoCycles
+            return L10n.ResetHistory.Verdict.noCycles
         }
         let worstByCount = lanes
             .filter { $0.wastefulCycleCount > 0 }
@@ -944,19 +944,19 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                     : lhs.wastefulCycleCount < rhs.wastefulCycleCount
             }
         if let worst = worstByCount {
-            return L10n.Quota.resetHistoryVerdictWasteful(
+            return L10n.ResetHistory.Verdict.wasteful(
                 label: worst.label, count: worst.wastefulCycleCount
             )
         }
         let leakiest = lanes.max { ($0.averageWastedPercent ?? -1) < ($1.averageWastedPercent ?? -1) }
         if let leakiest, let wasted = leakiest.averageWastedPercent, wasted >= notableAverageWastePercent {
-            return L10n.Quota.resetHistoryVerdictLeaky(
+            return L10n.ResetHistory.Verdict.leaky(
                 label: leakiest.label,
                 percent: Lane.percentText(wasted),
                 count: leakiest.averagedCycleCount
             )
         }
-        return L10n.Quota.resetHistoryVerdictClean(
+        return L10n.ResetHistory.Verdict.clean(
             percent: Lane.percentText(totals.usedPercent)
         )
     }

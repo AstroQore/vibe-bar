@@ -168,9 +168,9 @@ final class SkillsManagerModel: ObservableObject {
                     // Two whole sentences rather than one built from
                     // fragments: only one ICU plural fits in a value, and
                     // both counts need one.
-                    toast = L10n.Workbench.skillsToastImportRecognized(
+                    toast = L10n.Workbench.Skills.Toast.importRecognized(
                         count: report.adopted.count
-                    ) + " " + L10n.Workbench.skillsToastImportConflicts(
+                    ) + " " + L10n.Workbench.Skills.Toast.importConflicts(
                         count: report.conflicts.count
                     )
                 }
@@ -222,22 +222,22 @@ final class SkillsManagerModel: ObservableObject {
                 method: method
             )
             if action == .removeProjection, !changed {
-                toast = L10n.Workbench.skillsToastProjectionClearedFolderKept(
+                toast = L10n.Workbench.Skills.Toast.projectionClearedFolderKept(
                     skill: skill.name, app: app.displayName
                 )
             } else if action == .removeProjection, changed, app.discoversSharedSkillRoot {
                 // Removing the link is not an off switch for these harnesses,
                 // and silently letting it look like one is how the old
                 // "click did nothing" confusion started.
-                toast = L10n.Workbench.skillsToastLinkRemovedStillShared(
+                toast = L10n.Workbench.Skills.Toast.linkRemovedStillShared(
                     app: app.displayName, skill: skill.name
                 )
             } else if action == .enable, !changed {
-                toast = L10n.Workbench.skillsToastSharedRootNoSwitch(
+                toast = L10n.Workbench.Skills.Toast.sharedRootNoSwitch(
                     app: app.displayName, skill: skill.name
                 )
             } else if action == .disableInHarness {
-                toast = L10n.Workbench.skillsToastDisabledKeptProjection(
+                toast = L10n.Workbench.Skills.Toast.disabledKeptProjection(
                     skill: skill.name, app: app.displayName
                 )
             }
@@ -251,8 +251,8 @@ final class SkillsManagerModel: ObservableObject {
             updateStates[id] = nil
             let kept = result.retainedApps
             toast = kept.isEmpty
-                ? L10n.Workbench.skillsToastUninstalledBackedUp(skill: skill.name)
-                : L10n.Workbench.skillsToastUninstalledLeftInPlace(
+                ? L10n.Workbench.Skills.Toast.uninstalledBackedUp(skill: skill.name)
+                : L10n.Workbench.Skills.Toast.uninstalledLeftInPlace(
                     skill: skill.name,
                     apps: kept.map(\.displayName).joined(separator: ", ")
                 )
@@ -265,8 +265,8 @@ final class SkillsManagerModel: ObservableObject {
             updateStates = Dictionary(uniqueKeysWithValues: states.map { ($0.id, $0) })
             let available = states.count { $0.updateAvailable }
             toast = available == 0
-                ? L10n.Workbench.skillsToastAllUpToDate
-                : L10n.Workbench.skillsToastUpdatesAvailable(count: available)
+                ? L10n.Workbench.Skills.Toast.allUpToDate
+                : L10n.Workbench.Skills.Toast.updatesAvailable(count: available)
         }
     }
 
@@ -275,7 +275,7 @@ final class SkillsManagerModel: ObservableObject {
         perform(BusyKey.skill(id)) { [self] in
             let updated = try await service.update(id)
             updateStates[id] = nil
-            toast = L10n.Workbench.skillsToastUpdated(skill: updated.name)
+            toast = L10n.Workbench.Skills.Toast.updated(skill: updated.name)
         }
     }
 
@@ -297,7 +297,7 @@ final class SkillsManagerModel: ObservableObject {
             guard !refs.isEmpty else {
                 discoverResults = []
                 discoverSource = nil
-                toast = L10n.Workbench.skillsToastAddRepoFirst
+                toast = L10n.Workbench.Skills.Toast.addRepoFirst
                 return
             }
             // The phases arrive from the download tasks; the hop back is what
@@ -311,16 +311,16 @@ final class SkillsManagerModel: ObservableObject {
             discoverGeneration += 1
             discoverPhase = nil
             discoverResults = result.skills
-            discoverSource = L10n.Workbench.skillsDiscoverReposTitle
+            discoverSource = L10n.Workbench.Skills.Discover.reposTitle
             discoverFailures = result.failures.map(\.displayText)
             if result.wasCancelled {
-                toast = L10n.Workbench.skillsToastScanStopped
+                toast = L10n.Workbench.Skills.Toast.scanStopped
             } else if !result.failures.isEmpty {
                 toast = result.failures.count == 1
                     ? result.failures[0].displayText
-                    : L10n.Workbench.skillsToastReposUnreadable(count: result.failures.count)
+                    : L10n.Workbench.Skills.Toast.reposUnreadable(count: result.failures.count)
             } else if result.skills.isEmpty {
-                toast = L10n.Workbench.skillsToastNoSkillsFound
+                toast = L10n.Workbench.Skills.Toast.noSkillsFound
             }
         }
     }
@@ -335,13 +335,13 @@ final class SkillsManagerModel: ObservableObject {
     private static func text(for phase: SkillDiscoveryPhase) -> String {
         switch phase {
         case let .downloading(slug):
-            return L10n.Workbench.skillsPhaseDownloading(repo: slug)
+            return L10n.Workbench.Skills.Phase.downloading(repo: slug)
         case let .scanning(slug):
-            return L10n.Workbench.skillsPhaseScanning(repo: slug)
+            return L10n.Workbench.Skills.Phase.scanning(repo: slug)
         case let .repositoryFinished(_, completed, total):
             return total == 1
-                ? L10n.Workbench.skillsPhaseDownloadedOne
-                : L10n.Workbench.skillsPhaseDownloadedProgress(
+                ? L10n.Workbench.Skills.Phase.downloadedOne
+                : L10n.Workbench.Skills.Phase.downloadedProgress(
                     completed: completed, total: total
                 )
         }
@@ -382,7 +382,7 @@ final class SkillsManagerModel: ObservableObject {
                 let results = try await searchClient.search(trimmed)
                 guard !Task.isCancelled else { return }
                 searchResults = results
-                if results.isEmpty { toast = L10n.Workbench.skillsToastNoSearchMatches }
+                if results.isEmpty { toast = L10n.Workbench.Skills.Toast.noSearchMatches }
             } catch {
                 guard !Task.isCancelled else { return }
                 searchResults = []
@@ -397,8 +397,8 @@ final class SkillsManagerModel: ObservableObject {
         perform(BusyKey.install(discovered.id)) { [self] in
             let installed = try await service.install(discovered, enableFor: apps, method: method)
             toast = apps.isEmpty
-                ? L10n.Workbench.skillsToastInstalledShared(skill: installed.name)
-                : L10n.Workbench.skillsToastInstalledForApps(
+                ? L10n.Workbench.Skills.Toast.installedShared(skill: installed.name)
+                : L10n.Workbench.Skills.Toast.installedForApps(
                     skill: installed.name,
                     apps: apps.map(\.displayName).joined(separator: ", ")
                 )
@@ -416,19 +416,19 @@ final class SkillsManagerModel: ObservableObject {
         perform(BusyKey.searchRow(result.id)) { [self] in
             let found = await service.discoverSkills(from: [result.repo])
             discoverResults = found
-            discoverSource = L10n.Workbench.skillsDiscoverSourceFromSkillsSh(
+            discoverSource = L10n.Workbench.Skills.Discover.sourceFromSkillsSh(
                 repo: result.repo.descriptor
             )
             guard let match = Self.match(result.name, in: found) else {
-                toast = L10n.Workbench.skillsToastNotFoundInRepo(
+                toast = L10n.Workbench.Skills.Toast.notFoundInRepo(
                     skill: result.name, repo: result.repo.slug
                 )
                 return
             }
             let installed = try await service.install(match, enableFor: apps, method: method)
             toast = apps.isEmpty
-                ? L10n.Workbench.skillsToastInstalledShared(skill: installed.name)
-                : L10n.Workbench.skillsToastInstalledForApps(
+                ? L10n.Workbench.Skills.Toast.installedShared(skill: installed.name)
+                : L10n.Workbench.Skills.Toast.installedForApps(
                     skill: installed.name,
                     apps: apps.map(\.displayName).joined(separator: ", ")
                 )
@@ -440,17 +440,17 @@ final class SkillsManagerModel: ObservableObject {
         perform(BusyKey.zip) { [self] in
             let installed = try await service.installFromZip(at: url, enableFor: apps, method: method)
             guard !installed.isEmpty else {
-                toast = L10n.Workbench.skillsToastArchiveEmpty
+                toast = L10n.Workbench.Skills.Toast.archiveEmpty
                 return
             }
             // The count is its own sentence: a plural noun phrase spliced
             // into a frame is not something a second language can reorder.
-            let installedCount = L10n.Workbench.skillsToastInstalledArchive(
+            let installedCount = L10n.Workbench.Skills.Toast.installedArchive(
                 count: installed.count
             )
             toast = installedCount + " " + (apps.isEmpty
-                ? L10n.Workbench.skillsToastSharedLibraryNote
-                : L10n.Workbench.skillsToastEnabledForApps(
+                ? L10n.Workbench.Skills.Toast.sharedLibraryNote
+                : L10n.Workbench.Skills.Toast.enabledForApps(
                     apps: apps.map(\.displayName).joined(separator: ", ")
                 ))
         }
@@ -461,7 +461,7 @@ final class SkillsManagerModel: ObservableObject {
     func addRepo(_ raw: String) {
         perform(BusyKey.discover) { [self] in
             guard try await service.addDiscoverRepo(raw) else {
-                toast = L10n.Workbench.skillsToastInvalidRepoRef(input: raw)
+                toast = L10n.Workbench.Skills.Toast.invalidRepoRef(input: raw)
                 return
             }
             repoList = await service.discoverRepos()
@@ -520,7 +520,7 @@ final class SkillsManagerModel: ObservableObject {
             isImportSheetPresented = false
             importReport = nil
             if failed == 0 {
-                toast = L10n.Workbench.skillsToastRecorded(count: recorded)
+                toast = L10n.Workbench.Skills.Toast.recorded(count: recorded)
             }
         }
     }
@@ -542,7 +542,7 @@ final class SkillsManagerModel: ObservableObject {
         perform(BusyKey.backup(backup.directoryName)) { [self] in
             let restored = try await service.restoreBackup(backup.url)
             backups = await listBackups()
-            toast = L10n.Workbench.skillsToastRestored(skill: restored.name)
+            toast = L10n.Workbench.Skills.Toast.restored(skill: restored.name)
         }
     }
 

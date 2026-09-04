@@ -408,7 +408,7 @@ struct QuotaHistoryChartView: View, Equatable {
     /// competing with the section heading.
     private var embeddedHeader: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(L10n.Quota.historyTitle)
+            Text(L10n.Quota.History.title)
                 .font(.system(size: max(9, density.subtitleFontSize - 2), weight: .medium))
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 8)
@@ -419,7 +419,7 @@ struct QuotaHistoryChartView: View, Equatable {
     private var cardHeader: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(titleOverride ?? L10n.Quota.historyTitle)
+                Text(titleOverride ?? L10n.Quota.History.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 if showsGroupTitle, let groupTitle = group.title {
                     // Same treatment as the group heading in Subscription
@@ -438,7 +438,7 @@ struct QuotaHistoryChartView: View, Equatable {
     }
 
     private var emptyNote: some View {
-        Text(L10n.Quota.historyBuildingUp)
+        Text(L10n.Quota.History.buildingUp)
             .font(.system(size: density.subtitleFontSize))
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
@@ -592,7 +592,7 @@ struct QuotaHistoryChartView: View, Equatable {
                 window: binding,
                 accent: Self.bucketPalette[0],
                 height: density.chartBrushHeight,
-                accessibilityDescription: L10n.Quota.historyNavigatorProvider
+                accessibilityDescription: L10n.Quota.History.navigatorProvider
             ) { geometry in
                 miniPath(in: geometry)
             }
@@ -740,7 +740,7 @@ struct QuotaHistoryChartView: View, Equatable {
                 label: QuotaGroupLabelLocalizer.displayComposed(bucket.title),
                 value: currentRemainingLabel(bucket: bucket),
                 detail: currentForecastLabel(bucket: bucket)
-                    .map { L10n.Quota.forecastValueAtReset(value: $0) }
+                    .map { L10n.Quota.Forecast.Value.atReset(value: $0) }
             )
         }
         // The wall-clock reference only gets a line (and therefore a legend
@@ -751,7 +751,7 @@ struct QuotaHistoryChartView: View, Equatable {
                     id: "pace",
                     stroke: .dashed,
                     color: Self.paceColor,
-                    label: L10n.Quota.forecastMetricTimePace,
+                    label: L10n.Quota.Forecast.Metric.timePace,
                     value: pace,
                     detail: nil
                 )
@@ -765,7 +765,7 @@ struct QuotaHistoryChartView: View, Equatable {
         if blocks.contains(where: { $0.detail != nil }) {
             HStack(spacing: 4) {
                 legendSwatch(stroke: .dotted, color: .secondary)
-                Text(L10n.Quota.historyForecastLegend)
+                Text(L10n.Quota.History.forecastLegend)
                     .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                     .foregroundStyle(.tertiary)
             }
@@ -1310,21 +1310,21 @@ struct QuotaHistoryChartView: View, Equatable {
             .map { QuotaGroupLabelLocalizer.displayComposed($0.title) }
             .joined(separator: " + ")
         let names = buckets.count > 3
-            ? L10n.Quota.historyMoreBuckets(names: shown, count: buckets.count - 3)
+            ? L10n.Quota.History.moreBuckets(names: shown, count: buckets.count - 3)
             : shown
         let scope = group.title
             .map { "\(QuotaGroupLabelLocalizer.displayComposed($0)) · \(names)" } ?? names
-        return L10n.Quota.historyScopeNote(scope: scope, visible: span, total: total)
+        return L10n.Quota.History.scopeNote(scope: scope, visible: span, total: total)
     }
 
     private static func spanLabel(_ seconds: TimeInterval) -> String {
         if seconds < 90 * 60 {
-            return L10n.Common.durationMinutes(minutes: max(1, Int((seconds / 60).rounded())))
+            return L10n.Common.Duration.minutes(minutes: max(1, Int((seconds / 60).rounded())))
         }
         if seconds < 48 * 3_600 {
-            return L10n.Common.durationHours(hours: Int((seconds / 3_600).rounded()))
+            return L10n.Common.Duration.hours(hours: Int((seconds / 3_600).rounded()))
         }
-        return L10n.Common.durationDays(days: Int((seconds / 86_400).rounded()))
+        return L10n.Common.Duration.days(days: Int((seconds / 86_400).rounded()))
     }
 }
 
@@ -1543,21 +1543,21 @@ private struct QuotaChartHoverOverlay: View {
                 } else {
                     if let actual = bucket.actual {
                         tooltipRow(
-                            L10n.Quota.historyTooltipQuotaLeft,
+                            L10n.Quota.History.tooltipQuotaLeft,
                             quotaPercentLabel(actual),
                             color: bucket.color
                         )
                     }
                     if let pace = bucket.pace {
                         tooltipRow(
-                            L10n.Quota.historyTooltipPace,
+                            L10n.Quota.History.tooltipPace,
                             quotaPercentLabel(pace),
                             color: .white.opacity(0.8)
                         )
                     }
                     if let forecast = bucket.forecast {
                         tooltipRow(
-                            L10n.Quota.historyTooltipAtReset,
+                            L10n.Quota.History.tooltipAtReset,
                             quotaPercentLabel(forecast),
                             color: bucket.color.opacity(0.75)
                         )

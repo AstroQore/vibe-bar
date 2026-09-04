@@ -19,6 +19,9 @@ swift build -c "$CONFIG"
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 EXEC_PATH="$BIN_DIR/VibeBar"
 CORE_RESOURCE_BUNDLE="$BIN_DIR/VibeBar_VibeBarCore.bundle"
+# The shared string catalogue's bundle, built from the `vibe-bar-i18n`
+# package. Its `L10n` looks for it under the app's Contents/Resources.
+I18N_RESOURCE_BUNDLE="$BIN_DIR/vibe-bar-i18n_VibeBarLocalization.bundle"
 SPARKLE_FRAMEWORK_SOURCE="$(
     find "$ROOT/.build/artifacts/sparkle" \
         -type d \
@@ -33,6 +36,10 @@ if [[ ! -x "$EXEC_PATH" ]]; then
 fi
 if [[ ! -f "$CORE_RESOURCE_BUNDLE/pricing.json" ]]; then
     echo "Core resource bundle not found at $CORE_RESOURCE_BUNDLE" >&2
+    exit 1
+fi
+if [[ ! -d "$I18N_RESOURCE_BUNDLE" ]]; then
+    echo "Localization resource bundle not found at $I18N_RESOURCE_BUNDLE" >&2
     exit 1
 fi
 if [[ -z "$SPARKLE_FRAMEWORK_SOURCE" || ! -x "$SPARKLE_FRAMEWORK_SOURCE/Versions/B/Sparkle" ]]; then
@@ -55,16 +62,19 @@ cp "$EXEC_PATH" "$APP_DIR/Contents/MacOS/VibeBar"
 # before falling back to Bundle.module for source builds and tests.
 cp -R "$CORE_RESOURCE_BUNDLE" \
     "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle"
-# Localized strings are packaged twice on purpose, and the two copies do
-# different jobs. The one inside the Core bundle is what `swift test`,
-# `swift run`, and any source build resolve through `Bundle.module`. The
-# one here, in the app's own Resources, is what an installed copy resolves
-# through `Bundle.main` and — together with CFBundleLocalizations — what
-# makes macOS list Vibe Bar in Language & Region > Applications at all.
-# SwiftPM lowercases a locale directory when it builds a resource bundle,
-# so the name is restored to the conventional spelling on the way in;
-# `L10n` matches case-insensitively so both copies answer either way.
-for lproj in "$CORE_RESOURCE_BUNDLE"/*.lproj; do
+# The string catalogue ships in the `vibe-bar-i18n` package's own resource
+# bundle. It is packaged twice on purpose, and the two copies do different
+# jobs. The bundle itself, under Resources, is what the package's `L10n`
+# resolves through in an installed app (it looks there before ever reaching
+# SwiftPM's `Bundle.module`, which traps once the build directory is gone).
+# The `.lproj` directories copied beside it are what — together with
+# CFBundleLocalizations — make macOS list Vibe Bar in Language & Region >
+# Applications at all. SwiftPM lowercases a locale directory when it builds
+# a resource bundle, so the name is restored to the conventional spelling on
+# the way in; the lookup matches case-insensitively so both copies answer.
+cp -R "$I18N_RESOURCE_BUNDLE" \
+    "$APP_DIR/Contents/Resources/vibe-bar-i18n_VibeBarLocalization.bundle"
+for lproj in "$I18N_RESOURCE_BUNDLE"/*.lproj; do
     [[ -d "$lproj" ]] || continue
     case "$(basename "$lproj")" in
         zh-hans.lproj) canonical="zh-Hans.lproj" ;;
@@ -173,9 +183,12 @@ smoke_home="$(mktemp -d)"
 mkdir -p "$smoke_home/.vibebar"
 : > "$smoke_home/VIBEBAR_DEMO_HOME.txt"
 mv "$CORE_RESOURCE_BUNDLE" "$CORE_RESOURCE_BUNDLE.packaging-smoke"
+mv "$I18N_RESOURCE_BUNDLE" "$I18N_RESOURCE_BUNDLE.packaging-smoke"
 restore_core_bundle() {
     [[ -d "$CORE_RESOURCE_BUNDLE.packaging-smoke" ]] &&
         mv "$CORE_RESOURCE_BUNDLE.packaging-smoke" "$CORE_RESOURCE_BUNDLE"
+    [[ -d "$I18N_RESOURCE_BUNDLE.packaging-smoke" ]] &&
+        mv "$I18N_RESOURCE_BUNDLE.packaging-smoke" "$I18N_RESOURCE_BUNDLE"
     rm -rf "$smoke_home"
 }
 trap restore_core_bundle EXIT

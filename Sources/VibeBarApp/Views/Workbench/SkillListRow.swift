@@ -171,18 +171,18 @@ struct SkillAppToggleRow: View {
         .help(helpText(app: app, state: activation))
         .contextMenu {
             if showsNativeActions {
-                Button(L10n.Workbench.skillsContextEnableIn(app: app.displayName)) {
+                Button(L10n.Workbench.Skills.contextEnableIn(app: app.displayName)) {
                     action(app, .enable)
                 }
                 if app.supportsNativeSkillActivation {
                     Button(
-                        L10n.Workbench.skillsContextDisableKeepProjection(app: app.displayName)
+                        L10n.Workbench.Skills.contextDisableKeepProjection(app: app.displayName)
                     ) {
                         action(app, .disableInHarness)
                     }
                 }
                 Divider()
-                Button(L10n.Workbench.skillsContextRemoveProjection(app: app.displayName)) {
+                Button(L10n.Workbench.Skills.contextRemoveProjection(app: app.displayName)) {
                     action(app, .removeProjection)
                 }
                 .disabled(!isProjected(app))
@@ -244,11 +244,11 @@ struct SkillAppToggleRow: View {
 
     private func accessibilityValue(_ state: SkillActivationState) -> String {
         switch state {
-        case .notProjected: L10n.Workbench.skillsStateNotProjected
-        case .enabled: L10n.Workbench.skillsStateEnabled
-        case .disabledInHarness: L10n.Workbench.skillsStateDisabledInHarness
-        case .coupled: L10n.Workbench.skillsStateCoupled
-        case .unknown: L10n.Workbench.skillsStateUnknown
+        case .notProjected: L10n.Workbench.Skills.State.notProjected
+        case .enabled: L10n.Workbench.Skills.State.enabled
+        case .disabledInHarness: L10n.Workbench.Skills.State.disabledInHarness
+        case .coupled: L10n.Workbench.Skills.State.coupled
+        case .unknown: L10n.Workbench.Skills.State.unknown
         }
     }
 
@@ -257,21 +257,21 @@ struct SkillAppToggleRow: View {
         let name = app.displayName
         switch state {
         case .notProjected:
-            return L10n.Workbench.skillsToggleStateNotProjected(app: name)
+            return L10n.Workbench.Skills.ToggleState.notProjected(app: name)
         case .enabled where app.supportsNativeSkillActivation:
-            return L10n.Workbench.skillsToggleStateEnabledNative(app: name)
+            return L10n.Workbench.Skills.ToggleState.enabledNative(app: name)
         case .enabled where app.discoversSharedSkillRoot:
-            return L10n.Workbench.skillsToggleStateEnabledSharedRoot(app: name)
+            return L10n.Workbench.Skills.ToggleState.enabledSharedRoot(app: name)
         case .enabled:
-            return L10n.Workbench.skillsToggleStateEnabled(app: name)
+            return L10n.Workbench.Skills.ToggleState.enabled(app: name)
         case .disabledInHarness:
-            return L10n.Workbench.skillsToggleStateDisabledInHarness(app: name)
+            return L10n.Workbench.Skills.ToggleState.disabledInHarness(app: name)
         case .coupled where app.discoversSharedSkillRoot:
-            return L10n.Workbench.skillsToggleStateCoupledSharedRoot(app: name)
+            return L10n.Workbench.Skills.ToggleState.coupledSharedRoot(app: name)
         case .coupled:
-            return L10n.Workbench.skillsToggleStateCoupledGemini(app: name)
+            return L10n.Workbench.Skills.ToggleState.coupledGemini(app: name)
         case .unknown:
-            return L10n.Workbench.skillsToggleStateUnknown(app: name)
+            return L10n.Workbench.Skills.ToggleState.unknown(app: name)
         }
     }
 }
@@ -332,14 +332,14 @@ struct SkillListRow: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .confirmationDialog(
-            L10n.Workbench.skillsUninstallConfirmTitle(skill: skill.name),
+            L10n.Workbench.Skills.uninstallConfirmTitle(skill: skill.name),
             isPresented: $confirmingUninstall,
             titleVisibility: .visible
         ) {
-            Button(L10n.Workbench.skillsUninstall, role: .destructive) { onUninstall() }
+            Button(L10n.Workbench.Skills.uninstall, role: .destructive) { onUninstall() }
             Button(L10n.Common.cancel, role: .cancel) {}
         } message: {
-            Text(L10n.Workbench.skillsUninstallConfirmMessage)
+            Text(L10n.Workbench.Skills.uninstallConfirmMessage)
         }
     }
 
@@ -375,7 +375,7 @@ struct SkillListRow: View {
         }
         if !disabled.isEmpty {
             let names = disabled
-                .map { L10n.Workbench.skillsBadgeNativeOff(app: $0.displayName) }
+                .map { L10n.Workbench.Skills.Badge.nativeOff(app: $0.displayName) }
                 .joined(separator: " · ")
             Text(names)
                 .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
@@ -383,15 +383,15 @@ struct SkillListRow: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(Capsule().fill(Color.orange.opacity(0.12)))
-                .help(L10n.Workbench.skillsBadgeNativeOffHelp)
+                .help(L10n.Workbench.Skills.Badge.nativeOffHelp)
         } else if !unknown.isEmpty {
-            Text(L10n.Workbench.skillsBadgeNativeUnknown)
+            Text(L10n.Workbench.Skills.Badge.nativeUnknown)
                 .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
                 .foregroundStyle(.orange)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(Capsule().fill(Color.orange.opacity(0.12)))
-                .help(L10n.Workbench.skillsBadgeNativeUnknownHelp)
+                .help(L10n.Workbench.Skills.Badge.nativeUnknownHelp)
         }
         // `.coupled` deliberately gets no row capsule: it is the *normal*
         // state for every skill Cursor sees, and a permanent orange
@@ -401,7 +401,7 @@ struct SkillListRow: View {
     }
 
     private var sourceBadge: some View {
-        Text(skill.id.repositorySlug ?? L10n.Workbench.skillsSourceLocal)
+        Text(skill.id.repositorySlug ?? L10n.Workbench.Skills.sourceLocal)
             .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .rounded))
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -416,13 +416,13 @@ struct SkillListRow: View {
                     .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
             )
             .help(
-                skill.repoBranch.map { L10n.Workbench.skillsSourceBranch(branch: $0) }
-                    ?? L10n.Workbench.skillsSourceInstalledLocally
+                skill.repoBranch.map { L10n.Workbench.Skills.sourceBranch(branch: $0) }
+                    ?? L10n.Workbench.Skills.sourceInstalledLocally
             )
     }
 
     private var updateBadge: some View {
-        Text(L10n.Workbench.skillsBadgeUpdate)
+        Text(L10n.Workbench.Skills.Badge.update)
             .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
             .tracking(0.4)
             .foregroundStyle(Color.accentColor)
@@ -435,12 +435,12 @@ struct SkillListRow: View {
     private var overflowMenu: some View {
         Menu {
             Button(
-                L10n.Workbench.skillsMenuWiringDetails,
+                L10n.Workbench.Skills.menuWiringDetails,
                 systemImage: "point.3.connected.trianglepath.dotted"
             ) {
                 showingWiring = true
             }
-            Button(L10n.Workbench.skillsMenuRevealInFinder, systemImage: "folder") {
+            Button(L10n.Workbench.Skills.menuRevealInFinder, systemImage: "folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([
                     SkillAppCatalog.ssotDirectory()
                         .appendingPathComponent(skill.directory, isDirectory: true)
@@ -448,12 +448,12 @@ struct SkillListRow: View {
             }
             Divider()
             Button(
-                L10n.Workbench.skillsMenuUpdateFromRepository,
+                L10n.Workbench.Skills.menuUpdateFromRepository,
                 systemImage: "arrow.down.circle"
             ) { onUpdate() }
                 .disabled(!skill.id.isRepositoryBacked)
             Divider()
-            Button(L10n.Workbench.skillsMenuUninstall, systemImage: "trash", role: .destructive) {
+            Button(L10n.Workbench.Skills.menuUninstall, systemImage: "trash", role: .destructive) {
                 confirmingUninstall = true
             }
         } label: {
@@ -467,7 +467,7 @@ struct SkillListRow: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(isBusy)
-        .accessibilityLabel(L10n.Workbench.skillsMenuMoreActions(skill: skill.name))
+        .accessibilityLabel(L10n.Workbench.Skills.menuMoreActions(skill: skill.name))
         .popover(isPresented: $showingWiring, arrowEdge: .trailing) {
             SkillWiringPopover(skill: skill, density: density)
                 .vibeBarNoInitialFocus()

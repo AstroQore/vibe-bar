@@ -62,7 +62,7 @@ final class LayoutStudioWindowController: NSObject {
             backing: .buffered,
             defer: false
         )
-        win.title = L10n.Settings.layoutStudioTitle
+        win.title = L10n.Settings.Layout.studioTitle
         // The chrome gets out of the way of the surface on the stage: no
         // titlebar band, no opaque ground. The view's own materials are what
         // the window shows, and they only read as materials if something is

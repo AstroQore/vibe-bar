@@ -6,7 +6,7 @@ public enum MenuBarItemKind: String, Codable, CaseIterable, Identifiable, Sendab
     public var id: String { rawValue }
 
     public var label: String {
-        L10n.Platform.macosMenuBarOverview
+        L10n.Popover.Tab.overview
     }
 
     public var title: String {
@@ -24,10 +24,10 @@ public enum MenuBarLayout: String, Codable, CaseIterable, Identifiable, Sendable
 
     public var label: String {
         switch self {
-        case .iconOnly: return L10n.Platform.macosMenuBarLayoutIconOnly
-        case .singleLine: return L10n.Platform.macosMenuBarLayoutSingleLine
-        case .twoRows: return L10n.Platform.macosMenuBarLayoutTwoRows
-        case .compact: return L10n.Platform.macosMenuBarLayoutCompact
+        case .iconOnly: return L10n.Platform.Macos.MenuBar.Layout.iconOnly
+        case .singleLine: return L10n.Platform.Macos.MenuBar.Layout.singleLine
+        case .twoRows: return L10n.MenuBar.Composer.Template.twoRows
+        case .compact: return L10n.MenuBar.Composer.Template.compact
         }
     }
 
@@ -51,8 +51,8 @@ public enum MenuBarColorBasis: String, Codable, CaseIterable, Identifiable, Send
 
     public var label: String {
         switch self {
-        case .forecast: return L10n.Platform.macosMenuBarColorForecast
-        case .actual: return L10n.Platform.macosMenuBarColorActual
+        case .forecast: return L10n.MenuBar.Composer.Colour.forecast
+        case .actual: return L10n.Platform.Macos.MenuBar.Color.actual
         }
     }
 
@@ -61,9 +61,9 @@ public enum MenuBarColorBasis: String, Codable, CaseIterable, Identifiable, Send
     public var detail: String {
         switch self {
         case .forecast:
-            return L10n.Platform.macosMenuBarColorForecastDetail
+            return L10n.Platform.Macos.MenuBar.Color.forecastDetail
         case .actual:
-            return L10n.Platform.macosMenuBarColorActualDetail
+            return L10n.Platform.Macos.MenuBar.Color.actualDetail
         }
     }
 }
@@ -135,17 +135,17 @@ public enum MenuBarFieldStyle: String, Codable, CaseIterable, Identifiable, Send
 
     public var label: String {
         switch self {
-        case .labelAndPercent: return L10n.Platform.macosMenuBarFieldStyleLabel
-        case .logoAndPercent: return L10n.Platform.macosMenuBarFieldStyleLogo
-        case .logoLabelAndPercent: return L10n.Platform.macosMenuBarFieldStyleLogoAndLabel
+        case .labelAndPercent: return L10n.Platform.Macos.MenuBar.FieldStyle.label
+        case .logoAndPercent: return L10n.MenuBar.Composer.Block.logo
+        case .logoLabelAndPercent: return L10n.Platform.Macos.MenuBar.FieldStyle.logoAndLabel
         }
     }
 
     public var detail: String {
         switch self {
-        case .labelAndPercent: return L10n.Platform.macosMenuBarFieldStyleLabelDetail
-        case .logoAndPercent: return L10n.Platform.macosMenuBarFieldStyleLogoDetail
-        case .logoLabelAndPercent: return L10n.Platform.macosMenuBarFieldStyleLogoAndLabelDetail
+        case .labelAndPercent: return L10n.Platform.Macos.MenuBar.FieldStyle.labelDetail
+        case .logoAndPercent: return L10n.Platform.Macos.MenuBar.FieldStyle.logoDetail
+        case .logoLabelAndPercent: return L10n.Platform.Macos.MenuBar.FieldStyle.logoAndLabelDetail
         }
     }
 }

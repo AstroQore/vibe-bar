@@ -460,7 +460,7 @@ struct MenuBarStripView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             plan.spokenDescription.isEmpty
-                ? L10n.MenuBar.composerPreviewEmpty
+                ? L10n.MenuBar.Composer.Preview.empty
                 : plan.spokenDescription
         )
     }
@@ -650,7 +650,7 @@ struct MenuBarStripPreview: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
-            scheme == .dark ? L10n.MenuBar.composerPreviewDark : L10n.MenuBar.composerPreviewLight
+            scheme == .dark ? L10n.MenuBar.Composer.Preview.dark : L10n.MenuBar.Composer.Preview.light
         )
     }
 }

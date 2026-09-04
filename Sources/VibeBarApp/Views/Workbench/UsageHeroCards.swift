@@ -25,18 +25,18 @@ struct UsageHeroCards: View {
                 .layoutPriority(2)
                 .padding(.trailing, density.cardPadding)
             heroDivider
-            metricSection(label: L10n.Usage.heroTotalCost, value: costValue) {
+            metricSection(label: L10n.Cost.Metric.totalCost, value: costValue) {
                 if summary.unpricedRequests > 0 {
                     unpricedBadge
                 } else {
-                    detailText(summary.costMicros == nil ? L10n.Usage.heroNoPricedRequests : L10n.Usage.heroAllRequestsPriced)
+                    detailText(summary.costMicros == nil ? L10n.Usage.Hero.noPricedRequests : L10n.Usage.Hero.allRequestsPriced)
                 }
             }
             .frame(minWidth: 145, idealWidth: 185, maxWidth: 220, alignment: .leading)
             .padding(.horizontal, density.cardPadding)
             heroDivider
-            metricSection(label: L10n.Usage.heroRequests, value: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))) {
-                detailText(summary.requests == 0 ? L10n.Usage.heroNoTrafficInRange : L10n.Usage.heroInSelectedRange)
+            metricSection(label: L10n.Usage.Hero.requests, value: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))) {
+                detailText(summary.requests == 0 ? L10n.Usage.Hero.noTrafficInRange : L10n.Usage.Hero.inSelectedRange)
             }
             .frame(minWidth: 130, idealWidth: 170, maxWidth: 195, alignment: .leading)
             .padding(.horizontal, density.cardPadding)
@@ -51,13 +51,13 @@ struct UsageHeroCards: View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             tokensSection
             HStack(alignment: .top, spacing: density.cardSpacing) {
-                metricSection(label: L10n.Usage.heroTotalCost, value: costValue) {
+                metricSection(label: L10n.Cost.Metric.totalCost, value: costValue) {
                     if summary.unpricedRequests > 0 { unpricedBadge }
-                    else { detailText(summary.costMicros == nil ? L10n.Usage.heroNoPricedRequests : L10n.Usage.heroAllRequestsPriced) }
+                    else { detailText(summary.costMicros == nil ? L10n.Usage.Hero.noPricedRequests : L10n.Usage.Hero.allRequestsPriced) }
                 }
                 Divider().frame(height: 54)
-                metricSection(label: L10n.Usage.heroRequests, value: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))) {
-                    detailText(summary.requests == 0 ? L10n.Usage.heroNoTrafficInRange : L10n.Usage.heroInSelectedRange)
+                metricSection(label: L10n.Usage.Hero.requests, value: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))) {
+                    detailText(summary.requests == 0 ? L10n.Usage.Hero.noTrafficInRange : L10n.Usage.Hero.inSelectedRange)
                 }
                 Divider().frame(height: 54)
                 cacheSection
@@ -67,7 +67,7 @@ struct UsageHeroCards: View {
 
     private var tokensSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionLabel(L10n.Usage.heroRealTokens)
+            sectionLabel(L10n.Usage.Hero.realTokens)
             Text(UsageFormatting.compactTokens(summary.realTotalTokens))
                 .font(.system(size: density.titleFontSize + 20, weight: .bold, design: .rounded).monospacedDigit())
                 .lineLimit(1)
@@ -79,10 +79,10 @@ struct UsageHeroCards: View {
 
     private var tokenLegend: some View {
         HStack(spacing: 12) {
-            tokenLegendItem(L10n.Usage.tokensInput, value: summary.freshInput, tint: .blue)
-            tokenLegendItem(L10n.Usage.tokensOutput, value: summary.output, tint: .green)
-            tokenLegendItem(L10n.Usage.tokensCacheWrite, value: summary.cacheCreation, tint: .orange)
-            tokenLegendItem(L10n.Usage.tokensCacheRead, value: summary.cacheRead, tint: .purple)
+            tokenLegendItem(L10n.Usage.Tokens.input, value: summary.freshInput, tint: .blue)
+            tokenLegendItem(L10n.Usage.Tokens.output, value: summary.output, tint: .green)
+            tokenLegendItem(L10n.Usage.Tokens.cacheWrite, value: summary.cacheCreation, tint: .orange)
+            tokenLegendItem(L10n.Usage.Tokens.cacheRead, value: summary.cacheRead, tint: .purple)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -100,7 +100,7 @@ struct UsageHeroCards: View {
             .background(Capsule().fill(Theme.barTrack))
         }
         .frame(height: max(8, density.bucketBarHeight - 1))
-        .accessibilityLabel(L10n.Usage.heroTokenComposition)
+        .accessibilityLabel(L10n.Usage.Hero.tokenComposition)
     }
 
     private func tokenSegment(_ value: Int64, total: Int64, tint: Color, width: CGFloat) -> some View {
@@ -143,10 +143,10 @@ struct UsageHeroCards: View {
         HStack(spacing: 11) {
             cacheRing
             VStack(alignment: .leading, spacing: 5) {
-                sectionLabel(L10n.Usage.heroCacheHit)
+                sectionLabel(L10n.Usage.Hero.cacheHit)
                 Text(UsageFormatting.formatPercent(summary.cacheHitRate))
                     .font(.system(size: density.titleFontSize, weight: .bold, design: .rounded).monospacedDigit())
-                detailText(L10n.Usage.heroCacheRead(
+                detailText(L10n.Usage.Hero.cacheRead(
                     tokens: UsageFormatting.compactTokens(summary.cacheRead)
                 ))
             }
@@ -176,13 +176,13 @@ struct UsageHeroCards: View {
     }
 
     private var unpricedBadge: some View {
-        Text(L10n.Usage.heroUnpricedBadge(count: summary.unpricedRequests))
+        Text(L10n.Usage.Hero.unpricedBadge(count: summary.unpricedRequests))
             .font(.system(size: max(8, density.resetCountdownFontSize - 2), weight: .semibold))
             .foregroundStyle(.orange)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Capsule().fill(Color.orange.opacity(0.13)))
-            .help(L10n.Usage.heroUnpricedHelp(count: summary.unpricedRequests))
+            .help(L10n.Usage.Hero.unpricedHelp(count: summary.unpricedRequests))
     }
 
     private func sectionLabel(_ text: String) -> some View {

@@ -96,7 +96,6 @@ Single SwiftPM package, two product targets and one test target:
 ├── Scripts/
 │   ├── build_app.sh               # App packaging + nested codesign
 │   ├── release_app.sh             # ZIP, checksum, signed Sparkle appcast
-│   ├── build_localizations.py     # i18n JSON → .strings/.stringsdict/Swift (§ 7.2)
 │   ├── lint_localization.py       # Fails on a hardcoded string in a migrated file
 │   ├── generate_quota_naming_contract.py # Regenerates docs/contracts/quota-naming-v1.json
 │   ├── demo_home.py               # Builds the demo home README screenshots run on (§ 6.5)
@@ -987,67 +986,77 @@ upstream labels — canonicalize the display, never the stored value.
 
 ### 7.2 Localization
 
-Vibe Bar ships English and Simplified Chinese. **Runtime is Apple-native,
-authoring is JSON, and the app never reads the JSON.**
+Vibe Bar ships English and Simplified Chinese. **The strings live in one
+shared repository; the app pins a tag of it and never edits a string in
+this tree.**
 
 ```text
-Resources/i18n/en.json          ← hand-edited; the source of truth
-Resources/i18n/zh-Hans.json
-Resources/i18n/_glossary.json   ← the never-translate list, as data
-Resources/i18n/_schema.json     ← what an entry may contain
-          │  Scripts/build_localizations.py
+AstroQore/vibe-bar-i18n                 ← the only place a string is written
+  catalog/en.json, zh-Hans.json         ← authored; named placeholders, ICU plurals
+  catalog/_glossary.json                ← the never-translate list, as data
+  implementations/swift/                ← VibeBarLocalization: L10n + .lproj, generated, committed
+          │  pinned by tag
           ▼
-Sources/VibeBarCore/Resources/<lang>.lproj/Localizable.strings
-Sources/VibeBarCore/Resources/<lang>.lproj/Localizable.stringsdict
-Sources/VibeBarCore/Localization/L10n+Generated.swift
+Package.swift  .package(url: ".../vibe-bar-i18n.git", exact: "0.2.0")
+Sources/VibeBarCore  imports and re-exports VibeBarLocalization (AppLocalization.swift)
+Scripts/build_app.sh copies vibe-bar-i18n_VibeBarLocalization.bundle into Vibe Bar.app
 ```
 
-Everything below the arrow is **generated and checked in**. A build that
-needs Python to produce a resource is a build that breaks on a fresh
-machine, so `swift build` touches none of this;
-`LocalizationCatalogTests` re-runs the generator with `--check` and fails
-on a diff, the same way `QuotaNamingContractTests` guards the naming
-contract. After editing a catalog, run:
+Nothing here is generated any more: there is no `Resources/i18n`, no
+`Scripts/build_localizations.py`, no `L10n+Generated.swift`. The catalogue
+repository generates the Swift API and the `.lproj` directories and commits
+them, so `swift build` needs no Python and no network beyond fetching the
+package — same as `agent-session-kit`.
 
-```sh
-Scripts/build_localizations.py
-```
+**How a call site reaches a string.** Only through the package's typed
+API, re-exported by Core so every file in both targets sees it without an
+import: `L10n.Common.refresh`, `L10n.Quota.Reset.in(when:)`,
+`L10n.Settings.Layout.studioTitle`. Every dotted segment of a key is a
+namespace and the last is the member — `settings.layout.studioTitle` is
+`L10n.Settings.Layout.studioTitle` — and a key that takes arguments takes
+them as named parameters **in the order the English sentence names them**.
+The package's runtime (`L10nSupport`) is not public; nothing outside it can
+pull a format string out as text and fill the arguments in by hand.
 
-**How a call site reaches a string.** Only through the generated typed
-API — `L10n.Quota.resetIn(duration:)`, `L10n.Common.refresh`.
-`L10n.string(_:)` is `internal` to `VibeBarCore` on purpose: a key that
-takes arguments must not be reachable as a bare format string, because
-the positional order is the generator's business and differs per
-language. Nothing in product code reaches for it today: the last caller
-was a month-name catalog that a CLDR skeleton replaced.
+**Adding or changing a string is a two-repository change, in this order:**
 
-**Placeholders are named, plurals are ICU.** In the JSON you write
+1. In `vibe-bar-i18n`: add the key to `catalog/en.json` (with a `comment`
+   saying where it appears) and to `catalog/zh-Hans.json`; run
+   `python3 scripts/generate.py && python3 scripts/validate.py`; open a PR.
+   The validator refuses a sentence the catalogue already has under another
+   key — reuse that key, or say in the comment why it must stay separate.
+2. Tag the catalogue (`vX.Y.Z`; adding a key is a minor bump, renaming or
+   removing one is major and should be an addition instead).
+3. Here: bump the `exact:` pin in `Package.swift`, and only then write the
+   call site. `swift build` is the check that every key you use exists —
+   there is no lint for a missing key because a missing key does not
+   compile. `.github/workflows/bump-vibe-bar-i18n.yml` opens the pin-bump
+   PR on its own when a newer tag appears; step 3 can also just be that PR.
+
+A release of this app therefore never waits on a translation: whatever
+tag `Package.swift` names is what ships, and the packaged app is proven to
+resolve strings by `build_app.sh`'s launch smoke, which hides SwiftPM's
+build-directory bundles before starting the app.
+
+**Placeholders are named, plurals are ICU.** In the catalogue you write
 `{provider}`, `{days}`, and `{count, plural, one {…} other {…}}` — never
-`%@`, never `%1$lld`. The generator converts to positional specifiers on
-the way into `.strings`, and plurals into `.stringsdict`. Two rules that
-have already cost a debugging session:
+`%@`. The generator converts to positional specifiers on the way into
+`.strings`, and plurals into `.stringsdict`. A placeholder declared `int`
+is formatted with no locale and no grouping — right for a count, wrong for
+an amount or a year: those are `string`, formatted at the call site through
+`AppLocale`, which is also why there is no `double`.
 
-- A plural mixed with other arguments needs the variable positioned
-  (`%2$#@count@`). Without it Foundation feeds the plural whichever
-  argument came first — for "…​ refilled once", a quota's *name* — and
-  every count falls through to `other`.
-- `int` is rendered with the locale's grouping separator. That is right
-  for a count and wrong for an identifier: a year passed as `int`
-  renders "2,027". Years, versions and ids are `string`, formatted at
-  the call site. Decimals are too — there is no `double` type, because
-  number formatting belongs in one formatter, not in a catalog repeated
-  per language.
-
-**What is translated, and what is not.** § 7.1 governs it and
-`_glossary.json` encodes it. Company, SubProvider, harness, product and
-model names, MCP tool names, every JSON key and contract value, file
-paths and `SafeLog` output are **identifiers**: written exactly as that
-file spells them, in every language. Labels, captions, buttons,
-tooltips, empty states and error copy are translated. The awkward middle
-— "Weekly", "5 Hours", "All Models" — is resolved by keeping the
-*contract* value English and translating the *shown* label through
-`QuotaGroupLabelLocalizer`, whose table is exhaustive rather than
-pattern-matched so that "Weekly Fable" cannot be half-renamed.
+**What is translated, and what is not.** § 7.1 governs it and the
+catalogue's `_glossary.json` encodes it (CI there rejects a glossary term
+as a value). Company, SubProvider, harness, product and model names, MCP
+tool names, every JSON key and contract value, file paths and `SafeLog`
+output are **identifiers**: written exactly as that file spells them, in
+every language. Labels, captions, buttons, tooltips, empty states and
+error copy are translated. The awkward middle — "Weekly", "5 Hours", "All
+Models" — is resolved by keeping the *contract* value English and
+translating the *shown* label through `QuotaGroupLabelLocalizer`, whose
+table is exhaustive rather than pattern-matched so that "Weekly Fable"
+cannot be half-renamed.
 
 That localizer has to be applied **wherever a displayed label is
 composed**, not only where a group heading is drawn. `Lane.label` builds
@@ -1062,9 +1071,12 @@ which is the whole point of the table being a list rather than a rule.
 `Scripts/lint_localization.py` holds the list of files that have been
 through the pass and fails on a user-facing literal in one of them that
 does not go through `L10n`; `LocalizationLintTests` runs it on every
-`swift test`. **Add a file to that manifest when you migrate it**, and
-add a name to `_glossary.json` rather than inventing a per-file
-exception — `ALLOWED` is empty on purpose.
+`swift test`. It reads the glossary from the package checkout SwiftPM
+makes (`.build/checkouts/vibe-bar-i18n/catalog/_glossary.json`), so a
+`swift build` has to have run first. **Add a file to that manifest when
+you migrate it**, and add a name to the catalogue's `_glossary.json`
+rather than inventing a per-file exception — `ALLOWED` is empty on
+purpose.
 
 It scans with a small Swift lexer, not with regexes over a line, and the
 difference is the whole point: a pattern anchored to "a literal
@@ -1123,32 +1135,31 @@ computed and the memo only ever has to know about data.
 **Language selection.** `AppSettings.language` is `.system` (the
 default), `.english`, or `.simplifiedChinese`; the raw value of an
 explicit case is also its `.lproj` name. `SettingsStore` mirrors it into
-`L10n` on every assignment and once at load, so a change takes effect
-with no relaunch — the same assignment publishes to every `$settings`
-subscriber. The picker is `LanguageSettingsSection`, mounted in the
+`AppLocalization` on every assignment and once at load, and
+`AppLocalization` resolves the language with the app's own rules and
+hands the answer to the package through `L10n.localeOverride` — always
+explicitly, because the package's own system matching is looser (a bare
+`zh` would find `zh-Hans`). A change takes effect with no relaunch — the
+same assignment publishes to every `$settings` subscriber. The picker is `LanguageSettingsSection`, mounted in the
 System settings section and again at the head of the setup assistant's
 first step, before any prose the reader may not be able to read. `.system` is resolved by matching `Locale.preferredLanguages`
 on language *and script*, so a per-app choice in System Settings and
 `-AppleLanguages` both work, and a `zh-Hant` reader is deliberately not
 served `zh-Hans`.
 
-**Bundle plumbing.** `defaultLocalization: "en"` in `Package.swift`;
-the `.lproj` directories live in Core's resource bundle (the only target
-with a bundle of its own) and `Scripts/build_app.sh` also copies them
-into `Vibe Bar.app/Contents/Resources`, restoring the conventional
-`zh-Hans.lproj` spelling that SwiftPM lowercases. `CFBundleLocalizations`
-in `Resources/Info.plist` is what puts Vibe Bar in System Settings ›
-Language & Region › Applications. `L10n` looks in `Bundle.main` first and
-`Bundle.module` second, so a packaged app answers from its own resources
-and `swift test` / `swift run` answer from the SwiftPM bundle.
-
-**The catalog is going to move.** `Resources/i18n/` is shaped to be
-lifted, as a directory, into a repository shared with the cross-platform
-client the way `agent-session-kit` is shared today. That is why the
-placeholders are named, why the glossary is data rather than a paragraph
-here, why `platform.macos.*` exists for copy only one client can show,
-and why nothing but the generator reads the JSON.
-
+**Bundle plumbing.** The catalogue's `.lproj` directories live in the
+package's resource bundle, `vibe-bar-i18n_VibeBarLocalization.bundle`.
+`Scripts/build_app.sh` copies that bundle into `Vibe Bar.app/Contents/
+Resources` and copies its `.lproj` directories beside it — restoring the
+conventional `zh-Hans.lproj` spelling that SwiftPM lowercases — because
+`CFBundleLocalizations` in `Resources/Info.plist` plus those directories
+are what put Vibe Bar in System Settings › Language & Region ›
+Applications. The package's `L10n` looks in `Bundle.main` first, then in
+that copied bundle, and only in a source build or a test host in
+`Bundle.module` — SwiftPM's accessor traps once the build directory it
+names is gone, which is every installed app. `LocalizationCatalogTests`
+holds `AppLocalization.supported`, `AppLanguage` and `Info.plist` to the
+languages the package actually ships.
 
 ## 8. Privacy & Source-Content Rules
 

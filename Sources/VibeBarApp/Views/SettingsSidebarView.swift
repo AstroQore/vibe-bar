@@ -55,7 +55,7 @@ struct SettingsSidebarView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     if searchText.isEmpty || !filteredBasicPages.isEmpty {
-                        sidebarGroup(L10n.Settings.sidebarSettings) {
+                        sidebarGroup(L10n.Popover.Header.settings) {
                             ForEach(filteredBasicPages, id: \.rawValue) { page in
                                 staticRow(page)
                             }
@@ -63,7 +63,7 @@ struct SettingsSidebarView: View {
                     }
 
                     if searchText.isEmpty || !filteredCoreProviders.isEmpty {
-                        sidebarGroup(L10n.Settings.sidebarCoreProviders) {
+                        sidebarGroup(L10n.Settings.Sidebar.coreProviders) {
                             ForEach(filteredCoreProviders, id: \.self) { tool in
                                 coreProviderRow(tool)
                                     .onDrag {
@@ -96,7 +96,7 @@ struct SettingsSidebarView: View {
                     }
 
                     if miscLandingMatchesSearch || !filteredMiscProviders.isEmpty {
-                        sidebarGroup(L10n.Popover.tabMisc) {
+                        sidebarGroup(L10n.Popover.Tab.misc) {
                             if miscLandingMatchesSearch {
                                 miscLandingRow
                             }
@@ -215,8 +215,8 @@ struct SettingsSidebarView: View {
 
     private var miscLandingMatchesSearch: Bool {
         searchText.isEmpty
-            || L10n.Onboarding.doneBrowserCookies.localizedCaseInsensitiveContains(searchText)
-            || L10n.Popover.tabMisc.localizedCaseInsensitiveContains(searchText)
+            || L10n.Onboarding.Step.BrowserCookies.title.localizedCaseInsensitiveContains(searchText)
+            || L10n.Popover.Tab.misc.localizedCaseInsensitiveContains(searchText)
     }
 
     private func sidebarGroup<Content: View>(
@@ -263,7 +263,7 @@ struct SettingsSidebarView: View {
             showsDragHandle: true
         )
         .contextMenu {
-            Button(enabled ? L10n.Settings.sidebarHideFromOverview : L10n.Onboarding.subscriptionsShowInOverview) {
+            Button(enabled ? L10n.Settings.Sidebar.hideFromOverview : L10n.Onboarding.Subscriptions.showInOverview) {
                 settingsStore.settings.setCoreProviderVisible(!enabled, for: tool)
             }
         }
@@ -284,7 +284,7 @@ struct SettingsSidebarView: View {
             showsDragHandle: true
         )
         .contextMenu {
-            Button(enabled ? L10n.Settings.sidebarDisableProvider : L10n.Settings.sidebarEnableProvider) {
+            Button(enabled ? L10n.Settings.Sidebar.disableProvider : L10n.Settings.Sidebar.enableProvider) {
                 settingsStore.settings.setMiscProviderInstanceVisible(!enabled, forID: instance.id)
             }
         }
@@ -293,7 +293,7 @@ struct SettingsSidebarView: View {
     private var miscLandingRow: some View {
         sidebarRow(
             destination: .page(.miscProviders),
-            title: L10n.Onboarding.doneBrowserCookies,
+            title: L10n.Onboarding.Step.BrowserCookies.title,
             icon: AnyView(
                 Image(systemName: "safari")
                     .font(.system(size: 14, weight: .medium))

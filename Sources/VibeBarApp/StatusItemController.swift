@@ -297,7 +297,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.lineBreakMode = .byClipping
         button.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         button.tag = statusItemTag(for: kind)
-        button.toolTip = L10n.MenuBar.spokenTitle(kind: kind.label)
+        button.toolTip = L10n.MenuBar.Spoken.title(kind: kind.label)
     }
 
     private func observeChanges() {
@@ -1366,8 +1366,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         kind: MenuBarItemKind
     ) {
         let description = body.isEmpty
-            ? L10n.MenuBar.spokenTitle(kind: kind.label)
-            : L10n.MenuBar.spokenTitleBody(kind: kind.label, body: body)
+            ? L10n.MenuBar.Spoken.title(kind: kind.label)
+            : L10n.MenuBar.Spoken.titleBody(kind: kind.label, body: body)
         button.setAccessibilityLabel(description)
         if button.toolTip != description { button.toolTip = description }
     }
@@ -1756,7 +1756,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // This layout draws no percentages, so it skips the piece walk (and
         // its per-bucket forecasts) entirely — which also means it must clear
         // any live description a previous layout left on the button.
-        let idleToolTip = L10n.MenuBar.spokenTitle(kind: kind.label)
+        let idleToolTip = L10n.MenuBar.Spoken.title(kind: kind.label)
         if button.toolTip != idleToolTip { button.toolTip = idleToolTip }
     }
 

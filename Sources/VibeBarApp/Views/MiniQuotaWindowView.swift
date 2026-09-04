@@ -581,25 +581,25 @@ func miniForecastLine(_ forecast: QuotaPaceForecast, now: Date, compact: Bool = 
     if let runOutAt = forecast.runOutAt,
        let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
         return forecast.verdict == .watch
-            ? L10n.Quota.miniForecastMayRunOut(countdown: countdown)
-            : L10n.Quota.paceRunsOutShort(countdown: countdown)
+            ? L10n.Quota.Mini.forecastMayRunOut(countdown: countdown)
+            : L10n.Quota.Pace.runsOutShort(countdown: countdown)
     }
     let left = Int(forecast.projectedRemainingPercent.rounded())
     switch forecast.verdict {
     case .enough:
         return compact
-            ? L10n.Quota.miniForecastLeftCompact(percent: left)
-            : L10n.Quota.miniForecastLeft(percent: left)
+            ? L10n.Quota.Mini.forecastLeftCompact(percent: left)
+            : L10n.Quota.remainingPercent(percent: left)
     case .surplus:
         return compact
-            ? L10n.Quota.miniForecastSurplusCompact(percent: left)
-            : L10n.Quota.miniForecastSurplus(percent: left)
-    case .watch: return L10n.Quota.forecastVerdictWatch
-    case .atRisk: return L10n.Quota.forecastVerdictAtRisk
+            ? L10n.Quota.Mini.forecastSurplusCompact(percent: left)
+            : L10n.Quota.Mini.forecastSurplus(percent: left)
+    case .watch: return L10n.Quota.Forecast.Verdict.watch
+    case .atRisk: return L10n.Quota.Forecast.Verdict.atRisk
     case .learning:
         return compact
-            ? L10n.Quota.miniForecastLearningCompact(percent: left)
-            : L10n.Quota.miniForecastLearning(percent: left)
+            ? L10n.Quota.Mini.forecastLearningCompact(percent: left)
+            : L10n.Quota.Mini.forecastLearning(percent: left)
     }
 }
 
@@ -982,7 +982,7 @@ private struct MiniBranchRingCell: View {
             guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "" }
             let target = now.addingTimeInterval(etaSeconds)
             return ResetCountdownFormatter.string(from: target, now: now)
-                .map { L10n.Quota.paceRunsOutShort(countdown: $0) } ?? ""
+                .map { L10n.Quota.Pace.runsOutShort(countdown: $0) } ?? ""
         }
     }
 
@@ -1097,7 +1097,7 @@ private struct MiniRingCell: View {
             guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "" }
             let target = now.addingTimeInterval(etaSeconds)
             return ResetCountdownFormatter.string(from: target, now: now)
-                .map { L10n.Quota.paceRunsOutShort(countdown: $0) } ?? ""
+                .map { L10n.Quota.Pace.runsOutShort(countdown: $0) } ?? ""
         }
     }
 
@@ -1484,7 +1484,7 @@ private struct MiniCompactBarCell: View {
         guard let pace else { return "" }
         switch pace.stage {
         case .onTrack:
-            return L10n.Quota.paceOnTrack
+            return L10n.Quota.Pace.onTrack
         case .slightlyBehind, .behind, .farBehind:
             return pace.stageSummaryCompact
         case .slightlyAhead, .ahead, .farAhead:
@@ -1494,7 +1494,7 @@ private struct MiniCompactBarCell: View {
             guard let etaSeconds = pace.etaSeconds, etaSeconds > 0 else { return "" }
             let target = now.addingTimeInterval(etaSeconds)
             return ResetCountdownFormatter.string(from: target, now: now)
-                .map { L10n.Quota.paceRunsOutShort(countdown: $0) } ?? ""
+                .map { L10n.Quota.Pace.runsOutShort(countdown: $0) } ?? ""
         }
     }
 

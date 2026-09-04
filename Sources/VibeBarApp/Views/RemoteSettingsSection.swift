@@ -51,12 +51,12 @@ struct RemoteSettingsSection: View {
     }
 
     private var aggregationSection: some View {
-        section(L10n.Settings.remoteCostAggregation) {
-            Text(L10n.Settings.remoteCostAggregationIntro)
+        section(L10n.Settings.Remote.costAggregation) {
+            Text(L10n.Settings.Remote.costAggregationIntro)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if service.machines.isEmpty {
-                Text(L10n.Settings.remoteMachinesAppearAfterImport)
+                Text(L10n.Settings.Remote.machinesAppearAfterImport)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             } else {
@@ -65,7 +65,7 @@ struct RemoteSettingsSection: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(machine.alias)
                                 .font(.caption.weight(.medium))
-                            Text(L10n.Settings.remoteMachineDetail(platform: machine.platform, version: machine.probeVersion))
+                            Text(L10n.Settings.Remote.machineDetail(platform: machine.platform, version: machine.probeVersion))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -83,32 +83,32 @@ struct RemoteSettingsSection: View {
         // The badge is on the first section rather than every one: it marks
         // the feature, not each control inside it.
         SettingsSectionCard(
-            title: L10n.Settings.remoteCore,
-            badge: L10n.Settings.remoteExperimentalBadge,
+            title: L10n.Settings.Remote.core,
+            badge: L10n.Settings.Remote.experimentalBadge,
             density: density
         ) {
-            Text(L10n.Settings.remoteExperimentalNote)
+            Text(L10n.Settings.Remote.experimentalNote)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             if service.isConfigured {
-                infoRow(L10n.Settings.remoteWorkspace, service.workspaceID?.uuidString.lowercased() ?? "—")
-                infoRow(L10n.Settings.remoteRelay, service.relayURL?.absoluteString ?? "—")
-                infoRow(L10n.Settings.remoteRegisteredProbes, AppLocale.number(service.registeredProbeCount))
-                infoRow(L10n.Settings.remoteMachinesSynced, AppLocale.number(service.machines.count))
-                infoRow(L10n.Settings.remoteLastSync, lastSyncText)
+                infoRow(L10n.Settings.Remote.workspace, service.workspaceID?.uuidString.lowercased() ?? "—")
+                infoRow(L10n.Settings.Remote.relay, service.relayURL?.absoluteString ?? "—")
+                infoRow(L10n.Settings.Remote.registeredProbes, AppLocale.number(service.registeredProbeCount))
+                infoRow(L10n.Settings.Remote.machinesSynced, AppLocale.number(service.machines.count))
+                infoRow(L10n.Settings.Remote.lastSync, lastSyncText)
                 if let code = service.lastErrorCode {
-                    Text(L10n.Settings.remoteStatusWithCode(title: RemoteSyncStatusCopy.title(for: code), code: code))
+                    Text(L10n.Settings.Remote.statusWithCode(title: RemoteSyncStatusCopy.title(for: code), code: code))
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 }
                 Button {
                     Task { await service.refresh() }
                 } label: {
-                    Label(L10n.Settings.remoteSyncNow, systemImage: "arrow.triangle.2.circlepath")
+                    Label(L10n.Settings.Remote.syncNow, systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(service.isRefreshing)
             } else {
-                Text(L10n.Settings.remoteNotConnected)
+                Text(L10n.Settings.Remote.notConnected)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -123,15 +123,15 @@ struct RemoteSettingsSection: View {
     // MARK: - Provisioning
 
     private var provisioningSection: some View {
-        section(L10n.Settings.remoteProvisioning) {
+        section(L10n.Settings.Remote.provisioning) {
             if !service.isConfigured {
                 joinWithCode
                 Divider()
-                Text(L10n.Settings.remoteOrPairManually)
+                Text(L10n.Settings.Remote.orPairManually)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
             }
-            Text(L10n.Settings.remoteManualPairingIntro)
+            Text(L10n.Settings.Remote.manualPairingIntro)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -139,12 +139,12 @@ struct RemoteSettingsSection: View {
                 Button {
                     exportDescriptor()
                 } label: {
-                    Label(L10n.Settings.remoteExportIdentity, systemImage: "square.and.arrow.up")
+                    Label(L10n.Settings.Remote.exportIdentity, systemImage: "square.and.arrow.up")
                 }
                 Button {
                     importProvisioning()
                 } label: {
-                    Label(L10n.Settings.remoteImportProvisioning, systemImage: "square.and.arrow.down")
+                    Label(L10n.Settings.Remote.importProvisioning, systemImage: "square.and.arrow.down")
                 }
             }
 
@@ -176,10 +176,10 @@ struct RemoteSettingsSection: View {
     /// persisted or logged.
     private var joinWithCode: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.Settings.remoteJoinWithCode)
+            Text(L10n.Settings.Remote.joinWithCode)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text(L10n.Settings.remoteJoinIntro(device: deviceName))
+            Text(L10n.Settings.Remote.joinIntro(device: deviceName))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -190,7 +190,7 @@ struct RemoteSettingsSection: View {
                     .frame(width: 190)
                     .disabled(isJoining)
                     .onSubmit { join() }
-                Button(L10n.Settings.remoteJoin) { join() }
+                Button(L10n.Settings.Remote.join) { join() }
                     .disabled(isJoining || trimmedJoinCode.isEmpty)
                 if isJoining {
                     ProgressView()
@@ -199,7 +199,7 @@ struct RemoteSettingsSection: View {
                 Spacer(minLength: 0)
             }
 
-            Toggle(L10n.Settings.remoteDifferentControlCenter, isOn: $showControlURLField)
+            Toggle(L10n.Settings.Remote.differentControlCenter, isOn: $showControlURLField)
                 .toggleStyle(.checkbox)
                 .font(.caption)
                 .disabled(isJoining)
@@ -219,7 +219,7 @@ struct RemoteSettingsSection: View {
             }
             if pendingEnrollment != nil {
                 if pendingWasRestored {
-                    Text(L10n.Settings.remotePendingIntro)
+                    Text(L10n.Settings.Remote.pendingIntro)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -228,21 +228,21 @@ struct RemoteSettingsSection: View {
                         retrySavingEnrollment()
                     } label: {
                         Label(
-                            pendingWasRestored ? L10n.Settings.remoteResumeSaving : L10n.Settings.remoteRetrySaving,
+                            pendingWasRestored ? L10n.Settings.Remote.resumeSaving : L10n.Settings.Remote.retrySaving,
                             systemImage: "arrow.clockwise"
                         )
                     }
-                    Button(L10n.Settings.remoteDiscard) { confirmingDiscardPending = true }
+                    Button(L10n.Settings.Remote.discard) { confirmingDiscardPending = true }
                 }
                 .confirmationDialog(
-                    L10n.Settings.remoteDiscardPendingTitle,
+                    L10n.Settings.Remote.discardPendingTitle,
                     isPresented: $confirmingDiscardPending,
                     titleVisibility: .visible
                 ) {
-                    Button(L10n.Settings.remoteDiscard, role: .destructive) { discardPendingEnrollment() }
+                    Button(L10n.Settings.Remote.discard, role: .destructive) { discardPendingEnrollment() }
                     Button(L10n.Common.cancel, role: .cancel) {}
                 } message: {
-                    Text(L10n.Settings.remoteDiscardPendingDetail)
+                    Text(L10n.Settings.Remote.discardPendingDetail)
                 }
             }
         }
@@ -397,26 +397,26 @@ struct RemoteSettingsSection: View {
     // MARK: - Disconnect
 
     private var disconnectSection: some View {
-        section(L10n.Settings.remoteDisconnect) {
-            Text(L10n.Settings.remoteDisconnectIntro)
+        section(L10n.Settings.Remote.disconnect) {
+            Text(L10n.Settings.Remote.disconnectIntro)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button(role: .destructive) {
                 confirmingDisconnect = true
             } label: {
-                Label(L10n.Settings.remoteDisconnectButton, systemImage: "bolt.slash")
+                Label(L10n.Settings.Remote.disconnectButton, systemImage: "bolt.slash")
             }
             .confirmationDialog(
-                L10n.Settings.remoteDisconnectTitle,
+                L10n.Settings.Remote.disconnectTitle,
                 isPresented: $confirmingDisconnect,
                 titleVisibility: .visible
             ) {
-                Button(L10n.Settings.remoteDisconnect, role: .destructive) {
+                Button(L10n.Settings.Remote.disconnect, role: .destructive) {
                     disconnect()
                 }
                 Button(L10n.Common.cancel, role: .cancel) {}
             } message: {
-                Text(L10n.Settings.remoteDisconnectDetail)
+                Text(L10n.Settings.Remote.disconnectDetail)
             }
         }
     }

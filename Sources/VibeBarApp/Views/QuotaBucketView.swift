@@ -21,11 +21,11 @@ struct QuotaBucketView: View {
             QuotaBarShape(percent: percent, mode: mode, height: 12)
             HStack {
                 if let s = ResetCountdownFormatter.stringWithAbsoluteTime(from: bucket.resetAt, now: now) {
-                    Text(L10n.Quota.bucketResetsIn(when: s))
+                    Text(L10n.Quota.Reset.`in`(when: s))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 } else {
-                    Text(L10n.Quota.bucketNoResetInfo)
+                    Text(L10n.Quota.Bucket.noResetInfo)
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
@@ -39,8 +39,8 @@ struct QuotaBucketView: View {
 
     private func modeCaption(_ mode: DisplayMode) -> String {
         switch mode {
-        case .remaining: return L10n.Quota.modeRemaining
-        case .used: return L10n.Quota.modeUsed
+        case .remaining: return L10n.Quota.Mode.remaining
+        case .used: return L10n.Quota.Mode.used
         }
     }
 }

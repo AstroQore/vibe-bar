@@ -6,7 +6,7 @@ import Foundation
 /// **Why this exists.** A cache keyed on data is wrong the moment its value
 /// depends on the language too. `AppLocale` learned this for formatters —
 /// twenty `static let` formatters were frozen at launch language until it
-/// memoized on `L10n.resolvedLanguageCode`, which turns a language change
+/// memoized on `AppLocalization.resolvedLanguageCode`, which turns a language change
 /// into an ordinary cache miss rather than something a person has to
 /// remember to invalidate. Every cache that holds a *localized string* has
 /// the same defect and needs the same cure.
@@ -36,6 +36,6 @@ public struct LanguageStamp: Equatable, Sendable {
 
     /// The language in force right now.
     public static var current: LanguageStamp {
-        LanguageStamp(code: L10n.resolvedLanguageCode)
+        LanguageStamp(code: AppLocalization.resolvedLanguageCode)
     }
 }

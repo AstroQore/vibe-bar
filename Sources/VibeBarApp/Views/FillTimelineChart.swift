@@ -92,11 +92,11 @@ struct FillTimelineChart: View {
         let cycles = visibleCycles(series: series, limit: maxCycles(forWidth: stripWidth))
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(L10n.Quota.resetHistoryTitle)
+                Text(L10n.ResetHistory.cardTitle)
                     .font(.system(size: max(9, density.subtitleFontSize - 2), weight: .medium))
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
-                Text(L10n.Quota.resetHistoryBarIsOneCycle)
+                Text(L10n.ResetHistory.barIsOneCycle)
                     .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
                     .foregroundStyle(.quaternary)
             }
@@ -266,7 +266,7 @@ struct FillTimelineChart: View {
     private func earlyRefillNote(_ cycles: [SubscriptionWindowSample]) -> some View {
         let early = cycles.filter(\.refilledEarly).count
         if early > 0 {
-            Text(L10n.Quota.resetHistoryEarlyRefillCount(count: early))
+            Text(L10n.ResetHistory.earlyRefillCount(count: early))
             .font(.system(size: max(7.5, density.subtitleFontSize - 4), design: .rounded))
             .foregroundStyle(.quaternary)
         }
@@ -276,9 +276,9 @@ struct FillTimelineChart: View {
     /// two early shapes mean opposite things, so the caption says which.
     private func resetDescription(_ cycle: SubscriptionWindowSample) -> String? {
         switch cycle.resetKind {
-        case .earlyClockRestarted: L10n.Quota.resetHistoryResetEarlyClockRestarted
-        case .earlyClockUnchanged: L10n.Quota.resetHistoryResetEarlyClockUnchanged
-        case .earlyUnclear: L10n.Quota.resetHistoryResetEarlyUnclear
+        case .earlyClockRestarted: L10n.ResetHistory.Reset.earlyClockRestarted
+        case .earlyClockUnchanged: L10n.ResetHistory.Reset.earlyClockUnchanged
+        case .earlyUnclear: L10n.ResetHistory.Reset.earlyUnclear
         case .onSchedule, .unobserved, nil: nil
         }
     }
@@ -292,12 +292,12 @@ struct FillTimelineChart: View {
         let used = Int(cycle.peakUsedPercent.rounded())
         let left = Int(cycle.remainingPercentAtReset.rounded())
         guard let completedAt = cycle.completedAt else {
-            return L10n.Quota.resetHistoryCurrentCycleCaption(used: used, left: left)
+            return L10n.ResetHistory.currentCycleCaption(used: used, left: left)
         }
         // Each note is a whole localized clause; the caption is those clauses
         // in a list, never an English sentence assembled from fragments.
         var parts = [
-            L10n.Quota.resetHistoryCycleCaption(
+            L10n.ResetHistory.cycleCaption(
                 time: Self.timestampFormatter.string(from: completedAt),
                 used: used,
                 left: left
@@ -307,7 +307,7 @@ struct FillTimelineChart: View {
         let samplingGap = completedAt.timeIntervalSince(cycle.lastSeenAt)
         if samplingGap >= 60,
            let duration = ResetCountdownFormatter.string(from: completedAt, now: cycle.lastSeenAt) {
-            parts.append(L10n.Quota.resetHistoryLastSeenBefore(duration: duration))
+            parts.append(L10n.ResetHistory.lastSeenBefore(duration: duration))
         }
         return parts.joined(separator: " · ")
     }
@@ -324,7 +324,7 @@ struct FillTimelineChart: View {
                 }
                 Text(
                     cycles.last?.isCompleted == false
-                        ? L10n.Quota.resetHistoryAxisCurrent
+                        ? L10n.ResetHistory.axisCurrent
                         : axisLabel(cycles[cycles.count - 1])
                 )
             }

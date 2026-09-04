@@ -66,19 +66,19 @@ struct QuotaForecastRow: View {
         // figure is the only part that changes between Remaining and Used,
         // and both languages put it in the same slot.
         let forecastValue = displayMode == .remaining
-            ? L10n.Quota.forecastValueLeft(percent: left)
-            : L10n.Quota.forecastValueUsed(percent: used)
+            ? L10n.Quota.remainingPercent(percent: left)
+            : L10n.Quota.usedPercent(percent: used)
         switch forecast.verdict {
         case .enough:
-            return L10n.Quota.forecastStatusEnough(value: forecastValue)
+            return L10n.Quota.Forecast.Status.enough(value: forecastValue)
         case .surplus:
-            return L10n.Quota.forecastStatusSurplus(value: forecastValue)
+            return L10n.Quota.Forecast.Status.surplus(value: forecastValue)
         case .watch:
-            return L10n.Quota.forecastStatusWatch(value: forecastValue)
+            return L10n.Quota.Forecast.Status.watch(value: forecastValue)
         case .atRisk:
-            return L10n.Quota.forecastStatusAtRisk
+            return L10n.Quota.Forecast.Status.atRisk
         case .learning:
-            return L10n.Quota.forecastStatusLearning(value: forecastValue)
+            return L10n.Quota.Forecast.Status.learning(value: forecastValue)
         }
     }
 
@@ -92,16 +92,16 @@ struct QuotaForecastRow: View {
                from: runOutAt, now: now, style: .full
            ) {
             return forecast.verdict == .watch
-                ? L10n.Quota.forecastUseUpCouldRunOut(countdown: countdown)
-                : L10n.Quota.forecastUseUpEstimated(countdown: countdown)
+                ? L10n.Quota.Forecast.UseUp.couldRunOut(countdown: countdown)
+                : L10n.Quota.Forecast.UseUp.estimated(countdown: countdown)
         }
         switch forecast.verdict {
         case .watch:
-            return L10n.Quota.forecastUseUpUncertain
+            return L10n.Quota.Forecast.UseUp.uncertain
         case .atRisk:
-            return L10n.Quota.forecastUseUpBeforeReset
+            return L10n.Quota.Forecast.UseUp.beforeReset
         case .enough, .surplus, .learning:
-            return L10n.Quota.forecastUseUpLastsUntilReset
+            return L10n.Quota.Forecast.UseUp.lastsUntilReset
         }
     }
 
@@ -109,15 +109,15 @@ struct QuotaForecastRow: View {
         guard displayMode == .used else { return forecast.guidanceSummary }
         let usedTarget = Int((100 - forecast.targetRemainingPercent).rounded())
         let unused = Int(forecast.potentialUnusedPercent.rounded())
-        if forecast.verdict == .atRisk { return L10n.Quota.forecastGuidanceAtRisk }
-        if forecast.verdict == .watch { return L10n.Quota.forecastGuidanceWatch }
+        if forecast.verdict == .atRisk { return L10n.Quota.Forecast.Guidance.atRisk }
+        if forecast.verdict == .watch { return L10n.Quota.Forecast.Guidance.watch }
         if forecast.verdict == .surplus {
-            return L10n.Quota.forecastGuidanceUsedSurplus(unused: unused, target: usedTarget)
+            return L10n.Quota.Forecast.Guidance.usedSurplus(unused: unused, target: usedTarget)
         }
         if unused >= 3 {
-            return L10n.Quota.forecastGuidanceUsedAvailable(target: usedTarget, unused: unused)
+            return L10n.Quota.Forecast.Guidance.usedAvailable(target: usedTarget, unused: unused)
         }
-        return L10n.Quota.forecastGuidanceUsedWithinTarget(target: usedTarget)
+        return L10n.Quota.Forecast.Guidance.usedWithinTarget(target: usedTarget)
     }
 
 }

@@ -64,7 +64,7 @@ struct TranscriptView: View {
                     } else if let document = model.transcript {
                         if document.messages.isEmpty {
                             message(
-                                L10n.Workbench.sessionsTranscriptNoMessages,
+                                L10n.Workbench.Sessions.Transcript.noMessages,
                                 systemImage: "text.alignleft"
                             )
                         } else {
@@ -89,7 +89,7 @@ struct TranscriptView: View {
                                     onCopy: {
                                         model.copyToClipboard(
                                             entry.text,
-                                            note: L10n.Workbench.sessionsToastMessageCopied
+                                            note: L10n.Workbench.Sessions.Toast.messageCopied
                                         )
                                     }
                                 )
@@ -128,9 +128,9 @@ struct TranscriptView: View {
             Image(systemName: "text.bubble")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(.secondary)
-            Text(L10n.Workbench.sessionsTranscriptPlaceholderTitle)
+            Text(L10n.Workbench.Sessions.Transcript.placeholderTitle)
                 .font(.system(size: density.titleFontSize, weight: .semibold))
-            Text(L10n.Workbench.sessionsTranscriptPlaceholderDetail)
+            Text(L10n.Workbench.Sessions.Transcript.placeholderDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -143,7 +143,7 @@ struct TranscriptView: View {
     private var loading: some View {
         HStack(spacing: 10) {
             ProgressView().controlSize(.small)
-            Text(L10n.Workbench.sessionsTranscriptLoading)
+            Text(L10n.Workbench.Sessions.Transcript.loading)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             // A whole-file read of a gigabyte-scale rollout takes long enough
@@ -169,18 +169,18 @@ struct TranscriptView: View {
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 5) {
-                Text(L10n.Workbench.sessionsTranscriptTruncatedTitle(
+                Text(L10n.Workbench.Sessions.Transcript.truncatedTitle(
                     count: truncation.shownMessages
                 ))
                     .font(.system(size: density.subtitleFontSize, weight: .semibold))
-                Text(L10n.Workbench.sessionsTranscriptTruncatedDetail(
+                Text(L10n.Workbench.Sessions.Transcript.truncatedDetail(
                     parsed: Self.bytes(truncation.parsedBytes),
                     file: Self.bytes(truncation.fileBytes)
                 ))
                     .font(.system(size: max(10, density.resetCountdownFontSize)))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button(L10n.Workbench.sessionsTranscriptLoadAll) { model.loadEntireTranscript() }
+                Button(L10n.Workbench.Sessions.Transcript.loadAll) { model.loadEntireTranscript() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
@@ -229,7 +229,7 @@ struct TranscriptView: View {
             Image(systemName: "text.magnifyingglass")
                 .font(.system(size: density.segmentedFontSize - 1))
                 .foregroundStyle(.secondary)
-            TextField(L10n.Workbench.sessionsFindPlaceholder, text: $query)
+            TextField(L10n.Workbench.Sessions.Find.placeholder, text: $query)
                 .textFieldStyle(.plain)
                 .font(.system(size: density.segmentedFontSize))
                 .onSubmit { step(by: 1, proxy: proxy) }
@@ -238,8 +238,8 @@ struct TranscriptView: View {
                 .vibeBarSystemControlFocus()
             if !query.isEmpty {
                 Text(matches.isEmpty
-                    ? L10n.Workbench.sessionsFindNone
-                    : L10n.Workbench.sessionsFraction(
+                    ? L10n.Workbench.Sessions.Find.none
+                    : L10n.Workbench.Sessions.fraction(
                         shown: matchIndex + 1, total: matches.count
                     ))
                     .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded)
@@ -247,14 +247,14 @@ struct TranscriptView: View {
                     .foregroundStyle(.tertiary)
                 BorderlessIconButton(
                     systemImage: "chevron.up",
-                    help: L10n.Workbench.sessionsFindPrevious
+                    help: L10n.Workbench.Sessions.Find.previous
                 ) {
                     step(by: -1, proxy: proxy)
                 }
                 .disabled(matches.isEmpty)
                 BorderlessIconButton(
                     systemImage: "chevron.down",
-                    help: L10n.Workbench.sessionsFindNext
+                    help: L10n.Workbench.Sessions.Find.next
                 ) {
                     step(by: 1, proxy: proxy)
                 }
@@ -273,7 +273,7 @@ struct TranscriptView: View {
             Capsule().fill(Color.primary.opacity(0.045))
                 .overlay(Capsule().stroke(Color.primary.opacity(0.11), lineWidth: 0.6))
         )
-        .accessibilityLabel(L10n.Workbench.sessionsFindPlaceholder)
+        .accessibilityLabel(L10n.Workbench.Sessions.Find.placeholder)
         // One trigger for both inputs. `.task(id:)` cancels the previous run
         // when the key changes, which is what makes the debounce below a
         // debounce rather than a queue of scans.
@@ -427,7 +427,7 @@ struct TranscriptView: View {
             start: messagePageStart
         )
         return HStack(spacing: 8) {
-            Text(L10n.Workbench.sessionsTranscriptPageRange(
+            Text(L10n.Workbench.Sessions.Transcript.pageRange(
                 first: range.lowerBound + 1,
                 last: range.upperBound,
                 total: document.messages.count
@@ -436,11 +436,11 @@ struct TranscriptView: View {
                     .monospacedDigit())
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 8)
-            Button(L10n.Workbench.sessionsPagePrevious) {
+            Button(L10n.Workbench.Sessions.Page.previous) {
                 movePage(direction: -1, document: document, proxy: proxy)
             }
             .disabled(range.lowerBound == 0)
-            Button(L10n.Workbench.sessionsPageNext) {
+            Button(L10n.Workbench.Sessions.Page.next) {
                 movePage(direction: 1, document: document, proxy: proxy)
             }
             .disabled(range.upperBound == document.messages.count)
@@ -478,8 +478,8 @@ struct TranscriptView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .help(L10n.Workbench.sessionsOutlineHelp)
-        .accessibilityLabel(L10n.Workbench.sessionsOutlineLabel)
+        .help(L10n.Workbench.Sessions.Outline.help)
+        .accessibilityLabel(L10n.Workbench.Sessions.Outline.label)
         .popover(isPresented: $showsOutline, arrowEdge: .trailing) {
             TranscriptToCView(
                 density: density,
@@ -565,7 +565,7 @@ struct SessionMetadataHeader: View {
                     .help(project)
             }
             if summary.hasKnownMessageCount {
-                Text(L10n.Workbench.sessionsRowMessageCount(count: summary.messageCount))
+                Text(L10n.Workbench.Sessions.Row.messageCount(count: summary.messageCount))
                     .monospacedDigit()
             }
         }
@@ -580,7 +580,7 @@ struct SessionMetadataHeader: View {
         Button {
             model.copyToClipboard(
                 summary.sessionID,
-                note: L10n.Workbench.sessionsToastSessionIDCopied
+                note: L10n.Workbench.Sessions.Toast.sessionIDCopied
             )
         } label: {
             HStack(spacing: 5) {
@@ -600,8 +600,8 @@ struct SessionMetadataHeader: View {
             )
         }
         .buttonStyle(.vibeBar)
-        .help(L10n.Workbench.sessionsCopySessionID)
-        .accessibilityLabel(L10n.Workbench.sessionsCopySessionIDLabel(id: summary.sessionID))
+        .help(L10n.Workbench.Sessions.copySessionID)
+        .accessibilityLabel(L10n.Workbench.Sessions.copySessionIDLabel(id: summary.sessionID))
     }
 
     private var headerActions: some View {
@@ -613,16 +613,16 @@ struct SessionMetadataHeader: View {
                     Image(systemName: "doc.on.doc")
                         .frame(width: 16, height: 16)
                 }
-                .help(L10n.Workbench.sessionsCopyResumeCommand)
-                .accessibilityLabel(L10n.Workbench.sessionsCopyResumeCommand)
+                .help(L10n.Workbench.Sessions.copyResumeCommand)
+                .accessibilityLabel(L10n.Workbench.Sessions.copyResumeCommand)
 
                 Button {
                     model.resumeInTerminal(summary)
                 } label: {
-                    Label(L10n.Common.open, systemImage: "terminal")
+                    Label(L10n.Common.`open`, systemImage: "terminal")
                         .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 }
-                .help(L10n.Workbench.sessionsRunInHelp(
+                .help(L10n.Workbench.Sessions.runInHelp(
                     terminal: model.preferredTerminal.displayName
                 ))
             }
@@ -632,13 +632,13 @@ struct SessionMetadataHeader: View {
                     showsDetails.toggle()
                 }
             } label: {
-                Label(L10n.Workbench.sessionsDetails, systemImage: "chevron.down")
+                Label(L10n.Workbench.Sessions.details, systemImage: "chevron.down")
                     .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                     .labelStyle(.titleAndIcon)
             }
             .accessibilityValue(showsDetails
-                ? L10n.Workbench.sessionsDetailsExpanded
-                : L10n.Workbench.sessionsDetailsCollapsed)
+                ? L10n.Workbench.Sessions.Details.expanded
+                : L10n.Workbench.Sessions.Details.collapsed)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -663,46 +663,46 @@ struct SessionMetadataHeader: View {
     private var facts: some View {
         VStack(alignment: .leading, spacing: 4) {
             factRow(
-                label: L10n.Workbench.sessionsFactId,
+                label: L10n.Workbench.Sessions.Fact.id,
                 monospaced: true,
                 value: summary.sessionID,
-                copyHelp: L10n.Workbench.sessionsCopySessionID
+                copyHelp: L10n.Workbench.Sessions.copySessionID
             ) {
                 model.copyToClipboard(
                     summary.sessionID,
-                    note: L10n.Workbench.sessionsToastSessionIDCopied
+                    note: L10n.Workbench.Sessions.Toast.sessionIDCopied
                 )
             }
             if let project = summary.projectDir {
                 let projectless = SessionManagerModel.isGeneratedProjectlessPath(project)
                 factRow(
-                    label: L10n.Workbench.sessionsFactCwd,
+                    label: L10n.Workbench.Sessions.Fact.cwd,
                     monospaced: !projectless,
-                    value: projectless ? L10n.Workbench.sessionsProjectProjectless : project,
-                    copyHelp: L10n.Workbench.sessionsCopyWorkingDirectory
+                    value: projectless ? L10n.Workbench.Sessions.Project.projectless : project,
+                    copyHelp: L10n.Workbench.Sessions.copyWorkingDirectory
                 ) {
                     model.copyToClipboard(
                         project,
-                        note: L10n.Workbench.sessionsToastCwdCopied
+                        note: L10n.Workbench.Sessions.Toast.cwdCopied
                     )
                 }
             }
             if let created = summary.createdAt {
                 factRow(
-                    label: L10n.Workbench.sessionsFactCreated,
+                    label: L10n.Workbench.Sessions.Fact.created,
                     value: Self.stamp.string(from: created),
                     copy: nil
                 )
             }
             if let active = summary.lastActiveAt {
                 factRow(
-                    label: L10n.Workbench.sessionsFactLastActive,
+                    label: L10n.Workbench.Sessions.Fact.lastActive,
                     value: Self.stamp.string(from: active),
                     copy: nil
                 )
             }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                factLabel(L10n.Workbench.sessionsFactSource)
+                factLabel(L10n.Workbench.Sessions.Fact.source)
                 Text(summary.sourcePath)
                     .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .monospaced))
                     .foregroundStyle(.tertiary)
@@ -711,11 +711,11 @@ struct SessionMetadataHeader: View {
                     .help(summary.sourcePath)
                 BorderlessIconButton(
                     systemImage: "doc.on.doc",
-                    help: L10n.Workbench.sessionsCopySourcePath
+                    help: L10n.Workbench.Sessions.copySourcePath
                 ) {
                     model.copyToClipboard(
                         summary.sourcePath,
-                        note: L10n.Workbench.sessionsToastSourcePathCopied
+                        note: L10n.Workbench.Sessions.Toast.sourcePathCopied
                     )
                 }
                 Spacer(minLength: 0)
@@ -762,7 +762,7 @@ struct SessionMetadataHeader: View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "info.circle")
                 .font(.system(size: density.subtitleFontSize - 1))
-            Text(L10n.Workbench.sessionsAntigravityNotice)
+            Text(L10n.Workbench.Sessions.antigravityNotice)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: max(9, density.resetCountdownFontSize)))
@@ -775,7 +775,7 @@ struct SessionMetadataHeader: View {
     private var resumeRow: some View {
         if let line = model.resumeShellLine(for: summary) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.Workbench.sessionsResumeHeading)
+                Text(L10n.Workbench.Sessions.Resume.heading)
                     .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .tracking(0.4)
@@ -803,19 +803,19 @@ struct SessionMetadataHeader: View {
                     Button {
                         model.resumeInTerminal(summary)
                     } label: {
-                        Label(L10n.Workbench.sessionsOpenInTerminal, systemImage: "terminal")
+                        Label(L10n.Workbench.Sessions.openInTerminal, systemImage: "terminal")
                             .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(minHeight: 28)
-                    .help(L10n.Workbench.sessionsRunInHelp(
+                    .help(L10n.Workbench.Sessions.runInHelp(
                         terminal: model.preferredTerminal.displayName
                     ))
                     Spacer(minLength: 0)
                 }
             }
         } else {
-            Text(L10n.Workbench.sessionsResumeNone)
+            Text(L10n.Workbench.Sessions.Resume.none)
                 .font(.system(size: max(9, density.resetCountdownFontSize)))
                 .foregroundStyle(.tertiary)
         }
@@ -858,8 +858,8 @@ struct TranscriptMessageCard: View {
                 body(text: displayedText)
                 if isTruncated {
                     Button(isExpanded
-                        ? L10n.Workbench.sessionsMessageShowLess
-                        : L10n.Workbench.sessionsMessageShowMore(count: message.text.count)) {
+                        ? L10n.Workbench.Sessions.Message.showLess
+                        : L10n.Workbench.Sessions.Message.showMore(count: message.text.count)) {
                         onToggleExpanded()
                     }
                     .buttonStyle(.vibeBar)
@@ -887,7 +887,7 @@ struct TranscriptMessageCard: View {
             Button {
                 onCopy()
             } label: {
-                Label(L10n.Workbench.sessionsMessageCopy, systemImage: "doc.on.doc")
+                Label(L10n.Workbench.Sessions.Message.copy, systemImage: "doc.on.doc")
             }
         }
     }
@@ -914,8 +914,8 @@ struct TranscriptMessageCard: View {
             .buttonStyle(.vibeBar)
             .foregroundStyle(isHovering ? .secondary : .tertiary)
             .opacity(isHovering ? 1 : 0.42)
-            .help(L10n.Workbench.sessionsMessageCopyHelp)
-            .accessibilityLabel(L10n.Workbench.sessionsMessageCopyHelp)
+            .help(L10n.Workbench.Sessions.Message.copyHelp)
+            .accessibilityLabel(L10n.Workbench.Sessions.Message.copyHelp)
         }
     }
 
@@ -975,11 +975,11 @@ struct TranscriptMessageCard: View {
 
     private var roleLabel: String {
         switch message.role {
-        case .user:      L10n.Workbench.sessionsRoleUser
-        case .assistant: L10n.Workbench.sessionsRoleAssistant
-        case .tool:      L10n.Workbench.sessionsRoleTool
-        case .system:    L10n.Workbench.sessionsRoleSystem
-        case .other:     L10n.Workbench.sessionsRoleOther
+        case .user:      L10n.Workbench.Sessions.Role.user
+        case .assistant: L10n.Workbench.Sessions.Role.assistant
+        case .tool:      L10n.Workbench.Sessions.Role.tool
+        case .system:    L10n.Workbench.Sessions.Role.system
+        case .other:     L10n.Workbench.Sessions.Role.other
         }
     }
 
@@ -1005,12 +1005,12 @@ struct TranscriptToCView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.Workbench.sessionsOutlineHeading)
+            Text(L10n.Workbench.Sessions.Outline.heading)
                 .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .tracking(0.4)
             if entries.isEmpty {
-                Text(L10n.Workbench.sessionsOutlineEmpty)
+                Text(L10n.Workbench.Sessions.Outline.empty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             } else {

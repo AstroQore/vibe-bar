@@ -12,11 +12,11 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .usageStats: L10n.Workbench.pageUsageStatsTitle
-        case .sessionManager: L10n.Workbench.pageSessionsTitle
-        case .resets: L10n.Workbench.pageResetsTitle
-        case .skillsManager: L10n.Workbench.pageSkillsTitle
-        case .settings: L10n.Workbench.pageSettingsTitle
+        case .usageStats: L10n.Workbench.Page.UsageStats.title
+        case .sessionManager: L10n.Workbench.Page.Sessions.title
+        case .resets: L10n.Workbench.Page.Resets.title
+        case .skillsManager: L10n.Workbench.Page.Skills.title
+        case .settings: L10n.Popover.Header.settings
         }
     }
 
@@ -34,11 +34,11 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .usageStats: L10n.Workbench.pageUsageStatsSubtitle
-        case .sessionManager: L10n.Workbench.pageSessionsSubtitle
-        case .resets: L10n.Workbench.pageResetsSubtitle
-        case .skillsManager: L10n.Workbench.pageSkillsSubtitle
-        case .settings: L10n.Workbench.pageSettingsSubtitle
+        case .usageStats: L10n.Workbench.Page.UsageStats.subtitle
+        case .sessionManager: L10n.Workbench.Page.Sessions.subtitle
+        case .resets: L10n.Workbench.Page.Resets.subtitle
+        case .skillsManager: L10n.Workbench.Page.Skills.subtitle
+        case .settings: L10n.Workbench.Page.Settings.subtitle
         }
     }
 }
@@ -159,27 +159,27 @@ struct WorkbenchRootView: View {
         switch page {
         case .usageStats:
             guard let updated = workbench.usageStats.lastUpdatedAt else {
-                return L10n.Workbench.statusLocalLedger
+                return L10n.Workbench.Status.localLedger
             }
-            return L10n.Workbench.statusUpdated(
+            return L10n.Workbench.Status.updated(
                 time: AppLocale.string(updated, dateStyle: .none, timeStyle: .medium)
             )
         case .sessionManager:
             let count = workbench.sessions.totalSessionCount
             return count == 0
-                ? L10n.Workbench.statusLocalIndex
-                : L10n.Workbench.statusIndexed(count: count)
+                ? L10n.Workbench.Status.localIndex
+                : L10n.Workbench.Status.indexed(count: count)
         case .resets:
             let next = UpcomingResets.events(environment: environment, now: Date(), horizonDays: 7).first
             guard let next,
                   let countdown = ResetCountdownFormatter.string(from: next.resetAt, now: Date())
-            else { return L10n.Workbench.statusCachedQuotas }
-            return L10n.Workbench.statusNextRefill(countdown: countdown)
+            else { return L10n.Workbench.Status.cachedQuotas }
+            return L10n.Workbench.Status.nextRefill(countdown: countdown)
         case .skillsManager:
             let count = workbench.skills.skills.count
             return count == 0
-                ? L10n.Workbench.statusSharedLibrary
-                : L10n.Workbench.statusInstalled(count: count)
+                ? L10n.Workbench.Status.sharedLibrary
+                : L10n.Workbench.Status.installed(count: count)
         case .settings:
             return settingsDestination.title(settings: settingsStore.settings)
         }
@@ -380,14 +380,14 @@ private struct WorkbenchPageHeader: View {
             WorkbenchHeaderIconButton(
                 systemImage: appearanceIsDark ? "sun.max" : "moon",
                 help: appearanceIsDark
-                    ? L10n.Workbench.appearanceUseLight
-                    : L10n.Workbench.appearanceUseDark,
+                    ? L10n.Workbench.Appearance.useLight
+                    : L10n.Workbench.Appearance.useDark,
                 action: onToggleAppearance
             )
             if let onRefresh {
                 WorkbenchHeaderIconButton(
                     systemImage: "arrow.clockwise",
-                    help: L10n.Workbench.headerRefreshPage(page: page.title),
+                    help: L10n.Workbench.Header.refreshPage(page: page.title),
                     action: onRefresh
                 )
             }

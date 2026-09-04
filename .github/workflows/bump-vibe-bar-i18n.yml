@@ -1,0 +1,162 @@
+name: Bump vibe-bar-i18n
+
+# `vibe-bar-i18n` is the string catalogue both clients share, a separate
+# repository with its own tags, pinned here to an exact version and compiled
+# into the app. A new string is added *there* first; the tag it lands in
+# reaches a user only through a Vibe Bar build that pins it. This workflow's
+# whole job is to notice a newer tag and open the pull request that bumps
+# the pin. It never merges, never tags, and never touches a release.
+on:
+  workflow_dispatch:
+  schedule:
+    # 07:20 UTC daily. Off the hour so it does not queue behind everything
+    # else that runs at :00.
+    - cron: '20 7 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bump-vibe-bar-i18n
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Open a pin bump when the catalogue has a newer release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          # `VIBEBAR_BOT_TOKEN` is a PAT (contents:write, pull_requests:write).
+          # Without it, the default GITHUB_TOKEN still opens the pull request,
+          # but GitHub deliberately does not run workflows on a PR that a
+          # GITHUB_TOKEN push created — see the PR body this writes.
+          token: ${{ secrets.VIBEBAR_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Read the current pin and the newest catalogue release
+        id: versions
+        env:
+          GH_TOKEN: ${{ secrets.VIBEBAR_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current="$(sed -n 's|.*vibe-bar-i18n\.git", exact: "\([0-9][^"]*\)".*|\1|p' Package.swift | head -n 1)"
+          if [ -z "$current" ]; then
+            echo "::error::Could not read the vibe-bar-i18n pin out of Package.swift."
+            exit 1
+          fi
+
+          # Tags, not GitHub Releases: the catalogue has no artefact to upload,
+          # so a release is a tag. The newest by version order.
+          latest="$(gh api repos/AstroQore/vibe-bar-i18n/tags --paginate --jq '.[].name' 2>/dev/null | sed 's/^v//' | sort -V | tail -n 1 || true)"
+          if [ -z "$latest" ]; then
+            echo "::notice::vibe-bar-i18n has no tag to read. Nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "Pinned: $current   Newest release: $latest"
+
+          if [ "$current" = "$latest" ]; then
+            echo "::notice::Already pinned to $latest."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Sort -V decides "newer", so a pin that is deliberately ahead of
+          # the newest release (between a kit merge and its tag) is left alone
+          # rather than rolled backwards.
+          newest="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)"
+          if [ "$newest" != "$latest" ]; then
+            echo "::notice::Pinned $current is already ahead of the newest release $latest."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Skip when a pull request for this version is already open
+        id: existing
+        if: steps.versions.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.VIBEBAR_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          BRANCH: chore/bump-vibe-bar-i18n-${{ steps.versions.outputs.latest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          open_pr="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number' || true)"
+          if [ -n "$open_pr" ]; then
+            echo "::notice::PR #${open_pr} already proposes ${BRANCH}."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rewrite the pin and open the pull request
+        if: steps.versions.outputs.skip != 'true' && steps.existing.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.VIBEBAR_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          CURRENT: ${{ steps.versions.outputs.current }}
+          LATEST: ${{ steps.versions.outputs.latest }}
+          USING_PAT: ${{ secrets.VIBEBAR_BOT_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="chore/bump-vibe-bar-i18n-${LATEST}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+
+          # The pin itself, and the copy of it AGENTS.md § 2.1 quotes. Both
+          # are exact-match rewrites: a miss is a failure, not a silent no-op.
+          perl -0pi -e "s{(vibe-bar-i18n\.git\", exact: \")\Q${CURRENT}\E(\")}{\${1}${LATEST}\${2}}g" Package.swift
+          perl -0pi -e "s{(exact: \")\Q${CURRENT}\E(\"\)\`)}{\${1}${LATEST}\${2}}g" AGENTS.md
+
+          if ! grep -q "vibe-bar-i18n.git\", exact: \"${LATEST}\"" Package.swift; then
+            echo "::error::Package.swift still does not name ${LATEST}."
+            exit 1
+          fi
+          if git diff --quiet; then
+            echo "::error::Nothing changed; the pin rewrite matched nothing."
+            exit 1
+          fi
+          git --no-pager diff --stat
+
+          git commit -am "Bump vibe-bar-i18n to ${LATEST}"
+          git push origin "$branch"
+
+          notes_url="https://github.com/AstroQore/vibe-bar-i18n/compare/v${CURRENT}...v${LATEST}"
+          {
+            echo "\`vibe-bar-i18n\` tagged **v${LATEST}**; this repository pinned ${CURRENT}."
+            echo
+            echo "- What changed: ${notes_url}"
+            echo
+            echo "Opened automatically by \`.github/workflows/bump-vibe-bar-i18n.yml\`. Nothing is merged for you."
+            echo
+            echo "### Before merging"
+            echo
+            echo "- [ ] Read the release notes for anything that needs a call-site change."
+            echo "- [ ] \`swift build\` and \`swift test\` locally (AGENTS.md § 9.3 in full for anything beyond a clean bump)."
+            echo "- [ ] A key the app uses was renamed or removed? Its call sites move in this PR (\`swift build\` says which)."
+            echo
+            echo "### After merging"
+            echo
+            echo "A catalogue tag is **not** a Vibe Bar release. The catalogue is compiled in, so ${LATEST} reaches a user only once a Vibe Bar build ships with this pin — cut a dev build (AGENTS.md § 12). Settings › System › Components shows the version actually compiled into a build."
+            if [ "$USING_PAT" != "true" ]; then
+              echo
+              echo "> **CI will not have run on this pull request.** It was pushed with the default \`GITHUB_TOKEN\`, and GitHub does not trigger workflows from those pushes. Close and reopen this PR, or push an empty commit, to get the checks. Adding a \`VIBEBAR_BOT_TOKEN\` repository secret (a PAT with \`contents:write\` and \`pull_requests:write\`) removes this step."
+            fi
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$branch" \
+            --title "Bump vibe-bar-i18n to ${LATEST}" \
+            --body-file "$RUNNER_TEMP/pr-body.md"

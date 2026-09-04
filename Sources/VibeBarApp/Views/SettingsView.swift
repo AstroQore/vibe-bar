@@ -22,21 +22,21 @@ enum SettingsSectionID: String {
 
     var title: String {
         switch self {
-        case .menuBar: L10n.Settings.sectionMenuBar
-        case .menuBarHealth: L10n.Settings.sectionMenuBarHealth
-        case .miniWindow: L10n.Settings.sectionMiniWindows
-        case .layout: L10n.Settings.sectionLayout
+        case .menuBar: L10n.Settings.Section.menuBar
+        case .menuBarHealth: L10n.Settings.Section.menuBarHealth
+        case .miniWindow: L10n.Settings.Section.miniWindows
+        case .layout: L10n.Settings.Section.layout
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
         case .googleAI: "Google AI"
         case .xAI: "SpaceXAI"
-        case .miscProviders: L10n.Popover.tabMisc
-        case .system: L10n.Settings.sectionSystem
-        case .costData: L10n.Settings.sectionCostData
-        case .pricing: L10n.Onboarding.stepPricingTitle
-        case .privacy: L10n.Settings.sectionPrivacy
-        case .remote: L10n.Settings.sectionRemoteProbes
-        case .mcp: L10n.Settings.mcpTitle
+        case .miscProviders: L10n.Popover.Tab.misc
+        case .system: L10n.Settings.Section.system
+        case .costData: L10n.Settings.Section.costData
+        case .pricing: L10n.Onboarding.Step.Pricing.title
+        case .privacy: L10n.Settings.Section.privacy
+        case .remote: L10n.Settings.Section.remoteProbes
+        case .mcp: L10n.Settings.Mcp.title
         }
     }
 
@@ -96,7 +96,7 @@ enum SettingsDestination: Hashable {
             // A destination whose instance was removed under it: fall back to
             // the name of the section it lived in, which is what the sidebar
             // heading above still says.
-            guard let instance = settings.miscProviderInstance(id: id) else { return L10n.Popover.tabMisc }
+            guard let instance = settings.miscProviderInstance(id: id) else { return L10n.Popover.Tab.misc }
             return instance.displayTitle(fallback: instance.tool.menuTitle)
         }
     }
@@ -145,7 +145,7 @@ struct SettingsView: View {
                 Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
                     .foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L10n.Settings.externalChangeTitle)
+                    Text(L10n.Settings.ExternalChange.title)
                         .font(.callout.weight(.medium))
                     Text(change.summary)
                         .font(.caption2)
@@ -182,8 +182,8 @@ struct SettingsView: View {
                     externalChangeBanner
                     if selectedSection == .system {
                     LanguageSettingsSection(density: density)
-                    settingsSection(L10n.Settings.sectionSystem) {
-                        Toggle(L10n.Platform.macosLaunchAtLoginTitle, isOn: launchAtLoginBinding())
+                    settingsSection(L10n.Settings.Section.system) {
+                        Toggle(L10n.Platform.Macos.LaunchAtLogin.title, isOn: launchAtLoginBinding())
                         Text(launchAtLoginStatusText)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -205,7 +205,7 @@ struct SettingsView: View {
                     }
                     .id(SettingsSectionID.system.rawValue)
 
-                    settingsSection(L10n.Settings.sectionRefreshing) {
+                    settingsSection(L10n.Settings.Section.refreshing) {
                         Picker(L10n.Settings.percentShows, selection: $settingsStore.settings.displayMode) {
                             ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
                         }
@@ -235,26 +235,26 @@ struct SettingsView: View {
                     }
                     .id("refreshing")
 
-                    settingsSection(L10n.Settings.sectionUpdates) {
+                    settingsSection(L10n.Settings.Section.updates) {
                         UpdateSettingsRow(updateController: environment.updateController)
                     }
                     .id("updates")
 
-                    settingsSection(L10n.Settings.sectionComponents) {
+                    settingsSection(L10n.Settings.Section.components) {
                         AgentSessionKitComponentRow()
                     }
                     .id("components")
                     }
 
                     if selectedSection == .menuBar {
-                    settingsSection(L10n.Settings.sectionOverview) {
+                    settingsSection(L10n.Popover.Tab.overview) {
                         menuBarOverviewEditor()
                     }
                     .id(SettingsSectionID.menuBar.rawValue)
                     }
 
                     if selectedSection == .menuBarHealth {
-                    settingsSection(L10n.Settings.sectionMenuBarHealth) {
+                    settingsSection(L10n.Settings.Section.menuBarHealth) {
                         if let watchdog = environment.menuBarWatchdog {
                             MenuBarHealthSettingsSection(watchdog: watchdog)
                         } else {
@@ -267,14 +267,14 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .miniWindow {
-                    settingsSection(L10n.Settings.sectionMiniWindows) {
+                    settingsSection(L10n.Settings.Section.miniWindows) {
                         MiniWindowsSettingsSection()
                     }
                     .id(SettingsSectionID.miniWindow.rawValue)
                     }
 
                     if selectedSection == .layout {
-                    settingsSection(L10n.Settings.sectionLayout) {
+                    settingsSection(L10n.Settings.Section.layout) {
                         LayoutEditorView()
                     }
                     .id(SettingsSectionID.layout.rawValue)
@@ -301,13 +301,13 @@ struct SettingsView: View {
                             Button {
                                 environment.importOpenAIBrowserCookies()
                             } label: {
-                                Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
+                                Label(L10n.Onboarding.Cookies.importFromBrowser, systemImage: "safari")
                             }
                             .disabled(environment.isImportingOpenAIBrowserCookies)
                             Button {
                                 environment.openOpenAIWebLogin()
                             } label: {
-                                Label(L10n.Onboarding.cookiesOpenWebViewLogin, systemImage: "person.crop.circle.badge.key")
+                                Label(L10n.Onboarding.Cookies.openWebViewLogin, systemImage: "person.crop.circle.badge.key")
                             }
                             Button(role: .destructive) {
                                 openAICookieDeleteFailed = !environment.deleteOpenAIWebCookies()
@@ -317,7 +317,7 @@ struct SettingsView: View {
                             .disabled(!environment.hasOpenAIWebCookies)
                         }
                         if environment.hasOpenAIWebCookies {
-                            Text(L10n.Onboarding.cookiesSaved)
+                            Text(L10n.Onboarding.Cookies.saved)
                                 .font(.caption2).foregroundStyle(.green)
                         }
                         if let status = environment.openAIBrowserCookieImportStatus {
@@ -362,13 +362,13 @@ struct SettingsView: View {
                             Button {
                                 environment.importClaudeBrowserCookies()
                             } label: {
-                                Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
+                                Label(L10n.Onboarding.Cookies.importFromBrowser, systemImage: "safari")
                             }
                             .disabled(environment.isImportingClaudeBrowserCookies)
                             Button {
                                 environment.openClaudeWebLogin()
                             } label: {
-                                Label(L10n.Onboarding.cookiesOpenWebViewLogin, systemImage: "person.crop.circle.badge.key")
+                                Label(L10n.Onboarding.Cookies.openWebViewLogin, systemImage: "person.crop.circle.badge.key")
                             }
                             Button(role: .destructive) {
                                 claudeCookieDeleteFailed = !environment.deleteClaudeWebCookies()
@@ -378,7 +378,7 @@ struct SettingsView: View {
                             .disabled(!environment.hasClaudeWebCookies)
                         }
                         if environment.hasClaudeWebCookies {
-                            Text(L10n.Onboarding.cookiesSaved)
+                            Text(L10n.Onboarding.Cookies.saved)
                                 .font(.caption2).foregroundStyle(.green)
                         }
                         if let status = environment.claudeBrowserCookieImportStatus {
@@ -423,7 +423,7 @@ struct SettingsView: View {
                             Button {
                                 environment.importGeminiBrowserCookies()
                             } label: {
-                                Label(L10n.Onboarding.cookiesImportGemini, systemImage: "safari")
+                                Label(L10n.Onboarding.Cookies.importGemini, systemImage: "safari")
                             }
                             .disabled(environment.isImportingGeminiBrowserCookies)
                             Button(role: .destructive) {
@@ -517,7 +517,7 @@ struct SettingsView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.green)
                         } else {
-                            Label(L10n.Onboarding.subscriptionsGrokMissing,
+                            Label(L10n.Onboarding.Subscriptions.Grok.missing,
                                   systemImage: "exclamationmark.circle")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -527,7 +527,7 @@ struct SettingsView: View {
                             Button {
                                 environment.importGrokBrowserCookies()
                             } label: {
-                                Label(L10n.Onboarding.cookiesImportGrok, systemImage: "safari")
+                                Label(L10n.Onboarding.Cookies.importGrok, systemImage: "safari")
                             }
                             .disabled(environment.isImportingGrokBrowserCookies)
                             Button(role: .destructive) {
@@ -598,14 +598,14 @@ struct SettingsView: View {
                             MiscProviderSettingsSection(instance: instance)
                         }
                     } else {
-                        settingsSection(L10n.Onboarding.doneBrowserCookies) {
+                        settingsSection(L10n.Onboarding.Step.BrowserCookies.title) {
                             MiscProviderLandingView()
                         }
                     }
                     }
 
                     if selectedSection == .costData {
-                    settingsSection(L10n.Settings.sectionCostData) {
+                    settingsSection(L10n.Settings.Section.costData) {
                         Text(L10n.Settings.costDataIntro)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -666,7 +666,7 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .privacy {
-                    settingsSection(L10n.Settings.sectionPrivacy) {
+                    settingsSection(L10n.Settings.Section.privacy) {
                         Text(L10n.Settings.privacyDetail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -759,7 +759,7 @@ struct SettingsView: View {
                 }
             }
             Spacer(minLength: 12)
-            Toggle(L10n.Onboarding.subscriptionsShowInOverview, isOn: coreProviderVisibilityBinding(representative))
+            Toggle(L10n.Onboarding.Subscriptions.showInOverview, isOn: coreProviderVisibilityBinding(representative))
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.caption)
@@ -841,19 +841,19 @@ struct SettingsView: View {
         let kind = MenuBarItemKind.compact
         let isCustom = settingsStore.settings.menuBarItem(kind).usesComposedStrip
         return VStack(alignment: .leading, spacing: 10) {
-            Toggle(L10n.Platform.macosMenuBarShowInMenuBar, isOn: menuItemVisibleBinding(kind))
+            Toggle(L10n.Platform.Macos.MenuBar.showInMenuBar, isOn: menuItemVisibleBinding(kind))
 
             // The way back to the plain strip is the second control in the
             // section, not something to hunt for inside the composer.
-            Picker(L10n.MenuBar.composerModeLabel, selection: menuBarStripModeBinding(kind)) {
-                Text(L10n.MenuBar.composerModeDefault).tag(false)
-                Text(L10n.MenuBar.composerModeCustom).tag(true)
+            Picker(L10n.MenuBar.Composer.Mode.label, selection: menuBarStripModeBinding(kind)) {
+                Text(L10n.MenuBar.Composer.Mode.`default`).tag(false)
+                Text(L10n.MenuBar.Composer.Mode.custom).tag(true)
             }
             .pickerStyle(.segmented)
             Text(
                 isCustom
-                    ? L10n.MenuBar.composerModeCustomCaption
-                    : L10n.MenuBar.composerModeDefaultCaption
+                    ? L10n.MenuBar.Composer.Mode.customCaption
+                    : L10n.MenuBar.Composer.Mode.defaultCaption
             )
             .font(.caption2)
             .foregroundStyle(.tertiary)
@@ -862,26 +862,26 @@ struct SettingsView: View {
             if isCustom {
                 MenuBarComposerEditor(kind: kind, density: density)
             } else {
-                Picker(L10n.Platform.macosMenuBarLayout, selection: menuItemLayoutBinding(kind)) {
+                Picker(L10n.Platform.Macos.MenuBar.layout, selection: menuItemLayoutBinding(kind)) {
                     ForEach(MenuBarLayout.allCases) { layout in
                         Text(layout.label).tag(layout)
                     }
                 }
                 .pickerStyle(.segmented)
-                Toggle(L10n.Platform.macosMenuBarMergeGroupWindows, isOn: menuItemMergeGroupWindowsBinding(kind))
-                Text(L10n.Platform.macosMenuBarMergeGroupWindowsDetail)
+                Toggle(L10n.Platform.Macos.MenuBar.mergeGroupWindows, isOn: menuItemMergeGroupWindowsBinding(kind))
+                Text(L10n.Platform.Macos.MenuBar.mergeGroupWindowsDetail)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
 
-            Picker(L10n.Platform.macosMenuBarDisplayDensity, selection: popoverDensityBinding()) {
+            Picker(L10n.Platform.Macos.MenuBar.displayDensity, selection: popoverDensityBinding()) {
                 ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             Text(settingsStore.settings.popoverDensity.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            Picker(L10n.Platform.macosMenuBarPercentColor, selection: menuBarColorBasisBinding()) {
+            Picker(L10n.Platform.Macos.MenuBar.percentColor, selection: menuBarColorBasisBinding()) {
                 ForEach(MenuBarColorBasis.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
@@ -889,7 +889,7 @@ struct SettingsView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             if !isCustom, !MenuBarFieldCatalog.fields(for: kind).isEmpty {
-                Text(L10n.Platform.macosMenuBarFields)
+                Text(L10n.Platform.Macos.MenuBar.fields)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 2)

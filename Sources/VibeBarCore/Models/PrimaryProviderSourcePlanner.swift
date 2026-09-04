@@ -11,26 +11,26 @@ public enum CodexUsageMode: String, Codable, CaseIterable, Identifiable, Sendabl
 
     public var label: String {
         switch self {
-        case .auto: return L10n.Settings.usageModeAuto
-        case .oauthThenCLI: return L10n.Settings.usageModeCodexOauthThenCli
-        case .cliThenOAuth: return L10n.Settings.usageModeCodexCliThenOauth
-        case .oauthOnly: return L10n.Settings.usageModeCodexOauthOnly
-        case .cliOnly: return L10n.Settings.usageModeCodexCliOnly
+        case .auto: return L10n.Common.auto
+        case .oauthThenCLI: return L10n.Settings.UsageMode.Codex.oauthThenCli
+        case .cliThenOAuth: return L10n.Settings.UsageMode.Codex.cliThenOauth
+        case .oauthOnly: return L10n.Settings.UsageMode.oauthOnly
+        case .cliOnly: return L10n.Settings.UsageMode.Codex.cliOnly
         }
     }
 
     public var detail: String {
         switch self {
         case .auto:
-            return L10n.Settings.usageModeCodexAutoDetail
+            return L10n.Settings.UsageMode.Codex.autoDetail
         case .oauthThenCLI:
-            return L10n.Settings.usageModeCodexOauthFirstDetail
+            return L10n.Settings.UsageMode.Codex.oauthFirstDetail
         case .cliThenOAuth:
-            return L10n.Settings.usageModeCodexAutoDetail
+            return L10n.Settings.UsageMode.Codex.autoDetail
         case .oauthOnly:
-            return L10n.Settings.usageModeCodexOauthOnlyDetail
+            return L10n.Settings.UsageMode.Codex.oauthOnlyDetail
         case .cliOnly:
-            return L10n.Settings.usageModeCodexCliOnlyDetail
+            return L10n.Settings.UsageMode.Codex.cliOnlyDetail
         }
     }
 }

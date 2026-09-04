@@ -26,7 +26,7 @@ public final class SettingsStore: ObservableObject {
     /// published to every `$settings` subscriber, so the same pass that
     /// redraws the picker redraws the labels around it. No relaunch.
     private func applyLanguage() {
-        L10n.languageOverride = settings.language
+        AppLocalization.languageOverride = settings.language
     }
 
     /// Set when a setting this process had changed was replaced by another

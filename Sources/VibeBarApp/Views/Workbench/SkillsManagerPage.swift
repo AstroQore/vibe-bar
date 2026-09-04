@@ -100,7 +100,7 @@ struct SkillsManagerPage: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .foregroundStyle(.secondary)
-            TextField(L10n.Workbench.skillsFilterPlaceholder, text: $model.searchText)
+            TextField(L10n.Workbench.Skills.filterPlaceholder, text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: max(12, density.segmentedFontSize)))
                 // A text field draws nothing of its own to say keyboard focus
@@ -114,7 +114,7 @@ struct SkillsManagerPage: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.vibeBar)
-                .accessibilityLabel(L10n.Workbench.skillsFilterClear)
+                .accessibilityLabel(L10n.Workbench.Skills.filterClear)
             }
         }
         .padding(.horizontal, 10)
@@ -134,8 +134,8 @@ struct SkillsManagerPage: View {
                 buttonLabel(
                     systemImage: "arrow.triangle.2.circlepath",
                     title: model.updatesAvailableCount > 0
-                        ? L10n.Workbench.skillsCheckUpdatesCount(count: model.updatesAvailableCount)
-                        : L10n.Workbench.skillsCheckUpdates,
+                        ? L10n.Workbench.Skills.checkUpdatesCount(count: model.updatesAvailableCount)
+                        : L10n.Workbench.Skills.checkUpdates,
                     busy: model.isBusy(SkillsManagerModel.BusyKey.updates)
                 )
                 .porcelainToolbarButton()
@@ -148,7 +148,7 @@ struct SkillsManagerPage: View {
             } label: {
                 buttonLabel(
                     systemImage: "doc.zipper",
-                    title: L10n.Workbench.skillsInstallFromZip,
+                    title: L10n.Workbench.Skills.installFromZip,
                     busy: model.isBusy(SkillsManagerModel.BusyKey.zip)
                 )
                 .porcelainToolbarButton()
@@ -160,7 +160,7 @@ struct SkillsManagerPage: View {
             } label: {
                 buttonLabel(
                     systemImage: "square.and.arrow.down.on.square",
-                    title: L10n.Workbench.skillsImportExisting,
+                    title: L10n.Workbench.Skills.importExisting,
                     busy: model.isBusy(SkillsManagerModel.BusyKey.importing)
                 )
                 .porcelainToolbarButton()
@@ -172,7 +172,7 @@ struct SkillsManagerPage: View {
             } label: {
                 buttonLabel(
                     systemImage: "clock.arrow.circlepath",
-                    title: L10n.Workbench.skillsBackups,
+                    title: L10n.Workbench.Skills.backups,
                     busy: false
                 )
                 .porcelainToolbarButton()
@@ -184,13 +184,13 @@ struct SkillsManagerPage: View {
             } label: {
                 buttonLabel(
                     systemImage: "sparkle.magnifyingglass",
-                    title: L10n.Workbench.skillsDiscover,
+                    title: L10n.Workbench.Skills.discover,
                     busy: false
                 )
                 .porcelainToolbarButton(prominent: true)
             }
             .buttonStyle(.vibeBar(cornerRadius: 11))
-            .help(L10n.Workbench.skillsDiscoverHelp)
+            .help(L10n.Workbench.Skills.discoverHelp)
         }
     }
 
@@ -241,7 +241,7 @@ struct SkillsManagerPage: View {
                     nativeDisabled: nativeDisabled
                 ))
                 .accessibilityLabel(
-                    L10n.Workbench.skillsAppSeesCount(app: app.displayName, count: count)
+                    L10n.Workbench.Skills.appSeesCount(app: app.displayName, count: count)
                 )
             }
             Button {
@@ -254,7 +254,7 @@ struct SkillsManagerPage: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.vibeBar)
-            .help(L10n.Workbench.skillsSyncExplainerHelp)
+            .help(L10n.Workbench.Skills.syncExplainerHelp)
             .popover(isPresented: $showingSyncExplainer, arrowEdge: .bottom) {
                 SkillSyncExplainerPopover(density: density)
                     .vibeBarNoInitialFocus()
@@ -275,7 +275,7 @@ struct SkillsManagerPage: View {
         coupled: Int,
         nativeDisabled: Int
     ) -> String {
-        var help = L10n.Workbench.skillsAppSeesCount(app: app.displayName, count: count)
+        var help = L10n.Workbench.Skills.appSeesCount(app: app.displayName, count: count)
         if coupled > 0 {
             // AntiGravity's coupled skills arrive through the Gemini CLI
             // compatibility root, not the shared root it never scans — name
@@ -283,12 +283,12 @@ struct SkillsManagerPage: View {
             // whole clause: a translated sentence cannot be built by dropping
             // a noun phrase into an English frame.
             let clause = app.discoversSharedSkillRoot
-                ? L10n.Workbench.skillsAppCountViaSharedRoot(enabled: enabled, coupled: coupled)
-                : L10n.Workbench.skillsAppCountViaGeminiRoot(enabled: enabled, coupled: coupled)
+                ? L10n.Workbench.Skills.appCountViaSharedRoot(enabled: enabled, coupled: coupled)
+                : L10n.Workbench.Skills.appCountViaGeminiRoot(enabled: enabled, coupled: coupled)
             help += " · " + clause
         }
         if nativeDisabled > 0 {
-            help += " · " + L10n.Workbench.skillsAppCountNativeDisabled(count: nativeDisabled)
+            help += " · " + L10n.Workbench.Skills.appCountNativeDisabled(count: nativeDisabled)
         }
         return help
     }
@@ -296,8 +296,8 @@ struct SkillsManagerPage: View {
     private var countSummary: String {
         let total = model.skills.count
         let shown = model.filteredSkills.count
-        if shown == total { return L10n.Workbench.skillsCountTotal(count: total) }
-        return L10n.Workbench.skillsCountFiltered(shown: shown, total: total)
+        if shown == total { return L10n.Workbench.Skills.countTotal(count: total) }
+        return L10n.Workbench.Skills.countFiltered(shown: shown, total: total)
     }
 
     // MARK: - List
@@ -308,7 +308,7 @@ struct SkillsManagerPage: View {
             emptyCard
         } else if model.filteredSkills.isEmpty {
             CardShell(density: density, alignment: .center) {
-                Text(L10n.Workbench.skillsNoMatch(query: model.searchText))
+                Text(L10n.Workbench.Skills.noMatch(query: model.searchText))
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             }
@@ -344,17 +344,17 @@ struct SkillsManagerPage: View {
             Image(systemName: "puzzlepiece.extension")
                 .font(.system(size: 26, weight: .light))
                 .foregroundStyle(.secondary)
-            Text(L10n.Workbench.skillsEmptyHeadline)
+            Text(L10n.Workbench.Skills.Empty.headline)
                 .font(.system(size: density.titleFontSize, weight: .semibold))
-            Text(L10n.Workbench.skillsEmptyBody)
+            Text(L10n.Workbench.Skills.Empty.body)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 440)
             HStack(spacing: 10) {
-                Button(L10n.Workbench.skillsImportExisting) { model.presentImportSheet() }
+                Button(L10n.Workbench.Skills.importExisting) { model.presentImportSheet() }
                     .buttonStyle(WorkbenchPillButtonStyle())
-                Button(L10n.Workbench.skillsDiscover) { model.isDiscoverSheetPresented = true }
+                Button(L10n.Workbench.Skills.discover) { model.isDiscoverSheetPresented = true }
                     .buttonStyle(WorkbenchPillButtonStyle(prominent: true))
             }
         }

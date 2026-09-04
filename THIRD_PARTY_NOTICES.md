@@ -42,6 +42,17 @@ portions is included in this repository at the local license link above.
   notice file is bundled.
 - Third-party code: none. The package has no dependencies of its own.
 
+### vibe-bar-i18n
+
+- Project:
+  [AstroQore/vibe-bar-i18n](https://github.com/AstroQore/vibe-bar-i18n)
+- Use: every user-facing string, in every language the app ships, as a
+  Swift package (`VibeBarLocalization`) pinned to an exact tag in
+  `Package.swift`. The catalogue is shared with the cross-platform client.
+- License: MIT (in-house; a permissive catalogue is a normal dependency of
+  a copyleft app, and a translator should not have to reason about copyleft
+  to contribute a language).
+
 ## Bundled assets
 
 ### Lobe Icons

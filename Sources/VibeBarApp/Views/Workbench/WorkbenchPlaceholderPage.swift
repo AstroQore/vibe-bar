@@ -28,15 +28,15 @@ struct WorkbenchPlaceholderPage: View {
     private var detail: String {
         switch page {
         case .usageStats:
-            L10n.Workbench.placeholderUsageStats
+            L10n.Workbench.Placeholder.usageStats
         case .resets:
-            L10n.Workbench.placeholderResets
+            L10n.Workbench.Placeholder.resets
         case .sessionManager:
-            L10n.Workbench.placeholderSessionManager
+            L10n.Workbench.Placeholder.sessionManager
         case .skillsManager:
-            L10n.Workbench.placeholderSkillsManager
+            L10n.Workbench.Placeholder.skillsManager
         case .settings:
-            L10n.Workbench.placeholderSettings
+            L10n.Workbench.Placeholder.settings
         }
     }
 }

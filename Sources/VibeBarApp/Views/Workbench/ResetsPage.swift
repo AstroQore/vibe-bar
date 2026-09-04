@@ -43,8 +43,8 @@ struct ResetsPage: View {
             VStack(alignment: .leading, spacing: 14) {
                 box {
                     boxHeader(
-                        L10n.Workbench.resetsRefillHorizonTitle,
-                        detail: L10n.Workbench.resetsRefillHorizonDetail
+                        L10n.Workbench.Resets.RefillHorizon.title,
+                        detail: L10n.Workbench.Resets.RefillHorizon.detail
                     )
                     ResetLaneView(
                         events: events.filter { $0.resetAt.timeIntervalSince(now) <= 7 * 86_400 },
@@ -66,8 +66,8 @@ struct ResetsPage: View {
                     .frame(maxWidth: .infinity)
                     box {
                         boxHeader(
-                            L10n.Workbench.resetsRiskTitle,
-                            detail: L10n.Workbench.resetsRiskDetail
+                            L10n.Workbench.Resets.Risk.title,
+                            detail: L10n.Workbench.Resets.Risk.detail
                         )
                         riskList(cycles, now: now)
                     }
@@ -219,7 +219,7 @@ struct ResetsPage: View {
                 Text(L10n.Common.percent(value: Int(remaining.rounded())))
                     .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(color)
-                Text(L10n.Workbench.resetsCycleHeadline(
+                Text(L10n.Workbench.Resets.Cycle.headline(
                     bucket: QuotaGroupLabelLocalizer.display(cycle.headline.title),
                     countdown: ResetCountdownFormatter.string(
                         from: cycle.headline.resetAt, now: now
@@ -292,7 +292,7 @@ struct ResetsPage: View {
                 )
             }
             .frame(height: 30)
-            .help(L10n.Workbench.resetsCycleCurveHelp(
+            .help(L10n.Workbench.Resets.Cycle.curveHelp(
                 bucket: QuotaGroupLabelLocalizer.display(cycle.headline.title)
             ))
         }
@@ -377,7 +377,7 @@ struct ResetsPage: View {
             }
         if !events.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.Workbench.resetsSubDailyTitle)
+                Text(L10n.Workbench.Resets.SubDaily.title)
                     .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.tertiary)
                     .tracking(1.2)
@@ -390,7 +390,7 @@ struct ResetsPage: View {
     private func calendarHeader(now: Date) -> some View {
         let monthStart = displayedMonthStart(now: now)
         return HStack(spacing: 8) {
-            Text(L10n.Workbench.resetsCalendarTitle)
+            Text(L10n.Workbench.Resets.Calendar.title)
                 .font(.system(size: 12, weight: .semibold))
             Spacer(minLength: 6)
             Button {
@@ -401,7 +401,7 @@ struct ResetsPage: View {
                     .frame(width: 20, height: 20)
             }
             .buttonStyle(.vibeBar)
-            .help(L10n.Workbench.resetsCalendarPreviousMonth)
+            .help(L10n.Workbench.Resets.Calendar.previousMonth)
             Text(Self.monthTitleFormatter.string(from: monthStart))
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .frame(minWidth: 110)
@@ -413,9 +413,9 @@ struct ResetsPage: View {
                     .frame(width: 20, height: 20)
             }
             .buttonStyle(.vibeBar)
-            .help(L10n.Workbench.resetsCalendarNextMonth)
+            .help(L10n.Workbench.Resets.Calendar.nextMonth)
             if calendarMonthOffset != 0 {
-                Button(L10n.Workbench.resetsCalendarToday) {
+                Button(L10n.Workbench.Resets.Calendar.today) {
                     calendarMonthOffset = 0
                 }
                 .font(.system(size: 10, weight: .semibold))
@@ -447,7 +447,7 @@ struct ResetsPage: View {
                 out.append(CalendarEntry(
                     id: "past.\(key.accountId).\(sample.bucketId).\(at.timeIntervalSinceReferenceDate)",
                     tool: sample.tool,
-                    label: L10n.Workbench.resetsCalendarPastEntry(
+                    label: L10n.Workbench.Resets.Calendar.pastEntry(
                         lane: name,
                         time: Self.entryTimeFormatter.string(from: at),
                         percent: Int(sample.lastUsedPercent.rounded())
@@ -474,7 +474,7 @@ struct ResetsPage: View {
                     out.append(CalendarEntry(
                         id: "next.\(account.id).\(bucket.id)",
                         tool: tool,
-                        label: L10n.Workbench.resetsCalendarFutureEntry(
+                        label: L10n.Workbench.Resets.Calendar.futureEntry(
                             lane: "\(sub) · \(QuotaGroupLabelLocalizer.display(bucket.title))",
                             time: Self.entryTimeFormatter.string(from: resetAt),
                             percent: Int(bucket.usedPercent.rounded())
@@ -561,7 +561,7 @@ struct ResetsPage: View {
                     Circle()
                         .fill(Theme.providerAccent(for: entry.tool))
                         .frame(width: 4.5, height: 4.5)
-                    Text(L10n.Workbench.resetsCalendarDayEntry(
+                    Text(L10n.Workbench.Resets.Calendar.dayEntry(
                         lane: QuotaGroupLabelLocalizer.display(entry.shortLabel),
                         percent: Int(entry.gainPercent.rounded())
                     ))
@@ -573,7 +573,7 @@ struct ResetsPage: View {
                 .help(entry.label)
             }
             if entries.count > 3 {
-                Text(L10n.Workbench.resetsCalendarMoreEntries(count: entries.count - 3))
+                Text(L10n.Quota.History.moreReadings(count: entries.count - 3))
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundStyle(.tertiary)
             }
@@ -622,7 +622,7 @@ struct ResetsPage: View {
         }
         return VStack(alignment: .leading, spacing: 0) {
             if rows.isEmpty {
-                Text(L10n.Workbench.resetsRiskEmpty)
+                Text(L10n.Workbench.Resets.Risk.empty)
                     .font(.system(size: 10.5))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 8)
@@ -646,7 +646,7 @@ struct ResetsPage: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     Spacer(minLength: 4)
-                    Text(L10n.Workbench.resetsRiskRemaining(
+                    Text(L10n.Workbench.Resets.Risk.remaining(
                         percent: Int(remaining.rounded()),
                         countdown: ResetCountdownFormatter.string(
                             from: row.bucket.resetAt, now: now
@@ -676,11 +676,11 @@ struct ResetsPage: View {
     private func riskBadge(remaining: Double, forecast: QuotaPaceForecast?) -> String {
         // OUT means exhausted, full stop; a calm or still-learning bucket
         // that happens to be low is LOW, and only the forecast may escalate.
-        if remaining <= 1 { return L10n.Workbench.resetsRiskBadgeOut }
+        if remaining <= 1 { return L10n.Workbench.Resets.Risk.Badge.out }
         switch forecast?.verdict {
-        case .atRisk: return L10n.Workbench.resetsRiskBadgeAtRisk
-        case .watch: return L10n.Workbench.resetsRiskBadgeWatch
-        default: return L10n.Workbench.resetsRiskBadgeLow
+        case .atRisk: return L10n.Workbench.Resets.Risk.Badge.atRisk
+        case .watch: return L10n.Workbench.Resets.Risk.Badge.watch
+        default: return L10n.Workbench.Resets.Risk.Badge.low
         }
     }
 

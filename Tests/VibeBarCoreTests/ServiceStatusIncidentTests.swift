@@ -40,10 +40,10 @@ final class ServiceStatusIncidentTests: XCTestCase {
             incidentDays: nil,
             incidentAdjustedUptimePercent: nil
         )
-        let restore = L10n.languageOverride
-        L10n.languageOverride = .simplifiedChinese
-        defer { L10n.languageOverride = restore }
-        XCTAssertEqual(legacy.effectiveDescription, L10n.Status.summaryAllOperational)
+        let restore = AppLocalization.languageOverride
+        AppLocalization.languageOverride = .simplifiedChinese
+        defer { AppLocalization.languageOverride = restore }
+        XCTAssertEqual(legacy.effectiveDescription, L10n.Status.Summary.allOperational)
         XCTAssertNotEqual(legacy.effectiveDescription, "All services operational")
 
         // A provider's real blurb is still its own.
@@ -97,8 +97,8 @@ final class ServiceStatusIncidentTests: XCTestCase {
     /// and are derived on read so a cached snapshot cannot freeze them in
     /// the language it was fetched in.
     func testProviderWordingIsKeptAndOurOwnIsTranslated() {
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
 
         let published = snapshot(indicator: .none, incidents: [])
         let silent = ServiceStatusSnapshot(
@@ -111,13 +111,13 @@ final class ServiceStatusIncidentTests: XCTestCase {
             recentIncidents: []
         )
 
-        L10n.languageOverride = .simplifiedChinese
+        AppLocalization.languageOverride = .simplifiedChinese
         // The provider wrote this sentence. It is data and stays as sent.
         XCTAssertEqual(published.effectiveDescription, "All Systems Operational")
         // This one is ours, so it reads as Chinese.
         XCTAssertEqual(silent.effectiveDescription, "全部服务正常")
 
-        L10n.languageOverride = .english
+        AppLocalization.languageOverride = .english
         XCTAssertEqual(published.effectiveDescription, "All Systems Operational")
         XCTAssertEqual(silent.effectiveDescription, "All services operational")
     }

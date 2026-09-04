@@ -53,26 +53,26 @@ struct EmptyStateView: View {
     }
     private var headline: String {
         switch kind {
-        case .noAccount: return L10n.Quota.emptyNoAccountHeadline
-        case .needsLogin: return L10n.Quota.emptyNeedsLoginHeadline
-        case .network: return L10n.Quota.emptyNetworkHeadline
-        case .parseChanged: return L10n.Quota.emptyParseChangedHeadline
-        case .rateLimited: return L10n.Quota.emptyRateLimitedHeadline
+        case .noAccount: return L10n.Error.noAccountFound
+        case .needsLogin: return L10n.Error.needsReLogin
+        case .network: return L10n.Error.network
+        case .parseChanged: return L10n.Error.parseFailure
+        case .rateLimited: return L10n.Quota.Empty.RateLimited.headline
         }
     }
     private var detail: String {
         switch kind {
         case .noAccount:
-            return L10n.Quota.emptyNoAccountDetail
+            return L10n.Quota.Empty.NoAccount.detail
         case .needsLogin(let t):
             // The CLI's name is the command the user types. It is not copy.
-            return L10n.Quota.emptyNeedsLoginDetail(command: t == .codex ? "codex" : "claude")
+            return L10n.Quota.Empty.NeedsLogin.detail(command: t == .codex ? "codex" : "claude")
         case .network:
-            return L10n.Quota.emptyNetworkDetail
+            return L10n.Quota.Empty.Network.detail
         case .parseChanged:
-            return L10n.Quota.emptyParseChangedDetail
+            return L10n.Quota.Empty.ParseChanged.detail
         case .rateLimited:
-            return L10n.Quota.emptyRateLimitedDetail
+            return L10n.Quota.Empty.RateLimited.detail
         }
     }
     private var primaryTitle: String {

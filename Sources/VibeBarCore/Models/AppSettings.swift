@@ -188,7 +188,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// exist because Vibe Bar sits next to terminals and consoles people
     /// deliberately keep in one language, and sending someone to the
     /// system-wide control to change only this app is a worse answer.
-    /// `AppEnvironment` mirrors it into `L10n.languageOverride`, which is
+    /// `AppEnvironment` mirrors it into `AppLocalization.languageOverride`, which is
     /// what every `L10n` lookup reads.
     public var language: AppLanguage
 
@@ -1292,17 +1292,17 @@ public enum MiniStripDensity: String, Codable, CaseIterable, Identifiable, Senda
 
     public var label: String {
         switch self {
-        case .roomy:   return L10n.Settings.miniWindowDensityRoomy
-        case .twoLine: return L10n.Settings.miniWindowDensityTwoLines
-        case .narrow:  return L10n.Settings.miniWindowDensityNarrow
+        case .roomy:   return L10n.Settings.MiniWindow.Density.roomy
+        case .twoLine: return L10n.Settings.MiniWindow.Density.twoLines
+        case .narrow:  return L10n.Settings.MiniWindow.Density.narrow
         }
     }
 
     public var detail: String {
         switch self {
-        case .roomy:   return L10n.Settings.miniWindowDensityRoomyDetail
-        case .twoLine: return L10n.Settings.miniWindowDensityTwoLinesDetail
-        case .narrow:  return L10n.Settings.miniWindowDensityNarrowDetail
+        case .roomy:   return L10n.Settings.MiniWindow.Density.roomyDetail
+        case .twoLine: return L10n.Settings.MiniWindow.Density.twoLinesDetail
+        case .narrow:  return L10n.Settings.MiniWindow.Density.narrowDetail
         }
     }
 }
@@ -1520,25 +1520,25 @@ public enum MiniWindowDisplayMode: String, Codable, CaseIterable, Identifiable, 
 
     public var label: String {
         switch self {
-        case .regular: return L10n.Settings.miniWindowModeRegular
-        case .compact: return L10n.Settings.miniWindowModeCompact
-        case .ledger:  return L10n.Settings.miniWindowModeLedger
-        case .strip:   return L10n.Settings.miniWindowModeStrip
-        case .tile:    return L10n.Settings.miniWindowModeTiles
-        case .focus:   return L10n.Settings.miniWindowModeFocus
-        case .rail:    return L10n.Settings.miniWindowModeRail
+        case .regular: return L10n.Settings.MiniWindow.Mode.regular
+        case .compact: return L10n.Settings.MiniWindow.Mode.compact
+        case .ledger:  return L10n.Settings.MiniWindow.Mode.ledger
+        case .strip:   return L10n.Settings.MiniWindow.Mode.strip
+        case .tile:    return L10n.Settings.MiniWindow.Mode.tiles
+        case .focus:   return L10n.Settings.MiniWindow.Mode.focus
+        case .rail:    return L10n.Settings.MiniWindow.Mode.rail
         }
     }
 
     public var detail: String {
         switch self {
-        case .regular: return L10n.Settings.miniWindowModeRegularDetail
-        case .compact: return L10n.Settings.miniWindowModeCompactDetail
-        case .ledger:  return L10n.Settings.miniWindowModeLedgerDetail
-        case .strip:   return L10n.Settings.miniWindowModeStripDetail
-        case .tile:    return L10n.Settings.miniWindowModeTilesDetail
-        case .focus:   return L10n.Settings.miniWindowModeFocusDetail
-        case .rail:    return L10n.Settings.miniWindowModeRailDetail
+        case .regular: return L10n.Settings.MiniWindow.Mode.regularDetail
+        case .compact: return L10n.Settings.MiniWindow.Mode.compactDetail
+        case .ledger:  return L10n.Settings.MiniWindow.Mode.ledgerDetail
+        case .strip:   return L10n.Settings.MiniWindow.Mode.stripDetail
+        case .tile:    return L10n.Settings.MiniWindow.Mode.tilesDetail
+        case .focus:   return L10n.Settings.MiniWindow.Mode.focusDetail
+        case .rail:    return L10n.Settings.MiniWindow.Mode.railDetail
         }
     }
 
@@ -1559,17 +1559,17 @@ public enum PopoverDensity: String, Codable, CaseIterable, Identifiable, Sendabl
 
     public var label: String {
         switch self {
-        case .compact:  return L10n.Settings.popoverDensityCompact
-        case .regular:  return L10n.Settings.popoverDensityRegular
-        case .spacious: return L10n.Settings.popoverDensitySpacious
+        case .compact:  return L10n.Settings.PopoverDensity.compact
+        case .regular:  return L10n.Settings.PopoverDensity.regular
+        case .spacious: return L10n.Settings.PopoverDensity.spacious
         }
     }
 
     public var detail: String {
         switch self {
-        case .compact:  return L10n.Settings.popoverDensityCompactDetail
-        case .regular:  return L10n.Settings.popoverDensityRegularDetail
-        case .spacious: return L10n.Settings.popoverDensitySpaciousDetail
+        case .compact:  return L10n.Settings.PopoverDensity.compactDetail
+        case .regular:  return L10n.Settings.PopoverDensity.regularDetail
+        case .spacious: return L10n.Settings.PopoverDensity.spaciousDetail
         }
     }
 }
@@ -1587,25 +1587,25 @@ public enum ClaudeUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var label: String {
         switch self {
-        case .auto: return L10n.Settings.usageModeAuto
-        case .oauthThenCliThenWeb: return L10n.Settings.usageModeClaudeOauthCodeWeb
-        case .cliThenWeb: return L10n.Settings.usageModeClaudeCodeThenWeb
-        case .webThenCli: return L10n.Settings.usageModeClaudeWebThenCode
-        case .oauthOnly: return L10n.Settings.usageModeClaudeOauthOnly
-        case .cliOnly: return L10n.Settings.usageModeClaudeCodeOnly
-        case .webOnly: return L10n.Settings.usageModeClaudeWebOnly
+        case .auto: return L10n.Common.auto
+        case .oauthThenCliThenWeb: return L10n.Settings.UsageMode.Claude.oauthCodeWeb
+        case .cliThenWeb: return L10n.Settings.UsageMode.Claude.codeThenWeb
+        case .webThenCli: return L10n.Settings.UsageMode.Claude.webThenCode
+        case .oauthOnly: return L10n.Settings.UsageMode.oauthOnly
+        case .cliOnly: return L10n.Settings.UsageMode.Claude.codeOnly
+        case .webOnly: return L10n.Settings.UsageMode.Claude.webOnly
         }
     }
 
     public var detail: String {
         switch self {
-        case .auto: return L10n.Settings.usageModeClaudeAutoDetail
-        case .oauthThenCliThenWeb: return L10n.Settings.usageModeClaudeOauthFirstDetail
-        case .cliThenWeb: return L10n.Settings.usageModeClaudeCodeFirstDetail
-        case .webThenCli: return L10n.Settings.usageModeClaudeWebFirstDetail
-        case .oauthOnly: return L10n.Settings.usageModeClaudeOauthOnlyDetail
-        case .cliOnly: return L10n.Settings.usageModeClaudeCodeOnlyDetail
-        case .webOnly: return L10n.Settings.usageModeClaudeWebOnlyDetail
+        case .auto: return L10n.Settings.UsageMode.Claude.autoDetail
+        case .oauthThenCliThenWeb: return L10n.Settings.UsageMode.Claude.oauthFirstDetail
+        case .cliThenWeb: return L10n.Settings.UsageMode.Claude.codeFirstDetail
+        case .webThenCli: return L10n.Settings.UsageMode.Claude.webFirstDetail
+        case .oauthOnly: return L10n.Settings.UsageMode.Claude.oauthOnlyDetail
+        case .cliOnly: return L10n.Settings.UsageMode.Claude.codeOnlyDetail
+        case .webOnly: return L10n.Settings.UsageMode.Claude.webOnlyDetail
         }
     }
 }
@@ -1621,13 +1621,13 @@ public enum GeminiUsageMode: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var label: String {
         switch self {
-        case .webOnly: return L10n.Settings.usageModeGeminiWebOnly
+        case .webOnly: return L10n.Settings.UsageMode.Gemini.webOnly
         }
     }
 
     public var detail: String {
         switch self {
-        case .webOnly: return L10n.Settings.usageModeGeminiWebOnlyDetail
+        case .webOnly: return L10n.Settings.UsageMode.Gemini.webOnlyDetail
         }
     }
 }
@@ -1643,21 +1643,21 @@ public enum AntigravityUsageMode: String, Codable, CaseIterable, Identifiable, S
 
     public var label: String {
         switch self {
-        case .auto: return L10n.Settings.usageModeAuto
-        case .localThenWeb: return L10n.Settings.usageModeAntigravityLocalThenWeb
-        case .webThenLocal: return L10n.Settings.usageModeAntigravityWebThenLocal
-        case .localOnly: return L10n.Settings.usageModeAntigravityLocalOnly
-        case .webOnly: return L10n.Settings.usageModeAntigravityWebOnly
+        case .auto: return L10n.Common.auto
+        case .localThenWeb: return L10n.Settings.UsageMode.Antigravity.localThenWeb
+        case .webThenLocal: return L10n.Settings.UsageMode.Antigravity.webThenLocal
+        case .localOnly: return L10n.Settings.UsageMode.Antigravity.localOnly
+        case .webOnly: return L10n.Settings.UsageMode.Antigravity.webOnly
         }
     }
 
     public var detail: String {
         switch self {
-        case .auto: return L10n.Settings.usageModeAntigravityAutoDetail
-        case .localThenWeb: return L10n.Settings.usageModeAntigravityLocalFirstDetail
-        case .webThenLocal: return L10n.Settings.usageModeAntigravityWebFirstDetail
-        case .localOnly: return L10n.Settings.usageModeAntigravityLocalOnlyDetail
-        case .webOnly: return L10n.Settings.usageModeAntigravityWebOnlyDetail
+        case .auto: return L10n.Settings.UsageMode.Antigravity.autoDetail
+        case .localThenWeb: return L10n.Settings.UsageMode.Antigravity.localFirstDetail
+        case .webThenLocal: return L10n.Settings.UsageMode.Antigravity.webFirstDetail
+        case .localOnly: return L10n.Settings.UsageMode.Antigravity.localOnlyDetail
+        case .webOnly: return L10n.Settings.UsageMode.Antigravity.webOnlyDetail
         }
     }
 }

@@ -63,7 +63,7 @@ struct UsageFiltersBar: View {
         return Button {
             model.toggleAllHarnesses()
         } label: {
-            Text(L10n.Usage.filtersAllHarnesses)
+            Text(L10n.Usage.Filters.allHarnesses)
                 .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                 .foregroundStyle(selected ? .primary : .secondary)
                 .padding(.horizontal, 10)
@@ -72,11 +72,11 @@ struct UsageFiltersBar: View {
         .buttonStyle(.vibeBar)
         .background(chipBackground(tint: .accentColor, selected: selected))
         .help(selected
-            ? L10n.Usage.filtersAllHarnessesHelpNone
-            : L10n.Usage.filtersAllHarnessesHelpEvery)
+            ? L10n.Usage.Filters.allHarnessesHelpNone
+            : L10n.Usage.Filters.allHarnessesHelpEvery)
         .accessibilityLabel(selected
-            ? L10n.Usage.filtersAllHarnessesSelectNone
-            : L10n.Usage.filtersAllHarnessesSelectEvery)
+            ? L10n.Usage.Filters.allHarnessesSelectNone
+            : L10n.Usage.Filters.allHarnessesSelectEvery)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -106,7 +106,7 @@ struct UsageFiltersBar: View {
         .saturation(selected ? 1 : 0.50)
         .help(companyHelp(group))
         .accessibilityLabel(
-            L10n.Usage.filtersCompanyHarnesses(company: group.company.vendorName)
+            L10n.Usage.Filters.companyHarnesses(company: group.company.vendorName)
         )
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
@@ -141,7 +141,7 @@ struct UsageFiltersBar: View {
         // that a harness is in the query, so an off chip must not wear it.
         .opacity(selected ? 1 : 0.70)
         .saturation(selected ? 1 : 0.50)
-        .help(L10n.Usage.filtersHarnessHelp(
+        .help(L10n.Usage.Filters.harnessHelp(
             company: group.company.vendorName, harness: harness.displayName
         ))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -183,7 +183,7 @@ struct UsageFiltersBar: View {
                         .frame(minHeight: 22)
                 }
                 .buttonStyle(WorkbenchPillButtonStyle())
-                .help(L10n.Usage.filtersClearHelp)
+                .help(L10n.Usage.Filters.clearHelp)
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -200,7 +200,7 @@ struct UsageFiltersBar: View {
                 }
             }
             Divider()
-            Button(L10n.Usage.filtersEditCustomRange) {
+            Button(L10n.Usage.Filters.editCustomRange) {
                 model.rangePreset = .custom
                 showsCustomRange = true
             }
@@ -218,27 +218,27 @@ struct UsageFiltersBar: View {
                 .vibeBarNoInitialFocus()
                 .vibeBarSystemControlFocus()
         }
-        .accessibilityLabel(L10n.Usage.filtersRangeMenu)
+        .accessibilityLabel(L10n.Usage.Filters.rangeMenu)
     }
 
     private var customRangeEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.Usage.filtersCustomRangeTitle)
+            Text(L10n.Usage.Filters.customRangeTitle)
                 .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .tracking(0.4)
             DatePicker(
-                L10n.Usage.filtersCustomRangeFrom,
+                L10n.Usage.Filters.customRangeFrom,
                 selection: $model.customStart,
                 in: ...Date(),
                 displayedComponents: [.date, .hourAndMinute]
             )
             DatePicker(
-                L10n.Usage.filtersCustomRangeTo,
+                L10n.Usage.Filters.customRangeTo,
                 selection: $model.customEnd,
                 displayedComponents: [.date, .hourAndMinute]
             )
-            Text(L10n.Usage.filtersCustomRangeHint)
+            Text(L10n.Usage.Filters.customRangeHint)
                 .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
         }
@@ -249,9 +249,9 @@ struct UsageFiltersBar: View {
 
     private var modelMenu: some View {
         Menu {
-            Button(L10n.Usage.filtersAllModels) { model.setSelectedModels(nil) }
+            Button(L10n.Usage.Filters.allModels) { model.setSelectedModels(nil) }
             if model.availableModels.isEmpty {
-                Text(L10n.Usage.filtersNoModelsInRange)
+                Text(L10n.Usage.Filters.noModelsInRange)
             } else {
                 Divider()
                 ForEach(model.availableModels, id: \.self) { name in
@@ -263,7 +263,7 @@ struct UsageFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: "cpu",
-                title: L10n.Usage.filtersModelsMenu,
+                title: L10n.Usage.Breakdown.models,
                 detail: modelSummary
             )
         }
@@ -271,16 +271,16 @@ struct UsageFiltersBar: View {
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel(L10n.Usage.filtersModelsMenuLabel)
+        .accessibilityLabel(L10n.Usage.Filters.modelsMenuLabel)
     }
 
     private var refreshMenu: some View {
         Menu {
-            Picker(L10n.Usage.filtersAutoRefresh, selection: $model.refreshInterval) {
+            Picker(L10n.Usage.Filters.autoRefresh, selection: $model.refreshInterval) {
                 ForEach(UsageStatsViewModel.RefreshInterval.allCases) { interval in
                     Text(interval == .off
                         ? L10n.Common.off
-                        : L10n.Usage.filtersRefreshInterval(seconds: interval.rawValue))
+                        : L10n.Usage.Filters.refreshInterval(seconds: interval.rawValue))
                         .tag(interval)
                 }
             }
@@ -288,7 +288,7 @@ struct UsageFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: model.refreshInterval == .off ? "pause.circle" : "arrow.clockwise.circle",
-                title: L10n.Usage.filtersAutoMenu,
+                title: L10n.Common.auto,
                 detail: model.refreshInterval.title
             )
         }
@@ -296,7 +296,7 @@ struct UsageFiltersBar: View {
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel(L10n.Usage.filtersAutoMenuLabel)
+        .accessibilityLabel(L10n.Usage.Filters.autoMenuLabel)
     }
 
     // MARK: - Labels
@@ -332,16 +332,16 @@ struct UsageFiltersBar: View {
         let harnesses = group.harnesses.map(\.displayName).joined(separator: " + ")
         return harnesses.isEmpty
             ? group.company.vendorName
-            : L10n.Usage.filtersCompanyHelp(
+            : L10n.Usage.Filters.companyHelp(
                 company: group.company.vendorName, harnesses: harnesses
             )
     }
 
     private var rangeSummary: String {
-        if model.rangePreset == .all { return L10n.Cost.modelRankingAllTime }
+        if model.rangePreset == .all { return L10n.Cost.ModelRanking.allTime }
         let range = model.range
         let formatter = range.duration <= 86_400 ? Self.hourFormatter : Self.dayFormatter
-        return L10n.Usage.filtersRangeSpan(
+        return L10n.Usage.Filters.rangeSpan(
             start: formatter.string(from: range.start),
             end: formatter.string(from: range.end)
         )
@@ -360,7 +360,7 @@ struct UsageFiltersBar: View {
         if selected.count == 1, let only = selected.first {
             return UsageModelNaming.canonicalDisplayName(only)
         }
-        return L10n.Usage.filtersModelsSelected(count: selected.count)
+        return L10n.Usage.Filters.modelsSelected(count: selected.count)
     }
 
 }

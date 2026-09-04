@@ -23,11 +23,11 @@ struct TopModelTile: View {
                     Image(systemName: "trophy.fill")
                         .font(.system(size: max(8, density.subtitleFontSize - 2)))
                         .foregroundStyle(Color(red: 0.96, green: 0.78, blue: 0.30))
-                    Text(L10n.Cost.topModelTitle)
+                    Text(L10n.Cost.TopModel.title)
                         .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                         .foregroundStyle(.tertiary)
                         .tracking(0.4)
-                    Text(L10n.Cost.topModelWindow)
+                    Text(L10n.Cost.Timeframe.weekShort)
                         .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .bold))
                         .foregroundStyle(.secondary)
                 }
@@ -50,7 +50,7 @@ struct TopModelTile: View {
                         Text("·")
                             .font(.system(size: density.subtitleFontSize))
                             .foregroundStyle(.tertiary)
-                        Text(L10n.Cost.topModelShare(percent: Int(share.rounded())))
+                        Text(L10n.Cost.TopModel.share(percent: Int(share.rounded())))
                             .font(.system(size: density.subtitleFontSize, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }

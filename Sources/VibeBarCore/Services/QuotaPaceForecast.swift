@@ -24,11 +24,11 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         /// instead of spelling the five words again.
         public var label: String {
             switch self {
-            case .enough: L10n.Quota.forecastVerdictEnough
-            case .surplus: L10n.Quota.forecastVerdictSurplus
-            case .watch: L10n.Quota.forecastVerdictWatch
-            case .atRisk: L10n.Quota.forecastVerdictAtRisk
-            case .learning: L10n.Quota.forecastVerdictLearning
+            case .enough: L10n.Quota.Forecast.Verdict.enough
+            case .surplus: L10n.Quota.Forecast.Verdict.surplus
+            case .watch: L10n.Quota.Forecast.Verdict.watch
+            case .atRisk: L10n.Quota.Forecast.Verdict.atRisk
+            case .learning: L10n.Quota.Forecast.Verdict.learning
             }
         }
     }
@@ -92,9 +92,9 @@ public struct QuotaPaceForecast: Sendable, Equatable {
 
     public var confidenceLabel: String {
         switch confidence {
-        case .learning: L10n.Quota.forecastConfidenceLearning
-        case .medium: L10n.Quota.forecastConfidenceMedium
-        case .high: L10n.Quota.forecastConfidenceHigh
+        case .learning: L10n.Quota.Forecast.Confidence.learning
+        case .medium: L10n.Quota.Forecast.Confidence.medium
+        case .high: L10n.Quota.Forecast.Confidence.high
         }
     }
 
@@ -102,30 +102,30 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         let left = Int(projectedRemainingPercent.rounded())
         switch verdict {
         case .enough:
-            return L10n.Quota.forecastResetEnough(remaining: left)
+            return L10n.Quota.Forecast.Reset.enough(percent: left)
         case .surplus:
-            return L10n.Quota.forecastResetSurplus(remaining: left)
+            return L10n.Quota.Forecast.Reset.surplus(remaining: left)
         case .watch:
-            return L10n.Quota.forecastResetWatch(remaining: left)
+            return L10n.Quota.Forecast.Reset.watch(remaining: left)
         case .atRisk:
-            return L10n.Quota.forecastResetAtRisk
+            return L10n.Quota.Forecast.Reset.atRisk
         case .learning:
-            return L10n.Quota.forecastResetLearning(remaining: left)
+            return L10n.Quota.Forecast.Reset.learning(remaining: left)
         }
     }
 
     public var guidanceSummary: String {
         let target = Int(targetRemainingPercent.rounded())
         let unused = Int(potentialUnusedPercent.rounded())
-        if verdict == .atRisk { return L10n.Quota.forecastGuidanceAtRisk }
-        if verdict == .watch { return L10n.Quota.forecastGuidanceWatch }
+        if verdict == .atRisk { return L10n.Quota.Forecast.Guidance.atRisk }
+        if verdict == .watch { return L10n.Quota.Forecast.Guidance.watch }
         if verdict == .surplus {
-            return L10n.Quota.forecastGuidanceSurplus(unused: unused, target: target)
+            return L10n.Quota.Forecast.Guidance.surplus(unused: unused, target: target)
         }
         if unused >= 3 {
-            return L10n.Quota.forecastGuidanceAvailable(target: target, unused: unused)
+            return L10n.Quota.Forecast.Guidance.available(target: target, unused: unused)
         }
-        return L10n.Quota.forecastGuidanceWithinTarget(target: target)
+        return L10n.Quota.Forecast.Guidance.withinTarget(target: target)
     }
 
     public static func compute(

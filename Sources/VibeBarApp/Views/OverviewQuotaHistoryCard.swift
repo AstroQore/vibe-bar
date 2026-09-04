@@ -173,9 +173,9 @@ struct OverviewQuotaHistoryCard: View {
                 )
                 .equatable()
             } else if curves.isEmpty {
-                note(L10n.Quota.historyBuildingUp)
+                note(L10n.Quota.History.buildingUp)
             } else {
-                note(L10n.Quota.historyAllCurvesHidden)
+                note(L10n.Quota.History.allCurvesHidden)
             }
         }
         .padding(density.cardPadding)
@@ -196,7 +196,7 @@ struct OverviewQuotaHistoryCard: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(L10n.Quota.historyTitle)
+            Text(L10n.Quota.History.title)
                 .font(.system(size: density.titleFontSize, weight: .semibold))
             Text(L10n.Cost.allProviders)
                 .font(.system(size: density.subtitleFontSize))
@@ -229,9 +229,9 @@ struct OverviewQuotaHistoryCard: View {
 
     private var curvePicker: some View {
         Menu {
-            Button(L10n.Quota.historyShowAllCurves) { setHidden([]) }
+            Button(L10n.Quota.History.showAllCurves) { setHidden([]) }
             if visibleCurves.count > 1 {
-                Button(L10n.Quota.historyShowBusiest) { showOnlyBusiest() }
+                Button(L10n.Quota.History.showBusiest) { showOnlyBusiest() }
             }
             Divider()
             ForEach(curvesByTool, id: \.0) { tool, toolCurves in
@@ -269,15 +269,15 @@ struct OverviewQuotaHistoryCard: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel(L10n.Quota.historyCurvePickerA11y)
+        .accessibilityLabel(L10n.Quota.History.curvePickerA11y)
     }
 
     private var selectionSummary: String {
         let shown = visibleCurves.count
         let total = curves.count
         return shown == total
-            ? L10n.Quota.historyCurvesAll(total: total)
-            : L10n.Quota.historyCurvesSome(shown: shown, total: total)
+            ? L10n.Quota.History.curvesAll(total: total)
+            : L10n.Quota.History.curvesSome(shown: shown, total: total)
     }
 
     private func binding(for curve: OverviewQuotaCurve) -> Binding<Bool> {
@@ -894,7 +894,7 @@ private struct OverviewQuotaChartBody: View, Equatable {
                 window: binding,
                 accent: Color.secondary,
                 height: density.chartBrushHeight,
-                accessibilityDescription: L10n.Quota.historyNavigatorAllProviders
+                accessibilityDescription: L10n.Quota.History.navigatorAllProviders
             ) { geometry in
                 miniPaths(in: geometry)
             }
@@ -977,10 +977,10 @@ private struct OverviewQuotaChartBody: View, Equatable {
     private var scopeNote: String {
         let providers = Set(curves.map(\.tool)).count
         let scope = [
-            L10n.Quota.historyCurveCount(count: curves.count),
-            L10n.Quota.historyProviderCount(count: providers),
+            L10n.Quota.History.curveCount(count: curves.count),
+            L10n.Quota.History.providerCount(count: providers),
         ].joined(separator: " · ")
-        return L10n.Quota.historyScopeNote(
+        return L10n.Quota.History.scopeNote(
             scope: scope,
             visible: Self.spanLabel(window.visibleSpan),
             total: Self.spanLabel(window.domainSpan)
@@ -989,12 +989,12 @@ private struct OverviewQuotaChartBody: View, Equatable {
 
     private static func spanLabel(_ seconds: TimeInterval) -> String {
         if seconds < 90 * 60 {
-            return L10n.Common.durationMinutes(minutes: max(1, Int((seconds / 60).rounded())))
+            return L10n.Common.Duration.minutes(minutes: max(1, Int((seconds / 60).rounded())))
         }
         if seconds < 48 * 3_600 {
-            return L10n.Common.durationHours(hours: Int((seconds / 3_600).rounded()))
+            return L10n.Common.Duration.hours(hours: Int((seconds / 3_600).rounded()))
         }
-        return L10n.Common.durationDays(days: Int((seconds / 86_400).rounded()))
+        return L10n.Common.Duration.days(days: Int((seconds / 86_400).rounded()))
     }
 }
 
@@ -1143,7 +1143,7 @@ private struct OverviewQuotaHoverOverlay: View {
                 }
                 if readings.count > Self.tooltipRowLimit {
                     Text(
-                        L10n.Quota.historyMoreReadings(
+                        L10n.Quota.History.moreReadings(
                             count: readings.count - Self.tooltipRowLimit
                         )
                     )

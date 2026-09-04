@@ -30,14 +30,14 @@ public enum QuotaGroupLabelLocalizer {
     /// Contract label → catalog key. Keys are compared case-insensitively
     /// so a discovered bucket's `groupTitle` spelling cannot slip past.
     private static let table: [String: () -> String] = [
-        "weekly": { L10n.Quota.groupWeekly },
-        "monthly": { L10n.Quota.groupMonthly },
-        "daily": { L10n.Quota.groupDaily },
-        "5 hours": { L10n.Quota.groupFiveHours },
-        "all models": { L10n.Quota.groupAllModels },
-        "other models": { L10n.Quota.groupOtherModels },
-        "other": { L10n.Quota.groupOther },
-        "weekly credits": { L10n.Quota.groupWeeklyCredits },
+        "weekly": { L10n.Quota.Group.weekly },
+        "monthly": { L10n.Quota.Group.monthly },
+        "daily": { L10n.Quota.Group.daily },
+        "5 hours": { L10n.Quota.Group.fiveHours },
+        "all models": { L10n.Quota.Group.allModels },
+        "other models": { L10n.Quota.Group.otherModels },
+        "other": { L10n.Quota.Group.other },
+        "weekly credits": { L10n.Quota.Group.weeklyCredits },
     ]
 
     /// The label to show for a contract group name.
@@ -78,7 +78,7 @@ public enum QuotaGroupLabelLocalizer {
               digits.count <= 3,
               digits.allSatisfy({ $0.isASCII && $0.isNumber }),
               let percent = Int(digits) else { return nil }
-        return L10n.Quota.forecastValueLeft(percent: percent)
+        return L10n.Quota.remainingPercent(percent: percent)
     }
 
     /// The separator a composed contract label is built with, on every

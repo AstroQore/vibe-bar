@@ -33,18 +33,18 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
 
     public var label: String {
         switch self {
-        case .openAICLI: return L10n.Settings.routeCli
-        case .openAIOAuth: return L10n.Settings.routeOauth
-        case .openAIBrowserCookies: return L10n.Settings.routeBrowserCookies
-        case .openAIWebViewCookies: return L10n.Settings.routeWebViewCookies
-        case .claudeBrowserCookies: return L10n.Settings.routeBrowserCookies
-        case .claudeWebViewCookies: return L10n.Settings.routeWebViewCookies
-        case .claudeOAuth: return L10n.Settings.routeOauth
-        case .claudeCLI: return L10n.Settings.routeCli
-        case .geminiBrowserCookies: return L10n.Settings.routeBrowserCookies
-        case .antigravityLocalProbe: return L10n.Settings.routeAntigravityLocal
-        case .grokAuthJSON: return L10n.Settings.routeGrokAuthFile
-        case .grokBrowserCookies: return L10n.Settings.routeBrowserCookies
+        case .openAICLI: return L10n.Settings.Route.cli
+        case .openAIOAuth: return L10n.Settings.Route.oauth
+        case .openAIBrowserCookies: return L10n.Settings.Route.browserCookies
+        case .openAIWebViewCookies: return L10n.Settings.Route.webViewCookies
+        case .claudeBrowserCookies: return L10n.Settings.Route.browserCookies
+        case .claudeWebViewCookies: return L10n.Settings.Route.webViewCookies
+        case .claudeOAuth: return L10n.Settings.Route.oauth
+        case .claudeCLI: return L10n.Settings.Route.cli
+        case .geminiBrowserCookies: return L10n.Settings.Route.browserCookies
+        case .antigravityLocalProbe: return L10n.Settings.Route.antigravityLocal
+        case .grokAuthJSON: return L10n.Settings.Route.grokAuthFile
+        case .grokBrowserCookies: return L10n.Settings.Route.browserCookies
         }
     }
 
@@ -205,7 +205,7 @@ public enum PrimaryProviderRouteHealthChecker {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .ok,
-                detail: L10n.Settings.routeHealthLspRunning,
+                detail: L10n.Settings.RouteHealth.lspRunning,
                 checkedAt: now
             )
         }
@@ -213,7 +213,7 @@ public enum PrimaryProviderRouteHealthChecker {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .ok,
-                detail: L10n.Settings.routeHealthAgyAvailable,
+                detail: L10n.Settings.RouteHealth.agyAvailable,
                 checkedAt: now
             )
         }
@@ -221,14 +221,14 @@ public enum PrimaryProviderRouteHealthChecker {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .failed,
-                detail: L10n.Settings.routeHealthCachedOnly,
+                detail: L10n.Settings.RouteHealth.cachedOnly,
                 checkedAt: now
             )
         }
         return PrimaryProviderRouteHealth(
             route: route,
             status: .missing,
-            detail: L10n.Settings.routeHealthNoAntigravityData,
+            detail: L10n.Settings.RouteHealth.noAntigravityData,
             checkedAt: now
         )
     }
@@ -243,28 +243,28 @@ public enum PrimaryProviderRouteHealthChecker {
                 return PrimaryProviderRouteHealth(
                     route: route,
                     status: .failed,
-                    detail: L10n.Settings.routeHealthAuthFileExpired,
+                    detail: L10n.Settings.RouteHealth.authFileExpired,
                     checkedAt: now
                 )
             }
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .ok,
-                detail: credentials.planLabel ?? L10n.Settings.routeHealthCredentialsAvailable,
+                detail: credentials.planLabel ?? L10n.Settings.RouteHealth.credentialsAvailable,
                 checkedAt: now
             )
         } catch let error as QuotaError where error == .noCredential || error == .needsLogin {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .missing,
-                detail: L10n.Settings.routeHealthNoAuthFile,
+                detail: L10n.Settings.RouteHealth.noAuthFile,
                 checkedAt: now
             )
         } catch {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .failed,
-                detail: L10n.Settings.routeHealthAuthFileUnreadable,
+                detail: L10n.Settings.RouteHealth.authFileUnreadable,
                 checkedAt: now
             )
         }
@@ -351,28 +351,28 @@ public enum PrimaryProviderRouteHealthChecker {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .ok,
-                detail: L10n.Settings.routeHealthCredentialsAvailable,
+                detail: L10n.Settings.RouteHealth.credentialsAvailable,
                 checkedAt: now
             )
         } catch KeychainStore.KeychainError.interactionNotAllowed {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .blocked,
-                detail: L10n.Settings.routeHealthKeychainLocked,
+                detail: L10n.Settings.RouteHealth.keychainLocked,
                 checkedAt: now
             )
         } catch let error as QuotaError where error == .noCredential || error == .needsLogin {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .missing,
-                detail: L10n.Settings.routeHealthNoCredential,
+                detail: L10n.Settings.RouteHealth.noCredential,
                 checkedAt: now
             )
         } catch {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .failed,
-                detail: L10n.Settings.routeHealthCredentialUnreadable,
+                detail: L10n.Settings.RouteHealth.credentialUnreadable,
                 checkedAt: now
             )
         }
@@ -388,28 +388,28 @@ public enum PrimaryProviderRouteHealthChecker {
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .ok,
-                detail: L10n.Settings.routeHealthSavedInKeychain,
+                detail: L10n.Settings.RouteHealth.savedInKeychain,
                 checkedAt: now
             )
         case .missing:
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .missing,
-                detail: L10n.Settings.routeHealthNoSavedCookie,
+                detail: L10n.Settings.RouteHealth.noSavedCookie,
                 checkedAt: now
             )
         case .temporarilyUnavailable:
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .blocked,
-                detail: L10n.Settings.routeHealthKeychainLocked,
+                detail: L10n.Settings.RouteHealth.keychainLocked,
                 checkedAt: now
             )
         case .invalid:
             return PrimaryProviderRouteHealth(
                 route: route,
                 status: .failed,
-                detail: L10n.Settings.routeHealthInvalidCookie,
+                detail: L10n.Settings.RouteHealth.invalidCookie,
                 checkedAt: now
             )
         }

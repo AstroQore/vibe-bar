@@ -23,7 +23,7 @@ import Foundation
 /// simply a miss, with no invalidation to remember.
 public enum AppLocale {
     /// The app's locale, following `AppSettings.language`.
-    public static var current: Locale { Locale(identifier: L10n.resolvedLanguageCode) }
+    public static var current: Locale { Locale(identifier: AppLocalization.resolvedLanguageCode) }
 
     // MARK: - Dates
 
@@ -91,7 +91,7 @@ public enum AppLocale {
     public static func relativeDateTimeFormatter(
         unitsStyle: RelativeDateTimeFormatter.UnitsStyle = .abbreviated
     ) -> RelativeDateTimeFormatter {
-        let code = L10n.resolvedLanguageCode
+        let code = AppLocalization.resolvedLanguageCode
         return relatives.withLock { cache in
             let key = "\(code):\(unitsStyle.rawValue)"
             if let cached = cache[key] { return cached }
@@ -129,7 +129,7 @@ public enum AppLocale {
     private static func formatter(
         key: String, build: () -> DateFormatter
     ) -> DateFormatter {
-        let code = L10n.resolvedLanguageCode
+        let code = AppLocalization.resolvedLanguageCode
         return dates.withLock { cache in
             let full = "\(code)|\(key)"
             if let cached = cache[full] { return cached }

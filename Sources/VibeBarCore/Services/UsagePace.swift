@@ -159,11 +159,11 @@ public extension UsagePace {
         let value = Int(abs(deltaPercent).rounded())
         switch stage {
         case .onTrack:
-            return L10n.Quota.paceOnTrack
+            return L10n.Quota.Pace.onTrack
         case .slightlyAhead, .ahead, .farAhead:
-            return L10n.Quota.paceDeficit(percent: value)
+            return L10n.Quota.Pace.deficit(percent: value)
         case .slightlyBehind, .behind, .farBehind:
-            return L10n.Quota.paceReserve(percent: value)
+            return L10n.Quota.Pace.reserve(percent: value)
         }
     }
 
@@ -175,11 +175,11 @@ public extension UsagePace {
         let value = Int(abs(deltaPercent).rounded())
         switch stage {
         case .onTrack:
-            return L10n.Quota.paceOnTrack
+            return L10n.Quota.Pace.onTrack
         case .slightlyAhead, .ahead, .farAhead:
-            return L10n.Quota.paceDeficitShort(percent: value)
+            return L10n.Quota.Pace.deficitShort(percent: value)
         case .slightlyBehind, .behind, .farBehind:
-            return L10n.Quota.paceReserveShort(percent: value)
+            return L10n.Quota.Pace.reserveShort(percent: value)
         }
     }
 }

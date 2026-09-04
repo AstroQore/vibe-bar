@@ -40,7 +40,7 @@ struct UsageActivityView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(titleOverride ?? L10n.Usage.whenYouUseProvider(provider: toolName))
+            Text(titleOverride ?? L10n.Usage.WhenYouUse.provider(provider: toolName))
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
             Spacer()
             if heatmap.totalTokens > 0 {
@@ -70,9 +70,9 @@ struct UsageActivityView: View {
         let cellHourStr = UsageHeatmap.formatHourLabel(cell.hour)
         let dayStr = weekdayLabels[cell.weekday]
         if peakH == cell.hour {
-            return L10n.Usage.activityPeak(hour: hourStr, day: dayStr)
+            return L10n.Usage.Activity.peak(hour: hourStr, day: dayStr)
         }
-        return L10n.Usage.activityPeakCell(hour: hourStr, day: dayStr, cellHour: cellHourStr)
+        return L10n.Usage.Activity.peakCell(hour: hourStr, day: dayStr, cellHour: cellHourStr)
     }
 
     // MARK: - Content
@@ -220,7 +220,7 @@ struct UsageActivityView: View {
 
     private var legend: some View {
         HStack(spacing: 6) {
-            Text(L10n.Usage.activityQuiet)
+            Text(L10n.Usage.Activity.quiet)
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
             ForEach(0..<6, id: \.self) { step in
@@ -228,7 +228,7 @@ struct UsageActivityView: View {
                     .fill(intensityColor(intensity: Double(step) / 5.0))
                     .frame(width: 16, height: 8)
             }
-            Text(L10n.Usage.activityHeavy)
+            Text(L10n.Usage.Activity.heavy)
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -299,7 +299,7 @@ private struct UsageHeatmapCanvas: View {
         .help(hoveredTooltip ?? "")
         // The individual cell views are gone, so the grid speaks for itself.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L10n.Usage.activityA11y)
+        .accessibilityLabel(L10n.Usage.Activity.a11y)
     }
 
     private func cellColor(value: Int) -> Color {
@@ -332,8 +332,8 @@ private struct UsageHeatmapCanvas: View {
         else if value < 1_000_000 { amount = String(format: "%.1fk", Double(value) / 1_000) }
         else if value < 1_000_000_000 { amount = String(format: "%.2fM", Double(value) / 1_000_000) }
         else { amount = String(format: "%.2fB", Double(value) / 1_000_000_000) }
-        return L10n.Usage.activityCellTooltip(
-            day: day, hour: hourStr, tokens: L10n.Usage.activityTokensShort(tokens: amount)
+        return L10n.Usage.Activity.cellTooltip(
+            day: day, hour: hourStr, tokens: L10n.Usage.Activity.tokensShort(tokens: amount)
         )
     }
 }

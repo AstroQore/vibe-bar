@@ -22,8 +22,8 @@ struct LanguageSettingsSection: View {
     @EnvironmentObject private var settingsStore: SettingsStore
 
     var body: some View {
-        SettingsSectionCard(title: L10n.Settings.languageTitle, density: density) {
-            Picker(L10n.Settings.languageTitle, selection: languageBinding) {
+        SettingsSectionCard(title: L10n.Settings.Language.title, density: density) {
+            Picker(L10n.Settings.Language.title, selection: languageBinding) {
                 ForEach(AppLanguage.allCases, id: \.self) { language in
                     // Each language is labelled in itself — 简体中文, not
                     // "Simplified Chinese". Someone looking for their own
@@ -36,7 +36,7 @@ struct LanguageSettingsSection: View {
             .labelsHidden()
             .frame(maxWidth: 220, alignment: .leading)
 
-            Text(L10n.Settings.languageCaption)
+            Text(L10n.Settings.Language.caption)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
