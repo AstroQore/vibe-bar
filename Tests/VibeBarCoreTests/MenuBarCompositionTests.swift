@@ -2909,6 +2909,39 @@ final class MenuBarCompositionTests: XCTestCase {
 
     // MARK: - A size choice costs only the block that made it
 
+    func testASpanningColumnIsFittedAgainstTheWholeCanvasNotTheTopRow() {
+        // A one-cell column is centred across both bands, so its height is the
+        // whole canvas. Counting it in the top row's demand let a Large title
+        // cap every stacked top cell — and capped the title itself as though
+        // it had half the room it actually has.
+        var composed = columns([
+            MenuBarSegment(top: [MenuBarToken(kind: .text("VB"), style: .init(size: .large))]),
+            MenuBarSegment(
+                top: [MenuBarToken(kind: .text("a"))],
+                bottom: [MenuBarToken(kind: .text("b"))]
+            )
+        ])
+        composed.fontScale = 1
+        // The nominal canvas, where it bites: two rows plus their spacing are
+        // already over budget with nothing resized, so a stacked cell is
+        // shrunk to fit. A cell that spans both rows is not stacked and pays
+        // none of that — 18pt is the whole of its budget, and 1.2 fits.
+        let rendered = composed.plan(
+            quotas: [], displayMode: .used, colorBasis: .actual,
+            now: reference, canvas: .nominalTwoRow
+        )
+        let spanning = rendered.columns[0].top.tokens[0].fontScale
+        let stackedTop = rendered.columns[1].top.tokens[0].fontScale
+        XCTAssertEqual(
+            spanning, 1.2, accuracy: 0.0001,
+            "a spanning cell must keep the size it asked for; the whole canvas is its row"
+        )
+        XCTAssertLessThan(
+            stackedTop, 1.0,
+            "the stacked rows still share one canvas and are still fitted to it"
+        )
+    }
+
     private func twoRowScales(
         top: MenuBarToken.SizeStep,
         bottom: MenuBarToken.SizeStep,

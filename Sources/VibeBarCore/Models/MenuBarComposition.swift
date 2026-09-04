@@ -2057,31 +2057,47 @@ public extension MenuBarComposition {
         scale: Double,
         canvas: MenuBarStripCanvas
     ) -> [MenuBarRenderColumn] {
-        guard columns.contains(where: { $0.bottom != nil }) else { return columns }
+        let stacked = columns.filter { $0.bottom != nil }
+        guard !stacked.isEmpty else { return columns }
         func demand(_ rows: [MenuBarRenderRow]) -> Double {
             rows.flatMap(\.tokens).map(\.fontScale).max() ?? scale
         }
-        let rowScales = [
-            demand(columns.map(\.top)),
-            demand(columns.compactMap(\.bottom))
-        ]
+        // Only the columns that actually share the canvas vertically. A
+        // one-cell column is centred across both bands, so its height is the
+        // whole canvas, not the top one — counting it in the top row's demand
+        // let a Large title cap every stacked top cell, and capped the title
+        // itself as though it had half the room it has.
         let fit = MenuBarStripFit.fit(
-            rowScales: rowScales,
+            rowScales: [demand(stacked.map(\.top)), demand(stacked.compactMap(\.bottom))],
             neutralScale: scale,
             canvas: canvas
         )
-        guard fit.isConstraining else { return columns }
-        func apply(_ row: MenuBarRenderRow, cap: Double) -> MenuBarRenderRow {
+        // One row, so no gap between rows to pay for: the same solver against
+        // the same canvas answers what a spanning cell may grow to.
+        let spanning = columns.filter { $0.bottom == nil }
+        let spanFit = MenuBarStripFit.fit(
+            rowScales: [demand(spanning.map(\.top))],
+            neutralScale: scale,
+            canvas: canvas
+        )
+        guard fit.isConstraining || spanFit.isConstraining else { return columns }
+        func apply(_ row: MenuBarRenderRow, cap: Double, uniform: Double) -> MenuBarRenderRow {
             MenuBarRenderRow(tokens: row.tokens.map { token in
                 var capped = token
-                capped.fontScale = Swift.min(token.fontScale, cap) * fit.uniform
+                capped.fontScale = Swift.min(token.fontScale, cap) * uniform
                 return capped
             })
         }
         return columns.map { column in
-            MenuBarRenderColumn(
-                top: apply(column.top, cap: fit.rowCaps[0]),
-                bottom: column.bottom.map { apply($0, cap: fit.rowCaps[1]) }
+            guard let bottom = column.bottom else {
+                return MenuBarRenderColumn(
+                    top: apply(column.top, cap: spanFit.rowCaps[0], uniform: spanFit.uniform),
+                    bottom: nil
+                )
+            }
+            return MenuBarRenderColumn(
+                top: apply(column.top, cap: fit.rowCaps[0], uniform: fit.uniform),
+                bottom: apply(bottom, cap: fit.rowCaps[1], uniform: fit.uniform)
             )
         }
     }
