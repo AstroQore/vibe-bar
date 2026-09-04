@@ -1347,7 +1347,7 @@ private struct OverviewStatusSummaryCard: View {
                 // tile (height − chrome) / rows — at compact density that is
                 // 45 pt, and four points of air here were what pushed the
                 // detail line out of it.
-                ToolBrandIconView(tool: tool, size: density.bucketTitleFontSize + 6)
+                CompanyBrandIconView(tool: tool, size: density.bucketTitleFontSize + 6)
                     .opacity(0.9)
                     .frame(
                         width: density.bucketTitleFontSize + 6,
