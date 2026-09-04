@@ -62,13 +62,14 @@ struct UsageCompositionCards: View {
     private func harnessRow(_ row: UsageHarnessStat) -> some View {
         let total = max(1, summary.realTotalTokens)
         let fraction = min(1, max(0, Double(row.totalTokens) / Double(total)))
-        // Badge and tint follow the L1 company, so two harnesses of one brand
-        // still read as that brand while staying separate rows.
+        // The badge is the harness's own mark — a row labelled "Codex" wears
+        // Codex, not ChatGPT — while the tint still follows the L1 company,
+        // so two harnesses of one brand read as one block of colour.
         let company = row.harness.company
         let tint = Theme.providerAccent(for: company)
         return VStack(spacing: 5) {
             HStack(spacing: 7) {
-                CompanyBrandBadge(tool: company, iconSize: 12, containerSize: 19)
+                HarnessBrandBadge(harness: row.harness, iconSize: 12, containerSize: 19)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.harness.displayName)
                         .font(.system(size: density.subtitleFontSize, weight: .semibold))
