@@ -138,21 +138,90 @@ enum ProviderBrandIcon {
         renderCache[key] = image
     }
 
-    /// Decoded brand accents, one stable instance per tool.
+    /// Brand accents made legible as glyph tints, one stable instance per tool.
     ///
-    /// `Theme.providerAccent` builds a fresh `Color` on every call, and for
-    /// `.grok` that is a *dynamic* `NSColor` whose identity changes each time.
-    /// Handed straight to `RenderKey` it would miss `renderCache` on every
-    /// body evaluation and undo exactly the memoization above. One instance
-    /// per tool keeps the key stable; the dynamic colour still resolves per
+    /// Two problems solved in one place.
+    ///
+    /// **Cache identity.** `Theme.providerAccent` builds a fresh `Color` on
+    /// every call, and `.grok`'s is *dynamic*, so its identity changes each
+    /// time. Handed straight to `RenderKey` it would miss `renderCache` on
+    /// every body evaluation and undo the memoization above. One instance per
+    /// tool keeps the key stable; the dynamic colour still resolves per
     /// appearance at draw time, and the key already carries the appearance.
+    ///
+    /// **Contrast.** That palette was authored for fills and chart strokes,
+    /// which sit on tinted chips. As a glyph tint on the plain window
+    /// background several of them fall under the 3:1 that a meaningful
+    /// non-text graphic needs — Codex's teal is 2.06:1 on white, Gemini's blue
+    /// 2.76:1 — and these lists are exactly where the glyph is doing work.
+    /// The hue is the brand's; only its brightness moves, and only as far as
+    /// the threshold.
     private static var accentCache: [ToolType: NSColor] = [:]
 
     static func brandAccent(for tool: ToolType) -> NSColor {
         if let cached = accentCache[tool] { return cached }
-        let color = NSColor(Theme.providerAccent(for: tool))
+        let base = NSColor(Theme.providerAccent(for: tool))
+        let light = legible(base, in: NSAppearance(named: .aqua))
+        let dark = legible(base, in: NSAppearance(named: .darkAqua))
+        let color = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        }
         accentCache[tool] = color
         return color
+    }
+
+    /// Relative luminance of the window background in each appearance, which
+    /// is what these lists are drawn on.
+    private static let lightSurfaceLuminance = 1.0
+    private static let darkSurfaceLuminance = 0.0143
+
+    /// The contrast a non-text graphic needs to stay identifiable.
+    private static let minimumGlyphContrast = 3.0
+
+    /// `base` resolved in `appearance` and then blended toward that
+    /// appearance's opposite extreme until it clears `minimumGlyphContrast`,
+    /// or left alone if it already does.
+    private static func legible(_ base: NSColor, in appearance: NSAppearance?) -> NSColor {
+        guard let appearance else { return base }
+        var resolved = base
+        appearance.performAsCurrentDrawingAppearance {
+            resolved = base.usingColorSpace(.sRGB) ?? base
+        }
+        guard let srgb = resolved.usingColorSpace(.sRGB) else { return resolved }
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let surface = isDark ? darkSurfaceLuminance : lightSurfaceLuminance
+        // Toward white on a dark ground, toward black on a light one.
+        let toward: Double = isDark ? 1 : 0
+        var components = [
+            Double(srgb.redComponent), Double(srgb.greenComponent), Double(srgb.blueComponent)
+        ]
+        // 50 steps of 2% is enough to reach either extreme, and stops at the
+        // first mix that clears the bar rather than washing the hue out.
+        for step in 0...50 {
+            let mix = Double(step) * 0.02
+            let mixed = components.map { $0 * (1 - mix) + toward * mix }
+            if contrast(luminance(mixed), surface) >= minimumGlyphContrast || step == 50 {
+                components = mixed
+                break
+            }
+        }
+        return NSColor(
+            srgbRed: CGFloat(components[0]),
+            green: CGFloat(components[1]),
+            blue: CGFloat(components[2]),
+            alpha: srgb.alphaComponent
+        )
+    }
+
+    private static func luminance(_ rgb: [Double]) -> Double {
+        let linear = rgb.map { channel -> Double in
+            channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    }
+
+    private static func contrast(_ a: Double, _ b: Double) -> Double {
+        (max(a, b) + 0.05) / (min(a, b) + 0.05)
     }
 
     static func fallbackSystemImage(for kind: MenuBarItemKind) -> String {
@@ -414,13 +483,11 @@ struct ToolBrandIconView: View {
     /// colours reads as noise. A list whose whole job is telling harnesses
     /// apart at a glance is the exception — `Theme.providerAccent`.
     ///
-    /// No legibility guard here on purpose. `Harness.brandTool` is a closed
-    /// set of six (codex, claude, gemini, antigravity, grok, cursor) and every
-    /// one of those accents clears 4:1 against both the light and the dark
-    /// window background; `.grok` is already adaptive because `Theme` made
-    /// that call by hand. Two accents elsewhere in the table *are* near-black
-    /// (Kimi's ink, Ollama's) and would vanish on a dark list — so check the
-    /// contrast before turning this on for a surface those can reach.
+    /// The tint is not the raw palette entry: `ProviderBrandIcon.brandAccent`
+    /// lifts it to 3:1 against whichever window background is showing. Half
+    /// the palette was authored for fills on tinted chips and does not clear
+    /// that on its own — Codex's teal is 2.06:1 on white, Ollama's near-black
+    /// 1.22:1 on a dark list.
     var brandColored: Bool = false
 
     var body: some View {
