@@ -198,8 +198,8 @@ private struct SessionRow: View {
                 // Brand-coloured on purpose: this list is scanned for
                 // "which harness was that", and colour finds a row faster
                 // than a 15pt silhouette does.
-                ToolBrandBadge(
-                    tool: summary.effectiveHarness.brandTool,
+                HarnessBrandBadge(
+                    harness: summary.effectiveHarness,
                     iconSize: 15,
                     containerSize: 20,
                     brandColored: true

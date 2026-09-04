@@ -15,28 +15,14 @@ extension SessionProvider {
         case .gemini:                .gemini
         case .antigravity:           .antigravity
         // Grok Bot is xAI's own app; it borrows Cursor's *quota* plumbing,
-        // never its brand. See `Harness.brandTool`.
+        // never its brand. This is the row *tint*, so xAI's colour is the
+        // right one even though the mark is Grok Bot's own — see
+        // `HarnessBrandIconView`.
         case .grokBot:               .grok
         }
     }
 
     var accent: Color { Theme.providerAccent(for: tool) }
-}
-
-extension Harness {
-    /// The brand this harness is drawn as — its own L2 tool, not the L1
-    /// company. Cursor gets the Cursor mark rather than Grok's, and
-    /// AntiGravity its own rather than Gemini's, while the *chip* that
-    /// groups them still says "SpaceXAI" / "Google AI".
-    ///
-    /// Grok Bot is the one harness whose quota tool is the wrong answer: its
-    /// weekly bucket rides in on Cursor's adapter, but a Grok Bot session was
-    /// produced by an xAI app and drawing it with Cursor's mark would say it
-    /// came from Cursor. There is no Grok Bot asset in `Resources/ProviderIcons`,
-    /// so it wears the Grok mark — the nearest brand that is actually true.
-    var brandTool: ToolType {
-        self == .grokBot ? .grok : quotaTool
-    }
 }
 
 /// The Workbench's Sessions page.
@@ -398,7 +384,7 @@ struct SessionFiltersBar: View {
                         // *user's* accent colour, which can be any hue, so no
                         // fixed brand tint can be guaranteed legible on it —
                         // and the label spells the harness out anyway.
-                        ToolBrandIconView(tool: harness.brandTool, size: 12)
+                        HarnessBrandIconView(harness: harness, size: 12)
                     }
                 }
             }

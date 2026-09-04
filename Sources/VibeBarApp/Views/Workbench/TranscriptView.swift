@@ -524,8 +524,8 @@ struct SessionMetadataHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: max(7, density.cardSpacing)) {
             HStack(alignment: .center, spacing: 10) {
-                ToolBrandBadge(
-                    tool: summary.effectiveHarness.brandTool,
+                HarnessBrandBadge(
+                    harness: summary.effectiveHarness,
                     iconSize: 20,
                     containerSize: 26,
                     brandColored: true
