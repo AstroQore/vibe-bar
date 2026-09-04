@@ -1103,6 +1103,9 @@
   "popover.machines.thirtyDayCost": {
     "value": "近 30 天花费"
   },
+  "popover.misc.copyFallback": {
+    "value": "副本 {ordinal}"
+  },
   "popover.refreshGoogleAI": {
     "value": "刷新 Gemini Web + AntiGravity"
   },
@@ -3016,6 +3019,27 @@
   },
   "status.overview.title": {
     "value": "状态"
+  },
+  "status.overview.up": {
+    "value": "可用"
+  },
+  "status.summary.activeIncident": {
+    "value": "故障处理中"
+  },
+  "status.summary.allOperational": {
+    "value": "全部服务正常"
+  },
+  "status.summary.majorOutage": {
+    "value": "严重故障"
+  },
+  "status.summary.partialOutage": {
+    "value": "部分故障"
+  },
+  "status.summary.serviceIssue": {
+    "value": "服务异常"
+  },
+  "status.summary.underMaintenance": {
+    "value": "维护中"
   },
   "usage.activity.a11y": {
     "value": "按星期与小时划分的 token 用量，7 天 × 24 小时"

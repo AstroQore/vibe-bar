@@ -923,11 +923,11 @@
     "value": "An empty text block draws nothing. Type something for it to appear in the menu bar."
   },
   "menuBar.composer.text.limit": {
-    "comment": "Explains that long text is cut short in the bar. Count is the character ceiling.",
-    "value": "Blocks longer than {count} characters are cut short with an ellipsis in the bar.",
     "args": {
       "count": "int"
-    }
+    },
+    "comment": "Explains that long text is cut short in the bar. Count is the character ceiling.",
+    "value": "Blocks longer than {count} characters are cut short with an ellipsis in the bar."
   },
   "menuBar.composer.text.placeholder": {
     "comment": "Starting content of a newly added text block, before the user types over it.",
@@ -1542,6 +1542,13 @@
   "popover.machines.thirtyDayCost": {
     "comment": "Metric label on a remote machine card",
     "value": "30-day cost"
+  },
+  "popover.misc.copyFallback": {
+    "args": {
+      "ordinal": "int"
+    },
+    "comment": "Fallback name for a duplicated misc-provider card when the user has not named it. {ordinal} is the copy's number.",
+    "value": "Copy {ordinal}"
   },
   "popover.refreshGoogleAI": {
     "comment": "Tooltip on the Google AI page's refresh button; the SubProvider names are never translated",
@@ -4353,6 +4360,34 @@
   "status.overview.title": {
     "comment": "Card title on the Overview's service-status tile row",
     "value": "Status"
+  },
+  "status.overview.up": {
+    "comment": "Overview status tile state",
+    "value": "Up"
+  },
+  "status.summary.activeIncident": {
+    "comment": "Badge text when the provider's page still claims a milder state than its own open incident",
+    "value": "Active incident"
+  },
+  "status.summary.allOperational": {
+    "comment": "Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own",
+    "value": "All services operational"
+  },
+  "status.summary.majorOutage": {
+    "comment": "Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own",
+    "value": "Major outage"
+  },
+  "status.summary.partialOutage": {
+    "comment": "Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own",
+    "value": "Partial outage"
+  },
+  "status.summary.serviceIssue": {
+    "comment": "Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own",
+    "value": "Service issue"
+  },
+  "status.summary.underMaintenance": {
+    "comment": "Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own",
+    "value": "Under maintenance"
   },
   "usage.activity.a11y": {
     "comment": "Accessibility label for the 7 by 24 activity grid",

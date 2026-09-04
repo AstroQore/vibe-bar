@@ -266,8 +266,8 @@ private struct MiscProviderInstanceStatusRow: View {
     @EnvironmentObject var quotaService: QuotaService
 
     private var accountID: String { AccountStore.miscAccountId(forInstanceID: instance.id) }
-    private var title: String { instance.displayTitle(fallback: "Copy \(ordinal)") }
-    private var refreshTitle: String { instance.displayTitle(fallback: "copy \(ordinal)") }
+    private var title: String { instance.displayTitle(fallback: L10n.Popover.miscCopyFallback(ordinal: ordinal)) }
+    private var refreshTitle: String { instance.displayTitle(fallback: L10n.Popover.miscCopyFallback(ordinal: ordinal)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {

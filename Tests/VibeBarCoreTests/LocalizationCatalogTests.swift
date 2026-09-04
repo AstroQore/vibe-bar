@@ -244,6 +244,37 @@ final class LocalizationCatalogTests: XCTestCase {
         }
     }
 
+    /// A measurement an adapter composed is copy, and it cannot be listed in
+    /// the table because it is not a fixed string. MiniMax's percentage-only
+    /// plans emit "90% left · 5 hours" as a bucket's contract `groupTitle`,
+    /// and a Chinese reader was getting "90% left · 5 小时" — the window half
+    /// translated, the sentence half not.
+    func testMeasuredPartsAreTranslatedAndNamesAreNot() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+        L10n.languageOverride = .simplifiedChinese
+
+        XCTAssertEqual(
+            QuotaGroupLabelLocalizer.displayComposed("90% left · 5 hours"),
+            "剩余 90% · 5 小时"
+        )
+        XCTAssertEqual(QuotaGroupLabelLocalizer.display("0% left"), "剩余 0%")
+        XCTAssertTrue(QuotaGroupLabelLocalizer.isTranslated("100% left"))
+
+        // The match is whole-part and digits-only, so it reaches no name and
+        // no label that merely mentions the word.
+        for identifier in [
+            "Fable 90% left", "90% left over", "% left", "ninety% left",
+            "1000% left", "90 % left", "90%left", "Sonnet",
+        ] {
+            XCTAssertEqual(
+                QuotaGroupLabelLocalizer.display(identifier), identifier,
+                "\(identifier) is not a measured part"
+            )
+            XCTAssertFalse(QuotaGroupLabelLocalizer.isTranslated(identifier))
+        }
+    }
+
     /// Every glossary term is a name the app is allowed to print verbatim.
     /// If one of them ever became a catalog *value*, the two would be
     /// saying different things about the same word.

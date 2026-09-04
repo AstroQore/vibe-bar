@@ -21,6 +21,11 @@ import Foundation
 /// The table is deliberately exhaustive rather than pattern-matched. A
 /// rule like "translate any label containing 'Weekly'" would rename
 /// "Weekly Fable" and invent a Chinese name for a model.
+///
+/// One kind of part cannot be listed, because it is not a fixed string: a
+/// *measurement* an adapter composed, like MiniMax's "90% left". See
+/// `measured(_:)` for why an anchored numeric form is safe where a
+/// substring rule is not.
 public enum QuotaGroupLabelLocalizer {
     /// Contract label → catalog key. Keys are compared case-insensitively
     /// so a discovered bucket's `groupTitle` spelling cannot slip past.
@@ -37,8 +42,43 @@ public enum QuotaGroupLabelLocalizer {
 
     /// The label to show for a contract group name.
     public static func display(_ contractLabel: String) -> String {
-        let normalized = contractLabel.trimmingCharacters(in: .whitespaces).lowercased()
-        return table[normalized]?() ?? contractLabel
+        let trimmed = contractLabel.trimmingCharacters(in: .whitespaces)
+        if let table = table[trimmed.lowercased()]?() { return table }
+        return measured(trimmed) ?? contractLabel
+    }
+
+    /// A contract part that is a *measurement* rather than a name.
+    ///
+    /// The table above is a list and not a rule on purpose — "translate
+    /// anything containing 'Weekly'" would rename "Weekly Fable" and invent
+    /// a Chinese name for a model. That reasoning is about names, and it is
+    /// exactly why an adapter cannot fix this by adding a table entry: a
+    /// percentage is not a fixed string, so there is no key to list.
+    ///
+    /// MiniMax's percentage-metered plans emit `"90% left · 5 hours"` as a
+    /// bucket's `groupTitle`. `groupTitle` is a contract value — it is
+    /// cached in `~/.vibebar/quotas/`, projected over MCP, and shared with
+    /// the cross-platform client — so it stays English at rest, and the
+    /// window half already translates here. The other half was a sentence
+    /// of ours smuggled into a contract field, and a Chinese reader got
+    /// "90% left · 5 小时".
+    ///
+    /// The match is whole-part and admits nothing but ASCII digits before
+    /// the suffix, so unlike a substring rule it cannot reach a product or
+    /// model name: nothing is called "90% left", and "Fable 90% left" is
+    /// not a part this ever sees whole. The wording comes from
+    /// `quota.forecast.value.left`, the key the forecast row and the mini
+    /// window already say this with, so the app says it one way.
+    private static let leftSuffix = "% left"
+
+    private static func measured(_ part: String) -> String? {
+        guard part.lowercased().hasSuffix(leftSuffix) else { return nil }
+        let digits = part.dropLast(leftSuffix.count)
+        guard !digits.isEmpty,
+              digits.count <= 3,
+              digits.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let percent = Int(digits) else { return nil }
+        return L10n.Quota.forecastValueLeft(percent: percent)
     }
 
     /// The separator a composed contract label is built with, on every
@@ -73,6 +113,7 @@ public enum QuotaGroupLabelLocalizer {
     /// Whether a label is one this translates, for the tests that assert a
     /// model name is *not* in the table.
     public static func isTranslated(_ contractLabel: String) -> Bool {
-        table[contractLabel.trimmingCharacters(in: .whitespaces).lowercased()] != nil
+        let trimmed = contractLabel.trimmingCharacters(in: .whitespaces)
+        return table[trimmed.lowercased()] != nil || measured(trimmed) != nil
     }
 }

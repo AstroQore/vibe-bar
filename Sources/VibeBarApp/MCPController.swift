@@ -680,7 +680,12 @@ final class MCPController: ObservableObject, MCPDataSource {
                     tool: tool.rawValue,
                     company: tool.vendorName,
                     indicator: projection.snapshot?.indicator.rawValue ?? "unknown",
-                    description: projection.snapshot?.description ?? "No status has been read yet.",
+                    // The same sentence the popover shows. `description` is
+                    // the provider's own blurb and is empty for the feeds
+                    // that publish only an indicator, so reading it raw
+                    // answered those rows with nothing.
+                    description: projection.snapshot?.effectiveDescription
+                        ?? "No status has been read yet.",
                     updatedAt: projection.snapshot?.updatedAt,
                     isRefreshing: projection.isRefreshing,
                     error: projection.error

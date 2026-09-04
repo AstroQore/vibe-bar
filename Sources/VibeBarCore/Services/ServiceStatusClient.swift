@@ -44,6 +44,10 @@ public actor ServiceStatusClient {
             return ServiceStatusSnapshot(
                 tool: tool,
                 indicator: .none,
+                // A diagnostic marker, not rendered copy: `supportsStatusPage`
+                // is false for every tool in this list, so no surface reaches
+                // this snapshot. Left in English deliberately — translating a
+                // string only a developer can ever see buys nothing.
                 description: "Status page polling is not supported for this provider.",
                 updatedAt: now,
                 groups: [],
@@ -131,7 +135,12 @@ public actor ServiceStatusClient {
         return ServiceStatusSnapshot(
             tool: tool,
             indicator: indicator,
-            description: indicator.summaryDescription,
+            // status.x.ai publishes component tiles and nothing that reads
+            // like a sentence, so there is no provider wording to carry.
+            // Empty, not our own summary: `description` is persisted, and a
+            // translated string cached here would outlive a language change.
+            // `effectiveDescription` derives our words on read.
+            description: "",
             updatedAt: updatedAt,
             groups: [],
             components: components,
@@ -470,7 +479,10 @@ public actor ServiceStatusClient {
         return ServiceStatusSnapshot(
             tool: tool,
             indicator: topIndicator,
-            description: topIndicator.summaryDescription,
+            // The Google Apps Status feed carries incidents, not a
+            // page-level blurb. Same reasoning as the xAI branch above:
+            // leave it empty and let `effectiveDescription` say it.
+            description: "",
             updatedAt: mostRecentUpdate,
             groups: [],
             components: [component],

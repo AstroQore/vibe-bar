@@ -93,7 +93,10 @@ enum SettingsDestination: Hashable {
             default: return tool.vendorName
             }
         case let .miscProvider(id):
-            guard let instance = settings.miscProviderInstance(id: id) else { return "Misc Provider" }
+            // A destination whose instance was removed under it: fall back to
+            // the name of the section it lived in, which is what the sidebar
+            // heading above still says.
+            guard let instance = settings.miscProviderInstance(id: id) else { return L10n.Popover.tabMisc }
             return instance.displayTitle(fallback: instance.tool.menuTitle)
         }
     }
