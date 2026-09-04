@@ -3230,6 +3230,22 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(composition, before)
     }
 
+    func testBoundGroupIDsAgreesWithAskingBlockByBlock() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        // The editor reads the set once per redraw instead of walking the
+        // strip per chip; the two must say the same thing.
+        let bound = composition.boundGroupIDs
+        for token in tokens {
+            let stored = composition.token(token.id)?.groupID
+            XCTAssertEqual(
+                stored.map(bound.contains) ?? false,
+                composition.isGrouped(token.id)
+            )
+        }
+        XCTAssertEqual(bound.count, 1)
+    }
+
     func testUngroupingLeavesEveryBlockWhereItWas() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[1].id, tokens[2].id])

@@ -1211,8 +1211,27 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     }
 
     /// Whether `id` is bound to at least one other block.
+    ///
+    /// Walks the strip, so a caller asking once per block is quadratic — the
+    /// editor draws every chip on every body pass and reads `boundGroupIDs`
+    /// once instead.
     public func isGrouped(_ id: UUID) -> Bool {
         groupedRun(of: id).count > 1
+    }
+
+    /// Every binding that is real: an id held by more than one block. One walk
+    /// of the strip, for callers that need the answer for all of them.
+    public var boundGroupIDs: Set<UUID> {
+        var counts: [UUID: Int] = [:]
+        for segment in segments {
+            for row in MenuBarSegment.Row.allCases {
+                for token in segment[row] {
+                    guard let group = token.groupID else { continue }
+                    counts[group, default: 0] += 1
+                }
+            }
+        }
+        return Set(counts.filter { $0.value > 1 }.keys)
     }
 
     /// Bind blocks that already sit side by side in one row.

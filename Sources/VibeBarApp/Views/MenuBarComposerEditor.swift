@@ -151,11 +151,14 @@ struct MenuBarComposerEditor: View {
     var body: some View {
         let composition = displayedComposition
         let availability = composition.availability(liveFieldIds: liveFieldIds)
+        // One walk of the strip per body pass. Asking the composition per chip
+        // walked it once per chip — quadratic in a strip the user can grow.
+        let bound = composition.boundGroupIDs
 
         VStack(alignment: .leading, spacing: density.cardSpacing + 4) {
             templateRow(composition)
             previewRow(composition)
-            stripRow(composition, availability: availability)
+            stripRow(composition, availability: availability, bound: bound)
             paletteRow(composition)
             inspectorRow(composition, availability: availability)
             footerRow(availability: availability)
@@ -288,7 +291,8 @@ struct MenuBarComposerEditor: View {
 
     private func stripRow(
         _ composition: MenuBarComposition,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             caption(L10n.MenuBar.composerBlocks)
@@ -309,11 +313,11 @@ struct MenuBarComposerEditor: View {
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     } else {
-                        segmentFlow(composition, availability: availability)
+                        segmentFlow(composition, availability: availability, bound: bound)
                     }
                 }
             } else {
-                segmentFlow(composition, availability: availability)
+                segmentFlow(composition, availability: availability, bound: bound)
             }
             removeTarget
         }
@@ -323,11 +327,12 @@ struct MenuBarComposerEditor: View {
     /// strip can hold more columns than one line of this settings pane is wide.
     private func segmentFlow(
         _ composition: MenuBarComposition,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         MenuBarChipFlow(spacing: 8, lineSpacing: 8) {
             ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
-                segmentBox(segment, index: index, of: composition, availability: availability)
+                segmentBox(segment, index: index, of: composition, availability: availability, bound: bound)
             }
         }
     }
@@ -337,7 +342,8 @@ struct MenuBarComposerEditor: View {
         _ segment: MenuBarSegment,
         index: Int,
         of composition: MenuBarComposition,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
@@ -397,12 +403,12 @@ struct MenuBarComposerEditor: View {
             // rather than a marker sitting among them. Each row is its own
             // drop target: dragging between the two rows of one segment and
             // dragging between segments are the same gesture.
-            rowStrip(segment, row: .top, availability: availability)
+            rowStrip(segment, row: .top, availability: availability, bound: bound)
             if segment.isStacked {
                 Rectangle()
                     .fill(Color.primary.opacity(0.10))
                     .frame(height: 0.5)
-                rowStrip(segment, row: .bottom, availability: availability)
+                rowStrip(segment, row: .bottom, availability: availability, bound: bound)
             }
         }
         .padding(.horizontal, 6)
@@ -422,7 +428,8 @@ struct MenuBarComposerEditor: View {
     private func rowStrip(
         _ segment: MenuBarSegment,
         row: MenuBarSegment.Row,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         let address = MenuBarComposition.RowAddress(segment: segment.id, row: row)
         let tokens = segment[row]
@@ -456,11 +463,11 @@ struct MenuBarComposerEditor: View {
                     .foregroundStyle(.tertiary)
                     .frame(minWidth: 96, minHeight: 22, alignment: .leading)
                 } else {
-                    chipFlow(tokens, address: address, availability: availability)
+                    chipFlow(tokens, address: address, availability: availability, bound: bound)
                 }
             }
         } else {
-            chipFlow(tokens, address: address, availability: availability)
+            chipFlow(tokens, address: address, availability: availability, bound: bound)
         }
     }
 
@@ -475,11 +482,12 @@ struct MenuBarComposerEditor: View {
     private func chipFlow(
         _ tokens: [MenuBarToken],
         address: MenuBarComposition.RowAddress,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
             ForEach(tokens) { token in
-                chip(token, availability: availability)
+                chip(token, availability: availability, bound: bound)
                     .onDrag {
                         // A queued colour or threshold has to land first:
                         // the drop writes this snapshot back wholesale, so
@@ -554,12 +562,13 @@ struct MenuBarComposerEditor: View {
 
     private func chip(
         _ token: MenuBarToken,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         let isSelected = selection.contains(token.id)
         let isSilent = availability.silentTokenIds.contains(token.id)
         let isDegraded = availability.degradedTokenIds.contains(token.id)
-        let bound = isGrouped(token.id)
+        let isBound = token.groupID.map(bound.contains) ?? false
         return Button {
             selection = isSelected && selection.count == 1 ? [] : [token.id]
         } label: {
@@ -585,7 +594,7 @@ struct MenuBarComposerEditor: View {
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(
-                        bound
+                        isBound
                             ? Color.accentColor.opacity(isSelected ? 0.30 : 0.16)
                             : Color.primary.opacity(isSelected ? 0.14 : 0.06)
                     )
@@ -595,7 +604,7 @@ struct MenuBarComposerEditor: View {
                     .strokeBorder(
                         isSelected
                             ? Color.accentColor.opacity(0.8)
-                            : (bound
+                            : (isBound
                                 ? Color.accentColor.opacity(0.45)
                                 : Color.primary.opacity(0.10)),
                         lineWidth: 0.5
@@ -649,10 +658,6 @@ struct MenuBarComposerEditor: View {
     /// exists only to bind a run; every other control edits a single block.
     private var selectedID: UUID? {
         selection.count == 1 ? selection.first : nil
-    }
-
-    private func isGrouped(_ id: UUID) -> Bool {
-        displayedComposition.isGrouped(id)
     }
 
     private func symbol(for kind: MenuBarToken.Kind) -> String {
