@@ -29,7 +29,9 @@ import Foundation
 /// `forecastPercent` is the median projected quota **left at reset**, the same
 /// number the Overview says "forecast N% left" about.
 /// The two countdowns use `ResetCountdownFormatter`: `5d`, `2d 4h`, `3h 16m`,
-/// `12m`, `<1m`, `now`.
+/// `12m`, `<1m`, `now`. `resetAt` prints whatever `Style.resetFormat` asks
+/// for — a bare time by default while the reset is still today, the weekday
+/// and date once it is not.
 public enum MenuBarQuotaMetric: String, Codable, CaseIterable, Sendable {
     case usedPercent
     case remainingPercent
@@ -131,21 +133,32 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         public var size: SizeStep
         public var weight: Weight
         public var monospacedDigits: Bool
+        /// The shape a `.resetAt` block prints its time in. It sits here for
+        /// the same reason `monospacedDigits` does: it changes how the block's
+        /// content is rendered, not which datum the block reads — that is
+        /// `metric`'s job — and it is inert on every block that draws no reset
+        /// time. Putting it on `Kind.quota` instead would make an unknown
+        /// value from a newer build take the whole block down (see the
+        /// `metric` note in `Kind`'s decoder), which is far too harsh a
+        /// penalty for a date format.
+        public var resetFormat: ResetTimeFormat
 
         public init(
             color: ColorSource = .automatic,
             size: SizeStep = .regular,
             weight: Weight = .medium,
-            monospacedDigits: Bool = false
+            monospacedDigits: Bool = false,
+            resetFormat: ResetTimeFormat = .default
         ) {
             self.color = color
             self.size = size
             self.weight = weight
             self.monospacedDigits = monospacedDigits
+            self.resetFormat = resetFormat
         }
 
         private enum CodingKeys: String, CodingKey {
-            case color, size, weight, monospacedDigits
+            case color, size, weight, monospacedDigits, resetFormat
         }
 
         /// Every field degrades to its default.
@@ -164,6 +177,8 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
             self.weight = (try? c.decode(Weight.self, forKey: .weight)) ?? .medium
             self.monospacedDigits =
                 (try? c.decode(Bool.self, forKey: .monospacedDigits)) ?? false
+            self.resetFormat =
+                (try? c.decode(ResetTimeFormat.self, forKey: .resetFormat)) ?? .default
         }
 
         /// What today's percentages wear: automatic colour, semibold,
@@ -2149,7 +2164,13 @@ public extension MenuBarComposition {
                     guard metric != .label else { break scan }
                     guard let quota = quotas.first(where: { $0.fieldId == fieldId }),
                           isVisible(tokens[cursor].visibility, quotas: quotas),
-                          value(of: metric, in: quota, displayMode: displayMode, now: now) != nil
+                          value(
+                              of: metric,
+                              in: quota,
+                              displayMode: displayMode,
+                              resetFormat: tokens[cursor].style.resetFormat,
+                              now: now
+                          ) != nil
                     else { break scan }
                     let echoes = referenced.map { $0 == fieldId }
                         ?? (quota.label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2244,7 +2265,14 @@ public extension MenuBarComposition {
         case let .quota(_, metric):
             // A bucket the provider is not returning right now takes its block
             // off the strip and leaves everything else alone.
-            guard let quota, let text = value(of: metric, in: quota, displayMode: displayMode, now: now)
+            guard let quota,
+                  let text = value(
+                      of: metric,
+                      in: quota,
+                      displayMode: displayMode,
+                      resetFormat: token.style.resetFormat,
+                      now: now
+                  )
             else { return nil }
             return TokenContent(
                 text: text,
@@ -2259,6 +2287,7 @@ public extension MenuBarComposition {
         of metric: MenuBarQuotaMetric,
         in quota: MenuBarQuotaSnapshot,
         displayMode: DisplayMode,
+        resetFormat: ResetTimeFormat,
         now: Date
     ) -> String? {
         switch metric {
@@ -2289,7 +2318,9 @@ public extension MenuBarComposition {
             return ResetCountdownFormatter.string(from: quota.resetAt, now: now)
         case .resetAt:
             guard let resetAt = quota.resetAt else { return nil }
-            return ResetCountdownFormatter.absoluteTime(for: resetAt, now: now)
+            return ResetCountdownFormatter.absoluteTime(
+                for: resetAt, now: now, format: resetFormat
+            )
         case .runsOutIn:
             guard let runOutAt = quota.forecast?.runOutAt else { return nil }
             return ResetCountdownFormatter.string(from: runOutAt, now: now)

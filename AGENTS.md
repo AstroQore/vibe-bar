@@ -1018,8 +1018,8 @@ API — `L10n.Quota.resetIn(duration:)`, `L10n.Common.refresh`.
 `L10n.string(_:)` is `internal` to `VibeBarCore` on purpose: a key that
 takes arguments must not be reachable as a bare format string, because
 the positional order is the generator's business and differs per
-language. Core itself uses the raw accessor for the handful of genuinely
-computed keys (a month index), which is reviewable in one place.
+language. Nothing in product code reaches for it today: the last caller
+was a month-name catalog that a CLDR skeleton replaced.
 
 **Placeholders are named, plurals are ICU.** In the JSON you write
 `{provider}`, `{days}`, and `{count, plural, one {…} other {…}}` — never
@@ -1091,6 +1091,18 @@ order), `AppLocale.string(_:dateStyle:timeStyle:)`,
 `.locale(AppLocale.current)` on a `FormatStyle`. The lint fails a raw
 `DateFormatter()`, `RelativeDateTimeFormatter()`, `.formatted(date:)`,
 bare number style, or `Locale.current` in a migrated file.
+
+A *reset* time is the one date shape with a table of its own:
+`ResetTimeFormat` (`Sources/VibeBarCore/Utilities/`) names the component
+sets a reset time may be drawn in and derives each one's skeleton, and
+`ResetCountdownFormatter.absoluteTime` is its only reader. Every surface
+that draws a reset — popover rows, quota cards, upcoming resets, misc
+providers — takes the default, `.automatic`, which prints a bare time
+while the reset is still today and the weekday, date and time after
+that. A composed menu-bar block overrides it per block through
+`MenuBarToken.Style.resetFormat`. Add a component set there rather than
+a skeleton at a call site: that scattering is why some reset times named
+a weekday and most did not.
 
 The opposite rule holds for anything that is *not* read by a person:
 wire formats, parsed payloads, cache keys and backup filenames stay

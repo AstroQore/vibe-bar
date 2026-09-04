@@ -120,6 +120,26 @@ extension L10n {
         public static func durationDaysHours(days: Int, hours: Int) -> String {
             L10n.string("common.duration.daysHours", days, hours)
         }
+        /// `common.duration.full.days` — {count, plural, one {1 day} other {# days}}
+        public static func durationFullDays(count: Int) -> String {
+            L10n.string("common.duration.full.days", count)
+        }
+        /// `common.duration.full.daysHours` — {days} and {hours}
+        public static func durationFullDaysHours(days: String, hours: String) -> String {
+            L10n.string("common.duration.full.daysHours", days, hours)
+        }
+        /// `common.duration.full.hours` — {count, plural, one {1 hour} other {# hours}}
+        public static func durationFullHours(count: Int) -> String {
+            L10n.string("common.duration.full.hours", count)
+        }
+        /// `common.duration.full.hoursMinutes` — {hours} and {minutes}
+        public static func durationFullHoursMinutes(hours: String, minutes: String) -> String {
+            L10n.string("common.duration.full.hoursMinutes", hours, minutes)
+        }
+        /// `common.duration.full.minutes` — {count, plural, one {1 minute} other {# minutes}}
+        public static func durationFullMinutes(count: Int) -> String {
+            L10n.string("common.duration.full.minutes", count)
+        }
         /// `common.duration.hours` — {hours}h
         public static func durationHours(hours: Int) -> String {
             L10n.string("common.duration.hours", hours)
@@ -601,6 +621,10 @@ extension L10n {
         public static var composerBlockLogo: String {
             L10n.string("menuBar.composer.block.logo")
         }
+        /// `menuBar.composer.block.newRow` — New row
+        public static var composerBlockNewRow: String {
+            L10n.string("menuBar.composer.block.newRow")
+        }
         /// `menuBar.composer.block.quota` — Quota
         public static var composerBlockQuota: String {
             L10n.string("menuBar.composer.block.quota")
@@ -625,7 +649,7 @@ extension L10n {
         public static var composerBlockUnsupported: String {
             L10n.string("menuBar.composer.block.unsupported")
         }
-        /// `menuBar.composer.blocks` — Blocks — drag to reorder, or to move between rows and groups
+        /// `menuBar.composer.blocks` — Blocks — drag to reorder
         public static var composerBlocks: String {
             L10n.string("menuBar.composer.blocks")
         }
@@ -684,6 +708,14 @@ extension L10n {
         /// `menuBar.composer.field.provider` — Provider
         public static var composerFieldProvider: String {
             L10n.string("menuBar.composer.field.provider")
+        }
+        /// `menuBar.composer.field.resetFormat` — Format
+        public static var composerFieldResetFormat: String {
+            L10n.string("menuBar.composer.field.resetFormat")
+        }
+        /// `menuBar.composer.field.resetFormatHelp` — Automatic prints only the time while the reset is still today.
+        public static var composerFieldResetFormatHelp: String {
+            L10n.string("menuBar.composer.field.resetFormatHelp")
         }
         /// `menuBar.composer.field.show` — Show
         public static var composerFieldShow: String {
@@ -805,6 +837,18 @@ extension L10n {
         public static var composerModeLabel: String {
             L10n.string("menuBar.composer.mode.label")
         }
+        /// `menuBar.composer.newRow.capped` — The menu bar can only draw two rows.
+        public static var composerNewRowCapped: String {
+            L10n.string("menuBar.composer.newRow.capped")
+        }
+        /// `menuBar.composer.newRow.detail` — Ends the first row and starts the second. Give it a rule below to split only when that quota says so.
+        public static var composerNewRowDetail: String {
+            L10n.string("menuBar.composer.newRow.detail")
+        }
+        /// `menuBar.composer.newRow.help` — Split the strip into a second row.
+        public static var composerNewRowHelp: String {
+            L10n.string("menuBar.composer.newRow.help")
+        }
         /// `menuBar.composer.palette` — Add a block
         public static var composerPalette: String {
             L10n.string("menuBar.composer.palette")
@@ -857,13 +901,37 @@ extension L10n {
         public static var composerPreviewLight: String {
             L10n.string("menuBar.composer.preview.light")
         }
-        /// `menuBar.composer.preview.twoRowScaling` — Two rows share the menu bar's height, so a size that does not fit is capped to the largest one that does. Blocks you did not resize keep the size they had.
+        /// `menuBar.composer.preview.twoRowScaling` — Two rows share the menu bar's height, so large sizes are scaled down to fit — the preview scales with them.
         public static var composerPreviewTwoRowScaling: String {
             L10n.string("menuBar.composer.preview.twoRowScaling")
         }
         /// `menuBar.composer.removeTarget` — Drag here to remove
         public static var composerRemoveTarget: String {
             L10n.string("menuBar.composer.removeTarget")
+        }
+        /// `menuBar.composer.resetFormat.automatic` — Automatic
+        public static var composerResetFormatAutomatic: String {
+            L10n.string("menuBar.composer.resetFormat.automatic")
+        }
+        /// `menuBar.composer.resetFormat.date` — Date
+        public static var composerResetFormatDate: String {
+            L10n.string("menuBar.composer.resetFormat.date")
+        }
+        /// `menuBar.composer.resetFormat.dateTime` — Date and time
+        public static var composerResetFormatDateTime: String {
+            L10n.string("menuBar.composer.resetFormat.dateTime")
+        }
+        /// `menuBar.composer.resetFormat.time` — Time
+        public static var composerResetFormatTime: String {
+            L10n.string("menuBar.composer.resetFormat.time")
+        }
+        /// `menuBar.composer.resetFormat.weekdayDateTime` — Weekday, date and time
+        public static var composerResetFormatWeekdayDateTime: String {
+            L10n.string("menuBar.composer.resetFormat.weekdayDateTime")
+        }
+        /// `menuBar.composer.resetFormat.weekdayTime` — Weekday and time
+        public static var composerResetFormatWeekdayTime: String {
+            L10n.string("menuBar.composer.resetFormat.weekdayTime")
         }
         /// `menuBar.composer.row.empty` — Empty row — drag a block in.
         public static var composerRowEmpty: String {
@@ -901,7 +969,7 @@ extension L10n {
         public static var composerSizeSmall: String {
             L10n.string("menuBar.composer.size.small")
         }
-        /// `menuBar.composer.space.detail` — A gap this many spaces wide, at the block's own size.
+        /// `menuBar.composer.space.detail` — A gap one space wide. Size changes how wide.
         public static var composerSpaceDetail: String {
             L10n.string("menuBar.composer.space.detail")
         }
@@ -1569,6 +1637,10 @@ extension L10n {
         /// `popover.machines.thirtyDayCost` — 30-day cost
         public static var machinesThirtyDayCost: String {
             L10n.string("popover.machines.thirtyDayCost")
+        }
+        /// `popover.misc.copyFallback` — Copy {ordinal}
+        public static func miscCopyFallback(ordinal: Int) -> String {
+            L10n.string("popover.misc.copyFallback", ordinal)
         }
         /// `popover.refreshGoogleAI` — Refresh Gemini Web + AntiGravity
         public static var refreshGoogleAI: String {
@@ -4131,6 +4203,34 @@ extension L10n {
         public static var overviewTitle: String {
             L10n.string("status.overview.title")
         }
+        /// `status.overview.up` — Up
+        public static var overviewUp: String {
+            L10n.string("status.overview.up")
+        }
+        /// `status.summary.activeIncident` — Active incident
+        public static var summaryActiveIncident: String {
+            L10n.string("status.summary.activeIncident")
+        }
+        /// `status.summary.allOperational` — All services operational
+        public static var summaryAllOperational: String {
+            L10n.string("status.summary.allOperational")
+        }
+        /// `status.summary.majorOutage` — Major outage
+        public static var summaryMajorOutage: String {
+            L10n.string("status.summary.majorOutage")
+        }
+        /// `status.summary.partialOutage` — Partial outage
+        public static var summaryPartialOutage: String {
+            L10n.string("status.summary.partialOutage")
+        }
+        /// `status.summary.serviceIssue` — Service issue
+        public static var summaryServiceIssue: String {
+            L10n.string("status.summary.serviceIssue")
+        }
+        /// `status.summary.underMaintenance` — Under maintenance
+        public static var summaryUnderMaintenance: String {
+            L10n.string("status.summary.underMaintenance")
+        }
     }
 
     public enum Usage {
@@ -6231,6 +6331,11 @@ extension L10n {
         "common.dragToReorder",
         "common.duration.days",
         "common.duration.daysHours",
+        "common.duration.full.days",
+        "common.duration.full.daysHours",
+        "common.duration.full.hours",
+        "common.duration.full.hoursMinutes",
+        "common.duration.full.minutes",
         "common.duration.hours",
         "common.duration.hoursMinutes",
         "common.duration.lessThanMinute",
@@ -6349,6 +6454,7 @@ extension L10n {
         "menuBar.composer.block.emptyText",
         "menuBar.composer.block.gap",
         "menuBar.composer.block.logo",
+        "menuBar.composer.block.newRow",
         "menuBar.composer.block.quota",
         "menuBar.composer.block.separator",
         "menuBar.composer.block.space",
@@ -6370,6 +6476,8 @@ extension L10n {
         "menuBar.composer.field.monospacedDigitsHelp",
         "menuBar.composer.field.offlineOption",
         "menuBar.composer.field.provider",
+        "menuBar.composer.field.resetFormat",
+        "menuBar.composer.field.resetFormatHelp",
         "menuBar.composer.field.show",
         "menuBar.composer.field.shows",
         "menuBar.composer.field.size",
@@ -6400,6 +6508,9 @@ extension L10n {
         "menuBar.composer.mode.default",
         "menuBar.composer.mode.defaultCaption",
         "menuBar.composer.mode.label",
+        "menuBar.composer.newRow.capped",
+        "menuBar.composer.newRow.detail",
+        "menuBar.composer.newRow.help",
         "menuBar.composer.palette",
         "menuBar.composer.preset.insertHelp",
         "menuBar.composer.preset.name",
@@ -6415,6 +6526,12 @@ extension L10n {
         "menuBar.composer.preview.light",
         "menuBar.composer.preview.twoRowScaling",
         "menuBar.composer.removeTarget",
+        "menuBar.composer.resetFormat.automatic",
+        "menuBar.composer.resetFormat.date",
+        "menuBar.composer.resetFormat.dateTime",
+        "menuBar.composer.resetFormat.time",
+        "menuBar.composer.resetFormat.weekdayDateTime",
+        "menuBar.composer.resetFormat.weekdayTime",
         "menuBar.composer.row.empty",
         "menuBar.composer.rule.always",
         "menuBar.composer.rule.whenForecast",
@@ -6589,6 +6706,7 @@ extension L10n {
         "popover.machines.notConfiguredDetail",
         "popover.machines.sequence",
         "popover.machines.thirtyDayCost",
+        "popover.misc.copyFallback",
         "popover.refreshGoogleAI",
         "popover.refreshSpaceXAI",
         "popover.showPage",
@@ -7227,6 +7345,13 @@ extension L10n {
         "status.overview.partialOutage",
         "status.overview.refreshing",
         "status.overview.title",
+        "status.overview.up",
+        "status.summary.activeIncident",
+        "status.summary.allOperational",
+        "status.summary.majorOutage",
+        "status.summary.partialOutage",
+        "status.summary.serviceIssue",
+        "status.summary.underMaintenance",
         "usage.activity.a11y",
         "usage.activity.cellTooltip",
         "usage.activity.heavy",
@@ -7747,6 +7872,9 @@ extension L10n {
     /// Keys whose value is a plural and therefore lives in the
     /// `.stringsdict` rather than the `.strings` file.
     static let pluralKeys: [String] = [
+        "common.duration.full.days",
+        "common.duration.full.hours",
+        "common.duration.full.minutes",
         "common.updated.daysAgo",
         "common.updated.hoursAgo",
         "common.updated.minutesAgo",

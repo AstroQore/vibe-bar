@@ -1147,6 +1147,26 @@ private struct MenuBarTokenInspector: View {
                 .labelsHidden()
                 .frame(width: 220)
             }
+            // Only "Resets at" prints a date, so only it gets a date format.
+            // Undebounced on purpose: a picker commits one discrete value the
+            // moment the menu closes, the way the metric, size and weight
+            // pickers around it already do. `PendingEditQueue` is for controls
+            // that fire while the user is still moving them.
+            if metric == .resetAt {
+                HStack(spacing: 8) {
+                    Text(L10n.MenuBar.composerFieldResetFormat)
+                        .frame(width: 62, alignment: .leading)
+                    Picker("", selection: Binding(
+                        get: { token.style.resetFormat },
+                        set: { value in update { $0.style.resetFormat = value } }
+                    )) {
+                        ForEach(ResetTimeFormat.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 220)
+                }
+                .help(L10n.MenuBar.composerFieldResetFormatHelp)
+            }
         case let .logo(tool):
             HStack(spacing: 8) {
                 Text(L10n.MenuBar.composerFieldProvider).frame(width: 62, alignment: .leading)

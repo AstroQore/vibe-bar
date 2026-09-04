@@ -52,8 +52,10 @@ GLOSSARY = ROOT / "Resources/i18n/_glossary.json"
 # `swift test`.
 MIGRATED = [
     "Sources/VibeBarCore/Models/QuotaError.swift",
+    "Sources/VibeBarCore/Models/ServiceStatus.swift",
     "Sources/VibeBarCore/Models/ResetHistoryComparison.swift",
     "Sources/VibeBarCore/Utilities/ResetCountdownFormatter.swift",
+    "Sources/VibeBarCore/Utilities/ResetTimeFormat.swift",
     "Sources/VibeBarCore/Utilities/QuotaFreshnessLabel.swift",
     "Sources/VibeBarApp/Views/EmptyStateView.swift",
     "Sources/VibeBarApp/Views/CostSummaryRow.swift",
@@ -127,7 +129,6 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/MiniWindowAltLayouts.swift",
     "Sources/VibeBarApp/Views/MiscProvidersPage.swift",
     "Sources/VibeBarApp/Views/CodexBarProviderBridgeCard.swift",
-    "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/MenuBarComposerEditor.swift",
     "Sources/VibeBarApp/Views/MenuBarStripView.swift",
@@ -391,7 +392,7 @@ IDENTIFIER_ARGUMENTS = {
     "systemImage", "image", "icon", "id", "tag", "key", "forKey", "table",
     "bundle", "forResource", "withExtension", "named", "identifier",
     "separator", "format", "comment", "scheme", "host", "path", "rawValue",
-    "toolNameOverride", "forGroupName", "bucketId", "accountId",
+    "toolNameOverride", "forGroupName", "bucketId", "accountId", "command",
 }
 
 # Return types that mark a helper as producing something the user reads.
@@ -438,7 +439,119 @@ def derived_helpers(files) -> set:
     return helpers - IDENTIFIER_ARGUMENTS
 
 
+# Members whose value *is* copy. A literal returned from one of these is
+# rendered without ever being passed to anything, which is how
+# `case .up: return "Up"` sat in a migrated file, beside four `L10n.Status`
+# calls in the same switch, and the lint still reported the file clean.
+#
+# This is the same lesson as adding producing types to the manifest, one
+# level deeper: guarding the *call* does not guard the *return*. Names that
+# build identity rather than copy stay out — `id`, `rawValue`, `iconName`,
+# `key`, `path` — and so does anything `IDENTIFIER_ARGUMENTS` already
+# distrusts as an argument label.
+COPY_MEMBERS = {
+    "label", "title", "subtitle", "caption", "detail", "description",
+    "displayName", "summary", "message", "prompt", "placeholder", "hint",
+    "shortLabel", "headline", "text", "tooltip", "help",
+} - IDENTIFIER_ARGUMENTS
+
+
+def copy_member_spans(source: str):
+    """Lines where a member that exists to produce copy returns a literal."""
+    spans = []
+    pattern = re.compile(
+        r"\b(?:var|func)\s+([A-Za-z_]\w*)\s*(?:\([^)]*\))?\s*"
+        r"(?:async\s+)?(?:throws\s+)?(?:->\s*)?:?\s*(?:->\s*)?String\b"
+    )
+    for match in pattern.finditer(source):
+        if match.group(1) not in COPY_MEMBERS:
+            continue
+        brace = source.find("{", match.end())
+        if brace == -1:
+            continue
+        depth, index = 1, brace + 1
+        while index < len(source) and depth:
+            if source[index] == "{":
+                depth += 1
+            elif source[index] == "}":
+                depth -= 1
+            index += 1
+        spans.append((brace, index))
+    # Only what the member *produces*. A copy-producing function still
+    # matches machine-readable values to decide what to say — a switch over
+    # `"network_timeout"` is reading a code, not printing one — so flagging
+    # every literal in the body reported the codes and buried the copy.
+    lines = set()
+    for start, end in spans:
+        body = source[start:end]
+        # `return "x"`, `?? "x"`, and the implicit single-expression form
+        # `var label: String { "x" }` / `case .a: "x"`, which is how most of
+        # this codebase actually writes them. Requiring the keyword closed
+        # the gap only for the half that spells it out.
+        for match in re.finditer(r'(?:return|\?\?|\{|:)\s*"', body):
+            lines.add(source.count("\n", 0, start + match.start()) + 1)
+    return lines
+
+
 LETTER = re.compile(r"[A-Za-z一-鿿]")
+
+
+def without_interpolations(text: str) -> str:
+    """Drop every `\\(…)` segment, keeping the literal's own characters.
+
+    `scan` consumes an interpolated literal whole, so the reported text
+    carries the *expression* inside each `\\(…)` — Swift identifiers, which
+    look exactly like words to `LETTER`. That is what reported
+    `"\\(base) · \\(accountQualifier)"` as copy: a separator joining two
+    already-localized halves, whose only letters were variable names.
+
+    Only the letters the literal spells itself are copy, so this removes
+    the interpolations before that question is asked. `"\\(n) left"` still
+    keeps its "left" and is still flagged — which is the whole point of
+    consuming interpolated literals whole.
+    """
+    out, index, length = [], 0, len(text)
+    while index < length:
+        if text.startswith("\\(", index):
+            start = index + 2
+            depth, index = 1, start
+            while index < length and depth:
+                if text[index] == "(":
+                    depth += 1
+                elif text[index] == ")":
+                    depth -= 1
+                index += 1
+            # The expression's identifiers are not copy, but a literal
+            # inside it is: `Text("\\(ready ? \"Ready\" : \"Waiting\")")`
+            # puts two English words on screen, and dropping the whole
+            # segment made a migrated file pass while shipping both.
+            out.extend(_quoted_runs(text[start:index - 1]))
+            continue
+        out.append(text[index])
+        index += 1
+    return "".join(out)
+
+
+def _quoted_runs(expression: str) -> list:
+    """The contents of every double-quoted run in an interpolated expression."""
+    runs, index, length = [], 0, len(expression)
+    while index < length:
+        if expression[index] == "\\" :
+            index += 2
+            continue
+        if expression[index] != '"':
+            index += 1
+            continue
+        index += 1
+        body = []
+        while index < length and expression[index] != '"':
+            if expression[index] == "\\" and index + 1 < length:
+                index += 1
+            body.append(expression[index])
+            index += 1
+        index += 1
+        runs.append("".join(body))
+    return runs
 
 # Per-file exceptions: a literal that reads like copy but is not, keyed by
 # the reason it is exempt. Kept short on purpose — most cases are better
@@ -468,7 +581,7 @@ URL = re.compile(r"^[a-z][a-z0-9+.-]*://\S*$|^~?/[\w./~-]*$")
 
 def is_allowed(text: str, terms: set, path: str) -> bool:
     stripped = text.strip()
-    if not stripped or not LETTER.search(stripped):
+    if not stripped or not LETTER.search(without_interpolations(stripped)):
         return True
     # A URL or a bare filesystem path is an address, not a sentence. No
     # language spells `https://` differently.
@@ -666,6 +779,7 @@ def findings_for(relative, helpers: set, terms: set):
     if "Generated by Scripts/" in source[:400]:
         return []
     found = []
+    copy_spans = copy_member_spans(source)
     for literal in scan(source):
         if literal.receiver in IDENTIFIER_RECEIVERS:
             continue
@@ -680,7 +794,16 @@ def findings_for(relative, helpers: set, terms: set):
         if literal.label in IDENTIFIER_ARGUMENTS:
             renders = False
         if not renders:
-            continue
+            # ...unless it is the value of a member that exists to produce
+            # copy, where nothing has to pass it anywhere for a user to read
+            # it.
+            if literal.line not in copy_spans:
+                continue
+            # Reachable, but `systemImage:` and its kin still never carry
+            # copy — the copy-member rule adds a way in, not an exemption
+            # from the question already answered here.
+            if literal.label in IDENTIFIER_ARGUMENTS:
+                continue
         if is_allowed(literal.text, terms, relative):
             continue
         where = f"{callee or '?'}(" + (f"{literal.label}:" if literal.label else "") + "…)"

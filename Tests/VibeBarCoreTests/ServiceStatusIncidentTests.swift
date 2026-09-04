@@ -22,6 +22,45 @@ final class ServiceStatusIncidentTests: XCTestCase {
         )
     }
 
+    func testACacheFromAnOlderBuildDoesNotFreezeItsEnglish() {
+        // Before these words were ours to translate, the xAI and Google
+        // fetchers wrote them into `description` — the field that holds the
+        // provider's own wording and is never translated. Those files are
+        // still on disk, and in demo mode the cache is the only source there
+        // is, so reading them as provider wording would show a Chinese
+        // reader English forever.
+        let legacy = ServiceStatusSnapshot(
+            tool: .grok,
+            indicator: .none,
+            description: "All services operational",
+            updatedAt: now,
+            groups: [],
+            components: [],
+            recentIncidents: [],
+            incidentDays: nil,
+            incidentAdjustedUptimePercent: nil
+        )
+        let restore = L10n.languageOverride
+        L10n.languageOverride = .simplifiedChinese
+        defer { L10n.languageOverride = restore }
+        XCTAssertEqual(legacy.effectiveDescription, L10n.Status.summaryAllOperational)
+        XCTAssertNotEqual(legacy.effectiveDescription, "All services operational")
+
+        // A provider's real blurb is still its own.
+        let provider = ServiceStatusSnapshot(
+            tool: .claude,
+            indicator: .none,
+            description: "All Systems Operational",
+            updatedAt: now,
+            groups: [],
+            components: [],
+            recentIncidents: [],
+            incidentDays: nil,
+            incidentAdjustedUptimePercent: nil
+        )
+        XCTAssertEqual(provider.effectiveDescription, "All Systems Operational")
+    }
+
     private func snapshot(
         indicator: StatusIndicator,
         incidents: [IncidentSummary],
@@ -50,6 +89,37 @@ final class ServiceStatusIncidentTests: XCTestCase {
         )
         XCTAssertEqual(snap.effectiveIndicator, .minor)
         XCTAssertEqual(snap.effectiveDescription, "Active incident")
+    }
+
+    /// The line between the provider's words and ours. A statuspage blurb
+    /// arrives over the wire and is cached verbatim; the words we supply
+    /// when a feed publishes only an indicator are copy, are translated,
+    /// and are derived on read so a cached snapshot cannot freeze them in
+    /// the language it was fetched in.
+    func testProviderWordingIsKeptAndOurOwnIsTranslated() {
+        let restore = L10n.languageOverride
+        defer { L10n.languageOverride = restore }
+
+        let published = snapshot(indicator: .none, incidents: [])
+        let silent = ServiceStatusSnapshot(
+            tool: .grok,
+            indicator: .none,
+            description: "",
+            updatedAt: now,
+            groups: [],
+            components: [],
+            recentIncidents: []
+        )
+
+        L10n.languageOverride = .simplifiedChinese
+        // The provider wrote this sentence. It is data and stays as sent.
+        XCTAssertEqual(published.effectiveDescription, "All Systems Operational")
+        // This one is ours, so it reads as Chinese.
+        XCTAssertEqual(silent.effectiveDescription, "全部服务正常")
+
+        L10n.languageOverride = .english
+        XCTAssertEqual(published.effectiveDescription, "All Systems Operational")
+        XCTAssertEqual(silent.effectiveDescription, "All services operational")
     }
 
     func testResolvedIncidentKeepsPageIndicator() {

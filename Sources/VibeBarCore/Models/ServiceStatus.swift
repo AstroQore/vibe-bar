@@ -17,17 +17,26 @@ public enum StatusIndicator: String, Codable, Sendable {
         }
     }
 
-    /// Badge text for a page-level indicator. `effectiveDescription` speaks
-    /// for an *unacknowledged* incident and deliberately words `.minor`
-    /// differently; everything reporting a provider's own indicator uses
-    /// this.
+    /// Badge text for a page-level indicator, in **our** words rather than
+    /// the provider's. A status feed that publishes a blurb of its own —
+    /// "All Systems Operational", "Users in the APAC region may see
+    /// elevated latency" — wrote that text itself, and it stays exactly as
+    /// sent (see `ServiceStatusSnapshot.description`). This is what we say
+    /// when the feed carries only an indicator, so it is copy and it is
+    /// translated.
+    ///
+    /// Computed, never stored: a localized string written into the cached
+    /// snapshot would keep whatever language was current when it was
+    /// written. `effectiveDescription` speaks for an *unacknowledged*
+    /// incident and deliberately words `.minor` differently; everything
+    /// reporting a provider's own indicator uses this.
     public var summaryDescription: String {
         switch self {
-        case .none:        return "All services operational"
-        case .maintenance: return "Under maintenance"
-        case .minor:       return "Service issue"
-        case .major:       return "Partial outage"
-        case .critical:    return "Major outage"
+        case .none:        return L10n.Status.summaryAllOperational
+        case .maintenance: return L10n.Status.summaryUnderMaintenance
+        case .minor:       return L10n.Status.summaryServiceIssue
+        case .major:       return L10n.Status.summaryPartialOutage
+        case .critical:    return L10n.Status.summaryMajorOutage
         }
     }
 }
@@ -167,6 +176,19 @@ public struct DayUptime: Codable, Sendable, Hashable, Identifiable {
 public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
     public let tool: ToolType
     public let indicator: StatusIndicator
+    /// The provider's own words for its current state, verbatim — "All
+    /// Systems Operational", "Users in APAC may see elevated latency".
+    ///
+    /// This is **data, not copy**: it arrives over the wire in whatever the
+    /// provider wrote and is persisted to `service_status.json`, so it is
+    /// never translated, and nothing from the catalog is ever written into
+    /// it — a localized string stored here would be frozen in the language
+    /// that was current when the cache was written.
+    ///
+    /// Empty when the feed publishes no blurb at all: xAI's HTML page and
+    /// Google's incident feed carry an indicator and nothing else. Our own
+    /// (translated) words for that state come from `effectiveDescription`,
+    /// derived per read. Read that rather than this on any surface.
     public let description: String
     public let updatedAt: Date
     public let groups: [ServiceComponentGroup]
@@ -228,17 +250,64 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
         return unresolvedWorst.severity > indicator.severity ? unresolvedWorst : indicator
     }
 
-    /// Badge text override when `effectiveIndicator` outranks the page's own
-    /// indicator (i.e. an open incident the page hasn't acknowledged).
+    /// The badge text a surface should draw, resolved in three steps:
+    ///
+    /// 1. an open incident the page has not acknowledged
+    ///    (`effectiveIndicator` outranks `indicator`) — we say what the page
+    ///    will not, so these are **our** words and they are translated;
+    /// 2. otherwise the provider's own blurb, verbatim, because it wrote it;
+    /// 3. otherwise — the feed published only an indicator — our own
+    ///    `summaryDescription` for it, also translated.
+    ///
+    /// Every branch is derived on read. Nothing here may be written back
+    /// into `description`, which is cached to disk in the language it was
+    /// fetched in.
     public var effectiveDescription: String {
-        guard effectiveIndicator.severity > indicator.severity else { return description }
+        guard effectiveIndicator.severity > indicator.severity else { return statedDescription }
         switch effectiveIndicator {
-        case .none:        return description
-        case .maintenance: return "Under maintenance"
-        case .minor:       return "Active incident"
-        case .major:       return "Partial outage"
-        case .critical:    return "Major outage"
+        case .none:        return statedDescription
+        case .maintenance: return L10n.Status.summaryUnderMaintenance
+        case .minor:       return L10n.Status.summaryActiveIncident
+        case .major:       return L10n.Status.summaryPartialOutage
+        case .critical:    return L10n.Status.summaryMajorOutage
         }
+    }
+
+    /// The provider's blurb when it published one, our own words for its
+    /// indicator when it did not. Steps 2 and 3 of `effectiveDescription`.
+    private var statedDescription: String {
+        description.isEmpty || Self.isLegacySynthesized(description)
+            ? indicator.summaryDescription
+            : description
+    }
+
+    /// Sentences an earlier build wrote into `description` itself.
+    ///
+    /// Before these words were ours to translate, the xAI and Google
+    /// fetchers baked them into the cached snapshot. Those files are still
+    /// on disk, and treating their contents as the provider's wording would
+    /// leave a Chinese reader looking at English until the next successful
+    /// refresh — indefinitely offline, and always in demo mode, where the
+    /// cache is the only source there is.
+    ///
+    /// Matched against the English forms only. They are what an old build
+    /// could have written; a newer one writes nothing here, and a provider
+    /// that happens to publish the same sentence loses nothing by having it
+    /// re-derived from the same indicator.
+    private static let legacySynthesized: Set<String> = [
+        "all services operational",
+        "under maintenance",
+        "service issue",
+        "partial outage",
+        "major outage",
+        "active incident",
+        "cursor status available",
+    ]
+
+    private static func isLegacySynthesized(_ text: String) -> Bool {
+        legacySynthesized.contains(
+            text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        )
     }
 
     public func components(in group: ServiceComponentGroup?) -> [ServiceComponentSummary] {
@@ -271,6 +340,11 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
     /// Cursor Status without implying a second top-level company row.
     /// Any `breakouts` claim their named components into their own trailing
     /// groups, which render with the same styling as the primary group.
+    ///
+    /// The result is a **display-time projection**, rebuilt whenever a row
+    /// is drawn and never cached, which is why its `description` may hold
+    /// already-resolved (and so possibly translated) text where a fetched
+    /// snapshot's may not.
     public func mergingSubProvider(
         _ child: ServiceStatusSnapshot,
         groupID: String,
@@ -316,10 +390,15 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
         cursor: ServiceStatusSnapshot?
     ) -> ServiceStatusSnapshot? {
         guard let cursor else { return grok }
+        // No Grok feed: stand in with an empty description rather than words
+        // of our own. Empty means "the provider said nothing", and
+        // `effectiveDescription` answers that with the localized summary of
+        // whatever indicator the merge settles on — which, once Cursor is
+        // folded in below, is the state the row is actually reporting.
         var base = grok ?? ServiceStatusSnapshot(
             tool: .grok,
             indicator: .none,
-            description: "Cursor status available",
+            description: "",
             updatedAt: cursor.updatedAt,
             groups: [],
             components: [],

@@ -1388,7 +1388,11 @@ private struct OverviewStatusSummaryCard: View {
         if let incident = projection.snapshot?.recentIncidents.first, !incident.isResolved {
             return incident.name
         }
-        return projection.snapshot?.description ?? state.detail
+        // `effectiveDescription`, not `description`: the stored field holds
+        // only what the provider itself published, and is empty for the
+        // feeds that publish an indicator and no wording. The accessor is
+        // what turns that into our own translated summary.
+        return projection.snapshot?.effectiveDescription ?? state.detail
     }
 
     private func statusState(_ projection: ServiceStatusController.Projection) -> OverviewStatusState {
@@ -1435,7 +1439,7 @@ private enum OverviewStatusState {
 
     var label: String {
         switch self {
-        case .up:          return "Up"
+        case .up:          return L10n.Status.overviewUp
         case .degraded:    return L10n.Status.overviewDegraded
         case .down:        return L10n.Status.overviewDown
         case .checking:    return L10n.Status.overviewChecking

@@ -136,7 +136,13 @@ final class MenuBarCompositionTests: XCTestCase {
             windowSeconds: 3600
         )
         XCTAssertEqual(
-            MenuBarComposition.value(of: .pace, in: snapshot, displayMode: .used, now: reference),
+            MenuBarComposition.value(
+                of: .pace,
+                in: snapshot,
+                displayMode: .used,
+                resetFormat: .default,
+                now: reference
+            ),
             "±0%"
         )
         XCTAssertEqual(
@@ -144,6 +150,7 @@ final class MenuBarCompositionTests: XCTestCase {
                 of: .pace,
                 in: snapshot,
                 displayMode: .used,
+                resetFormat: .default,
                 now: reference.addingTimeInterval(900)
             ),
             "-25%"
@@ -177,10 +184,54 @@ final class MenuBarCompositionTests: XCTestCase {
         // `resetAt` is the local wall time, so derive the expectation from the
         // same calendar the formatter uses rather than hard-coding a zone.
         let parts = Calendar.current.dateComponents([.hour, .minute], from: resetAt)
+        let wallTime = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        // Default is `.automatic`, and this reset is still today, so the block
+        // prints the bare time — the same width it printed before weekdays
+        // existed.
+        XCTAssertEqual(metric(.resetAt, quota(resetAt: resetAt)), wallTime)
+        XCTAssertEqual(metric(.resetAt, quota(resetAt: resetAt), format: .time), wallTime)
+    }
+
+    /// The per-block format is read from the block's own style, so two blocks
+    /// on the same quota can print the same reset differently.
+    func testTheResetAtBlockPrintsTheFormatItsOwnStyleAsksFor() {
+        let resetAt = reference.addingTimeInterval(3600 * 30)
+        let snapshot = quota(resetAt: resetAt)
+        let weekday = AppLocale.string(resetAt, template: "EEE")
+
+        XCTAssertEqual(metric(.resetAt, snapshot, format: .weekdayTime)?.contains(weekday), true)
+        XCTAssertEqual(metric(.resetAt, snapshot, format: .dateTime)?.contains(weekday), false)
+        // Date only prints no clock time at all.
         XCTAssertEqual(
-            metric(.resetAt, quota(resetAt: resetAt)),
-            String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+            metric(.resetAt, snapshot, format: .date),
+            AppLocale.string(resetAt, template: "MMMd")
         )
+    }
+
+    func testAStyleFromANewerBuildKeepsItsBlockAndFallsBackToTheDefaultFormat() {
+        // A format this build has never heard of is a cosmetic unknown, not a
+        // reason to lose the block: the strip keeps the quota and prints it in
+        // the default shape. `Kind.metric` is the opposite call on purpose —
+        // an unknown *metric* would silently show the wrong number.
+        let json = """
+        {"id":"\(UUID().uuidString)",
+         "kind":{"type":"quota","fieldId":"claude.weekly","metric":"resetAt"},
+         "style":{"color":{"type":"primary"},"size":"regular","weight":"medium",
+                  "monospacedDigits":false,"resetFormat":"stardate"}}
+        """
+        let token = try? JSONDecoder().decode(MenuBarToken.self, from: Data(json.utf8))
+        XCTAssertEqual(token?.kind, .quota(fieldId: "claude.weekly", metric: .resetAt))
+        XCTAssertEqual(token?.style.resetFormat, .default)
+    }
+
+    func testAResetFormatSurvivesASettingsRoundTrip() {
+        let token = MenuBarToken(
+            kind: .quota(fieldId: "claude.weekly", metric: .resetAt),
+            style: MenuBarToken.Style(resetFormat: .weekdayDateTime)
+        )
+        let data = try? JSONEncoder().encode(token)
+        let restored = data.flatMap { try? JSONDecoder().decode(MenuBarToken.self, from: $0) }
+        XCTAssertEqual(restored?.style.resetFormat, .weekdayDateTime)
     }
 
     func testLabelMetricPrintsTheQuotasOwnName() {
@@ -188,11 +239,16 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertNil(metric(.label, quota(label: "   ")))
     }
 
-    private func metric(_ metric: MenuBarQuotaMetric, _ snapshot: MenuBarQuotaSnapshot) -> String? {
+    private func metric(
+        _ metric: MenuBarQuotaMetric,
+        _ snapshot: MenuBarQuotaSnapshot,
+        format: ResetTimeFormat = .default
+    ) -> String? {
         MenuBarComposition.value(
             of: metric,
             in: snapshot,
             displayMode: .remaining,
+            resetFormat: format,
             now: reference
         )
     }

@@ -80,6 +80,21 @@
   "common.duration.daysHours": {
     "value": "{days} 天 {hours} 小时"
   },
+  "common.duration.full.days": {
+    "value": "{count, plural, other {# 天}}"
+  },
+  "common.duration.full.daysHours": {
+    "value": "{days} {hours}"
+  },
+  "common.duration.full.hours": {
+    "value": "{count, plural, other {# 小时}}"
+  },
+  "common.duration.full.hoursMinutes": {
+    "value": "{hours} {minutes}"
+  },
+  "common.duration.full.minutes": {
+    "value": "{count, plural, other {# 分钟}}"
+  },
   "common.duration.hours": {
     "value": "{hours} 小时"
   },
@@ -434,6 +449,9 @@
   "menuBar.composer.block.logo": {
     "value": "图标"
   },
+  "menuBar.composer.block.newRow": {
+    "value": "换行"
+  },
   "menuBar.composer.block.quota": {
     "value": "额度"
   },
@@ -453,7 +471,7 @@
     "value": "来自更新版本"
   },
   "menuBar.composer.blocks": {
-    "value": "积木 · 拖动可重新排序，或在行与分组之间移动"
+    "value": "积木 · 拖动可重新排序"
   },
   "menuBar.composer.blocks.empty": {
     "value": "尚无积木。可从下方面板添加。"
@@ -496,6 +514,12 @@
   },
   "menuBar.composer.field.provider": {
     "value": "厂商"
+  },
+  "menuBar.composer.field.resetFormat": {
+    "value": "格式"
+  },
+  "menuBar.composer.field.resetFormatHelp": {
+    "value": "自动格式在重置仍处于当日时只显示时间。"
   },
   "menuBar.composer.field.show": {
     "value": "显示条件"
@@ -587,6 +611,15 @@
   "menuBar.composer.mode.label": {
     "value": "样式"
   },
+  "menuBar.composer.newRow.capped": {
+    "value": "菜单栏最多显示两行。"
+  },
+  "menuBar.composer.newRow.detail": {
+    "value": "结束第一行并开始第二行。可在下方设置条件，仅在该额度满足条件时换行。"
+  },
+  "menuBar.composer.newRow.help": {
+    "value": "将菜单栏内容拆成第二行。"
+  },
   "menuBar.composer.palette": {
     "value": "添加积木"
   },
@@ -627,10 +660,28 @@
     "value": "浅色菜单栏预览"
   },
   "menuBar.composer.preview.twoRowScaling": {
-    "value": "两行共用菜单栏高度，放不下的字号会限制到能放下的最大值。未调整过字号的积木保持原有大小。"
+    "value": "两行共用菜单栏高度，较大字号会等比缩小以适应，预览同步缩放。"
   },
   "menuBar.composer.removeTarget": {
     "value": "拖到此处移除"
+  },
+  "menuBar.composer.resetFormat.automatic": {
+    "value": "自动"
+  },
+  "menuBar.composer.resetFormat.date": {
+    "value": "日期"
+  },
+  "menuBar.composer.resetFormat.dateTime": {
+    "value": "日期与时间"
+  },
+  "menuBar.composer.resetFormat.time": {
+    "value": "时间"
+  },
+  "menuBar.composer.resetFormat.weekdayDateTime": {
+    "value": "星期、日期与时间"
+  },
+  "menuBar.composer.resetFormat.weekdayTime": {
+    "value": "星期与时间"
   },
   "menuBar.composer.row.empty": {
     "value": "空行，可将积木拖入。"
@@ -660,7 +711,7 @@
     "value": "小"
   },
   "menuBar.composer.space.detail": {
-    "value": "按积木自身字号计算的若干个空格宽的间隔。"
+    "value": "宽度为一个空格的间隔。字号决定其宽度。"
   },
   "menuBar.composer.space.width": {
     "value": "宽度"
@@ -1153,6 +1204,9 @@
   },
   "popover.machines.thirtyDayCost": {
     "value": "近 30 天花费"
+  },
+  "popover.misc.copyFallback": {
+    "value": "副本 {ordinal}"
   },
   "popover.refreshGoogleAI": {
     "value": "刷新 Gemini Web + AntiGravity"
@@ -3067,6 +3121,27 @@
   },
   "status.overview.title": {
     "value": "状态"
+  },
+  "status.overview.up": {
+    "value": "可用"
+  },
+  "status.summary.activeIncident": {
+    "value": "故障处理中"
+  },
+  "status.summary.allOperational": {
+    "value": "全部服务正常"
+  },
+  "status.summary.majorOutage": {
+    "value": "严重故障"
+  },
+  "status.summary.partialOutage": {
+    "value": "部分故障"
+  },
+  "status.summary.serviceIssue": {
+    "value": "服务异常"
+  },
+  "status.summary.underMaintenance": {
+    "value": "维护中"
   },
   "usage.activity.a11y": {
     "value": "按星期与小时划分的 token 用量，7 天 × 24 小时"

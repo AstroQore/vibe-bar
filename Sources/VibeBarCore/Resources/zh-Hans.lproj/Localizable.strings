@@ -83,6 +83,12 @@
 /* Compact countdown, days and hours */
 "common.duration.daysHours" = "%1$lld 天 %2$lld 小时";
 
+/* Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar. */
+"common.duration.full.daysHours" = "%1$@ %2$@";
+
+/* Spelled-out duration for a full-width sentence line. The compact common.duration.* forms stay for dense rows, tiles and the menu bar. */
+"common.duration.full.hoursMinutes" = "%1$@ %2$@";
+
 /* Compact countdown, whole hours only */
 "common.duration.hours" = "%1$lld 小时";
 
@@ -428,6 +434,9 @@
 /* A block showing a provider's brand mark. */
 "menuBar.composer.block.logo" = "图标";
 
+/* A block that ends one row and starts the next. */
+"menuBar.composer.block.newRow" = "换行";
+
 /* A block showing a number read from a quota. */
 "menuBar.composer.block.quota" = "额度";
 
@@ -447,7 +456,7 @@
 "menuBar.composer.block.unsupported" = "来自更新版本";
 
 /* Caption over the reorderable list of blocks. */
-"menuBar.composer.blocks" = "积木 · 拖动可重新排序，或在行与分组之间移动";
+"menuBar.composer.blocks" = "积木 · 拖动可重新排序";
 
 /* Shown when the strip has no blocks. */
 "menuBar.composer.blocks.empty" = "尚无积木。可从下方面板添加。";
@@ -490,6 +499,12 @@
 
 /* Picker choosing which provider's logo a block shows. */
 "menuBar.composer.field.provider" = "厂商";
+
+/* Label for the picker that chooses how a Resets at block prints its date and time */
+"menuBar.composer.field.resetFormat" = "格式";
+
+/* Tooltip on the reset-time format picker, explaining the Automatic option */
+"menuBar.composer.field.resetFormatHelp" = "自动格式在重置仍处于当日时只显示时间。";
 
 /* Picker choosing when a block is on screen. */
 "menuBar.composer.field.show" = "显示条件";
@@ -581,6 +596,15 @@
 /* Segmented control choosing how the menu-bar strip is built. */
 "menuBar.composer.mode.label" = "样式";
 
+/* Tooltip on the New row palette button once both rows are used. */
+"menuBar.composer.newRow.capped" = "菜单栏最多显示两行。";
+
+/* What a new-row block does, and that it accepts a rule. */
+"menuBar.composer.newRow.detail" = "结束第一行并开始第二行。可在下方设置条件，仅在该额度满足条件时换行。";
+
+/* Tooltip on the New row palette button when a second row is still available. */
+"menuBar.composer.newRow.help" = "将菜单栏内容拆成第二行。";
+
 /* Caption over the list of blocks that can be added. */
 "menuBar.composer.palette" = "添加积木";
 
@@ -620,11 +644,29 @@
 /* Accessibility label for the light-background preview. */
 "menuBar.composer.preview.light" = "浅色菜单栏预览";
 
-/* Explains how a two-row strip handles a size that does not fit the menu bar's height. */
-"menuBar.composer.preview.twoRowScaling" = "两行共用菜单栏高度，放不下的字号会限制到能放下的最大值。未调整过字号的积木保持原有大小。";
+/* Explains that a two-row strip is scaled to fit the menu bar's height. */
+"menuBar.composer.preview.twoRowScaling" = "两行共用菜单栏高度，较大字号会等比缩小以适应，预览同步缩放。";
 
 /* Drop target that deletes the dragged block. */
 "menuBar.composer.removeTarget" = "拖到此处移除";
+
+/* Reset-time format: the time alone today, the weekday and date after that */
+"menuBar.composer.resetFormat.automatic" = "自动";
+
+/* Reset-time format showing only the calendar date, e.g. Sep 7 */
+"menuBar.composer.resetFormat.date" = "日期";
+
+/* Reset-time format showing the date and the time, e.g. Sep 7 at 12:01 */
+"menuBar.composer.resetFormat.dateTime" = "日期与时间";
+
+/* Reset-time format showing only the clock time, e.g. 12:01 */
+"menuBar.composer.resetFormat.time" = "时间";
+
+/* Reset-time format showing the weekday, the date and the time, e.g. Mon, Sep 7 at 12:01 */
+"menuBar.composer.resetFormat.weekdayDateTime" = "星期、日期与时间";
+
+/* Reset-time format showing the weekday and the time, e.g. Mon 12:01 */
+"menuBar.composer.resetFormat.weekdayTime" = "星期与时间";
 
 /* Shown inside a group's second row while it holds no blocks. */
 "menuBar.composer.row.empty" = "空行，可将积木拖入。";
@@ -654,7 +696,7 @@
 "menuBar.composer.size.small" = "小";
 
 /* What a space block does. */
-"menuBar.composer.space.detail" = "按积木自身字号计算的若干个空格宽的间隔。";
+"menuBar.composer.space.detail" = "宽度为一个空格的间隔。字号决定其宽度。";
 
 /* Stepper choosing how wide a space block is. */
 "menuBar.composer.space.width" = "宽度";
@@ -1144,6 +1186,9 @@
 
 /* Metric label on a remote machine card */
 "popover.machines.thirtyDayCost" = "近 30 天花费";
+
+/* Fallback name for a duplicated misc-provider card when the user has not named it. {ordinal} is the copy's number. */
+"popover.misc.copyFallback" = "副本 %1$lld";
 
 /* Tooltip on the Google AI page's refresh button; the SubProvider names are never translated */
 "popover.refreshGoogleAI" = "刷新 Gemini Web + AntiGravity";
@@ -3019,6 +3064,27 @@
 
 /* Card title on the Overview's service-status tile row */
 "status.overview.title" = "状态";
+
+/* Overview status tile state */
+"status.overview.up" = "可用";
+
+/* Badge text when the provider's page still claims a milder state than its own open incident */
+"status.summary.activeIncident" = "故障处理中";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.allOperational" = "全部服务正常";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.majorOutage" = "严重故障";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.partialOutage" = "部分故障";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.serviceIssue" = "服务异常";
+
+/* Our own badge text for a provider's overall state, used when its status feed publishes an indicator but no wording of its own */
+"status.summary.underMaintenance" = "维护中";
 
 /* Accessibility label for the 7 by 24 activity grid */
 "usage.activity.a11y" = "按星期与小时划分的 token 用量，7 天 × 24 小时";

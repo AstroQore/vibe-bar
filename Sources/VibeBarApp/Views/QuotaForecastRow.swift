@@ -83,8 +83,14 @@ struct QuotaForecastRow: View {
     }
 
     private var useUpText: String {
+        // A whole line to itself, so the words get spelled out: "Estimated to
+        // run out in 2 days and 19 hours" is a sentence, "in 2d 19h" is a
+        // readout. Every other countdown stays compact, because every other
+        // countdown shares its row with a title.
         if let runOutAt = forecast.runOutAt,
-           let countdown = ResetCountdownFormatter.string(from: runOutAt, now: now) {
+           let countdown = ResetCountdownFormatter.string(
+               from: runOutAt, now: now, style: .full
+           ) {
             return forecast.verdict == .watch
                 ? L10n.Quota.forecastUseUpCouldRunOut(countdown: countdown)
                 : L10n.Quota.forecastUseUpEstimated(countdown: countdown)
