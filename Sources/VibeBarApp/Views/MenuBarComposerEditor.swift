@@ -1746,7 +1746,13 @@ struct MenuBarChipFlow: Layout {
     /// an inner flow wrap inside it, which is the only honest measurement
     /// when a flow holds a flow.
     private func measure(_ subview: Subviews.Element, maxWidth: CGFloat) -> CGSize {
-        guard maxWidth.isFinite else { return subview.sizeThatFits(.unspecified) }
+        let intrinsic = subview.sizeThatFits(.unspecified)
+        guard maxWidth.isFinite, intrinsic.width > maxWidth else { return intrinsic }
+        // Only the ones that do not fit. Proposing the cap to everything
+        // makes any greedy subview — a group box, whose header holds a
+        // Spacer — report the full width and take a line to itself, which
+        // turns "wrap side by side" into "one per row" and makes the
+        // composer taller for no reason.
         return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
     }
 
