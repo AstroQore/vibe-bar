@@ -27,7 +27,13 @@ final class ProviderIconResourcesTests: XCTestCase {
             "kilo",
             "kiro",
             "ollama",
-            "openrouter"
+            "openrouter",
+            // Brand marks that are not a tool's own — see `BrandMark`.
+            "spacexai",
+            "googleai",
+            "anthropic",
+            "grokbot",
+            "codex-session"
         ]
 
         for slug in slugs {
