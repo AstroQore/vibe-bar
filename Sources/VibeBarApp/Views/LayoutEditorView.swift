@@ -27,6 +27,7 @@ import VibeBarCore
 ///   packer or the balancer, and a drag deciding it would be discarded on the
 ///   next measurement.
 struct LayoutEditorView: View {
+    @Environment(\.isInLayoutStudio) private var isInLayoutStudio
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var layoutModel: PageLayoutModel
@@ -39,7 +40,12 @@ struct LayoutEditorView: View {
     @EnvironmentObject private var quotaService: QuotaService
     @EnvironmentObject private var costService: CostUsageService
 
+    /// Which page this editor opens on. Settings leaves it alone and the
+    /// editor remembers its own; the studio names one, because the controls
+    /// and the surface on the stage have to be the same page.
+    var initialPage: PageLayoutPageID?
     @State private var selectedPage: PageLayoutPageID = .overview
+    @State private var hasAppliedInitialPage = false
     @State private var drag: DragState?
     /// Live frames of every block, keyed by page *and* module: switching pages
     /// must not let a module that exists on both (Service Status, say) keep the
@@ -68,7 +74,9 @@ struct LayoutEditorView: View {
     private static let blockSpacing: CGFloat = 5
     /// Height the taller column is scaled to fit.
     private static let editorColumnHeight: Double = 430
-    private static let previewColumnHeight: Double = 132
+    /// How tall the scaled preview may get before it is cut off at the
+    /// top of the page, which is the part being arranged.
+    private static let previewColumnHeight: CGFloat = 300
 
     private struct DragState {
         let moduleID: PageLayoutModuleID
@@ -97,6 +105,7 @@ struct LayoutEditorView: View {
 
     var body: some View {
         let pages = PageModuleCatalog.editablePages(settings: settingsStore.settings)
+        let _ = applyInitialPageIfNeeded()
         let page = pages.contains { $0.page == selectedPage } ? selectedPage : .overview
         let descriptors = PageModuleCatalog.descriptors(
             for: page,
@@ -131,7 +140,7 @@ struct LayoutEditorView: View {
                         mode: mode,
                         descriptors: descriptors
                     )
-                    preview(arrangement: arrangement, blocks: blocks)
+                    previewColumnStack(page: page, arrangement: arrangement, blocks: blocks)
                 }
             }
             Text(footnote(page: page, mode: mode))
@@ -167,6 +176,14 @@ struct LayoutEditorView: View {
             drag = nil
             pendingSegments = 0
         }
+    }
+
+    /// Once, and only when a caller named one — a later pick inside the
+    /// editor must not be snapped back.
+    private func applyInitialPageIfNeeded() {
+        guard let initialPage, !hasAppliedInitialPage else { return }
+        hasAppliedInitialPage = true
+        selectedPage = initialPage
     }
 
     // MARK: - Page picker
@@ -1293,6 +1310,29 @@ struct LayoutEditorView: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(Color.primary.opacity(0.10), lineWidth: 0.7)
             )
+        }
+    }
+
+    /// The schematic, and the way out to the full-size one.
+    ///
+    /// The skeleton is what belongs here: it fits the space a settings pane
+    /// has, and reading structure is what arranging needs. Seeing the real
+    /// thing needs room this pane does not have — that is the studio's job.
+    private func previewColumnStack(
+        page: PageLayoutPageID,
+        arrangement: PageLayoutArrangement,
+        blocks: [PageLayoutModuleID: Block]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            preview(arrangement: arrangement, blocks: blocks)
+            if !isInLayoutStudio {
+                LayoutStudioButton {
+                    LayoutStudioWindowController.shared.open(
+                        subject: .popoverPage(page),
+                        environment: environment
+                    )
+                }
+            }
         }
     }
 

@@ -3151,6 +3151,38 @@
     "comment": "Settings row label for the in-app language override",
     "value": "Language"
   },
+  "settings.layout.openStudio": {
+    "comment": "Button that opens the full-size layout studio window",
+    "value": "Open Studio"
+  },
+  "settings.layout.openStudioHelp": {
+    "comment": "Tooltip for the studio button",
+    "value": "Arrange this surface beside a full-size, live preview of it."
+  },
+  "settings.layout.preview": {
+    "comment": "Caption over the live popover preview in the layout editor",
+    "value": "Preview"
+  },
+  "settings.layout.previewUnavailable": {
+    "comment": "Shown when a layout page has no popover tab to draw",
+    "value": "This page has no popover tab to preview."
+  },
+  "settings.layout.studioTitle": {
+    "comment": "Title of the layout studio window",
+    "value": "Layout Studio"
+  },
+  "settings.layout.studioToggleInspector": {
+    "comment": "Tooltip for the button that hides the studio's controls",
+    "value": "Show or hide the controls"
+  },
+  "settings.layout.studioZoomActual": {
+    "comment": "Zoom control: draw the surface at its own size",
+    "value": "Actual size"
+  },
+  "settings.layout.studioZoomFit": {
+    "comment": "Zoom control: shrink the surface to fit the stage",
+    "value": "Fit"
+  },
   "settings.mcp.allowRefresh": {
     "comment": "Toggle label",
     "value": "Allow agents to refresh quota"
@@ -3412,6 +3444,10 @@
     },
     "comment": "Ordinal badge showing a field's place in the order",
     "value": "{position}"
+  },
+  "settings.miniWindow.preview": {
+    "comment": "Caption over the live mini-window preview in Settings",
+    "value": "Preview"
   },
   "settings.miniWindow.removeFromWindow": {
     "comment": "Tooltip on a row's remove control",

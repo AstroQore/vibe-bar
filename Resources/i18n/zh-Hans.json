@@ -2111,6 +2111,30 @@
   "settings.language.title": {
     "value": "语言"
   },
+  "settings.layout.openStudio": {
+    "value": "打开工作台"
+  },
+  "settings.layout.openStudioHelp": {
+    "value": "在整尺寸的实时预览旁边排布这个界面。"
+  },
+  "settings.layout.preview": {
+    "value": "预览"
+  },
+  "settings.layout.previewUnavailable": {
+    "value": "该页面没有可预览的 popover 标签页。"
+  },
+  "settings.layout.studioTitle": {
+    "value": "布局工作台"
+  },
+  "settings.layout.studioToggleInspector": {
+    "value": "显示或隐藏控件"
+  },
+  "settings.layout.studioZoomActual": {
+    "value": "实际大小"
+  },
+  "settings.layout.studioZoomFit": {
+    "value": "适应"
+  },
   "settings.mcp.allowRefresh": {
     "value": "允许 agent 刷新额度"
   },
@@ -2302,6 +2326,9 @@
   },
   "settings.miniWindow.position": {
     "value": "{position}"
+  },
+  "settings.miniWindow.preview": {
+    "value": "预览"
   },
   "settings.miniWindow.removeFromWindow": {
     "value": "从此窗口移除"

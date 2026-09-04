@@ -13,11 +13,16 @@ extension Notification.Name {
 /// runtime-discovered buckets — and its own arrangement, reordered by drag
 /// the way the Layout editor arranges popover cards.
 struct MiniWindowsSettingsSection: View {
+    @Environment(\.isInLayoutStudio) private var isInLayoutStudio
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var quotaService: QuotaService
 
+    /// Which window this editor opens on — see `LayoutEditorView.initialPage`
+    /// for why the studio names one.
+    var initialWindowID: UUID?
     @State private var selectedWindowID: UUID?
+    @State private var hasAppliedInitialWindow = false
     @State private var arrangeFrames: [String: CGRect] = [:]
     @State private var drag: DragState?
     /// Whether name edits below write the shared names or this window's
@@ -62,7 +67,8 @@ struct MiniWindowsSettingsSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let _ = applyInitialWindowIfNeeded()
+        return VStack(alignment: .leading, spacing: 12) {
             windowChips()
             if let config = selectedWindow {
                 windowDetail(config)
@@ -79,6 +85,12 @@ struct MiniWindowsSettingsSection: View {
         .onReceive(quotaService.$lastSuccessByAccount) { _ in
             rebuildLiveness()
         }
+    }
+
+    private func applyInitialWindowIfNeeded() {
+        guard let initialWindowID, !hasAppliedInitialWindow else { return }
+        hasAppliedInitialWindow = true
+        selectedWindowID = initialWindowID
     }
 
     private func rebuildRegistryCaches() {
@@ -250,6 +262,8 @@ struct MiniWindowsSettingsSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        windowSkeleton(config)
+
         if namingScope == .style {
             Text(L10n.Settings.miniWindowOverridesStyle(mode: config.displayMode.label))
                 .font(.caption)
@@ -263,6 +277,76 @@ struct MiniWindowsSettingsSection: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         notShownList(config)
+    }
+
+    /// The window itself, drawn beside the list that arranges it.
+    ///
+    /// The real view, not a mock: `MiniQuotaWindowView` re-reads its config
+    /// from settings on every render, so picking a style, dragging a row or
+    /// renaming a field lands here immediately — which is the whole point of
+    /// arranging something you cannot see. Its two callbacks are inert; this
+    /// is a picture of the window, not a second copy of it to drive.
+    /// A skeleton of the window, and the way out to the real one.
+    ///
+    /// Deliberately not the live view. This pane's width belongs to the
+    /// controls, and a mini window laid out at its own width either spills
+    /// over them or shrinks past reading — the skeleton fits, and what it
+    /// shows is exactly what this pane edits: how many fields there are, how
+    /// they fold into SubProviders, and in what order. Seeing the real thing
+    /// is the studio's job.
+    private func windowSkeleton(_ config: MiniWindowConfig) -> some View {
+        let groups = arrangeGroups(arrangeRows(config))
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(L10n.Settings.miniWindowPreview)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                Spacer(minLength: 8)
+                if !isInLayoutStudio {
+                    LayoutStudioButton {
+                        LayoutStudioWindowController.shared.open(
+                            subject: .miniWindow(config.id),
+                            environment: environment
+                        )
+                    }
+                }
+            }
+            if groups.isEmpty {
+                Text(L10n.Settings.miniWindowNoFieldsSelected)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            } else {
+                MenuBarChipFlow(spacing: 8, lineSpacing: 6) {
+                    ForEach(groups) { group in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(subProviderDisplayName(group))
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                            HStack(spacing: 3) {
+                                ForEach(group.rows) { row in
+                                    Capsule()
+                                        .fill(Theme.providerAccent(for: group.tool).opacity(0.55))
+                                        .frame(width: 16, height: 5)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.10), lineWidth: 0.7)
+                )
+            }
+        }
     }
 
     private func modePicker(_ config: MiniWindowConfig) -> some View {

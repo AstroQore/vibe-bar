@@ -14,6 +14,11 @@ final class DockActivationController {
     enum DockToken: String, Hashable {
         case workbench
         case onboarding
+        /// The layout studio outlives the Workbench that opened it, so it
+        /// cannot borrow the Workbench's token: closing the Workbench would
+        /// drop the app back to `.accessory` and leave a window on screen that
+        /// nothing can bring back to the front.
+        case layoutStudio
     }
 
     private var tokens: Set<DockToken> = []
