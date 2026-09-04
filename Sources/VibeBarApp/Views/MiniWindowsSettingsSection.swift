@@ -18,7 +18,11 @@ struct MiniWindowsSettingsSection: View {
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var quotaService: QuotaService
 
+    /// Which window this editor opens on — see `LayoutEditorView.initialPage`
+    /// for why the studio names one.
+    var initialWindowID: UUID?
     @State private var selectedWindowID: UUID?
+    @State private var hasAppliedInitialWindow = false
     @State private var arrangeFrames: [String: CGRect] = [:]
     @State private var drag: DragState?
     /// Whether name edits below write the shared names or this window's
@@ -63,7 +67,8 @@ struct MiniWindowsSettingsSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let _ = applyInitialWindowIfNeeded()
+        return VStack(alignment: .leading, spacing: 12) {
             windowChips()
             if let config = selectedWindow {
                 windowDetail(config)
@@ -80,6 +85,12 @@ struct MiniWindowsSettingsSection: View {
         .onReceive(quotaService.$lastSuccessByAccount) { _ in
             rebuildLiveness()
         }
+    }
+
+    private func applyInitialWindowIfNeeded() {
+        guard let initialWindowID, !hasAppliedInitialWindow else { return }
+        hasAppliedInitialWindow = true
+        selectedWindowID = initialWindowID
     }
 
     private func rebuildRegistryCaches() {

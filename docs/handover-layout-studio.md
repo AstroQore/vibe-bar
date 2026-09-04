@@ -75,6 +75,11 @@ Roughly in the order that would matter:
    be arrow-navigable.
 8. **Untested at small window sizes** and never looked at in Light Aqua — the
    gradient backdrop was tuned against Dark.
+9. **The mini-window stage measures the view, not the panel.**
+   `MiniQuotaWindowController.stableContentSize` adds a 20/24-point reserve for
+   the close button and can clamp to the screen; the stage measures
+   `MiniQuotaWindowView`'s intrinsic size alone, so a many-field window is
+   spaced slightly differently here than on screen. Reuse that sizing.
 
 ## Design intent, so a second pass does not undo the first
 

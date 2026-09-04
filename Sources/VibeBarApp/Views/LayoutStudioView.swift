@@ -166,6 +166,15 @@ struct LayoutStudioView: View {
 
     @Namespace private var chipNamespace
 
+    /// Same rule `StatusItemController` uses: one stable width for every tab,
+    /// so a page switch never reflows.
+    private static func popoverWidth(for settings: AppSettings) -> CGFloat {
+        max(
+            Theme.overviewDensity(for: settings.popoverDensity).popoverWidth,
+            Theme.detailDensity(for: settings.popoverDensity).popoverWidth
+        )
+    }
+
     // MARK: - Stage
 
     private var stage: some View {
@@ -186,7 +195,11 @@ struct LayoutStudioView: View {
                     lit {
                         ScaledPreview(width: stageContentWidth, maxHeight: 4000) {
                             PopoverRoot(
-                                width: 420,
+                                // The width the popover actually opens at.
+                                // A guessed 420 put 860-point columns inside a
+                                // 420-point shell, so the preview reflowed
+                                // differently from the thing it is a preview of.
+                                width: Self.popoverWidth(for: settingsStore.settings),
                                 onContentHeightChange: { _ in },
                                 onToggleMiniWindow: {},
                                 initialPage: tab
@@ -251,10 +264,16 @@ struct LayoutStudioView: View {
                 // The same editors Settings shows. One place decides what a
                 // control does; this decides how much room it gets.
                 switch model.subject {
-                case .popoverPage:
-                    LayoutEditorView()
-                case .miniWindow:
-                    MiniWindowsSettingsSection()
+                case let .popoverPage(page):
+                    // Identity per subject: the editors keep their own
+                    // selection in `@State`, so without a rebuild the controls
+                    // would go on editing whatever the last one was while the
+                    // stage showed something else.
+                    LayoutEditorView(initialPage: page)
+                        .id(page)
+                case let .miniWindow(id):
+                    MiniWindowsSettingsSection(initialWindowID: id)
+                        .id(id)
                 }
             }
             .padding(16)

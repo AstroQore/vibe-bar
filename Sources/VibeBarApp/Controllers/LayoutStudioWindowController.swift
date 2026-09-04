@@ -29,6 +29,9 @@ final class LayoutStudioWindowController: NSObject {
 
     func open(subject: Subject, environment: AppEnvironment) {
         model.subject = subject
+        // Before the window exists: switching activation policy reorders the
+        // app's windows, and doing it afterwards can drop the new one behind.
+        DockActivationController.shared.acquire(.layoutStudio)
 
         if let window {
             if window.isMiniaturized { window.deminiaturize(nil) }
@@ -91,12 +94,19 @@ final class LayoutStudioWindowController: NSObject {
         }
         self.window = win
 
+        win.delegate = self
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func close() {
         window?.close()
+    }
+}
+
+extension LayoutStudioWindowController: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        DockActivationController.shared.release(.layoutStudio)
     }
 }
 

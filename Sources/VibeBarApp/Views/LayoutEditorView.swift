@@ -40,7 +40,12 @@ struct LayoutEditorView: View {
     @EnvironmentObject private var quotaService: QuotaService
     @EnvironmentObject private var costService: CostUsageService
 
+    /// Which page this editor opens on. Settings leaves it alone and the
+    /// editor remembers its own; the studio names one, because the controls
+    /// and the surface on the stage have to be the same page.
+    var initialPage: PageLayoutPageID?
     @State private var selectedPage: PageLayoutPageID = .overview
+    @State private var hasAppliedInitialPage = false
     @State private var drag: DragState?
     /// Live frames of every block, keyed by page *and* module: switching pages
     /// must not let a module that exists on both (Service Status, say) keep the
@@ -100,6 +105,7 @@ struct LayoutEditorView: View {
 
     var body: some View {
         let pages = PageModuleCatalog.editablePages(settings: settingsStore.settings)
+        let _ = applyInitialPageIfNeeded()
         let page = pages.contains { $0.page == selectedPage } ? selectedPage : .overview
         let descriptors = PageModuleCatalog.descriptors(
             for: page,
@@ -170,6 +176,14 @@ struct LayoutEditorView: View {
             drag = nil
             pendingSegments = 0
         }
+    }
+
+    /// Once, and only when a caller named one — a later pick inside the
+    /// editor must not be snapped back.
+    private func applyInitialPageIfNeeded() {
+        guard let initialPage, !hasAppliedInitialPage else { return }
+        hasAppliedInitialPage = true
+        selectedPage = initialPage
     }
 
     // MARK: - Page picker
