@@ -614,15 +614,15 @@ enum BrandMark: String, CaseIterable, Hashable {
         }
     }
 
-    /// Drawn at exactly its canvas, unlike the tool marks.
+    /// The same overshoot every tool mark uses, for the same reason.
     ///
-    /// That 1.25 overshoot exists to push an anti-aliased boundary off the
-    /// edge of line work that stops short of it. All three of these arrived
-    /// already fitted to their own viewBox, and overshooting them crops the
-    /// Grok Bot disc into a squircle, bites the right side off Google's G,
-    /// and cuts the tips off the SpaceXAI wings. Checked by rendering each at
-    /// the 13pt the tab strip draws them at.
-    var providerIconDrawScale: CGFloat { 1 }
+    /// These three arrived fitted edge-to-edge in their own viewBox, so this
+    /// was 1 for a while — and at 1 the source's canvas boundary lands exactly
+    /// on the visible edge and draws a faint frame around the glyph. The tool
+    /// marks never show it because they are authored with a tenth of the
+    /// canvas as margin on each side, which is precisely what 1.25 crops away.
+    /// Their viewBoxes now carry that same margin, so they overshoot too.
+    var providerIconDrawScale: CGFloat { 1.25 }
 
     var fallbackSystemImage: String {
         switch self {
