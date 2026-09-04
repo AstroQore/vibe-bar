@@ -779,52 +779,28 @@
     "comment": "Picker choosing a block's type weight.",
     "value": "Weight"
   },
-  "menuBar.composer.group.add": {
-    "comment": "Palette button adding an empty group to the strip.",
-    "value": "New group"
+  "menuBar.composer.group.bind": {
+    "comment": "Button that binds the selected blocks into one run",
+    "value": "Group"
   },
-  "menuBar.composer.group.addHelp": {
-    "comment": "Tooltip on the New group button.",
-    "value": "Each group is one column of the strip. Give a group a second row to stack that column."
+  "menuBar.composer.group.hint": {
+    "comment": "Explains how to bind blocks and what binding does",
+    "value": "Shift-click blocks that sit side by side in one row. A group moves as one — drag any block in it and the whole run goes."
   },
-  "menuBar.composer.group.addRow": {
-    "comment": "Menu item giving a group a second row.",
-    "value": "Add a second row"
+  "menuBar.composer.group.notAdjacent": {
+    "comment": "Shown when the selected blocks cannot be bound",
+    "value": "Only blocks side by side in one row can be grouped."
   },
-  "menuBar.composer.group.empty": {
-    "comment": "Shown inside a group that has no blocks yet.",
-    "value": "Empty group — drag a block in."
-  },
-  "menuBar.composer.group.mergeLeft": {
-    "comment": "Menu action folding a group into the one before it.",
-    "value": "Merge into the group before it"
-  },
-  "menuBar.composer.group.moveLeft": {
-    "comment": "Menu action moving a group one place earlier.",
-    "value": "Move left"
-  },
-  "menuBar.composer.group.moveRight": {
-    "comment": "Menu action moving a group one place later.",
-    "value": "Move right"
-  },
-  "menuBar.composer.group.remove": {
-    "comment": "Menu action deleting a group and the blocks in it.",
-    "value": "Remove group and its blocks"
-  },
-  "menuBar.composer.group.removeRow": {
-    "comment": "Menu item closing a group's second row; its blocks join the end of the first.",
-    "value": "Merge the second row up"
-  },
-  "menuBar.composer.group.splitHere": {
-    "comment": "Button starting a new group at the selected block.",
-    "value": "Start a group here"
-  },
-  "menuBar.composer.group.title": {
+  "menuBar.composer.group.selected": {
     "args": {
-      "index": "int"
+      "count": "int"
     },
-    "comment": "Header over one group of blocks. Index counts from 1.",
-    "value": "Group {index}"
+    "comment": "Caption above the grouping actions, counting the selected blocks",
+    "value": "{count, plural, one {1 block selected} other {# blocks selected}}"
+  },
+  "menuBar.composer.group.unbind": {
+    "comment": "Button that unbinds a run of blocks",
+    "value": "Ungroup"
   },
   "menuBar.composer.metric.displayPercent": {
     "comment": "Quota metric: whichever percentage the app-wide Used/Remaining setting selects.",
@@ -900,7 +876,7 @@
   },
   "menuBar.composer.preset.insertHelp": {
     "comment": "Tooltip on a saved group.",
-    "value": "Insert this group at the end of the strip."
+    "value": "Insert this segment at the end of the strip."
   },
   "menuBar.composer.preset.name": {
     "comment": "Text field for the name of a saved group.",
@@ -920,11 +896,11 @@
   },
   "menuBar.composer.preset.saveTitle": {
     "comment": "Title of the dialog naming a saved group.",
-    "value": "Save this group"
+    "value": "Save this segment"
   },
   "menuBar.composer.presets": {
     "comment": "Caption over the saved groups that can be inserted.",
-    "value": "Saved groups"
+    "value": "Saved segments"
   },
   "menuBar.composer.preview": {
     "comment": "Caption over the live preview of the composed strip.",
@@ -997,6 +973,53 @@
   "menuBar.composer.rule.whenUsedAtLeast": {
     "comment": "Visibility rule: show once a quota's used percentage reaches a threshold.",
     "value": "When used is at least"
+  },
+  "menuBar.composer.segment.add": {
+    "comment": "Palette button adding an empty group to the strip.",
+    "value": "New segment"
+  },
+  "menuBar.composer.segment.addHelp": {
+    "comment": "Tooltip on the New group button.",
+    "value": "Each segment is one column of the strip. Give a segment a second row to stack that column."
+  },
+  "menuBar.composer.segment.addRow": {
+    "comment": "Menu item giving a group a second row.",
+    "value": "Add a second row"
+  },
+  "menuBar.composer.segment.empty": {
+    "comment": "Shown inside a group that has no blocks yet.",
+    "value": "Empty segment — drag a block in."
+  },
+  "menuBar.composer.segment.mergeLeft": {
+    "comment": "Menu action folding a group into the one before it.",
+    "value": "Merge into the segment before it"
+  },
+  "menuBar.composer.segment.moveLeft": {
+    "comment": "Menu action moving a group one place earlier.",
+    "value": "Move left"
+  },
+  "menuBar.composer.segment.moveRight": {
+    "comment": "Menu action moving a group one place later.",
+    "value": "Move right"
+  },
+  "menuBar.composer.segment.remove": {
+    "comment": "Menu action deleting a group and the blocks in it.",
+    "value": "Remove segment and its blocks"
+  },
+  "menuBar.composer.segment.removeRow": {
+    "comment": "Menu item closing a group's second row; its blocks join the end of the first.",
+    "value": "Merge the second row up"
+  },
+  "menuBar.composer.segment.splitHere": {
+    "comment": "Button starting a new group at the selected block.",
+    "value": "Start a segment here"
+  },
+  "menuBar.composer.segment.title": {
+    "args": {
+      "index": "int"
+    },
+    "comment": "Header over one group of blocks. Index counts from 1.",
+    "value": "Segment {index}"
   },
   "menuBar.composer.selected": {
     "comment": "Caption over the controls for the selected block.",

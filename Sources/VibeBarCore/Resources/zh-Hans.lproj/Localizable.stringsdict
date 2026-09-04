@@ -87,6 +87,20 @@
 			<string>%1$lld 分钟</string>
 		</dict>
 	</dict>
+	<key>menuBar.composer.group.selected</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>other</key>
+			<string>已选 %1$lld 个积木</string>
+		</dict>
+	</dict>
 	<key>menuBar.composer.space.widthValue</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

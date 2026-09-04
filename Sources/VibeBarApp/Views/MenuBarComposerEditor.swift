@@ -28,7 +28,10 @@ struct MenuBarComposerEditor: View {
     /// Holds a debounced control's last change until a moment this view can
     /// observe — see `MenuBarPendingCommit`.
     @StateObject private var pendingCommit = PendingEditQueue()
-    @State private var selection: UUID?
+    /// The blocks the editor is acting on. More than one only while the user
+    /// is picking a run to bind: the inspector edits a single block, and
+    /// everything else that reads this wants the one.
+    @State private var selection: Set<UUID> = []
     @State private var draggedTokenId: UUID?
     /// The order the strip *would* have if the drag ended here.
     ///
@@ -63,7 +66,7 @@ struct MenuBarComposerEditor: View {
     @State private var dragCancelTask: Task<Void, Never>?
     @State private var isOverRemoveTarget = false
     @State private var isConfirmingReseed = false
-    /// The group whose "Save as preset…" dialog is open, and the name being
+    /// The segment whose "Save as preset…" dialog is open, and the name being
     /// typed into it.
     @State private var savingPresetFrom: UUID?
     @State private var presetDraftName = ""
@@ -148,11 +151,14 @@ struct MenuBarComposerEditor: View {
     var body: some View {
         let composition = displayedComposition
         let availability = composition.availability(liveFieldIds: liveFieldIds)
+        // One walk of the strip per body pass. Asking the composition per chip
+        // walked it once per chip — quadratic in a strip the user can grow.
+        let bound = composition.boundGroupIDs
 
         VStack(alignment: .leading, spacing: density.cardSpacing + 4) {
             templateRow(composition)
             previewRow(composition)
-            stripRow(composition, availability: availability)
+            stripRow(composition, availability: availability, bound: bound)
             paletteRow(composition)
             inspectorRow(composition, availability: availability)
             footerRow(availability: availability)
@@ -264,7 +270,7 @@ struct MenuBarComposerEditor: View {
                         quotas: snapshots,
                         displayMode: settingsStore.settings.displayMode,
                         template: composition.template,
-                        highlighted: selection
+                        highlighted: selectedID
                     )
                     Text(L10n.MenuBar.composerPreviewGrounds)
                         .font(.caption2)
@@ -285,7 +291,8 @@ struct MenuBarComposerEditor: View {
 
     private func stripRow(
         _ composition: MenuBarComposition,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             caption(L10n.MenuBar.composerBlocks)
@@ -306,68 +313,70 @@ struct MenuBarComposerEditor: View {
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     } else {
-                        segmentFlow(composition, availability: availability)
+                        segmentFlow(composition, availability: availability, bound: bound)
                     }
                 }
             } else {
-                segmentFlow(composition, availability: availability)
+                segmentFlow(composition, availability: availability, bound: bound)
             }
             removeTarget
         }
     }
 
-    /// The groups themselves wrap, the same way the chips inside them do — a
+    /// The segments themselves wrap, the same way the chips inside them do — a
     /// strip can hold more columns than one line of this settings pane is wide.
     private func segmentFlow(
         _ composition: MenuBarComposition,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         MenuBarChipFlow(spacing: 8, lineSpacing: 8) {
             ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
-                segmentBox(segment, index: index, of: composition, availability: availability)
+                segmentBox(segment, index: index, of: composition, availability: availability, bound: bound)
             }
         }
     }
 
-    /// One group: a header that can move, save or remove it, then its blocks.
+    /// One segment: a header that can move, save or remove it, then its blocks.
     private func segmentBox(
         _ segment: MenuBarSegment,
         index: Int,
         of composition: MenuBarComposition,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Text(L10n.MenuBar.composerGroupTitle(index: index + 1))
+                Text(L10n.MenuBar.composerSegmentTitle(index: index + 1))
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .textCase(.uppercase)
                 Spacer(minLength: 4)
                 Menu {
-                    Button(L10n.MenuBar.composerGroupMoveLeft) {
+                    Button(L10n.MenuBar.composerSegmentMoveLeft) {
                         mutate { $0.moveSegment(segment.id, by: -1) }
                     }
                     .disabled(index == 0)
-                    Button(L10n.MenuBar.composerGroupMoveRight) {
+                    Button(L10n.MenuBar.composerSegmentMoveRight) {
                         mutate { $0.moveSegment(segment.id, by: 1) }
                     }
                     .disabled(index == composition.segments.count - 1)
-                    Button(L10n.MenuBar.composerGroupMergeLeft) {
+                    Button(L10n.MenuBar.composerSegmentMergeLeft) {
                         mutate { $0.mergeSegmentIntoPrevious(segment.id) }
                     }
                     .disabled(index == 0)
                     Divider()
-                    // The two row interactions, on the group rather than in
+                    // The two row interactions, on the segment rather than in
                     // the palette: a row is a container, so opening and
                     // closing one is something you do *to a column*. Removing
                     // one says where its blocks go, which is why the label
                     // says "merge" rather than "remove" — nothing is deleted.
                     if segment.isStacked {
-                        Button(L10n.MenuBar.composerGroupRemoveRow) {
+                        Button(L10n.MenuBar.composerSegmentRemoveRow) {
                             mutate { $0.removeRow(fromSegment: segment.id) }
                         }
                     } else {
-                        Button(L10n.MenuBar.composerGroupAddRow) {
+                        Button(L10n.MenuBar.composerSegmentAddRow) {
                             mutate { $0.addRow(toSegment: segment.id) }
                         }
                     }
@@ -378,10 +387,8 @@ struct MenuBarComposerEditor: View {
                     }
                     .disabled(segment.isEmpty)
                     Divider()
-                    Button(L10n.MenuBar.composerGroupRemove, role: .destructive) {
-                        if let selection, segment.tokens.contains(where: { $0.id == selection }) {
-                            self.selection = nil
-                        }
+                    Button(L10n.MenuBar.composerSegmentRemove, role: .destructive) {
+                        selection.subtract(segment.tokens.map(\.id))
                         mutate { $0.removeSegment(segment.id) }
                     }
                 } label: {
@@ -394,14 +401,14 @@ struct MenuBarComposerEditor: View {
             }
             // One list of chips per row, so a row is somewhere blocks live
             // rather than a marker sitting among them. Each row is its own
-            // drop target: dragging between the two rows of one group and
-            // dragging between groups are the same gesture.
-            rowStrip(segment, row: .top, availability: availability)
+            // drop target: dragging between the two rows of one segment and
+            // dragging between segments are the same gesture.
+            rowStrip(segment, row: .top, availability: availability, bound: bound)
             if segment.isStacked {
                 Rectangle()
                     .fill(Color.primary.opacity(0.10))
                     .frame(height: 0.5)
-                rowStrip(segment, row: .bottom, availability: availability)
+                rowStrip(segment, row: .bottom, availability: availability, bound: bound)
             }
         }
         .padding(.horizontal, 6)
@@ -416,12 +423,13 @@ struct MenuBarComposerEditor: View {
         )
     }
 
-    /// One row of one group: its chips, and the empty space after them.
+    /// One row of one segment: its chips, and the empty space after them.
     @ViewBuilder
     private func rowStrip(
         _ segment: MenuBarSegment,
         row: MenuBarSegment.Row,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         let address = MenuBarComposition.RowAddress(segment: segment.id, row: row)
         let tokens = segment[row]
@@ -443,23 +451,23 @@ struct MenuBarComposerEditor: View {
                     .contentShape(Rectangle())
                     .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
                 if tokens.isEmpty {
-                    // A group with one empty row is an empty group; an empty
+                    // A segment with one empty row is an empty segment; an empty
                     // row inside a stacked one is a row waiting to be filled.
                     // Two sentences, because they are two different situations.
                     Text(
                         segment.isStacked
                             ? L10n.MenuBar.composerRowEmpty
-                            : L10n.MenuBar.composerGroupEmpty
+                            : L10n.MenuBar.composerSegmentEmpty
                     )
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .frame(minWidth: 96, minHeight: 22, alignment: .leading)
                 } else {
-                    chipFlow(tokens, address: address, availability: availability)
+                    chipFlow(tokens, address: address, availability: availability, bound: bound)
                 }
             }
         } else {
-            chipFlow(tokens, address: address, availability: availability)
+            chipFlow(tokens, address: address, availability: availability, bound: bound)
         }
     }
 
@@ -474,11 +482,12 @@ struct MenuBarComposerEditor: View {
     private func chipFlow(
         _ tokens: [MenuBarToken],
         address: MenuBarComposition.RowAddress,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
         MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
             ForEach(tokens) { token in
-                chip(token, availability: availability)
+                chip(token, availability: availability, bound: bound)
                     .onDrag {
                         // A queued colour or threshold has to land first:
                         // the drop writes this snapshot back wholesale, so
@@ -553,13 +562,15 @@ struct MenuBarComposerEditor: View {
 
     private func chip(
         _ token: MenuBarToken,
-        availability: MenuBarComposition.Availability
+        availability: MenuBarComposition.Availability,
+        bound: Set<UUID>
     ) -> some View {
-        let isSelected = selection == token.id
+        let isSelected = selection.contains(token.id)
         let isSilent = availability.silentTokenIds.contains(token.id)
         let isDegraded = availability.degradedTokenIds.contains(token.id)
+        let isBound = token.groupID.map(bound.contains) ?? false
         return Button {
-            selection = isSelected ? nil : token.id
+            selection = isSelected && selection.count == 1 ? [] : [token.id]
         } label: {
             HStack(spacing: 4) {
                 if case let .logo(tool) = token.kind {
@@ -582,19 +593,71 @@ struct MenuBarComposerEditor: View {
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.primary.opacity(isSelected ? 0.14 : 0.06))
+                    .fill(
+                        isBound
+                            ? Color.accentColor.opacity(isSelected ? 0.30 : 0.16)
+                            : Color.primary.opacity(isSelected ? 0.14 : 0.06)
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .strokeBorder(
-                        isSelected ? Color.accentColor.opacity(0.8) : Color.primary.opacity(0.10),
+                        isSelected
+                            ? Color.accentColor.opacity(0.8)
+                            : (isBound
+                                ? Color.accentColor.opacity(0.45)
+                                : Color.primary.opacity(0.10)),
                         lineWidth: 0.5
                     )
             )
             .opacity(isSilent ? 0.55 : 1)
         }
         .buttonStyle(.plain)
+        // Shift wins over the button's own tap, which is what lets one click
+        // pick a block and shift-click build the run to bind.
+        .highPriorityGesture(
+            TapGesture().modifiers(.shift).onEnded {
+                if selection.contains(token.id) {
+                    selection.remove(token.id)
+                } else {
+                    selection.insert(token.id)
+                }
+            }
+        )
         .help(chipHelp(token, isSilent: isSilent, isDegraded: isDegraded))
+    }
+
+    /// The actions for a multi-block selection: bind them, or say why not.
+    ///
+    /// Its own row rather than a mode: the inspector edits one block, and
+    /// picking several is a different thing to be doing.
+    private func groupBar(_ composition: MenuBarComposition) -> some View {
+        let ids = Array(selection)
+        let canBind = composition.canGroup(ids)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                caption(L10n.MenuBar.composerGroupSelected(count: selection.count))
+                Spacer(minLength: 8)
+                Button(L10n.MenuBar.composerGroupBind) {
+                    mutate { $0.group(ids) }
+                    selection = []
+                }
+                .buttonStyle(.vibeBar)
+                .disabled(!canBind)
+                Button(L10n.Common.clear) { selection = [] }
+                    .buttonStyle(.vibeBar)
+            }
+            Text(canBind ? L10n.MenuBar.composerGroupHint : L10n.MenuBar.composerGroupNotAdjacent)
+                .font(.caption2)
+                .foregroundStyle(canBind ? .tertiary : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The one selected block, when there is exactly one. Multi-selection
+    /// exists only to bind a run; every other control edits a single block.
+    private var selectedID: UUID? {
+        selection.count == 1 ? selection.first : nil
     }
 
     private func symbol(for kind: MenuBarToken.Kind) -> String {
@@ -673,16 +736,16 @@ struct MenuBarComposerEditor: View {
                     MenuBarToken.newSeparator()
                 }
                 // No "New row" block here on purpose. A row is a place blocks
-                // live, not a block you insert — giving a group its second row
-                // is an action on the group, and it lives in the group's own
+                // live, not a block you insert — giving a segment its second row
+                // is an action on the segment, and it lives in the segment's own
                 // menu beside move, merge and remove.
                 paletteButton(
-                    title: L10n.MenuBar.composerGroupAdd,
+                    title: L10n.MenuBar.composerSegmentAdd,
                     icon: "rectangle.split.2x1"
                 ) {
                     addSegment()
                 }
-                .help(L10n.MenuBar.composerGroupAddHelp)
+                .help(L10n.MenuBar.composerSegmentAddHelp)
             }
             presetsRow()
         }
@@ -724,7 +787,7 @@ struct MenuBarComposerEditor: View {
         }
     }
 
-    /// The saved groups, if there are any. Click one to insert it at the end
+    /// The saved segments, if there are any. Click one to insert it at the end
     /// of the strip.
     @ViewBuilder
     private func presetsRow() -> some View {
@@ -823,26 +886,34 @@ struct MenuBarComposerEditor: View {
         _ composition: MenuBarComposition,
         availability: MenuBarComposition.Availability
     ) -> some View {
-        if let id = selection, let token = composition.token(id) {
+        if selection.count > 1 {
+            groupBar(composition)
+        } else if let id = selectedID, let token = composition.token(id) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     caption(L10n.MenuBar.composerSelected)
                     Spacer(minLength: 8)
-                    // Only where it would do something: a block that already
-                    // starts its group has no group to start, and a column is
-                    // cut through its top row — see `splitSegment`.
-                    if let location = composition.location(of: id),
-                       location.row == .top,
-                       location.offset > 0 {
-                        Button(L10n.MenuBar.composerGroupSplitHere) {
+                    // Only where it would do something — the model's own
+                    // predicate, so a visible action is never a no-op. A block
+                    // that already starts its segment has none to start, a
+                    // column is cut through its top row, and a cut through a
+                    // bound run is refused.
+                    if composition.canSplitSegment(before: id) {
+                        Button(L10n.MenuBar.composerSegmentSplitHere) {
                             mutate { $0.splitSegment(before: id) }
+                        }
+                        .buttonStyle(.vibeBar)
+                    }
+                    if composition.isGrouped(id) {
+                        Button(L10n.MenuBar.composerGroupUnbind) {
+                            mutate { $0.ungroup(id) }
                         }
                         .buttonStyle(.vibeBar)
                     }
                     Button(L10n.MenuBar.composerActionDuplicate) { mutate { $0.duplicate(id) } }
                         .buttonStyle(.vibeBar)
                     Button(L10n.MenuBar.composerActionRemove) {
-                        selection = nil
+                        selection = []
                         mutate { $0.remove(id) }
                     }
                     .buttonStyle(.vibeBar)
@@ -919,7 +990,7 @@ struct MenuBarComposerEditor: View {
             titleVisibility: .visible
         ) {
             Button(L10n.MenuBar.composerStartOverConfirm, role: .destructive) {
-                selection = nil
+                selection = []
                 var updated = item
                 updated.reseedComposedStrip(
                     template: composition.template,
@@ -978,7 +1049,7 @@ struct MenuBarComposerEditor: View {
         settingsStore.settings.setMenuBarItem(updated)
     }
 
-    /// Save the group the dialog was opened on, under the name that was typed.
+    /// Save the segment the dialog was opened on, under the name that was typed.
     ///
     /// The blocks are copied exactly as they are, quota ids and all: a preset
     /// naming a bucket this Mac stopped returning is a block the availability
@@ -1042,7 +1113,7 @@ struct MenuBarComposerEditor: View {
     }
 
     private func removeDragged(_ id: UUID) {
-        if selection == id { selection = nil }
+        selection.remove(id)
         // Start from the provisional order when there is one, so a block that
         // was dragged across the strip and then onto the bin does not
         // resurrect the intermediate order it passed through.
@@ -1056,7 +1127,7 @@ struct MenuBarComposerEditor: View {
     /// the end of the strip — which, in a stacked last column, is its bottom
     /// row rather than its top one.
     private var targetRow: MenuBarComposition.RowAddress? {
-        if let selection, let location = composition.location(of: selection) {
+        if let selectedID, let location = composition.location(of: selectedID) {
             return MenuBarComposition.RowAddress(
                 segment: composition.segments[location.segment].id,
                 row: location.row
@@ -1072,20 +1143,20 @@ struct MenuBarComposerEditor: View {
     private func add(_ token: MenuBarToken) {
         let row = targetRow
         mutate { $0.append(token, to: row) }
-        selection = token.id
+        selection = [token.id]
     }
 
     private func addSegment() {
         let segment = MenuBarSegment()
         mutate { $0.appendSegment(segment) }
-        // Nothing to select — the group is empty — but the next added block
+        // Nothing to select — the segment is empty — but the next added block
         // has to land in it rather than in whatever was selected before.
-        selection = nil
+        selection = []
     }
 
     private func insert(preset: MenuBarSegmentPreset) {
         mutate { $0.appendSegment(preset.segment()) }
-        selection = nil
+        selection = []
     }
 
     private func templateBinding() -> Binding<MenuBarComposition.Template> {
@@ -1773,7 +1844,7 @@ private struct DebouncedPercentStepper: View {
 /// A flattened index cannot say which side of a boundary it means, and a drag
 /// onto the first chip of a row has to land *in* that row or the gesture does
 /// nothing — so the target names the row instead. It is a row rather than a
-/// group because a stacked column has two of them, and the empty space after
+/// segment because a stacked column has two of them, and the empty space after
 /// the top row's last chip is not the same place as the empty space after the
 /// bottom row's.
 /// A palette block in flight, with the moment its drag began.
@@ -1808,7 +1879,7 @@ struct PendingPaletteBlock {
 enum MenuBarChipDropTarget {
     case before(UUID)
     case endOf(MenuBarComposition.RowAddress)
-    /// The strip with no groups left in it. A block landing here opens the
+    /// The strip with no segments left in it. A block landing here opens the
     /// first one — `append(_:to: nil)`.
     case newStrip
 }
@@ -1846,7 +1917,7 @@ private struct MenuBarChipDropDelegate: DropDelegate {
             case let .before(id):
                 guard let at = order.location(of: id) else { return }
                 // Into the target's own row first, so the move that follows
-                // is a same-row reorder and cannot leave an empty group
+                // is a same-row reorder and cannot leave an empty segment
                 // behind the way appending to a new one would.
                 order.append(new, to: MenuBarComposition.RowAddress(
                     segment: order.segments[at.segment].id,
@@ -1892,7 +1963,7 @@ private struct MenuBarChipDropDelegate: DropDelegate {
 private struct MenuBarChipRemoveDelegate: DropDelegate {
     @Binding var dragged: UUID?
     @Binding var isTargeted: Bool
-    @Binding var selection: UUID?
+    @Binding var selection: Set<UUID>
     let remove: (UUID) -> Void
     let entered: () -> Void
     let exited: () -> Void
@@ -1975,7 +2046,7 @@ struct MenuBarChipFlow: Layout {
     ///
     /// `.unspecified` asks "how wide would you like to be", and a subview
     /// that is itself a flow answers with every one of its own children on
-    /// one line — so a group box measured that way came out as wide as all
+    /// one line — so a segment box measured that way came out as wide as all
     /// its chips and ran off the pane. Proposing the width available makes
     /// an inner flow wrap inside it, which is the only honest measurement
     /// when a flow holds a flow.
@@ -1983,7 +2054,7 @@ struct MenuBarChipFlow: Layout {
         let intrinsic = subview.sizeThatFits(.unspecified)
         guard maxWidth.isFinite, intrinsic.width > maxWidth else { return intrinsic }
         // Only the ones that do not fit. Proposing the cap to everything
-        // makes any greedy subview — a group box, whose header holds a
+        // makes any greedy subview — a segment box, whose header holds a
         // Spacer — report the full width and take a line to itself, which
         // turns "wrap side by side" into "one per row" and makes the
         // composer taller for no reason.

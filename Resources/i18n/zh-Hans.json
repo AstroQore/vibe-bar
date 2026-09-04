@@ -536,38 +536,20 @@
   "menuBar.composer.field.weight": {
     "value": "字重"
   },
-  "menuBar.composer.group.add": {
-    "value": "新建分组"
+  "menuBar.composer.group.bind": {
+    "value": "成组"
   },
-  "menuBar.composer.group.addHelp": {
-    "value": "每个分组是条带中的一列。为分组添加第二行可让该列上下堆叠。"
+  "menuBar.composer.group.hint": {
+    "value": "按住 Shift 点选同一行里相邻的积木。成组后它们作为整体移动 —— 拖其中任意一个，整组一起走。"
   },
-  "menuBar.composer.group.addRow": {
-    "value": "添加第二行"
+  "menuBar.composer.group.notAdjacent": {
+    "value": "只有同一行里相邻的积木才能成组。"
   },
-  "menuBar.composer.group.empty": {
-    "value": "空分组，可将积木拖入。"
+  "menuBar.composer.group.selected": {
+    "value": "{count, plural, other {已选 # 个积木}}"
   },
-  "menuBar.composer.group.mergeLeft": {
-    "value": "并入前一个分组"
-  },
-  "menuBar.composer.group.moveLeft": {
-    "value": "向左移动"
-  },
-  "menuBar.composer.group.moveRight": {
-    "value": "向右移动"
-  },
-  "menuBar.composer.group.remove": {
-    "value": "删除分组及其积木"
-  },
-  "menuBar.composer.group.removeRow": {
-    "value": "将第二行并入第一行"
-  },
-  "menuBar.composer.group.splitHere": {
-    "value": "从此处开始新分组"
-  },
-  "menuBar.composer.group.title": {
-    "value": "分组 {index}"
+  "menuBar.composer.group.unbind": {
+    "value": "解组"
   },
   "menuBar.composer.metric.displayPercent": {
     "value": "百分比（跟随设置）"
@@ -624,7 +606,7 @@
     "value": "添加积木"
   },
   "menuBar.composer.preset.insertHelp": {
-    "value": "在条带末尾插入该分组。"
+    "value": "在条带末尾插入该段。"
   },
   "menuBar.composer.preset.name": {
     "value": "名称"
@@ -639,10 +621,10 @@
     "value": "保存"
   },
   "menuBar.composer.preset.saveTitle": {
-    "value": "保存该分组"
+    "value": "保存该段"
   },
   "menuBar.composer.presets": {
-    "value": "已存分组"
+    "value": "已存的段"
   },
   "menuBar.composer.preview": {
     "value": "预览"
@@ -697,6 +679,39 @@
   },
   "menuBar.composer.rule.whenUsedAtLeast": {
     "value": "已用不低于"
+  },
+  "menuBar.composer.segment.add": {
+    "value": "新建段"
+  },
+  "menuBar.composer.segment.addHelp": {
+    "value": "每个段是条带中的一列。为段添加第二行可让该列上下堆叠。"
+  },
+  "menuBar.composer.segment.addRow": {
+    "value": "添加第二行"
+  },
+  "menuBar.composer.segment.empty": {
+    "value": "空段，可将积木拖入。"
+  },
+  "menuBar.composer.segment.mergeLeft": {
+    "value": "并入前一个段"
+  },
+  "menuBar.composer.segment.moveLeft": {
+    "value": "向左移动"
+  },
+  "menuBar.composer.segment.moveRight": {
+    "value": "向右移动"
+  },
+  "menuBar.composer.segment.remove": {
+    "value": "删除该段及其积木"
+  },
+  "menuBar.composer.segment.removeRow": {
+    "value": "将第二行并入第一行"
+  },
+  "menuBar.composer.segment.splitHere": {
+    "value": "从此处开始新的段"
+  },
+  "menuBar.composer.segment.title": {
+    "value": "段 {index}"
   },
   "menuBar.composer.selected": {
     "value": "已选积木"

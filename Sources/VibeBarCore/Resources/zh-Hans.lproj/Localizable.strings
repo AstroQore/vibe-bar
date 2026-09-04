@@ -521,38 +521,17 @@
 /* Picker choosing a block's type weight. */
 "menuBar.composer.field.weight" = "字重";
 
-/* Palette button adding an empty group to the strip. */
-"menuBar.composer.group.add" = "新建分组";
+/* Button that binds the selected blocks into one run */
+"menuBar.composer.group.bind" = "成组";
 
-/* Tooltip on the New group button. */
-"menuBar.composer.group.addHelp" = "每个分组是条带中的一列。为分组添加第二行可让该列上下堆叠。";
+/* Explains how to bind blocks and what binding does */
+"menuBar.composer.group.hint" = "按住 Shift 点选同一行里相邻的积木。成组后它们作为整体移动 —— 拖其中任意一个，整组一起走。";
 
-/* Menu item giving a group a second row. */
-"menuBar.composer.group.addRow" = "添加第二行";
+/* Shown when the selected blocks cannot be bound */
+"menuBar.composer.group.notAdjacent" = "只有同一行里相邻的积木才能成组。";
 
-/* Shown inside a group that has no blocks yet. */
-"menuBar.composer.group.empty" = "空分组，可将积木拖入。";
-
-/* Menu action folding a group into the one before it. */
-"menuBar.composer.group.mergeLeft" = "并入前一个分组";
-
-/* Menu action moving a group one place earlier. */
-"menuBar.composer.group.moveLeft" = "向左移动";
-
-/* Menu action moving a group one place later. */
-"menuBar.composer.group.moveRight" = "向右移动";
-
-/* Menu action deleting a group and the blocks in it. */
-"menuBar.composer.group.remove" = "删除分组及其积木";
-
-/* Menu item closing a group's second row; its blocks join the end of the first. */
-"menuBar.composer.group.removeRow" = "将第二行并入第一行";
-
-/* Button starting a new group at the selected block. */
-"menuBar.composer.group.splitHere" = "从此处开始新分组";
-
-/* Header over one group of blocks. Index counts from 1. */
-"menuBar.composer.group.title" = "分组 %1$lld";
+/* Button that unbinds a run of blocks */
+"menuBar.composer.group.unbind" = "解组";
 
 /* Quota metric: whichever percentage the app-wide Used/Remaining setting selects. */
 "menuBar.composer.metric.displayPercent" = "百分比（跟随设置）";
@@ -609,7 +588,7 @@
 "menuBar.composer.palette" = "添加积木";
 
 /* Tooltip on a saved group. */
-"menuBar.composer.preset.insertHelp" = "在条带末尾插入该分组。";
+"menuBar.composer.preset.insertHelp" = "在条带末尾插入该段。";
 
 /* Text field for the name of a saved group. */
 "menuBar.composer.preset.name" = "名称";
@@ -624,10 +603,10 @@
 "menuBar.composer.preset.saveConfirm" = "保存";
 
 /* Title of the dialog naming a saved group. */
-"menuBar.composer.preset.saveTitle" = "保存该分组";
+"menuBar.composer.preset.saveTitle" = "保存该段";
 
 /* Caption over the saved groups that can be inserted. */
-"menuBar.composer.presets" = "已存分组";
+"menuBar.composer.presets" = "已存的段";
 
 /* Caption over the live preview of the composed strip. */
 "menuBar.composer.preview" = "预览";
@@ -682,6 +661,39 @@
 
 /* Visibility rule: show once a quota's used percentage reaches a threshold. */
 "menuBar.composer.rule.whenUsedAtLeast" = "已用不低于";
+
+/* Palette button adding an empty group to the strip. */
+"menuBar.composer.segment.add" = "新建段";
+
+/* Tooltip on the New group button. */
+"menuBar.composer.segment.addHelp" = "每个段是条带中的一列。为段添加第二行可让该列上下堆叠。";
+
+/* Menu item giving a group a second row. */
+"menuBar.composer.segment.addRow" = "添加第二行";
+
+/* Shown inside a group that has no blocks yet. */
+"menuBar.composer.segment.empty" = "空段，可将积木拖入。";
+
+/* Menu action folding a group into the one before it. */
+"menuBar.composer.segment.mergeLeft" = "并入前一个段";
+
+/* Menu action moving a group one place earlier. */
+"menuBar.composer.segment.moveLeft" = "向左移动";
+
+/* Menu action moving a group one place later. */
+"menuBar.composer.segment.moveRight" = "向右移动";
+
+/* Menu action deleting a group and the blocks in it. */
+"menuBar.composer.segment.remove" = "删除该段及其积木";
+
+/* Menu item closing a group's second row; its blocks join the end of the first. */
+"menuBar.composer.segment.removeRow" = "将第二行并入第一行";
+
+/* Button starting a new group at the selected block. */
+"menuBar.composer.segment.splitHere" = "从此处开始新的段";
+
+/* Header over one group of blocks. Index counts from 1. */
+"menuBar.composer.segment.title" = "段 %1$lld";
 
 /* Caption over the controls for the selected block. */
 "menuBar.composer.selected" = "已选积木";

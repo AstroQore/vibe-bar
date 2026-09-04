@@ -347,17 +347,30 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
     public var kind: Kind
     public var style: Style
     public var visibility: Visibility
+    /// The run of blocks this one is bound into, if any.
+    ///
+    /// Blocks sharing a `groupID` move as one — drag any member and the whole
+    /// run goes. `MenuBarComposition` keeps the invariant that they are always
+    /// side by side in one row: an edit that would scatter them dissolves the
+    /// group instead, because silently reordering the user's blocks to keep a
+    /// binding intact is the worse of the two.
+    ///
+    /// Not the segment: a segment is a column of the strip, and a group is a
+    /// handful of blocks inside one of its rows.
+    public var groupID: UUID?
 
     public init(
         id: UUID = UUID(),
         kind: Kind,
         style: Style = Style(),
-        visibility: Visibility = .always
+        visibility: Visibility = .always,
+        groupID: UUID? = nil
     ) {
         self.id = id
         self.kind = kind
         self.style = style
         self.visibility = visibility
+        self.groupID = groupID
     }
 
     // MARK: Palette
@@ -417,7 +430,7 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
 
     /// The quota this token reads, if it is a quota token.
     private enum CodingKeys: String, CodingKey {
-        case id, kind, style, visibility
+        case id, kind, style, visibility, groupID
     }
 
     /// Same reasoning as `Style`: everything except the block's own identity
@@ -430,6 +443,9 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         self.kind = try c.decode(Kind.self, forKey: .kind)
         self.style = (try? c.decode(Style.self, forKey: .style)) ?? Style()
         self.visibility = (try? c.decode(Visibility.self, forKey: .visibility)) ?? .always
+        // Absent in every settings file written before groups existed, and a
+        // block that arrives unbound is simply a block on its own.
+        self.groupID = try? c.decode(UUID.self, forKey: .groupID)
     }
 
     public var quotaFieldId: String? {
@@ -649,10 +665,22 @@ public struct MenuBarSegmentPreset: Identifiable, Codable, Equatable, Sendable {
     /// segment. Two insertions of one preset are two groups the editor can
     /// drag apart, the same rule `duplicate` follows.
     public func segment() -> MenuBarSegment {
+        // Fresh bindings as well as fresh identities, and one per original
+        // group so a run stays a run. Reusing the saved ids would make two
+        // copies of the same preset read as one group once they shared a row,
+        // and dragging either would move both.
+        var rebound: [UUID: UUID] = [:]
         func copies(_ tokens: [MenuBarToken]) -> [MenuBarToken] {
             tokens.map { token in
                 var copy = token
                 copy.id = UUID()
+                if let group = token.groupID {
+                    copy.groupID = rebound[group] ?? {
+                        let fresh = UUID()
+                        rebound[group] = fresh
+                        return fresh
+                    }()
+                }
                 return copy
             }
         }
@@ -843,6 +871,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// that divider, so the two directions round-trip.
     public mutating func setTemplate(_ newTemplate: Template) {
         template = newTemplate
+        defer { normalizeGroups() }
         if newTemplate.seedsSecondRow {
             guard !segments.contains(where: \.isStacked) else { return }
             // The seam is looked for inside each group, longest first: a
@@ -1078,6 +1107,9 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     public mutating func remove(_ id: UUID) -> Bool {
         guard let location = location(of: id) else { return false }
         segments[location.segment][location.row].remove(at: location.offset)
+        // Removing one member leaves the rest bound; removing the
+        // second-to-last leaves a group of one, which is not a group.
+        normalizeGroups()
         return true
     }
 
@@ -1090,6 +1122,8 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         guard let location = location(of: id) else { return nil }
         var copy = segments[location.segment][location.row][location.offset]
         copy.id = UUID()
+        // The copy lands inside the run, so it joins it rather than splitting
+        // it — carrying `groupID` over is what keeps that true.
         segments[location.segment][location.row].insert(copy, at: location.offset + 1)
         return copy.id
     }
@@ -1100,36 +1134,238 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// Row-relative rather than flattened, because a flattened index cannot
     /// say which side of a boundary it means — and a drag onto the first chip
     /// of a row has to land *in* that row or the gesture does nothing.
+    ///
+    /// A grouped block brings its whole run: that is what being in a group
+    /// means, and dragging one member out of the middle of one would break
+    /// the invariant the group is holding.
     public mutating func move(_ id: UUID, before target: UUID) {
-        guard id != target,
-              let from = location(of: id),
-              let destination = location(of: target)
+        let run = groupedRun(of: id)
+        // Both ends checked before anything is lifted. Validating the target
+        // afterwards could not recover: the source is already out, so the
+        // "put it back" lookup finds nothing and strands the run in a segment
+        // of its own — a move to nowhere would rearrange the strip.
+        guard !run.contains(target),
+              location(of: target) != nil,
+              let origin = location(of: id)
         else { return }
-        let token = segments[from.segment][from.row].remove(at: from.offset)
-        var offset = destination.offset
-        // Dragging rightwards past the target lands *on* it once the source
-        // has been lifted out; dragging leftwards lands in front of it.
-        if from.segment == destination.segment, from.row == destination.row,
-           from.offset < destination.offset {
-            offset -= 1
+        let lifted = lift(run)
+        guard !lifted.isEmpty else { return }
+        guard let destination = location(of: target) else {
+            reinsert(lifted, at: origin)
+            return
         }
-        let row = segments[destination.segment][destination.row]
         segments[destination.segment][destination.row]
-            .insert(token, at: Swift.max(0, Swift.min(offset, row.count)))
+            .insert(contentsOf: lifted, at: destination.offset)
+        normalizeGroups()
     }
 
     /// Move `id` to the end of a row — the trailing landing strip a drag aims
     /// at when it is past every chip.
     public mutating func move(_ id: UUID, toEndOf address: RowAddress) {
         guard let destination = segmentIndex(of: address.segment),
-              address.row == .top || segments[destination].isStacked,
-              let from = location(of: id)
+              address.row == .top || segments[destination].isStacked
         else { return }
-        let token = segments[from.segment][from.row].remove(at: from.offset)
-        segments[destination][address.row].append(token)
+        let lifted = lift(groupedRun(of: id))
+        guard !lifted.isEmpty else { return }
+        segments[destination][address.row].append(contentsOf: lifted)
+        normalizeGroups()
     }
 
-    // MARK: Groups
+    /// Take a run of blocks out of the arrangement, in row order. Empty when
+    /// the ids are not all present.
+    private mutating func lift(_ ids: [UUID]) -> [MenuBarToken] {
+        // One walk, like `contiguousRun`: this runs on every pointer crossing
+        // of a drag, and `location(of:)` per member scans the whole strip each
+        // time — quadratic in a group that spans most of it.
+        let wanted = Set(ids)
+        var found: [(Location, MenuBarToken)] = []
+        for segmentIndex in segments.indices {
+            for row in MenuBarSegment.Row.allCases {
+                for (offset, token) in segments[segmentIndex][row].enumerated()
+                where wanted.contains(token.id) {
+                    found.append((Location(segment: segmentIndex, row: row, offset: offset), token))
+                }
+            }
+        }
+        guard found.count == wanted.count else { return [] }
+        // Back to front, so each removal leaves the offsets before it intact.
+        for (at, _) in found.sorted(by: { $0.0.offset > $1.0.offset }) {
+            segments[at.segment][at.row].remove(at: at.offset)
+        }
+        return found.map(\.1)
+    }
+
+    /// Put a lifted run back where it came from, for a move that could not
+    /// find its destination after the lift.
+    private mutating func reinsert(_ tokens: [MenuBarToken], at location: Location?) {
+        guard !tokens.isEmpty else { return }
+        guard let location else {
+            segments.append(MenuBarSegment(tokens: tokens))
+            return
+        }
+        let row = segments[location.segment][location.row]
+        segments[location.segment][location.row]
+            .insert(contentsOf: tokens, at: Swift.max(0, Swift.min(location.offset, row.count)))
+    }
+
+    // MARK: Blocks bound together
+
+    /// The run `id` belongs to, in row order — `[id]` alone when it is not
+    /// bound to anything.
+    public func groupedRun(of id: UUID) -> [UUID] {
+        guard let at = location(of: id),
+              let group = segments[at.segment][at.row][at.offset].groupID
+        else { return [id] }
+        return segments[at.segment][at.row].filter { $0.groupID == group }.map(\.id)
+    }
+
+    /// Whether `id` is bound to at least one other block.
+    ///
+    /// Walks the strip, so a caller asking once per block is quadratic — the
+    /// editor draws every chip on every body pass and reads `boundGroupIDs`
+    /// once instead.
+    public func isGrouped(_ id: UUID) -> Bool {
+        groupedRun(of: id).count > 1
+    }
+
+    /// Every binding that is real: an id held by more than one block. One walk
+    /// of the strip, for callers that need the answer for all of them.
+    public var boundGroupIDs: Set<UUID> {
+        var counts: [UUID: Int] = [:]
+        for segment in segments {
+            for row in MenuBarSegment.Row.allCases {
+                for token in segment[row] {
+                    guard let group = token.groupID else { continue }
+                    counts[group, default: 0] += 1
+                }
+            }
+        }
+        return Set(counts.filter { $0.value > 1 }.keys)
+    }
+
+    /// Bind blocks that already sit side by side in one row.
+    ///
+    /// Refused rather than repaired when they do not: two blocks with a third
+    /// between them are not a run, and quietly moving that third one is an
+    /// edit the user did not ask for. Returns the new group's id.
+    @discardableResult
+    public mutating func group(_ ids: [UUID]) -> UUID? {
+        guard let run = contiguousRun(ids) else { return nil }
+        let group = UUID()
+        for offset in run.offsets {
+            segments[run.segment][run.row][offset].groupID = group
+        }
+        // Binding B and C when A-B were bound leaves A holding an id nobody
+        // else has. It is not a group any more, and a stale one would be
+        // copied by `duplicate` and quietly bind the copy to nothing.
+        normalizeGroups()
+        return group
+    }
+
+    /// Whether `group(_:)` would bind these. One predicate, so the button that
+    /// offers the action and the action itself cannot disagree about it.
+    public func canGroup(_ ids: [UUID]) -> Bool {
+        contiguousRun(ids) != nil
+    }
+
+    /// Where these blocks are, if they are two or more sitting side by side in
+    /// one row. `nil` says they are not a run — which is a refusal, not a
+    /// problem to fix by moving them.
+    private func contiguousRun(
+        _ ids: [UUID]
+    ) -> (segment: Int, row: MenuBarSegment.Row, offsets: [Int])? {
+        let wanted = Set(ids)
+        guard wanted.count > 1 else { return nil }
+        // One walk of the strip rather than `location(of:)` per id, which
+        // scans it each time: this runs on every redraw while a selection is
+        // being built, and a big selection on a big strip made that quadratic.
+        var home: (segment: Int, row: MenuBarSegment.Row)?
+        var offsets: [Int] = []
+        for segmentIndex in segments.indices {
+            for row in MenuBarSegment.Row.allCases {
+                for (offset, token) in segments[segmentIndex][row].enumerated()
+                where wanted.contains(token.id) {
+                    if let home {
+                        // A selection spanning two rows is not a run, and
+                        // finding that out early costs nothing.
+                        guard home == (segmentIndex, row) else { return nil }
+                    } else {
+                        home = (segmentIndex, row)
+                    }
+                    offsets.append(offset)
+                }
+            }
+        }
+        guard let home, offsets.count == wanted.count else { return nil }
+        offsets.sort()
+        guard offsets.last! - offsets.first! == offsets.count - 1 else { return nil }
+        return (home.segment, home.row, offsets)
+    }
+
+    /// Unbind the run `id` belongs to. The blocks stay exactly where they are.
+    public mutating func ungroup(_ id: UUID) {
+        guard let at = location(of: id),
+              let group = segments[at.segment][at.row][at.offset].groupID
+        else { return }
+        for index in segments[at.segment][at.row].indices
+        where segments[at.segment][at.row][index].groupID == group {
+            segments[at.segment][at.row][index].groupID = nil
+        }
+    }
+
+    /// Dissolve every binding that is no longer true.
+    ///
+    /// Two ways a group stops being one: an edit scattered its members — into
+    /// another row, or with a stranger dropped between them — or it is down to
+    /// its last block. Both dissolve rather than repair, so an edit never
+    /// silently reorders the strip to preserve a binding.
+    ///
+    /// Every structural mutation ends here, which is what lets the operations
+    /// above stay simple: they move blocks, and this decides what survives.
+    public mutating func normalizeGroups() {
+        // Every id, everywhere. A row-local pass cannot see a four-block group
+        // cut 2+2 by a template change: each half is contiguous inside its own
+        // row, so both would survive holding the same id, and a later merge
+        // would fuse two runs the user never bound together.
+        struct Placement { var row: (segment: Int, row: MenuBarSegment.Row); var offsets: [Int] }
+        var seen: [UUID: Placement] = [:]
+        var doomed: Set<UUID> = []
+        for segmentIndex in segments.indices {
+            for row in MenuBarSegment.Row.allCases {
+                for (offset, token) in segments[segmentIndex][row].enumerated() {
+                    guard let group = token.groupID else { continue }
+                    if var placement = seen[group] {
+                        guard placement.row == (segmentIndex, row) else {
+                            doomed.insert(group)
+                            continue
+                        }
+                        placement.offsets.append(offset)
+                        seen[group] = placement
+                    } else {
+                        seen[group] = Placement(row: (segmentIndex, row), offsets: [offset])
+                    }
+                }
+            }
+        }
+        for (group, placement) in seen {
+            let offsets = placement.offsets.sorted()
+            let contiguous = offsets.last! - offsets.first! == offsets.count - 1
+            if offsets.count < 2 || !contiguous { doomed.insert(group) }
+        }
+        guard !doomed.isEmpty else { return }
+        for segmentIndex in segments.indices {
+            for row in MenuBarSegment.Row.allCases {
+                for offset in segments[segmentIndex][row].indices {
+                    guard let group = segments[segmentIndex][row][offset].groupID,
+                          doomed.contains(group)
+                    else { continue }
+                    segments[segmentIndex][row][offset].groupID = nil
+                }
+            }
+        }
+    }
+
+    // MARK: Segments
 
     public func segmentIndex(of id: UUID) -> Int? {
         segments.firstIndex { $0.id == id }
@@ -1140,6 +1376,10 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     @discardableResult
     public mutating func appendSegment(_ segment: MenuBarSegment = MenuBarSegment()) -> UUID {
         segments.append(segment)
+        // Presets arrive through here, and they carry blocks this composition
+        // has never normalized: a preset whose own file lost one member's
+        // binding would land as a run with a stranger through it.
+        normalizeGroups()
         return segment.id
     }
 
@@ -1192,11 +1432,22 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// cutting through a bottom row alone would leave one group with a hole
     /// where its first cell should be, which is not a column the strip can
     /// draw and not a shape the editor should let anyone build.
-    public mutating func splitSegment(before id: UUID) {
+    /// Whether `splitSegment(before:)` would do anything — the predicate the
+    /// button offering it reads, so a visible action is never a no-op.
+    ///
+    /// Never through a run: a group with half in each column would dissolve,
+    /// which is not what "start a segment here" says it does. A run's first
+    /// block may start a segment; a later member may not.
+    public func canSplitSegment(before id: UUID) -> Bool {
         guard let location = location(of: id),
               location.row == .top,
               location.offset > 0
-        else { return }
+        else { return false }
+        return groupedRun(of: id).first == id
+    }
+
+    public mutating func splitSegment(before id: UUID) {
+        guard canSplitSegment(before: id), let location = location(of: id) else { return }
         let moved = Array(segments[location.segment].top[location.offset...])
         segments[location.segment].top.removeSubrange(location.offset...)
         let bottom = segments[location.segment].bottom
@@ -1205,6 +1456,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             MenuBarSegment(top: moved, bottom: bottom),
             at: location.segment + 1
         )
+        normalizeGroups()
     }
 
     /// Fold a group into the one before it. The inverse of `splitSegment`.
@@ -1222,6 +1474,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         } else {
             segments[index - 1].bottom?.append(contentsOf: bottom)
         }
+        normalizeGroups()
     }
 
     // MARK: Availability
@@ -1564,6 +1817,13 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             .map { $0.clamped(to: Self.fontScaleRange) }
         self.tokenSpacing = (try? c.decode(Double.self, forKey: .tokenSpacing))
             .map { $0.clamped(to: Self.tokenSpacingRange) }
+        // Settings are hand-editable and a decode is tolerant: one member's
+        // `groupID` can arrive missing or malformed while its siblings keep
+        // theirs, which leaves a group with a stranger through it. Nothing
+        // else would notice — `groupedRun` filters the row by id and does
+        // not check contiguity — so dragging one member would carry blocks
+        // across the one between them.
+        normalizeGroups()
     }
 
     public func encode(to encoder: Encoder) throws {
