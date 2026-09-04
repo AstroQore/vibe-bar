@@ -1502,6 +1502,10 @@ extension L10n {
         public static var machinesThirtyDayCost: String {
             L10n.string("popover.machines.thirtyDayCost")
         }
+        /// `popover.misc.copyFallback` — Copy {ordinal}
+        public static func miscCopyFallback(ordinal: Int) -> String {
+            L10n.string("popover.misc.copyFallback", ordinal)
+        }
         /// `popover.refreshGoogleAI` — Refresh Gemini Web + AntiGravity
         public static var refreshGoogleAI: String {
             L10n.string("popover.refreshGoogleAI")
@@ -6532,6 +6536,7 @@ extension L10n {
         "popover.machines.notConfiguredDetail",
         "popover.machines.sequence",
         "popover.machines.thirtyDayCost",
+        "popover.misc.copyFallback",
         "popover.refreshGoogleAI",
         "popover.refreshSpaceXAI",
         "popover.showPage",

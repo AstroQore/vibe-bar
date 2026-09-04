@@ -276,7 +276,38 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
     /// The provider's blurb when it published one, our own words for its
     /// indicator when it did not. Steps 2 and 3 of `effectiveDescription`.
     private var statedDescription: String {
-        description.isEmpty ? indicator.summaryDescription : description
+        description.isEmpty || Self.isLegacySynthesized(description)
+            ? indicator.summaryDescription
+            : description
+    }
+
+    /// Sentences an earlier build wrote into `description` itself.
+    ///
+    /// Before these words were ours to translate, the xAI and Google
+    /// fetchers baked them into the cached snapshot. Those files are still
+    /// on disk, and treating their contents as the provider's wording would
+    /// leave a Chinese reader looking at English until the next successful
+    /// refresh — indefinitely offline, and always in demo mode, where the
+    /// cache is the only source there is.
+    ///
+    /// Matched against the English forms only. They are what an old build
+    /// could have written; a newer one writes nothing here, and a provider
+    /// that happens to publish the same sentence loses nothing by having it
+    /// re-derived from the same indicator.
+    private static let legacySynthesized: Set<String> = [
+        "all services operational",
+        "under maintenance",
+        "service issue",
+        "partial outage",
+        "major outage",
+        "active incident",
+        "cursor status available",
+    ]
+
+    private static func isLegacySynthesized(_ text: String) -> Bool {
+        legacySynthesized.contains(
+            text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        )
     }
 
     public func components(in group: ServiceComponentGroup?) -> [ServiceComponentSummary] {

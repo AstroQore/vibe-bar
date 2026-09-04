@@ -391,7 +391,7 @@ IDENTIFIER_ARGUMENTS = {
     "systemImage", "image", "icon", "id", "tag", "key", "forKey", "table",
     "bundle", "forResource", "withExtension", "named", "identifier",
     "separator", "format", "comment", "scheme", "host", "path", "rawValue",
-    "toolNameOverride", "forGroupName", "bucketId", "accountId",
+    "toolNameOverride", "forGroupName", "bucketId", "accountId", "command",
 }
 
 # Return types that mark a helper as producing something the user reads.
@@ -483,7 +483,11 @@ def copy_member_spans(source: str):
     lines = set()
     for start, end in spans:
         body = source[start:end]
-        for match in re.finditer(r"(?:return|\?\?)\s*\"", body):
+        # `return "x"`, `?? "x"`, and the implicit single-expression form
+        # `var label: String { "x" }` / `case .a: "x"`, which is how most of
+        # this codebase actually writes them. Requiring the keyword closed
+        # the gap only for the half that spells it out.
+        for match in re.finditer(r'(?:return|\?\?|\{|:)\s*"', body):
             lines.add(source.count("\n", 0, start + match.start()) + 1)
     return lines
 
@@ -508,17 +512,45 @@ def without_interpolations(text: str) -> str:
     out, index, length = [], 0, len(text)
     while index < length:
         if text.startswith("\\(", index):
-            depth, index = 1, index + 2
+            start = index + 2
+            depth, index = 1, start
             while index < length and depth:
                 if text[index] == "(":
                     depth += 1
                 elif text[index] == ")":
                     depth -= 1
                 index += 1
+            # The expression's identifiers are not copy, but a literal
+            # inside it is: `Text("\\(ready ? \"Ready\" : \"Waiting\")")`
+            # puts two English words on screen, and dropping the whole
+            # segment made a migrated file pass while shipping both.
+            out.extend(_quoted_runs(text[start:index - 1]))
             continue
         out.append(text[index])
         index += 1
     return "".join(out)
+
+
+def _quoted_runs(expression: str) -> list:
+    """The contents of every double-quoted run in an interpolated expression."""
+    runs, index, length = [], 0, len(expression)
+    while index < length:
+        if expression[index] == "\\" :
+            index += 2
+            continue
+        if expression[index] != '"':
+            index += 1
+            continue
+        index += 1
+        body = []
+        while index < length and expression[index] != '"':
+            if expression[index] == "\\" and index + 1 < length:
+                index += 1
+            body.append(expression[index])
+            index += 1
+        index += 1
+        runs.append("".join(body))
+    return runs
 
 # Per-file exceptions: a literal that reads like copy but is not, keyed by
 # the reason it is exempt. Kept short on purpose — most cases are better
@@ -765,6 +797,11 @@ def findings_for(relative, helpers: set, terms: set):
             # copy, where nothing has to pass it anywhere for a user to read
             # it.
             if literal.line not in copy_spans:
+                continue
+            # Reachable, but `systemImage:` and its kin still never carry
+            # copy — the copy-member rule adds a way in, not an exemption
+            # from the question already answered here.
+            if literal.label in IDENTIFIER_ARGUMENTS:
                 continue
         if is_allowed(literal.text, terms, relative):
             continue

@@ -1103,6 +1103,9 @@
   "popover.machines.thirtyDayCost": {
     "value": "近 30 天花费"
   },
+  "popover.misc.copyFallback": {
+    "value": "副本 {ordinal}"
+  },
   "popover.refreshGoogleAI": {
     "value": "刷新 Gemini Web + AntiGravity"
   },

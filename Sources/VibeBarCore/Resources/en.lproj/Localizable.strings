@@ -1097,6 +1097,9 @@
 /* Metric label on a remote machine card */
 "popover.machines.thirtyDayCost" = "30-day cost";
 
+/* Fallback name for a duplicated misc-provider card when the user has not named it. {ordinal} is the copy's number. */
+"popover.misc.copyFallback" = "Copy %1$lld";
+
 /* Tooltip on the Google AI page's refresh button; the SubProvider names are never translated */
 "popover.refreshGoogleAI" = "Refresh Gemini Web + AntiGravity";
 
