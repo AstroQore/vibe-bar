@@ -1384,21 +1384,14 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             MenuBarFieldCatalog.field(id: $0, registry: registry)
         }
         let runs = MenuBarFieldCatalog.runs(fields, merging: item.mergesGroupWindows)
-        let title = item.showTitle
-            ? MenuBarToken(kind: .text(item.kind.title), style: .label)
-            : nil
-
         // A stacked strip is a row of two-cell columns, and now the model can
         // say so. Before segments existed the seed had to flatten that into
-        // two long rows, which lost the pairing (`5 Hours` no longer sat above
-        // `Weekly`) and could not give the title a column of its own — the
-        // divergence this function used to have to apologise for. A group *is*
-        // a column, and a group with one row is the one-cell column the
-        // rasterizer centres across both rows, so the title fits the model
-        // now instead of leading the first row.
+        // two long rows, which lost the pairing — `5 Hours` no longer sat
+        // above `Weekly` — the divergence this function used to have to
+        // apologise for. A group *is* a column, and a group with one row is
+        // the one-cell column the rasterizer centres across both rows.
         if item.layout == .twoRows || template.seedsSecondRow, runs.count > 1 {
             var segments: [MenuBarSegment] = []
-            if let title { segments.append(MenuBarSegment(tokens: [title])) }
             var index = 0
             while index < runs.count {
                 let top = seedRunTokens(runs[index], item: item, groupCatalogLabel: groupCatalogLabel)
@@ -1422,7 +1415,6 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         // dividers out of the blocks the user can edit and into a template
         // rule they cannot, which is a worse strip for a tidier model.
         var tokens: [MenuBarToken] = []
-        if let title { tokens.append(title) }
         let separator = MenuBarFieldStripRules.separator(for: item.layout)
         for (index, run) in runs.enumerated() {
             if index > 0, let separator {

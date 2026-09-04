@@ -6,7 +6,6 @@ final class MenuBarSettingsTests: XCTestCase {
         var item = MenuBarItemSettings(
             kind: .compact,
             isVisible: true,
-            showTitle: false,
             selectedFieldIds: ["claude.five_hour", "codex.weekly"]
         )
         item.fieldStyles["claude.five_hour"] = .logoAndPercent
@@ -41,7 +40,6 @@ final class MenuBarSettingsTests: XCTestCase {
         var item = MenuBarItemSettings(
             kind: .compact,
             isVisible: true,
-            showTitle: false,
             selectedFieldIds: ["claude.five_hour", "claude.weekly"]
         )
         // Opt-in: a freshly built item shows the un-merged list.

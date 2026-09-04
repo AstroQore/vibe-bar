@@ -1614,10 +1614,6 @@
     "comment": "Toggle in the menu-bar item editor. macOS-only: no other client renders a menu-bar extra.",
     "value": "Show in menu bar"
   },
-  "platform.macos.menuBar.showTitleText": {
-    "comment": "Toggle in the menu-bar item editor. macOS-only.",
-    "value": "Show title text"
-  },
   "popover.header.machinesSubtitle": {
     "comment": "Subtitle under the Machines page header",
     "value": "End-to-end encrypted remote usage"

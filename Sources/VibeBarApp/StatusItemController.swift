@@ -1378,15 +1378,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     ) -> NSAttributedString {
         let fontSize = NSFont.smallSystemFontSize
         let attributed = NSMutableAttributedString()
-        if itemSettings.showTitle {
-            attributed.append(NSAttributedString(
-                string: "\(itemSettings.kind.title) ",
-                attributes: [
-                    .foregroundColor: NSColor.labelColor,
-                    .font: NSFont.systemFont(ofSize: fontSize, weight: .medium)
-                ]
-            ))
-        }
 
         for (index, piece) in pieces.enumerated() {
             if index > 0 {
@@ -1425,15 +1416,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     ) -> NSAttributedString {
         let fontSize = MenuBarStatusMetrics.twoRowFontSize
         let attributed = NSMutableAttributedString()
-        if itemSettings.showTitle {
-            attributed.append(NSAttributedString(
-                string: "\(itemSettings.kind.title) ",
-                attributes: [
-                    .foregroundColor: NSColor.labelColor,
-                    .font: NSFont.systemFont(ofSize: fontSize, weight: .medium)
-                ]
-            ))
-        }
 
         for (index, piece) in pieces.enumerated() {
             if index > 0 {
@@ -1475,7 +1457,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let entries = displayedEntries(pieces: pieces)
         guard !entries.isEmpty else {
             return [TwoRowMenuColumn(top: TwoRowMenuCell(
-                text: emptyMenuTitle(for: itemSettings, fontSize: MenuBarStatusMetrics.twoRowFontSize),
+                text: emptyMenuTitle(fontSize: MenuBarStatusMetrics.twoRowFontSize),
                 logo: nil
             ))]
         }
@@ -1489,22 +1471,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             index += 2
         }
 
-        if itemSettings.showTitle {
-            columns.insert(
-                TwoRowMenuColumn(
-                    top: TwoRowMenuCell(
-                        text: menuTextPiece(
-                            label: itemSettings.kind.title,
-                            percent: nil,
-                            color: NSColor.labelColor,
-                            fontSize: MenuBarStatusMetrics.twoRowFontSize
-                        ),
-                        logo: nil
-                    )
-                ),
-                at: 0
-            )
-        }
         return columns
     }
 
@@ -1527,17 +1493,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
-    private func emptyMenuTitle(for itemSettings: MenuBarItemSettings, fontSize: CGFloat) -> NSAttributedString {
+    private func emptyMenuTitle(fontSize: CGFloat) -> NSAttributedString {
         let attributed = NSMutableAttributedString()
-        if itemSettings.showTitle {
-            attributed.append(NSAttributedString(
-                string: "\(itemSettings.kind.title) ",
-                attributes: [
-                    .foregroundColor: NSColor.labelColor,
-                    .font: NSFont.systemFont(ofSize: fontSize, weight: .medium)
-                ]
-            ))
-        }
         attributed.append(NSAttributedString(
             string: "—",
             attributes: [
