@@ -584,14 +584,23 @@ struct ToolBrandBadge: View {
 enum BrandMark: String, CaseIterable, Hashable {
     case spaceXAI
     case googleAI
+    case anthropic
     case grokBot
+    /// The Codex **harness** — CLI, exec, the desktop app's Codex tab. On the
+    /// quota axis the same adapter's SubProviders are ChatGPT Agentic and
+    /// ChatGPT Work, and those keep ChatGPT's mark (`ProviderIcon-codex`);
+    /// only a usage row or a session, which names the harness, wears this.
+    case codex
 
     /// The L1 company mark for a core provider, where the company has one the
-    /// representative tool does not already wear. OpenAI and Anthropic are
-    /// absent on purpose: `ProviderIcon-codex` and `ProviderIcon-claude` *are*
-    /// those companies' marks, so their tabs were never wrong.
+    /// representative tool does not already wear. OpenAI is absent on
+    /// purpose: `ProviderIcon-codex` *is* ChatGPT's mark, which is how OpenAI
+    /// signs everything Vibe Bar meters. Anthropic is not Claude — the company
+    /// has a mark of its own, and the Claude mark on the Anthropic tab was
+    /// a product standing in for its maker.
     static func company(for tool: ToolType) -> BrandMark? {
         switch tool.coreProviderRepresentative {
+        case .claude: return .anthropic
         case .gemini: return .googleAI
         case .grok:   return .spaceXAI
         default:      return nil
@@ -608,9 +617,11 @@ enum BrandMark: String, CaseIterable, Hashable {
 
     var providerIconResourceName: String {
         switch self {
-        case .spaceXAI: return "ProviderIcon-spacexai"
-        case .googleAI: return "ProviderIcon-googleai"
-        case .grokBot:  return "ProviderIcon-grokbot"
+        case .spaceXAI:  return "ProviderIcon-spacexai"
+        case .googleAI:  return "ProviderIcon-googleai"
+        case .anthropic: return "ProviderIcon-anthropic"
+        case .grokBot:   return "ProviderIcon-grokbot"
+        case .codex:     return "ProviderIcon-codex-session"
         }
     }
 
@@ -626,9 +637,11 @@ enum BrandMark: String, CaseIterable, Hashable {
 
     var fallbackSystemImage: String {
         switch self {
-        case .spaceXAI: return "x.circle"
-        case .googleAI: return "g.circle"
-        case .grokBot:  return "circle.dashed"
+        case .spaceXAI:  return "x.circle"
+        case .googleAI:  return "g.circle"
+        case .anthropic: return "a.circle"
+        case .grokBot:   return "circle.dashed"
+        case .codex:     return "terminal"
         }
     }
 
@@ -641,6 +654,8 @@ enum BrandMark: String, CaseIterable, Hashable {
         switch self {
         case .spaceXAI, .grokBot: return .grok
         case .googleAI:           return .gemini
+        case .anthropic:          return .claude
+        case .codex:              return .codex
         }
     }
 
@@ -809,8 +824,17 @@ struct HarnessBrandBadge: View {
 extension Harness {
     /// The mark this harness wears when its quota tool is the wrong answer.
     /// `nil` — the usual case — means "draw `quotaTool`".
+    ///
+    /// Codex is the one where the quota tool's mark is a different product:
+    /// `ToolType.codex` is the ChatGPT account (ChatGPT Agentic, ChatGPT
+    /// Work), and the Codex app has a mark of its own. ChatGPT Work stays on
+    /// ChatGPT's mark, because that is what it is.
     var brandMark: BrandMark? {
-        self == .grokBot ? .grokBot : nil
+        switch self {
+        case .grokBot: return .grokBot
+        case .codex:   return .codex
+        default:       return nil
+        }
     }
 }
 
