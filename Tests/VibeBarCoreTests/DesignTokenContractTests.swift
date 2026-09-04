@@ -162,16 +162,33 @@ final class DesignTokenContractTests: XCTestCase {
         let source = try themeSource()
         // Each is sliced to the *next* declaration: sharing one slice would
         // let either one's pair satisfy the other's assertion.
-        let neutrals: [(tool: String, from: String, to: String)] = [
-            ("grok",
+        let neutrals: [(tool: String, helper: String, from: String, to: String)] = [
+            ("grok", "adaptiveNeutralAccent",
              "private static var adaptiveNeutralAccent",
              "private static var adaptiveInkAccent"),
-            ("cursor",
+            ("cursor", "adaptiveInkAccent",
              "private static var adaptiveInkAccent",
              "static func barColor"),
         ]
         let accents = try XCTUnwrap(contract()["providerAccent"] as? [String: Any])
+        // The palette itself, so a case rewired to the *other* neutral is
+        // caught. Reading the helper alone would leave both tests passing
+        // while the app drew one pair and the contract published another.
+        let palette = try XCTUnwrap(slice(
+            source,
+            from: "static func providerAccent",
+            to: "private static var adaptiveNeutralAccent"
+        ))
         for neutral in neutrals {
+            let mapping = palette
+                .split(separator: "\n")
+                .first { $0.contains("case .\(neutral.tool):") }
+            XCTAssertNotNil(mapping, "\(neutral.tool) has no case in providerAccent")
+            XCTAssertTrue(
+                mapping?.contains("return \(neutral.helper)") == true,
+                "\(neutral.tool) must resolve through \(neutral.helper)"
+            )
+
             let block = try XCTUnwrap(slice(source, from: neutral.from, to: neutral.to))
             let values = matches(block, #"srgbRed: ([\d.]+), green: ([\d.]+), blue: ([\d.]+)"#)
                 .map { hex($0[0], $0[1], $0[2]) }
