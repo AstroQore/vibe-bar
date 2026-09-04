@@ -724,6 +724,36 @@ struct CompanyBrandBadge: View {
     }
 }
 
+extension MenuBarBrandLogo {
+    /// The picture this build has for the block, if any. `nil` draws the
+    /// tool's own mark, which is what the block would have been before the
+    /// company or SubProvider got a mark of its own.
+    var brandMark: BrandMark? {
+        switch level {
+        case .company: return BrandMark.company(for: tool)
+        case .subProvider: return BrandMark.subProvider(tool: tool, bucketID: bucketId)
+        }
+    }
+
+    /// Whose accent a "brand" colour uses for this block.
+    var accentTool: ToolType { brandMark?.accentTool ?? tool }
+}
+
+/// Brand icon for a composed logo block that names a company or a
+/// SubProvider — the tool's own mark when this build has no separate one.
+struct BrandLogoIconView: View {
+    let logo: MenuBarBrandLogo
+    var size: CGFloat = 16
+
+    var body: some View {
+        if let mark = logo.brandMark {
+            BrandMarkIconView(mark: mark, size: size)
+        } else {
+            ToolBrandIconView(tool: logo.tool, size: size)
+        }
+    }
+}
+
 /// Brand icon for a quota section: its tool's mark, unless the bucket names a
 /// SubProvider with one of its own.
 struct QuotaBrandIconView: View {
