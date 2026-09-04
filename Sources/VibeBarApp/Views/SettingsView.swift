@@ -815,7 +815,6 @@ struct SettingsView: View {
             if isCustom {
                 MenuBarComposerEditor(kind: kind, density: density)
             } else {
-                Toggle(L10n.Platform.macosMenuBarShowTitleText, isOn: menuItemTitleBinding(kind))
                 Picker(L10n.Platform.macosMenuBarLayout, selection: menuItemLayoutBinding(kind)) {
                     ForEach(MenuBarLayout.allCases) { layout in
                         Text(layout.label).tag(layout)
@@ -993,17 +992,6 @@ struct SettingsView: View {
             set: { value in
                 var item = settingsStore.settings.menuBarItem(kind)
                 item.isVisible = value
-                settingsStore.settings.setMenuBarItem(item)
-            }
-        )
-    }
-
-    private func menuItemTitleBinding(_ kind: MenuBarItemKind) -> Binding<Bool> {
-        Binding(
-            get: { settingsStore.settings.menuBarItem(kind).showTitle },
-            set: { value in
-                var item = settingsStore.settings.menuBarItem(kind)
-                item.showTitle = value
                 settingsStore.settings.setMenuBarItem(item)
             }
         )

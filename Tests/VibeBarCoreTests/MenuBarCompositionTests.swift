@@ -587,14 +587,12 @@ final class MenuBarCompositionTests: XCTestCase {
 
     private func fieldItem(
         merging: Bool = false,
-        showTitle: Bool = false,
         styles: [String: MenuBarFieldStyle] = [:],
         labels: [String: String] = [:]
     ) -> MenuBarItemSettings {
         MenuBarItemSettings(
             kind: .compact,
             isVisible: true,
-            showTitle: showTitle,
             layout: .singleLine,
             selectedFieldIds: ["claude.five_hour", "claude.weekly"],
             customLabels: labels,
@@ -634,12 +632,11 @@ final class MenuBarCompositionTests: XCTestCase {
         ])
     }
 
-    func testSeedingHonoursCustomLabelsAndTheTitleToggle() {
+    func testSeedingHonoursCustomLabels() {
         let seeded = MenuBarComposition.seeded(
             template: .roomy,
-            from: fieldItem(showTitle: true, labels: ["claude.five_hour": "C5"])
+            from: fieldItem(labels: ["claude.five_hour": "C5"])
         )
-        XCTAssertEqual(seeded.tokens.first?.kind, .text(MenuBarItemKind.compact.title))
         XCTAssertTrue(seeded.tokens.contains { $0.kind == .text("C5") })
     }
 
@@ -960,7 +957,6 @@ final class MenuBarCompositionTests: XCTestCase {
         MenuBarItemSettings(
             kind: .compact,
             isVisible: true,
-            showTitle: false,
             layout: layout,
             selectedFieldIds: fields ?? [
                 "codex.five_hour", "codex.weekly", "claude.five_hour", "claude.weekly"
@@ -1062,28 +1058,6 @@ final class MenuBarCompositionTests: XCTestCase {
         composed.isEnabled = true
         composed.setTemplate(.twoColumn)
         XCTAssertFalse(composed.segments.contains(where: \.isStacked))
-    }
-
-    func testATwoRowTitleGetsAColumnOfItsOwn() {
-        // This used to be the seed's one named divergence: the field renderer
-        // gives the title a column with no second cell, which the rasterizer
-        // centres across both rows, and a flat list of blocks had no way to
-        // say that — so the title led the first row instead. A group with one
-        // row *is* that column, so the divergence is gone rather than
-        // documented.
-        var item = layoutItem(.twoRows, fields: ["claude.five_hour", "claude.weekly"])
-        item.showTitle = true
-        let seeded = MenuBarComposition.seeded(template: .matching(.twoRows), from: item)
-        XCTAssertEqual(seeded.segments.first?.tokens.map(\.kind), [.text(item.kind.title)])
-        XCTAssertEqual(seeded.segments.first?.isStacked, false)
-        let rendered = seeded.plan(
-            quotas: ["claude.five_hour", "claude.weekly"].map { quota($0) },
-            displayMode: .used,
-            colorBasis: .actual,
-            now: reference
-        )
-        XCTAssertNil(rendered.columns.first?.bottom, "the title cell spans the height")
-        XCTAssertNotNil(rendered.columns.dropFirst().first?.bottom, "the entries still stack")
     }
 
     func testASeedNeverAppliesAStyleItsLayoutIgnores() {

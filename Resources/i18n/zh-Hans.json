@@ -1139,9 +1139,6 @@
   "platform.macos.menuBar.showInMenuBar": {
     "value": "在菜单栏中显示"
   },
-  "platform.macos.menuBar.showTitleText": {
-    "value": "显示标题文字"
-  },
   "popover.header.machinesSubtitle": {
     "value": "端到端加密的远程用量"
   },

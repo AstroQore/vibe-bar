@@ -267,7 +267,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         MenuBarItemSettings(
             kind: .compact,
             isVisible: true,
-            showTitle: false,
             layout: .iconOnly,
             selectedFieldIds: [
                 "codex.five_hour",
@@ -1151,8 +1150,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
             "claude.five_hour": "C5h",
             "claude.weekly": "Cwk"
         ]
-        if migrated.showTitle == true,
-           migrated.selectedFieldIds == oldDefaultFieldIds,
+        // The title flag used to be the third half of this signature. It is
+        // gone, and the two renamed-label lists left are the specific half
+        // anyway — nobody reaches `O5h`/`Owk`/`C5h`/`Cwk` by hand.
+        if migrated.selectedFieldIds == oldDefaultFieldIds,
            migrated.customLabels == oldDefaultLabels {
             return defaultMenuBarItems.first { $0.kind == .compact }!
         }

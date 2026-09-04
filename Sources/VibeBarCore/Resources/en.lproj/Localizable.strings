@@ -1121,9 +1121,6 @@
 /* Toggle in the menu-bar item editor. macOS-only: no other client renders a menu-bar extra. */
 "platform.macos.menuBar.showInMenuBar" = "Show in menu bar";
 
-/* Toggle in the menu-bar item editor. macOS-only. */
-"platform.macos.menuBar.showTitleText" = "Show title text";
-
 /* Subtitle under the Machines page header */
 "popover.header.machinesSubtitle" = "End-to-end encrypted remote usage";
 

@@ -1547,10 +1547,6 @@ extension L10n {
         public static var macosMenuBarShowInMenuBar: String {
             L10n.string("platform.macos.menuBar.showInMenuBar")
         }
-        /// `platform.macos.menuBar.showTitleText` — Show title text
-        public static var macosMenuBarShowTitleText: String {
-            L10n.string("platform.macos.menuBar.showTitleText")
-        }
     }
 
     public enum Popover {
@@ -6684,7 +6680,6 @@ extension L10n {
         "platform.macos.menuBar.overview",
         "platform.macos.menuBar.percentColor",
         "platform.macos.menuBar.showInMenuBar",
-        "platform.macos.menuBar.showTitleText",
         "popover.header.machinesSubtitle",
         "popover.header.mini",
         "popover.header.miscSubtitle",

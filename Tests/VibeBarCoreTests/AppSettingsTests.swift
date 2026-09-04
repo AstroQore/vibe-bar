@@ -19,7 +19,6 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.claudeUsageMode, .auto)
         XCTAssertEqual(settings.menuBarItems.count, MenuBarItemKind.allCases.count)
         XCTAssertEqual(settings.menuBarItem(.compact).layout, .iconOnly)
-        XCTAssertFalse(settings.menuBarItem(.compact).showTitle)
         XCTAssertTrue(settings.menuBarItem(.compact).selectedFieldIds.contains("codex.five_hour"))
         XCTAssertTrue(settings.menuBarItem(.compact).selectedFieldIds.contains("codex.weekly"))
         XCTAssertTrue(settings.menuBarItem(.compact).selectedFieldIds.contains("claude.weekly"))
@@ -873,7 +872,6 @@ final class AppSettingsTests: XCTestCase {
         let compact = settings.menuBarItem(.compact)
 
         XCTAssertEqual(compact.layout, .iconOnly)
-        XCTAssertFalse(compact.showTitle)
         XCTAssertNil(compact.customLabels["codex.five_hour"])
         XCTAssertNil(compact.customLabels["codex.weekly"])
     }
@@ -940,7 +938,6 @@ final class AppSettingsTests: XCTestCase {
         let overview = AppSettings.default.menuBarItem(.compact)
         XCTAssertEqual(overview.kind, .compact)
         XCTAssertEqual(overview.layout, .iconOnly)
-        XCTAssertFalse(overview.showTitle)
 
         XCTAssertTrue(AppSettings.default.menuBarItem(.compact).isVisible)
         XCTAssertEqual(MenuBarItemKind.allCases, [.compact])
