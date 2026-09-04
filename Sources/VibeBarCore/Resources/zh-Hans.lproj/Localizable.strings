@@ -2069,11 +2069,17 @@
 /* Shown when a layout page has no popover tab to draw */
 "settings.layout.previewUnavailable" = "该页面没有可预览的 popover 标签页。";
 
-/* Caption marking the studio preview as live */
-"settings.layout.studioLive" = "实时";
-
 /* Title of the layout studio window */
 "settings.layout.studioTitle" = "布局工作台";
+
+/* Tooltip for the button that hides the studio's controls */
+"settings.layout.studioToggleInspector" = "显示或隐藏控件";
+
+/* Zoom control: draw the surface at its own size */
+"settings.layout.studioZoomActual" = "实际大小";
+
+/* Zoom control: shrink the surface to fit the stage */
+"settings.layout.studioZoomFit" = "适应";
 
 /* Toggle label */
 "settings.mcp.allowRefresh" = "允许 agent 刷新额度";

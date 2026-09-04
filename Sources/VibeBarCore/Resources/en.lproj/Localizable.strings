@@ -2069,11 +2069,17 @@
 /* Shown when a layout page has no popover tab to draw */
 "settings.layout.previewUnavailable" = "This page has no popover tab to preview.";
 
-/* Caption marking the studio preview as live */
-"settings.layout.studioLive" = "Live";
-
 /* Title of the layout studio window */
 "settings.layout.studioTitle" = "Layout Studio";
+
+/* Tooltip for the button that hides the studio's controls */
+"settings.layout.studioToggleInspector" = "Show or hide the controls";
+
+/* Zoom control: draw the surface at its own size */
+"settings.layout.studioZoomActual" = "Actual size";
+
+/* Zoom control: shrink the surface to fit the stage */
+"settings.layout.studioZoomFit" = "Fit";
 
 /* Toggle label */
 "settings.mcp.allowRefresh" = "Allow agents to refresh quota";

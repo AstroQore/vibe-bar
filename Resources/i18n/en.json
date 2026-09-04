@@ -3167,13 +3167,21 @@
     "comment": "Shown when a layout page has no popover tab to draw",
     "value": "This page has no popover tab to preview."
   },
-  "settings.layout.studioLive": {
-    "comment": "Caption marking the studio preview as live",
-    "value": "Live"
-  },
   "settings.layout.studioTitle": {
     "comment": "Title of the layout studio window",
     "value": "Layout Studio"
+  },
+  "settings.layout.studioToggleInspector": {
+    "comment": "Tooltip for the button that hides the studio's controls",
+    "value": "Show or hide the controls"
+  },
+  "settings.layout.studioZoomActual": {
+    "comment": "Zoom control: draw the surface at its own size",
+    "value": "Actual size"
+  },
+  "settings.layout.studioZoomFit": {
+    "comment": "Zoom control: shrink the surface to fit the stage",
+    "value": "Fit"
   },
   "settings.mcp.allowRefresh": {
     "comment": "Toggle label",

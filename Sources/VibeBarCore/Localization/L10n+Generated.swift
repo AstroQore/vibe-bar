@@ -2868,13 +2868,21 @@ extension L10n {
         public static var layoutPreviewUnavailable: String {
             L10n.string("settings.layout.previewUnavailable")
         }
-        /// `settings.layout.studioLive` — Live
-        public static var layoutStudioLive: String {
-            L10n.string("settings.layout.studioLive")
-        }
         /// `settings.layout.studioTitle` — Layout Studio
         public static var layoutStudioTitle: String {
             L10n.string("settings.layout.studioTitle")
+        }
+        /// `settings.layout.studioToggleInspector` — Show or hide the controls
+        public static var layoutStudioToggleInspector: String {
+            L10n.string("settings.layout.studioToggleInspector")
+        }
+        /// `settings.layout.studioZoomActual` — Actual size
+        public static var layoutStudioZoomActual: String {
+            L10n.string("settings.layout.studioZoomActual")
+        }
+        /// `settings.layout.studioZoomFit` — Fit
+        public static var layoutStudioZoomFit: String {
+            L10n.string("settings.layout.studioZoomFit")
         }
         /// `settings.mcp.allowRefresh` — Allow agents to refresh quota
         public static var mcpAllowRefresh: String {
@@ -7048,8 +7056,10 @@ extension L10n {
         "settings.layout.openStudioHelp",
         "settings.layout.preview",
         "settings.layout.previewUnavailable",
-        "settings.layout.studioLive",
         "settings.layout.studioTitle",
+        "settings.layout.studioToggleInspector",
+        "settings.layout.studioZoomActual",
+        "settings.layout.studioZoomFit",
         "settings.mcp.allowRefresh",
         "settings.mcp.allowRefreshDetail",
         "settings.mcp.allowSkills",

@@ -49,7 +49,7 @@ final class LayoutStudioWindowController: NSObject {
                 .environmentObject(environment.pageLayout)
                 .environmentObject(environment.workbenchServices)
         )
-        let initialSize = NSSize(width: 1160, height: 800)
+        let initialSize = NSSize(width: 1320, height: 860)
         let win = NSWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -57,12 +57,35 @@ final class LayoutStudioWindowController: NSObject {
             defer: false
         )
         win.title = L10n.Settings.layoutStudioTitle
+        // The chrome gets out of the way of the surface on the stage: no
+        // titlebar band, no opaque ground. The view's own materials are what
+        // the window shows, and they only read as materials if something is
+        // behind them.
         win.titlebarAppearsTransparent = true
+        win.titleVisibility = .hidden
+        win.isMovableByWindowBackground = true
+        win.isOpaque = false
+        win.backgroundColor = .clear
         win.isReleasedWhenClosed = false
-        win.contentViewController = hosting
+
+        let effect = NSVisualEffectView()
+        effect.material = .underWindowBackground
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.autoresizingMask = [.width, .height]
+        let container = NSView(frame: NSRect(origin: .zero, size: initialSize))
+        effect.frame = container.bounds
+        container.addSubview(effect)
+        hosting.view.frame = container.bounds
+        hosting.view.autoresizingMask = [.width, .height]
+        container.addSubview(hosting.view)
+        let shell = NSViewController()
+        shell.view = container
+        shell.addChild(hosting)
+        win.contentViewController = shell
         win.setContentSize(initialSize)
         win.center()
-        win.minSize = NSSize(width: 900, height: 620)
+        win.minSize = NSSize(width: 1000, height: 620)
         if !DemoMode.isEnabled {
             win.setFrameAutosaveName(Self.frameAutosaveName)
         }
