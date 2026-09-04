@@ -39,6 +39,14 @@ struct MenuBarComposerEditor: View {
     /// path. The reorder is kept here while the drag is live and committed
     /// once, on drop.
     @State private var dragComposition: MenuBarComposition?
+    /// A block dragged straight out of the palette. It exists only in this
+    /// property until the drag reaches a drop target — nothing is inserted,
+    /// nothing is displayed, and a drag released over empty space simply
+    /// leaves it behind.
+    @State private var draggedNewToken: MenuBarToken?
+    /// The quota section whose buckets are showing. Only one at a time: the
+    /// palette is a strip of chips, and seven open sections is a wall.
+    @State private var openQuotaSection: String?
     /// Fires shortly after the pointer leaves every drop target. SwiftUI has
     /// no "drag cancelled" callback, so a release outside the strip is
     /// inferred from the pointer leaving and not coming back.
@@ -88,6 +96,14 @@ struct MenuBarComposerEditor: View {
     /// editable a few controls above this one.
     private struct SnapshotKey: Equatable {
         var requirements: [MenuBarQuotaRequirement]
+        /// What the block being dragged out of the palette asks for, if
+        /// anything. The preview draws the provisional order, so a quota the
+        /// committed strip never referenced has no snapshot and would be
+        /// missing from the preview for the whole drag. Keyed off the token
+        /// rather than the provisional order on purpose: the order changes on
+        /// every chip the pointer crosses, and rebuilding there would put
+        /// quota resolution on the drag path.
+        var stagedRequirements: [MenuBarQuotaRequirement]
         var displayMode: DisplayMode
         var colorBasis: MenuBarColorBasis
         var customLabels: [String: String]
@@ -105,10 +121,18 @@ struct MenuBarComposerEditor: View {
     private var snapshotKey: SnapshotKey {
         SnapshotKey(
             requirements: composition.quotaRequirements,
+            stagedRequirements: stagedRequirements,
             displayMode: settingsStore.settings.displayMode,
             colorBasis: settingsStore.settings.menuBarColorBasis,
             customLabels: item.customLabels
         )
+    }
+
+    private var stagedRequirements: [MenuBarQuotaRequirement] {
+        guard let token = draggedNewToken else { return [] }
+        var staged = MenuBarComposition(isEnabled: true)
+        staged.append(token, to: nil)
+        return staged.quotaRequirements
     }
 
     var body: some View {
@@ -255,21 +279,43 @@ struct MenuBarComposerEditor: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             caption(L10n.MenuBar.composerBlocks)
-            if composition.segments.isEmpty {
-                Text(L10n.MenuBar.composerBlocksEmpty)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            } else {
-                // The groups themselves wrap, the same way the chips inside
-                // them do — a strip can hold more columns than one line of
-                // this settings pane is wide.
-                MenuBarChipFlow(spacing: 8, lineSpacing: 8) {
-                    ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
-                        segmentBox(segment, index: index, of: composition, availability: availability)
+            // Keyed on the *committed* strip, not the one being drawn. With no
+            // chips and no landing strips left, this placeholder is the only
+            // target a palette drag can reach — and staging the block makes
+            // the drawn strip non-empty at once, so switching on that would
+            // pull the target out from under the pointer before the drop
+            // could land, and the 200 ms rollback would undo the insertion.
+            if self.composition.segments.isEmpty || composition.segments.isEmpty {
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                        .contentShape(Rectangle())
+                        .onDrop(of: [.menuBarBlock], delegate: chipDrop(.newStrip))
+                    if composition.segments.isEmpty {
+                        Text(L10n.MenuBar.composerBlocksEmpty)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        segmentFlow(composition, availability: availability)
                     }
                 }
+            } else {
+                segmentFlow(composition, availability: availability)
             }
             removeTarget
+        }
+    }
+
+    /// The groups themselves wrap, the same way the chips inside them do — a
+    /// strip can hold more columns than one line of this settings pane is wide.
+    private func segmentFlow(
+        _ composition: MenuBarComposition,
+        availability: MenuBarComposition.Availability
+    ) -> some View {
+        MenuBarChipFlow(spacing: 8, lineSpacing: 8) {
+            ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
+                segmentBox(segment, index: index, of: composition, availability: availability)
+            }
         }
     }
 
@@ -369,47 +415,101 @@ struct MenuBarComposerEditor: View {
     ) -> some View {
         let address = MenuBarComposition.RowAddress(segment: segment.id, row: row)
         let tokens = segment[row]
-        if tokens.isEmpty {
-            // A group with one empty row is an empty group; an empty row
-            // inside a stacked one is a row waiting to be filled. Two
-            // sentences, because they are two different situations.
-            Text(
-                segment.isStacked
-                    ? L10n.MenuBar.composerRowEmpty
-                    : L10n.MenuBar.composerGroupEmpty
-            )
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .frame(minWidth: 96, minHeight: 22, alignment: .leading)
-            .contentShape(Rectangle())
-            .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
-        } else {
-            MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
-                ForEach(tokens) { token in
-                    chip(token, availability: availability)
-                        .onDrag {
-                            // A queued colour or threshold has to land first:
-                            // the drop writes this snapshot back wholesale, so
-                            // an edit missing from it would be undone by the
-                            // drag that followed it.
-                            pendingCommit.flush()
-                            dragEnteredTarget()
-                            draggedTokenId = token.id
-                            // Snapshot the committed order; every crossing
-                            // reorders this copy, and only the drop writes.
-                            dragComposition = self.composition
-                            return NSItemProvider(object: token.id.uuidString as NSString)
-                        }
-                        .onDrop(of: [.text], delegate: chipDrop(.before(token.id)))
-                }
-                // Trailing landing strip, so a block can be dragged to the end
-                // of this row without having to hit its last chip.
+        // The full-row target is mounted whenever the row is empty in *either*
+        // arrangement, because a drag can empty one and fill the other.
+        //
+        // Committed-empty: staging a block fills the drawn row at once, so
+        // switching on the drawn one alone would unmount this target mid-drag
+        // — releasing over the part of the placeholder the new chip does not
+        // cover would then roll the insertion back and add nothing.
+        //
+        // Drawn-empty: dragging a row's only chip away leaves the committed
+        // row full and the drawn one empty, and without this the way back is
+        // the 16pt landing strip alone.
+        if tokens.isEmpty || committedRowIsEmpty(address) {
+            ZStack(alignment: .topLeading) {
                 Color.clear
-                    .frame(width: 16, height: 22)
+                    .frame(minWidth: 96, minHeight: 22)
                     .contentShape(Rectangle())
-                    .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
+                    .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
+                if tokens.isEmpty {
+                    // A group with one empty row is an empty group; an empty
+                    // row inside a stacked one is a row waiting to be filled.
+                    // Two sentences, because they are two different situations.
+                    Text(
+                        segment.isStacked
+                            ? L10n.MenuBar.composerRowEmpty
+                            : L10n.MenuBar.composerGroupEmpty
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(minWidth: 96, minHeight: 22, alignment: .leading)
+                } else {
+                    chipFlow(tokens, address: address, availability: availability)
+                }
             }
+        } else {
+            chipFlow(tokens, address: address, availability: availability)
         }
+    }
+
+    /// Whether the row this address names holds nothing in the *committed*
+    /// arrangement — what decides whether the placeholder's stable drop target
+    /// is mounted, independent of anything a live drag has staged.
+    private func committedRowIsEmpty(_ address: MenuBarComposition.RowAddress) -> Bool {
+        guard let index = composition.segmentIndex(of: address.segment) else { return false }
+        return composition.segments[index][address.row].isEmpty
+    }
+
+    private func chipFlow(
+        _ tokens: [MenuBarToken],
+        address: MenuBarComposition.RowAddress,
+        availability: MenuBarComposition.Availability
+    ) -> some View {
+        MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
+            ForEach(tokens) { token in
+                chip(token, availability: availability)
+                    .onDrag {
+                        // A queued colour or threshold has to land first:
+                        // the drop writes this snapshot back wholesale, so
+                        // an edit missing from it would be undone by the
+                        // drag that followed it.
+                        pendingCommit.flush()
+                        dragEnteredTarget()
+                        draggedNewToken = nil
+                        draggedTokenId = token.id
+                        // Snapshot the committed order; every crossing
+                        // reorders this copy, and only the drop writes.
+                        dragComposition = self.composition
+                        return blockItemProvider(token)
+                    }
+                    .onDrop(of: [.menuBarBlock], delegate: chipDrop(.before(token.id)))
+            }
+            // Trailing landing strip, so a block can be dragged to the end
+            // of this row without having to hit its last chip.
+            Color.clear
+                .frame(width: 16, height: 22)
+                .contentShape(Rectangle())
+                .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
+        }
+    }
+
+    /// The dragged block's identity, under the composer's private type. The
+    /// delegates never read it back — they work from `draggedTokenId` and
+    /// `draggedNewToken` — but a payload has to exist for a drag to start.
+    private func blockItemProvider(_ token: MenuBarToken) -> NSItemProvider {
+        let provider = NSItemProvider()
+        let id = token.id.uuidString
+        // In-process only: this identity means nothing outside the composer,
+        // so it should not be draggable into another app.
+        provider.registerDataRepresentation(
+            for: .menuBarBlock,
+            visibility: .ownProcess
+        ) { completion in
+            completion(Data(id.utf8), nil)
+            return nil
+        }
+        return provider
     }
 
     private func chipDrop(_ target: MenuBarChipDropTarget) -> MenuBarChipDropDelegate {
@@ -417,6 +517,8 @@ struct MenuBarComposerEditor: View {
             target: target,
             dragged: $draggedTokenId,
             provisional: $dragComposition,
+            pendingNew: $draggedNewToken,
+            committed: { composition },
             commit: { commitDrag() },
             entered: { dragEnteredTarget() },
             exited: { dragLeftTarget() }
@@ -445,7 +547,7 @@ struct MenuBarComposerEditor: View {
                 )
         )
         .onDrop(
-            of: [.text],
+            of: [.menuBarBlock],
             delegate: MenuBarChipRemoveDelegate(
                 dragged: $draggedTokenId,
                 isTargeted: $isOverRemoveTarget,
@@ -557,47 +659,26 @@ struct MenuBarComposerEditor: View {
             caption(L10n.MenuBar.composerPalette)
             paletteGroup(L10n.MenuBar.composerBlockLogo) {
                 paletteButton(title: L10n.MenuBar.composerBlockAppIcon, icon: "menubar.rectangle") {
-                    add(.newAppIcon())
+                    MenuBarToken.newAppIcon()
                 }
                 ForEach(paletteLogoTools, id: \.self) { tool in
                     paletteButton(title: tool.menuTitle, icon: nil, tool: tool) {
-                        add(.newLogo(tool))
+                        MenuBarToken.newLogo(tool)
                     }
                 }
             }
             paletteGroup(L10n.MenuBar.composerBlockText) {
                 paletteButton(title: L10n.MenuBar.composerBlockText, icon: "textformat") {
-                    add(.newText())
+                    MenuBarToken.newText()
                 }
             }
-            paletteGroup(L10n.MenuBar.composerBlockQuota) {
-                ForEach(paletteQuotaSections) { section in
-                    Menu {
-                        ForEach(section.options) { option in
-                            Button(option.displayTitle) {
-                                add(.newQuota(fieldId: option.id))
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            QuotaBrandIconView(
-                                tool: section.tool,
-                                bucketID: section.options.first?.bucketId,
-                                size: 11
-                            )
-                            Text(section.title).font(.system(size: 11, weight: .medium))
-                        }
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                }
-            }
+            paletteQuotaGroup()
             paletteGroup(L10n.MenuBar.composerBlockStructure) {
                 paletteButton(title: L10n.MenuBar.composerBlockSpace, icon: "space") {
-                    add(.newSpace())
+                    MenuBarToken.newSpace()
                 }
                 paletteButton(title: L10n.MenuBar.composerBlockSeparator, icon: "line.diagonal") {
-                    add(.newSeparator())
+                    MenuBarToken.newSeparator()
                 }
                 // No "New row" block here on purpose. A row is a place blocks
                 // live, not a block you insert — giving a group its second row
@@ -612,6 +693,42 @@ struct MenuBarComposerEditor: View {
                 .help(L10n.MenuBar.composerGroupAddHelp)
             }
             presetsRow()
+        }
+    }
+
+    /// Quota blocks, one section per L2 SubProvider.
+    ///
+    /// These used to be dropdown menus. A menu item cannot be dragged — it
+    /// lives in an AppKit popup — so every quota block had to be added first
+    /// and dragged second, which is the two-gesture problem this whole change
+    /// is about, and quota blocks are most of what anyone adds. Opening a
+    /// section in place costs one click and makes its buckets ordinary
+    /// draggable chips.
+    @ViewBuilder
+    private func paletteQuotaGroup() -> some View {
+        paletteGroup(L10n.MenuBar.composerBlockQuota) {
+            ForEach(paletteQuotaSections) { section in
+                paletteButton(
+                    title: section.title,
+                    icon: nil,
+                    tool: section.tool,
+                    bucketID: section.options.first?.bucketId,
+                    isOpen: openQuotaSection == section.id
+                ) {
+                    openQuotaSection = openQuotaSection == section.id ? nil : section.id
+                }
+            }
+        }
+        if let open = paletteQuotaSections.first(where: { $0.id == openQuotaSection }) {
+            // No caption: the open section chip above already names it, and
+            // the empty label column keeps these aligned with every other row.
+            paletteGroup("") {
+                ForEach(open.options) { option in
+                    paletteButton(title: option.displayTitle, icon: "gauge.with.needle") {
+                        MenuBarToken.newQuota(fieldId: option.id)
+                    }
+                }
+            }
         }
     }
 
@@ -652,16 +769,46 @@ struct MenuBarComposerEditor: View {
         }
     }
 
+    /// A palette entry for a single block: click to append it, or drag it
+    /// straight where you want it.
+    ///
+    /// Dragging used to mean adding first and dragging second, which is two
+    /// gestures for one intent and left the block at the end of the strip if
+    /// you stopped after the first.
     private func paletteButton(
         title: String,
         icon: String?,
         tool: ToolType? = nil,
+        make: @escaping () -> MenuBarToken
+    ) -> some View {
+        paletteButton(title: title, icon: icon, tool: tool) { add(make()) }
+            .onDrag {
+                // Same flush as a chip drag: the drop writes the whole
+                // snapshot back, so a queued edit missing from it would be
+                // undone by this drag.
+                pendingCommit.flush()
+                let token = make()
+                draggedTokenId = nil
+                dragComposition = nil
+                draggedNewToken = token
+                return blockItemProvider(token)
+            }
+    }
+
+    private func paletteButton(
+        title: String,
+        icon: String?,
+        tool: ToolType? = nil,
+        bucketID: String? = nil,
+        isOpen: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 if let tool {
-                    ToolBrandIconView(tool: tool, size: 11)
+                    // Bucket-aware: a quota section riding another company's
+                    // account draws its own mark, not the account holder's.
+                    QuotaBrandIconView(tool: tool, bucketID: bucketID, size: 11)
                 } else if let icon {
                     Image(systemName: icon).font(.system(size: 9, weight: .semibold))
                 }
@@ -671,7 +818,7 @@ struct MenuBarComposerEditor: View {
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
+                    .fill(Color.primary.opacity(isOpen ? 0.14 : 0.06))
             )
         }
         .buttonStyle(.plain)
@@ -816,6 +963,7 @@ struct MenuBarComposerEditor: View {
         dragCancelTask = nil
         dragComposition = nil
         draggedTokenId = nil
+        draggedNewToken = nil
         var updated = item
         let before = updated.composition
         var composed = before ?? MenuBarComposition(isEnabled: true)
@@ -893,6 +1041,7 @@ struct MenuBarComposerEditor: View {
     private func commitDrag() {
         guard let reordered = dragComposition else {
             draggedTokenId = nil
+            draggedNewToken = nil
             return
         }
         let segments = reordered.segments
@@ -998,9 +1147,25 @@ struct MenuBarComposerEditor: View {
         paletteLogoTools = ToolType.dedicatedCardProviders
     }
 
+    /// What the snapshots are resolved from: the order being drawn, plus the
+    /// block still in flight from the palette.
+    ///
+    /// A palette drag sets `draggedNewToken` before it reaches any target, so
+    /// at that moment `displayedComposition` is still the committed order. If
+    /// resolution stopped there, the quota would have no snapshot — and
+    /// `dropEntered` changes nothing `snapshotKey` watches, so no second
+    /// rebuild would come. Nothing draws this copy; it exists to be resolved.
+    private var resolvableComposition: MenuBarComposition {
+        var order = displayedComposition
+        if let token = draggedNewToken, order.location(of: token.id) == nil {
+            order.append(token, to: nil)
+        }
+        return order
+    }
+
     private func rebuildSnapshots() {
         snapshots = MenuBarStripResolver.snapshots(
-            for: composition,
+            for: resolvableComposition,
             itemSettings: item,
             settings: settingsStore.settings,
             environment: environment
@@ -1619,9 +1784,25 @@ private struct DebouncedPercentStepper: View {
 /// group because a stacked column has two of them, and the empty space after
 /// the top row's last chip is not the same place as the empty space after the
 /// bottom row's.
+extension UTType {
+    /// The composer's own drag payload.
+    ///
+    /// These used to travel as `.text`, which meant every chip and landing
+    /// strip also accepted text dragged in from any other app — and a palette
+    /// token still waiting for a target would have been staged by one. A
+    /// private type makes the composer accept nothing but its own blocks.
+    static let menuBarBlock = UTType(
+        exportedAs: "com.astroqore.VibeBar.menu-bar-block",
+        conformingTo: .data
+    )
+}
+
 enum MenuBarChipDropTarget {
     case before(UUID)
     case endOf(MenuBarComposition.RowAddress)
+    /// The strip with no groups left in it. A block landing here opens the
+    /// first one — `append(_:to: nil)`.
+    case newStrip
 }
 
 /// Reorder onto a chip, or onto a row's trailing landing strip. The move
@@ -1632,6 +1813,11 @@ private struct MenuBarChipDropDelegate: DropDelegate {
     @Binding var dragged: UUID?
     /// Reordered in place on every crossing. Local state, not settings.
     @Binding var provisional: MenuBarComposition?
+    /// A block dragged out of the palette, waiting for its first target.
+    @Binding var pendingNew: MenuBarToken?
+    /// The committed order, to seed a provisional that does not exist yet
+    /// because this drag started in the palette rather than on a chip.
+    let committed: () -> MenuBarComposition
     let commit: () -> Void
     let entered: () -> Void
     let exited: () -> Void
@@ -1640,12 +1826,47 @@ private struct MenuBarChipDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         entered()
+        // First target a palette drag reaches: the block joins the
+        // provisional order here, and from the next crossing on it is an
+        // ordinary dragged chip. Landing it on arrival rather than at the
+        // drag's start is what lets a drag released over nothing add nothing
+        // — there is no speculative insertion to undo.
+        if dragged == nil, let new = pendingNew {
+            var order = provisional ?? committed()
+            switch target {
+            case let .before(id):
+                guard let at = order.location(of: id) else { return }
+                // Into the target's own row first, so the move that follows
+                // is a same-row reorder and cannot leave an empty group
+                // behind the way appending to a new one would.
+                order.append(new, to: MenuBarComposition.RowAddress(
+                    segment: order.segments[at.segment].id,
+                    row: at.row
+                ))
+                order.move(new.id, before: id)
+            case let .endOf(address):
+                order.append(new, to: address)
+            case .newStrip:
+                order.append(new, to: nil)
+            }
+            provisional = order
+            dragged = new.id
+            // `pendingNew` deliberately survives the insertion. A drag that
+            // wanders off every target long enough clears `dragged` and rolls
+            // `provisional` back to the committed order; without the token
+            // still here, coming back would stage nothing and the drop would
+            // add nothing. The drag's end clears it — see `mutate`.
+            return
+        }
         guard let dragged, provisional != nil else { return }
         switch target {
         case let .before(id):
             provisional?.move(dragged, before: id)
         case let .endOf(address):
             provisional?.move(dragged, toEndOf: address)
+        // Unreachable: a strip holding the chip being dragged is not empty.
+        case .newStrip:
+            break
         }
     }
 

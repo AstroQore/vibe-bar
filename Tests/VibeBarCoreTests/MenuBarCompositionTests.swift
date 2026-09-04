@@ -1261,6 +1261,34 @@ final class MenuBarCompositionTests: XCTestCase {
 
     // MARK: - Drag commits once (review thread 1)
 
+    func testABlockDraggedFromThePaletteLandsInFrontOfTheChipItReached() {
+        // The palette drag carries nothing into the strip until it reaches a
+        // drop target, and then does exactly this: stage the new block in the
+        // target's own row, then move it in front of the target. Staging it
+        // anywhere else — `append(_:to: nil)` opens a group of its own — leaves
+        // that group behind empty once the move takes the block out again.
+        var order = composition([
+            MenuBarToken(kind: .text("a")),
+            MenuBarToken(kind: .text("b"))
+        ])
+        let target = order.tokens[1].id
+        let segmentsBefore = order.segments.count
+
+        let new = MenuBarToken(kind: .text("new"))
+        guard let at = order.location(of: target) else {
+            return XCTFail("the target chip is not in the strip")
+        }
+        order.append(new, to: MenuBarComposition.RowAddress(
+            segment: order.segments[at.segment].id,
+            row: at.row
+        ))
+        order.move(new.id, before: target)
+
+        XCTAssertEqual(order.tokens.map(\.kind), [.text("a"), .text("new"), .text("b")])
+        XCTAssertEqual(order.segments.count, segmentsBefore, "a staging group was left behind")
+        XCTAssertFalse(order.segments.contains { $0.top.isEmpty && ($0.bottom?.isEmpty ?? true) })
+    }
+
     func testADragCrossingSeveralChipsLandsWhereOneMoveWould() {
         // The editor keeps the provisional order in local state and writes it
         // once on drop. That is only safe if replaying every crossing on a
