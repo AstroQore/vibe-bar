@@ -150,6 +150,11 @@ final class LayoutStudioWindowController: NSObject {
 
 extension LayoutStudioWindowController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
+        // The undo history is per studio session. The window and its model
+        // are kept for the next opening, so the history has to be dropped
+        // here: an entry that survived a close could put back a layout the
+        // user has since changed in Settings.
+        model.undoStack.removeAll()
         DockActivationController.shared.release(.layoutStudio)
     }
 }

@@ -210,7 +210,9 @@ struct LayoutStudioView: View {
             surfaceFrame = $0
         }
         .environment(\.surfaceItemFrames, model.frames)
-        .environment(\.liftedSurfaceItem, drag?.item ?? settling?.item)
+        // Dimmed only once the drag has lifted: a press that never moves is
+        // a click, and a click must not make a card flicker.
+        .environment(\.liftedSurfaceItem, (drag?.engaged == true ? drag?.item : nil) ?? settling?.item)
         .environment(\.studioPageOverride, pageOverride)
         .environment(\.studioMiniOrderOverride, miniOverride)
         .animation(.smooth(duration: 0.22), value: scale)
@@ -507,6 +509,9 @@ struct LayoutStudioView: View {
         let label: String
         let accent: Color
         let cornerRadius: CGFloat
+        /// Where the press began, in studio space — the threshold is measured
+        /// from here, not from the last event.
+        let start: CGPoint
         var location: CGPoint
         var engaged = false
         var image: NSImage?
@@ -603,6 +608,7 @@ struct LayoutStudioView: View {
                 label: descriptor.displayName,
                 accent: descriptor.accent.color,
                 cornerRadius: density.cardCornerRadius,
+                start: start,
                 location: start
             )
             started.baseColumns = context.displayed.flattened.columns
@@ -618,6 +624,7 @@ struct LayoutStudioView: View {
                 label: option?.displayTitle ?? item,
                 accent: option.map { Theme.providerAccent(for: $0.tool) } ?? .accentColor,
                 cornerRadius: 10,
+                start: start,
                 location: start
             )
             started.baseOrder = config.fieldIds
@@ -632,9 +639,8 @@ struct LayoutStudioView: View {
         current.location = location
 
         if !current.engaged {
-            let moved = hypot(location.x - current.location.x, location.y - current.location.y)
-            let fromStart = hypot(location.x - startOfDrag(current).x, location.y - startOfDrag(current).y)
-            guard max(moved, fromStart) >= Self.dragThreshold else {
+            let fromStart = hypot(location.x - current.start.x, location.y - current.start.y)
+            guard fromStart >= Self.dragThreshold else {
                 drag = current
                 return
             }
@@ -720,13 +726,6 @@ struct LayoutStudioView: View {
 
         autoscroll(for: location)
     }
-
-    /// The press point. Stored as the first `location` the drag saw.
-    private func startOfDrag(_ drag: StudioDrag) -> CGPoint {
-        dragStart ?? drag.location
-    }
-
-    @State private var dragStart: CGPoint?
 
     /// Drag near the stage's top or bottom edge and the stage scrolls, so a
     /// card can travel further than the window is tall.
