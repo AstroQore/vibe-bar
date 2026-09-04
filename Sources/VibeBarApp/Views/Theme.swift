@@ -335,7 +335,13 @@ enum Theme {
         case .zai:         return Color(red: 0.26, green: 0.74, blue: 0.55)  // emerald
         case .minimax:     return Color(red: 0.97, green: 0.30, blue: 0.45)  // pink
         case .kimi:        return Color(red: 0.20, green: 0.20, blue: 0.20)  // ink
-        case .cursor:      return Color(red: 0.55, green: 0.55, blue: 0.96)  // periwinkle
+        // Cursor is in the SpaceXAI family (`coreProviderRepresentative`), so
+        // it wears that family's neutral rather than a hue of its own — which
+        // also matches its real monochrome mark. Its periwinkle sat 17° from
+        // AntiGravity's violet and 0° from Gemini's blue: three of the seven
+        // harnesses in one wedge, two of them from different companies.
+        // Separated from Grok's mid slate by lightness, not by hue.
+        case .cursor:      return adaptiveInkAccent
         case .mimo:        return Color(red: 0.97, green: 0.50, blue: 0.20)  // xiaomi orange
         case .iflytek:     return Color(red: 0.10, green: 0.37, blue: 0.75)  // iflytek blue
         case .tencentHunyuan:   return Color(red: 0.00, green: 0.49, blue: 0.91)  // tencent blue
@@ -359,6 +365,22 @@ enum Theme {
                     return NSColor(srgbRed: 0.68, green: 0.75, blue: 0.83, alpha: 1)
                 }
                 return NSColor(srgbRed: 0.30, green: 0.38, blue: 0.47, alpha: 1)
+            }
+        )
+    }
+
+    /// The SpaceXAI family's second neutral: near-ink on paper, near-paper on
+    /// ink. Far enough from `adaptiveNeutralAccent` in lightness to tell two
+    /// rows of one family apart (ΔE 23 in Aqua, 17 in Dark Aqua, measured
+    /// after `ProviderBrandIcon.brandAccent` lifts each to 3:1), while still
+    /// reading as the same neutral family rather than a colour of its own.
+    private static var adaptiveInkAccent: Color {
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                if appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua {
+                    return NSColor(srgbRed: 0.88, green: 0.92, blue: 0.97, alpha: 1)
+                }
+                return NSColor(srgbRed: 0.13, green: 0.17, blue: 0.23, alpha: 1)
             }
         )
     }

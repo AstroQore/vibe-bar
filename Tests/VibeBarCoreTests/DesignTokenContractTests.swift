@@ -80,6 +80,9 @@ final class DesignTokenContractTests: XCTestCase {
         let contractAccents = try XCTUnwrap(
             contract()["providerAccent"] as? [String: Any]
         )
+        // Not literals in the palette, so the `red:`/`green:`/`blue:` scrape
+        // below cannot see them.
+        let appearanceDependentAccents: Set<String> = ["grok", "cursor"]
 
         let block = try XCTUnwrap(slice(
             source,
@@ -95,9 +98,12 @@ final class DesignTokenContractTests: XCTestCase {
             else { continue }
             found[tool] = hex(red, green, blue)
         }
-        // Grok resolves per appearance, so the contract stores two values.
-        XCTAssertNotNil(contractAccents["grok"] as? [String: String],
-                        "grok is appearance-dependent and must carry both values")
+        // The SpaceXAI family's two neutrals resolve per appearance, so the
+        // contract stores both values for each rather than one hex.
+        for tool in appearanceDependentAccents {
+            XCTAssertNotNil(contractAccents[tool] as? [String: String],
+                            "\(tool) is appearance-dependent and must carry both values")
+        }
 
         for (tool, colour) in found {
             XCTAssertEqual(
@@ -106,7 +112,7 @@ final class DesignTokenContractTests: XCTestCase {
             )
         }
         let contractNames = Set(contractAccents.keys)
-        let themeNames = Set(found.keys).union(["grok"])
+        let themeNames = Set(found.keys).union(appearanceDependentAccents)
         XCTAssertEqual(
             contractNames, themeNames,
             "the contract and Theme.providerAccent list different providers"
@@ -148,23 +154,50 @@ final class DesignTokenContractTests: XCTestCase {
         XCTAssertEqual(used["warningAtOrAbove"] as? Int, 70)
     }
 
-    /// Grok resolves per appearance, so both halves must come from
-    /// `adaptiveNeutralAccent` rather than being typed in. The first version
-    /// of this contract had a hand-written light value that did not match the
-    /// source, and nothing here noticed.
-    func testGrokAccentMatchesBothAppearances() throws {
+    /// The SpaceXAI family's two neutrals resolve per appearance, so both
+    /// halves of each must come from its own declaration rather than being
+    /// typed in. The first version of this contract had a hand-written light
+    /// value for Grok that did not match the source, and nothing here noticed.
+    func testTheAppearanceDependentAccentsMatchBothAppearances() throws {
         let source = try themeSource()
-        let block = try XCTUnwrap(slice(
-            source, from: "private static var adaptiveNeutralAccent", to: "static func barColor"
-        ))
-        let values = matches(block, #"srgbRed: ([\d.]+), green: ([\d.]+), blue: ([\d.]+)"#)
-            .map { hex($0[0], $0[1], $0[2]) }
-        XCTAssertEqual(values.count, 2, "expected a dark and a light value")
-
+        // Each is sliced to the *next* declaration: sharing one slice would
+        // let either one's pair satisfy the other's assertion.
+        let neutrals: [(tool: String, helper: String, from: String, to: String)] = [
+            ("grok", "adaptiveNeutralAccent",
+             "private static var adaptiveNeutralAccent",
+             "private static var adaptiveInkAccent"),
+            ("cursor", "adaptiveInkAccent",
+             "private static var adaptiveInkAccent",
+             "static func barColor"),
+        ]
         let accents = try XCTUnwrap(contract()["providerAccent"] as? [String: Any])
-        let grok = try XCTUnwrap(accents["grok"] as? [String: String])
-        XCTAssertEqual(grok["dark"], values[0])
-        XCTAssertEqual(grok["light"], values[1])
+        // The palette itself, so a case rewired to the *other* neutral is
+        // caught. Reading the helper alone would leave both tests passing
+        // while the app drew one pair and the contract published another.
+        let palette = try XCTUnwrap(slice(
+            source,
+            from: "static func providerAccent",
+            to: "private static var adaptiveNeutralAccent"
+        ))
+        for neutral in neutrals {
+            let mapping = palette
+                .split(separator: "\n")
+                .first { $0.contains("case .\(neutral.tool):") }
+            XCTAssertNotNil(mapping, "\(neutral.tool) has no case in providerAccent")
+            XCTAssertTrue(
+                mapping?.contains("return \(neutral.helper)") == true,
+                "\(neutral.tool) must resolve through \(neutral.helper)"
+            )
+
+            let block = try XCTUnwrap(slice(source, from: neutral.from, to: neutral.to))
+            let values = matches(block, #"srgbRed: ([\d.]+), green: ([\d.]+), blue: ([\d.]+)"#)
+                .map { hex($0[0], $0[1], $0[2]) }
+            XCTAssertEqual(values.count, 2, "\(neutral.tool): expected a dark and a light value")
+
+            let contractValue = try XCTUnwrap(accents[neutral.tool] as? [String: String])
+            XCTAssertEqual(contractValue["dark"], values[0], neutral.tool)
+            XCTAssertEqual(contractValue["light"], values[1], neutral.tool)
+        }
     }
 
     /// The card recipe is what makes a card in one client look like a card in
