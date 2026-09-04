@@ -639,7 +639,7 @@
 "menuBar.composer.template.roomy" = "宽松";
 
 /* What the Roomy template does. */
-"menuBar.composer.template.roomyDetail" = "保持当前字号，积木之间留白更多。";
+"menuBar.composer.template.roomyDetail" = "菜单栏的常规字号。";
 
 /* Template name: two stacked rows. */
 "menuBar.composer.template.twoRows" = "两行";

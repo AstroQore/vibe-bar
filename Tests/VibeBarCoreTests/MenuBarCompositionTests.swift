@@ -536,7 +536,7 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(seeded.tokens.map(\.kind), [
             .quota(fieldId: "claude.five_hour", metric: .label),
             .quota(fieldId: "claude.five_hour", metric: .displayPercent),
-            .separator(" · "),
+            .separator("·"),
             .quota(fieldId: "claude.weekly", metric: .label),
             .quota(fieldId: "claude.weekly", metric: .displayPercent)
         ])
@@ -549,8 +549,10 @@ final class MenuBarCompositionTests: XCTestCase {
             template: .roomy,
             from: fieldItem(merging: true, styles: ["claude.five_hour": .logoLabelAndPercent])
         )
+        // Roomy seeds from Single line, which draws words only and has never
+        // honoured the per-field style — so the saved logo style is dropped
+        // here exactly as the renderer drops it.
         XCTAssertEqual(seeded.tokens.map(\.kind), [
-            .logo(.claude),
             .text("Claude"),
             .quota(fieldId: "claude.five_hour", metric: .displayPercent),
             .separator("/"),
@@ -874,7 +876,11 @@ final class MenuBarCompositionTests: XCTestCase {
 
     // MARK: - Seeding follows the layout (review thread 3)
 
-    private func layoutItem(_ layout: MenuBarLayout, fields: [String]? = nil) -> MenuBarItemSettings {
+    private func layoutItem(
+        _ layout: MenuBarLayout,
+        fields: [String]? = nil,
+        styles: [String: MenuBarFieldStyle] = [:]
+    ) -> MenuBarItemSettings {
         MenuBarItemSettings(
             kind: .compact,
             isVisible: true,
@@ -882,7 +888,8 @@ final class MenuBarCompositionTests: XCTestCase {
             layout: layout,
             selectedFieldIds: fields ?? [
                 "codex.five_hour", "codex.weekly", "claude.five_hour", "claude.weekly"
-            ]
+            ],
+            fieldStyles: styles
         )
     }
 
@@ -918,21 +925,57 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(bottom, ["codex.weekly", "claude.weekly"])
     }
 
-    func testCompactSeedsSpacesAndSingleLineSeedsDots() {
-        let compact = MenuBarComposition.seeded(
-            template: .matching(.compact),
-            from: layoutItem(.compact, fields: ["claude.five_hour", "claude.weekly"])
-        )
-        XCTAssertTrue(compact.tokens.contains { $0.kind == .space })
-        XCTAssertFalse(compact.tokens.contains { $0.kind == .separator(" · ") })
+    func testEverySeedUsesTheSameSeparatorRuleTheRendererDoes() {
+        // Five review rounds found the seed and the renderer disagreeing about
+        // a different dimension each time, because each kept its own copy of
+        // the rule. Both read `MenuBarFieldStripRules` now, so this asserts
+        // the agreement over every layout instead of listing what each one
+        // happens to draw — a hand-listed expectation is what passed through
+        // all five of those rounds.
+        for layout in MenuBarLayout.allCases {
+            let seeded = MenuBarComposition.seeded(
+                template: .matching(layout),
+                from: layoutItem(layout, fields: ["claude.five_hour", "claude.weekly"])
+            )
+            let separators = seeded.tokens.map(\.kind).filter {
+                if case .separator = $0 { return true }
+                return $0 == .space
+            }
+            let expected = MenuBarFieldStripRules.separator(for: layout)
+            XCTAssertEqual(
+                Set(separators),
+                expected.map { Set([$0]) } ?? [],
+                "\(layout) seeds a separator its renderer does not draw"
+            )
+        }
+    }
 
-        let single = MenuBarComposition.seeded(
-            template: .matching(.singleLine),
-            from: layoutItem(.singleLine, fields: ["claude.five_hour", "claude.weekly"])
-        )
-        XCTAssertTrue(single.tokens.contains { $0.kind == .separator(" · ") })
-        XCTAssertFalse(single.tokens.contains { $0.kind == .space })
-        XCTAssertFalse(single.tokens.contains { $0.kind == .lineBreak })
+    func testASeedNeverAppliesAStyleItsLayoutIgnores() {
+        // Single line draws words only. A saved logo style must not put a logo
+        // on a strip that has never shown one.
+        for layout in MenuBarLayout.allCases {
+            let seeded = MenuBarComposition.seeded(
+                template: .matching(layout),
+                from: layoutItem(
+                    layout,
+                    fields: ["claude.five_hour"],
+                    styles: ["claude.five_hour": .logoLabelAndPercent]
+                )
+            )
+            let hasLogo = seeded.tokens.contains {
+                if case .logo = $0.kind { return true }
+                return false
+            }
+            let styleKeepsLogo = MenuBarFieldStripRules.effectiveStyle(
+                .logoLabelAndPercent, layout: layout
+            ) != .labelAndPercent
+            // Icon Only seeds the app glyph and no field blocks at all.
+            if layout == .iconOnly { continue }
+            XCTAssertEqual(
+                hasLogo, styleKeepsLogo,
+                "\(layout) disagrees with its renderer about the logo style"
+            )
+        }
     }
 
     func testTemplateMatchesTheLayoutItSeedsFrom() {
@@ -1210,7 +1253,7 @@ final class MenuBarCompositionTests: XCTestCase {
         )
         // The strip still *draws* the label blocks — that is what the seeded
         // bar looks like today.
-        XCTAssertEqual(texts(rendered), [["5 Hours", "73%", " · ", "Weekly", "100%"]])
+        XCTAssertEqual(texts(rendered), [["5 Hours", "73%", "·", "Weekly", "100%"]])
         // ...and says each field name exactly once.
         XCTAssertEqual(rendered.spokenDescription, "5 Hours 73% used, Weekly 100% used")
     }
@@ -1543,46 +1586,6 @@ final class MenuBarCompositionTests: XCTestCase {
 
     // MARK: - Seeds match what each layout draws (review thread 2)
 
-    func testTwoRowsSeedsSpacingNotADivider() {
-        // `twoRowMenuColumns` packs entries into columns separated by
-        // `twoRowColumnSpacing` and draws no divider, so a seeded " · " put
-        // punctuation on screen the layout never had.
-        let seeded = MenuBarComposition.seeded(
-            template: .matching(.twoRows),
-            from: layoutItem(.twoRows)
-        )
-        XCTAssertFalse(
-            seeded.tokens.contains { $0.kind == .separator(" · ") },
-            "Two rows draws no dot between entries"
-        )
-        XCTAssertTrue(seeded.tokens.contains { $0.kind == .space })
-    }
-
-    func testEachLayoutSeedsTheSeparatorItsRendererDraws() {
-        // Single line appends a tertiary " · " between pieces.
-        let single = MenuBarComposition.seeded(
-            template: .matching(.singleLine),
-            from: layoutItem(.singleLine, fields: ["claude.five_hour", "claude.weekly"])
-        )
-        XCTAssertTrue(single.tokens.contains { $0.kind == .separator(" · ") })
-        XCTAssertFalse(single.tokens.contains { $0.kind == .space })
-
-        // Compact appends a plain space.
-        let compact = MenuBarComposition.seeded(
-            template: .matching(.compact),
-            from: layoutItem(.compact, fields: ["claude.five_hour", "claude.weekly"])
-        )
-        XCTAssertTrue(compact.tokens.contains { $0.kind == .space })
-        XCTAssertFalse(compact.tokens.contains { $0.kind == .separator(" · ") })
-
-        // Icon Only draws one glyph and nothing else.
-        let icon = MenuBarComposition.seeded(
-            template: .matching(.iconOnly),
-            from: layoutItem(.iconOnly)
-        )
-        XCTAssertEqual(icon.tokens.map(\.kind), [.appIcon])
-    }
-
     // MARK: - A field edit never carries stale neighbours (review thread 2)
 
     func testTwoFieldEditsInOneDebounceWindowBothSurvive() {
@@ -1766,7 +1769,7 @@ final class MenuBarCompositionTests: XCTestCase {
             colorBasis: .actual,
             now: reference
         )
-        XCTAssertEqual(texts(rendered), [["5 Hours", "73%", " · ", "Weekly", "100%"]])
+        XCTAssertEqual(texts(rendered), [["5 Hours", "73%", "·", "Weekly", "100%"]])
         XCTAssertEqual(rendered.spokenDescription, "5 Hours 73% used, Weekly 100% used")
     }
 
@@ -1891,7 +1894,7 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(rowCount(composed), 1)
         // The divider the break took over comes back, so the entries are still
         // separated rather than run together.
-        XCTAssertTrue(composed.tokens.contains { $0.kind == .separator(" · ") })
+        XCTAssertTrue(composed.tokens.contains { $0.kind == .separator("·") })
     }
 
     func testTheTwoDirectionsRoundTrip() {
@@ -1902,11 +1905,15 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(composed.tokens.map(\.kind), original.tokens.map(\.kind))
     }
 
-    func testCompactRejoinsWithASpaceBecauseThatIsWhatItDraws() {
+    func testCompactRejoinsWithNothingBecauseThatIsWhatItDraws() {
+        // Compact butts entries together with the ordinary token gap and draws
+        // no character between them, so collapsing two rows into one leaves
+        // the spacing to do the work rather than inserting punctuation.
         var composed = MenuBarComposition.seeded(template: .twoColumn, from: layoutItem(.twoRows))
         composed.setTemplate(.compact)
-        XCTAssertTrue(composed.tokens.contains { $0.kind == .space })
-        XCTAssertFalse(composed.tokens.contains { $0.kind == .separator(" · ") })
+        XCTAssertEqual(composed.lineBreakCount, 0)
+        XCTAssertFalse(composed.tokens.contains { $0.kind == .separator("·") })
+        XCTAssertFalse(composed.tokens.contains { $0.kind == .space })
     }
 
     func testChoosingTwoRowsTwiceDoesNotAddASecondBreak() {

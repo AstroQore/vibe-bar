@@ -908,7 +908,7 @@
   },
   "menuBar.composer.template.roomyDetail": {
     "comment": "What the Roomy template does.",
-    "value": "Today's size, with more air between blocks."
+    "value": "The menu bar's usual size."
   },
   "menuBar.composer.template.twoRows": {
     "comment": "Template name: two stacked rows.",

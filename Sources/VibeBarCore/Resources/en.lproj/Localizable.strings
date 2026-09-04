@@ -639,7 +639,7 @@
 "menuBar.composer.template.roomy" = "Roomy";
 
 /* What the Roomy template does. */
-"menuBar.composer.template.roomyDetail" = "Today's size, with more air between blocks.";
+"menuBar.composer.template.roomyDetail" = "The menu bar's usual size.";
 
 /* Template name: two stacked rows. */
 "menuBar.composer.template.twoRows" = "Two rows";

@@ -881,7 +881,7 @@ extension L10n {
         public static var composerTemplateRoomy: String {
             L10n.string("menuBar.composer.template.roomy")
         }
-        /// `menuBar.composer.template.roomyDetail` — Today's size, with more air between blocks.
+        /// `menuBar.composer.template.roomyDetail` — The menu bar's usual size.
         public static var composerTemplateRoomyDetail: String {
             L10n.string("menuBar.composer.template.roomyDetail")
         }

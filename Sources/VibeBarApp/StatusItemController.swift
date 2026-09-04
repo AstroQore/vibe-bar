@@ -1012,7 +1012,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 label: label,
                 percents: percents,
                 tool: run.primary.tool,
-                style: itemSettings.style(for: run.primary.id),
+                // Through the shared rule rather than straight from settings:
+                // the single-line builder has always ignored the per-field
+                // style, and that fact now lives in one place both this and
+                // the seed read.
+                style: MenuBarFieldStripRules.effectiveStyle(
+                    itemSettings.style(for: run.primary.id),
+                    layout: itemSettings.layout
+                ),
                 spokenDescription: run.isMerged
                     ? "\(label) \(windows.joined(separator: ", "))"
                     : "\(label) \(percentText(percents[0].value)) \(modeWord)"

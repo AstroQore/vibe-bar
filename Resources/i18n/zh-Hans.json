@@ -645,7 +645,7 @@
     "value": "宽松"
   },
   "menuBar.composer.template.roomyDetail": {
-    "value": "保持当前字号，积木之间留白更多。"
+    "value": "菜单栏的常规字号。"
   },
   "menuBar.composer.template.twoRows": {
     "value": "两行"

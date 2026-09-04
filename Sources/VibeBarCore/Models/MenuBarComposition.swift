@@ -441,13 +441,15 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         /// size. Realized as a space glyph, exactly the way the existing
         /// logo-to-label gap already is — a text attachment would inflate the
         /// line box and push the second row out of the bar.
-        public var tokenSpacing: Double {
-            switch self {
-            case .compact: return 0.35
-            case .roomy: return 0.9
-            case .twoColumn: return 0.8
-            }
-        }
+        /// One space, in every template.
+        ///
+        /// The composed renderer puts this between *every* pair of blocks,
+        /// including a label and its number — and one space is exactly what
+        /// each field renderer draws there. Anything else makes a seeded strip
+        /// a different width from the strip it reproduces, which is what a
+        /// larger value did. The templates differ by face and by rows, not by
+        /// how far apart the words sit.
+        public var tokenSpacing: Double { 1.0 }
 
         /// Multiplier on the layout's base font size.
         public var fontScale: Double {
@@ -464,11 +466,23 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
 
         var seedsSecondRow: Bool { self == .twoColumn }
 
-        /// What this template draws between two entries sharing a row. Used
-        /// when a two-row strip collapses back to one, so the entries that
-        /// were rows again become entries side by side.
-        var inlineSeparator: MenuBarToken.Kind {
-            self == .compact ? .space : .separator(" · ")
+        /// What this template draws between two entries sharing a row, when a
+        /// two-row strip collapses back to one.
+        ///
+        /// The same answer the seed uses, from the same table — a row break
+        /// and an entry boundary are the same boundary seen two ways, so they
+        /// must round-trip.
+        var inlineSeparator: MenuBarToken.Kind? {
+            MenuBarFieldStripRules.separator(for: seededFrom)
+        }
+
+        /// The field layout this template reproduces.
+        var seededFrom: MenuBarLayout {
+            switch self {
+            case .compact: return .compact
+            case .roomy: return .singleLine
+            case .twoColumn: return .twoRows
+            }
         }
 
         /// The template whose proportions match a field-mode layout, so
@@ -481,6 +495,11 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             case .singleLine, .iconOnly: return .roomy
             }
         }
+
+        /// Layouts this template can be the match for. `.iconOnly` also maps
+        /// to `.roomy`, since an icon-only seed is a single glyph and has no
+        /// spacing or separator of its own to reproduce.
+        static var allLayouts: [MenuBarLayout] { MenuBarLayout.allCases }
     }
 
     /// The status item is ~22pt tall: two rows is the most the rasterizer can
@@ -537,11 +556,14 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
                 tokens.insert(MenuBarToken(kind: .lineBreak), at: seam)
             }
         } else {
+            guard let inline = newTemplate.inlineSeparator else {
+                // Nothing is drawn between entries on this template; the
+                // strip's own spacing does the work, so the break just goes.
+                tokens.removeAll { $0.kind == .lineBreak }
+                return
+            }
             for index in tokens.indices where tokens[index].kind == .lineBreak {
-                tokens[index] = MenuBarToken(
-                    kind: newTemplate.inlineSeparator,
-                    style: .divider
-                )
+                tokens[index] = MenuBarToken(kind: inline, style: .divider)
             }
         }
     }
@@ -551,14 +573,15 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// break replaces the divider instead of joining it. `nil` when there is
     /// not enough on the strip to split.
     private static func rowSeamIndex(in tokens: [MenuBarToken]) -> Int? {
-        let content = tokens.indices.filter { index in
-            switch tokens[index].kind {
-            case .space, .separator, .lineBreak: return false
-            default: return true
-            }
-        }
-        guard content.count >= 2 else { return nil }
-        let start = content[(content.count + 1) / 2]
+        // Between entries, never through one. Counting raw content tokens put
+        // the seam in the middle of the *second* entry of three — an entry is
+        // a name and a number, so six tokens bisected the pair — leaving one
+        // field's label on the first row and its percentage on the second.
+        let starts = entryStartIndices(in: tokens)
+        guard starts.count >= 2 else { return nil }
+        let start = starts[(starts.count + 1) / 2]
+        // The spacing in front of the entry is the boundary the break takes
+        // over, so it goes with the break rather than dangling at a row end.
         if start > 0 {
             switch tokens[start - 1].kind {
             case .space, .separator: return start - 1
@@ -566,6 +589,31 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             }
         }
         return start
+    }
+
+    /// Where each entry begins.
+    ///
+    /// An entry is a name and the value it names — optionally behind a logo.
+    /// A new one starts at the first naming block that follows a value, which
+    /// finds the boundaries whether or not the strip has divider blocks
+    /// between them (Compact and Two rows seed none).
+    private static func entryStartIndices(in tokens: [MenuBarToken]) -> [Int] {
+        var starts: [Int] = []
+        var sawValue = true
+        for (index, token) in tokens.enumerated() {
+            switch token.kind {
+            case .space, .separator, .lineBreak:
+                continue
+            case let .quota(_, metric) where metric != .label:
+                sawValue = true
+            case .logo, .appIcon, .text, .quota, .unsupported:
+                if sawValue {
+                    starts.append(index)
+                    sawValue = false
+                }
+            }
+        }
+        return starts
     }
 
     public var effectiveFontScale: Double { fontScale ?? template.fontScale }
@@ -859,20 +907,12 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             tokens.append(MenuBarToken(kind: .text(item.kind.title), style: .label))
         }
 
-        // What each renderer actually puts between two entries: Single line
-        // appends a tertiary " · "; Compact appends a plain space; Two rows
-        // packs entries into columns separated by `twoRowColumnSpacing` and
-        // draws no divider at all. Seeding a dot into a Two rows strip put
-        // punctuation on screen that the layout had never drawn, which is the
-        // seed failing at its one job.
-        let separator: MenuBarToken.Kind = item.layout == .singleLine
-            ? .separator(" · ")
-            : .space
+        let separator = MenuBarFieldStripRules.separator(for: item.layout)
 
         for (rowIndex, row) in seedRows(runs, item: item, template: template).enumerated() {
             if rowIndex > 0 { tokens.append(MenuBarToken(kind: .lineBreak)) }
             for (index, run) in row.enumerated() {
-                if index > 0 {
+                if index > 0, let separator {
                     tokens.append(MenuBarToken(kind: separator, style: .divider))
                 }
                 tokens.append(contentsOf: seedRunTokens(
@@ -914,7 +954,13 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         groupCatalogLabel: (String) -> String?
     ) -> [MenuBarToken] {
         var tokens: [MenuBarToken] = []
-        let style = item.style(for: run.primary.id)
+        // The style the renderer honours on this layout, not the one stored:
+        // Single line draws words only, so a saved logo style must not put a
+        // logo on a strip that has never shown one.
+        let style = MenuBarFieldStripRules.effectiveStyle(
+            item.style(for: run.primary.id),
+            layout: item.layout
+        )
         if style != .labelAndPercent {
             tokens.append(MenuBarToken(kind: .logo(run.primary.tool), style: .label))
         }
@@ -1982,6 +2028,47 @@ public enum MenuBarStripFit {
 /// built-in gap to a composed row double-counts it, so zero spacing still
 /// shows a gap and non-zero spacing comes out wider in the bar than in the
 /// preview.
+/// The rules the field-based renderer draws by.
+///
+/// Five review rounds found the seed disagreeing with the renderer in five
+/// different dimensions — separator characters, row structure, glyph size,
+/// font face, and now style coercion and spacing. Each was checked against the
+/// dimension that was reported, and none of them stopped the next one, because
+/// the two sides kept their own copy of each rule.
+///
+/// Face and glyph size already live in `MenuBarStripGeometry`, and the layout
+/// to template mapping in `Template.matching`. These are the two that were
+/// still duplicated. A rule that lives here cannot drift; a rule that does not
+/// is a sixth round waiting to happen.
+public enum MenuBarFieldStripRules {
+    /// What the renderer puts *between* two entries, beyond the ordinary gap
+    /// it already leaves between everything.
+    ///
+    /// Only Single line draws a character. Compact butts entries together with
+    /// the same single space it puts between a label and its number, and the
+    /// two-row rasterizer separates columns with spacing and draws nothing at
+    /// all — so for those the answer is nil and the strip's own token spacing
+    /// does the work. Seeding a literal `" · "` and then having the composed
+    /// renderer add its gap on both sides is what made a seeded strip wider
+    /// than the one it copied.
+    public static func separator(for layout: MenuBarLayout) -> MenuBarToken.Kind? {
+        layout == .singleLine ? .separator("·") : nil
+    }
+
+    /// The field style the renderer actually honours.
+    ///
+    /// `singleLineMenuTitle` draws words only and has never consulted the
+    /// per-field style; a saved `.logoAndPercent` is deliberately ignored
+    /// there. The seed applied it anyway and inserted a logo the user had
+    /// never seen on that layout.
+    public static func effectiveStyle(
+        _ style: MenuBarFieldStyle,
+        layout: MenuBarLayout
+    ) -> MenuBarFieldStyle {
+        layout == .singleLine ? .labelAndPercent : style
+    }
+}
+
 public enum MenuBarStripGeometry {
     /// Total width of a cell: its runs, plus one `gap` between each adjacent
     /// pair. A composed row passes `gap: 0`.
