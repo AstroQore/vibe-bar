@@ -726,7 +726,16 @@ struct MenuBarComposerEditor: View {
     /// Every list of fields in this editor spells them this way, because a
     /// bare "Weekly" is exactly the ambiguity the naming axis exists to end.
     static func fieldTitle(_ option: MenuBarFieldOption) -> String {
-        "\(option.tool.quotaSubProviderName(bucketID: option.bucketId)) · \(option.displayTitle)"
+        let subProvider = option.tool.quotaSubProviderName(bucketID: option.bucketId)
+        let title = option.displayTitle
+        // A legacy catalog title can already lead with the SubProvider
+        // ("Grok Bot · Weekly"); saying it twice would be worse than the
+        // ambiguity this fixes.
+        let prefix = "\(subProvider) · "
+        if title.lowercased().hasPrefix(prefix.lowercased()) {
+            return "\(subProvider) · \(title.dropFirst(prefix.count))"
+        }
+        return "\(subProvider) · \(title)"
     }
 
     private func chipHelp(_ token: MenuBarToken, isSilent: Bool, isDegraded: Bool) -> String {
