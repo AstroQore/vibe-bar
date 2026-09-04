@@ -173,6 +173,9 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             self.color = (try? c.decode(ColorSource.self, forKey: .color)) ?? .automatic
+            // Also how the retired `large` arrives: it asked to be bigger
+            // than the strip, and the biggest thing now is the strip's own
+            // size, which is what an unreadable step already falls back to.
             self.size = (try? c.decode(SizeStep.self, forKey: .size)) ?? .regular
             self.weight = (try? c.decode(Weight.self, forKey: .weight)) ?? .medium
             self.monospacedDigits =
@@ -229,27 +232,40 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
         }
     }
 
+    /// The sizes a block can be drawn at, all of them at or below the
+    /// strip's own.
+    ///
+    /// There used to be a Large, and it could not work: the status item is
+    /// about 22 points tall and the default already fills it, so anything
+    /// bigger had to be paid for by the blocks around it. Every attempt to
+    /// make that fair — capping the grower, sharing a surplus, fitting rows
+    /// separately — was machinery for dividing room that does not exist.
+    ///
+    /// Going down instead needs none of it. Nothing can exceed the strip's
+    /// own scale, so no choice can cost a block that did not make it, and
+    /// the question of who pays never arises.
     public enum SizeStep: String, Codable, CaseIterable, Sendable {
-        case small
         case regular
-        case large
+        case small
+        case mini
 
-        /// Multiplier on the row's base font size.
+        /// Multiplier on the row's base font size. Never above 1.
         public var multiplier: Double {
             switch self {
-            case .small: return 0.85
             case .regular: return 1.0
-            case .large: return 1.2
+            case .small: return 0.85
+            case .mini: return 0.72
             }
         }
 
         public var title: String {
             switch self {
-            case .small: return L10n.MenuBar.composerSizeSmall
             case .regular: return L10n.MenuBar.composerSizeRegular
-            case .large: return L10n.MenuBar.composerSizeLarge
+            case .small: return L10n.MenuBar.composerSizeSmall
+            case .mini: return L10n.MenuBar.composerSizeMini
             }
         }
+
     }
 
     public enum Weight: String, Codable, CaseIterable, Sendable {
@@ -2026,7 +2042,6 @@ public extension MenuBarComposition {
             }
         }
 
-        columns = Self.fitted(columns, scale: scale, canvas: canvas)
 
         return MenuBarRenderPlan(
             columns: columns,
@@ -2067,56 +2082,6 @@ public extension MenuBarComposition {
     ///
     /// One row is not fitted at all: it has the whole bar, and a Large block
     /// there simply is large.
-    private static func fitted(
-        _ columns: [MenuBarRenderColumn],
-        scale: Double,
-        canvas: MenuBarStripCanvas
-    ) -> [MenuBarRenderColumn] {
-        let stacked = columns.filter { $0.bottom != nil }
-        guard !stacked.isEmpty else { return columns }
-        func demand(_ rows: [MenuBarRenderRow]) -> Double {
-            rows.flatMap(\.tokens).map(\.fontScale).max() ?? scale
-        }
-        // Only the columns that actually share the canvas vertically. A
-        // one-cell column is centred across both bands, so its height is the
-        // whole canvas, not the top one — counting it in the top row's demand
-        // let a Large title cap every stacked top cell, and capped the title
-        // itself as though it had half the room it has.
-        let fit = MenuBarStripFit.fit(
-            rowScales: [demand(stacked.map(\.top)), demand(stacked.compactMap(\.bottom))],
-            neutralScale: scale,
-            canvas: canvas
-        )
-        // One row, so no gap between rows to pay for: the same solver against
-        // the same canvas answers what a spanning cell may grow to.
-        let spanning = columns.filter { $0.bottom == nil }
-        let spanFit = MenuBarStripFit.fit(
-            rowScales: [demand(spanning.map(\.top))],
-            neutralScale: scale,
-            canvas: canvas
-        )
-        guard fit.isConstraining || spanFit.isConstraining else { return columns }
-        func apply(_ row: MenuBarRenderRow, cap: Double, uniform: Double) -> MenuBarRenderRow {
-            MenuBarRenderRow(tokens: row.tokens.map { token in
-                var capped = token
-                capped.fontScale = Swift.min(token.fontScale, cap) * uniform
-                return capped
-            })
-        }
-        return columns.map { column in
-            guard let bottom = column.bottom else {
-                return MenuBarRenderColumn(
-                    top: apply(column.top, cap: spanFit.rowCaps[0], uniform: spanFit.uniform),
-                    bottom: nil
-                )
-            }
-            return MenuBarRenderColumn(
-                top: apply(column.top, cap: fit.rowCaps[0], uniform: fit.uniform),
-                bottom: apply(bottom, cap: fit.rowCaps[1], uniform: fit.uniform)
-            )
-        }
-    }
-
     /// Text blocks that only repeat the name of the quota block right after
     /// them, and so contribute nothing to a spoken description.
     ///

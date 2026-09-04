@@ -957,9 +957,9 @@ extension L10n {
         public static var composerSelected: String {
             L10n.string("menuBar.composer.selected")
         }
-        /// `menuBar.composer.size.large` — Large
-        public static var composerSizeLarge: String {
-            L10n.string("menuBar.composer.size.large")
+        /// `menuBar.composer.size.mini` — Mini
+        public static var composerSizeMini: String {
+            L10n.string("menuBar.composer.size.mini")
         }
         /// `menuBar.composer.size.regular` — Regular
         public static var composerSizeRegular: String {
@@ -6538,7 +6538,7 @@ extension L10n {
         "menuBar.composer.rule.whenRemainingAtMost",
         "menuBar.composer.rule.whenUsedAtLeast",
         "menuBar.composer.selected",
-        "menuBar.composer.size.large",
+        "menuBar.composer.size.mini",
         "menuBar.composer.size.regular",
         "menuBar.composer.size.small",
         "menuBar.composer.space.detail",

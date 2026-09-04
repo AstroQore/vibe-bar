@@ -1720,7 +1720,7 @@ struct MenuBarChipFlow: Layout {
         for row in lines(subviews: subviews, maxWidth: bounds.width) {
             var x = bounds.minX
             for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
+                let size = measure(subviews[index], maxWidth: bounds.width)
                 subviews[index].place(
                     at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
                     proposal: ProposedViewSize(size)
@@ -1737,11 +1737,30 @@ struct MenuBarChipFlow: Layout {
         var height: CGFloat = 0
     }
 
+    /// What a subview wants, given the room this layout actually has.
+    ///
+    /// `.unspecified` asks "how wide would you like to be", and a subview
+    /// that is itself a flow answers with every one of its own children on
+    /// one line — so a group box measured that way came out as wide as all
+    /// its chips and ran off the pane. Proposing the width available makes
+    /// an inner flow wrap inside it, which is the only honest measurement
+    /// when a flow holds a flow.
+    private func measure(_ subview: Subviews.Element, maxWidth: CGFloat) -> CGSize {
+        let intrinsic = subview.sizeThatFits(.unspecified)
+        guard maxWidth.isFinite, intrinsic.width > maxWidth else { return intrinsic }
+        // Only the ones that do not fit. Proposing the cap to everything
+        // makes any greedy subview — a group box, whose header holds a
+        // Spacer — report the full width and take a line to itself, which
+        // turns "wrap side by side" into "one per row" and makes the
+        // composer taller for no reason.
+        return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+    }
+
     private func lines(subviews: Subviews, maxWidth: CGFloat) -> [Line] {
         var rows: [Line] = []
         var current = Line()
         for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
+            let size = measure(subviews[index], maxWidth: maxWidth)
             let advance = current.indices.isEmpty ? size.width : current.width + spacing + size.width
             if !current.indices.isEmpty, advance > maxWidth {
                 rows.append(current)
