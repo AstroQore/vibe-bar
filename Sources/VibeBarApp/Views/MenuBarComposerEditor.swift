@@ -872,6 +872,7 @@ struct MenuBarComposerEditor: View {
         dragCancelTask = nil
         dragComposition = nil
         draggedTokenId = nil
+        draggedNewToken = nil
         var updated = item
         let before = updated.composition
         var composed = before ?? MenuBarComposition(isEnabled: true)
@@ -949,6 +950,7 @@ struct MenuBarComposerEditor: View {
     private func commitDrag() {
         guard let reordered = dragComposition else {
             draggedTokenId = nil
+            draggedNewToken = nil
             return
         }
         let segments = reordered.segments
@@ -1724,7 +1726,11 @@ private struct MenuBarChipDropDelegate: DropDelegate {
             }
             provisional = order
             dragged = new.id
-            pendingNew = nil
+            // `pendingNew` deliberately survives the insertion. A drag that
+            // wanders off every target long enough clears `dragged` and rolls
+            // `provisional` back to the committed order; without the token
+            // still here, coming back would stage nothing and the drop would
+            // add nothing. The drag's end clears it — see `mutate`.
             return
         }
         guard let dragged, provisional != nil else { return }
