@@ -50,13 +50,17 @@ public enum AppLocalization {
     public static var languageOverride: AppLanguage {
         get { state.withLock { $0.override } }
         set {
-            let changed: Bool = state.withLock { current in
-                guard current.override != newValue else { return false }
+            state.withLock { current in
+                guard current.override != newValue else { return }
                 current.override = newValue
                 current.resolvedCode = nil
-                return true
             }
-            if changed { push() }
+            // Pushed on every assignment, not only on a change: the first
+            // one at launch is `.system` written over `.system`, and it is
+            // the one that has to hand the package its locale before any
+            // string is read — otherwise the package's own, looser matching
+            // answers until something else happens to resolve the language.
+            push()
         }
     }
 

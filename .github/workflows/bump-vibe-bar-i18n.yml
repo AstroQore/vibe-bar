@@ -89,9 +89,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          open_pr="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number' || true)"
-          if [ -n "$open_pr" ]; then
-            echo "::notice::PR #${open_pr} already proposes ${BRANCH}."
+          # Any state, not only open: a bump somebody closed unmerged is a
+          # bump somebody declined, and its retained branch would make the
+          # push below fail anyway. Propose each catalogue version once.
+          existing_pr="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state all --json number,state --jq '.[0] | "\(.number) \(.state)"' || true)"
+          if [ -n "$existing_pr" ]; then
+            echo "::notice::PR ${existing_pr} already proposed ${BRANCH}; not proposing it again."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -113,10 +116,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
 
-          # The pin itself, and the copy of it AGENTS.md § 2.1 quotes. Both
-          # are exact-match rewrites: a miss is a failure, not a silent no-op.
+          # The pin itself, and the copy of it AGENTS.md § 7.2 quotes — anchored
+          # on the catalogue's own URL so a kit pin that happens to carry the
+          # same number is never touched. A miss on Package.swift is a
+          # failure, not a silent no-op.
           perl -0pi -e "s{(vibe-bar-i18n\.git\", exact: \")\Q${CURRENT}\E(\")}{\${1}${LATEST}\${2}}g" Package.swift
-          perl -0pi -e "s{(exact: \")\Q${CURRENT}\E(\"\)\`)}{\${1}${LATEST}\${2}}g" AGENTS.md
+          perl -0pi -e "s{(vibe-bar-i18n\.git\", exact: \")\Q${CURRENT}\E(\")}{\${1}${LATEST}\${2}}g" AGENTS.md
 
           if ! grep -q "vibe-bar-i18n.git\", exact: \"${LATEST}\"" Package.swift; then
             echo "::error::Package.swift still does not name ${LATEST}."

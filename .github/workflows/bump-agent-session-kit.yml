@@ -114,7 +114,7 @@ jobs:
           # The pin itself, and the copy of it AGENTS.md § 2.1 quotes. Both
           # are exact-match rewrites: a miss is a failure, not a silent no-op.
           perl -0pi -e "s{(agent-session-kit\.git\", exact: \")\Q${CURRENT}\E(\")}{\${1}${LATEST}\${2}}g" Package.swift
-          perl -0pi -e "s{(exact: \")\Q${CURRENT}\E(\"\)\`)}{\${1}${LATEST}\${2}}g" AGENTS.md
+          perl -0pi -e "s{(agent-session-kit\.git\", exact: \")\Q${CURRENT}\E(\")}{\${1}${LATEST}\${2}}g" AGENTS.md
 
           if ! grep -q "agent-session-kit.git\", exact: \"${LATEST}\"" Package.swift; then
             echo "::error::Package.swift still does not name ${LATEST}."
