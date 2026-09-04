@@ -827,6 +827,9 @@
 /* Button in the setup assistant */
 "onboarding.cookies.importGrok" = "Import Grok cookies from browser";
 
+/* Button that imports one provider's cookies from the browser; {provider} is the provider name */
+"onboarding.cookies.importProvider" = "Import %1$@ cookies from browser";
+
 /* Status line while an import runs */
 "onboarding.cookies.importing" = "Importing…";
 
@@ -2008,6 +2011,9 @@
 
 /* Button label */
 "settings.deleteGrokCookies" = "Delete Grok cookies";
+
+/* Destructive button that removes every saved cookie for one provider; {provider} is the provider name */
+"settings.deleteProviderCookies" = "Delete %1$@ cookies";
 
 /* Segmented option: the percentage shows what is left. Title case because it is a picker option; quota.mode.remaining is the lowercase caption under a bar. */
 "settings.displayMode.remaining" = "Remaining";

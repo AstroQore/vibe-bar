@@ -1200,6 +1200,10 @@
     "comment": "Button in the setup assistant",
     "value": "Import Grok cookies from browser"
   },
+  "onboarding.cookies.importProvider": {
+    "comment": "Button that imports one provider's cookies from the browser; {provider} is the provider name",
+    "value": "Import {provider} cookies from browser"
+  },
   "onboarding.cookies.importing": {
     "comment": "Status line while an import runs",
     "value": "Importing…"
@@ -3086,6 +3090,10 @@
   "settings.deleteGrokCookies": {
     "comment": "Button label",
     "value": "Delete Grok cookies"
+  },
+  "settings.deleteProviderCookies": {
+    "comment": "Destructive button that removes every saved cookie for one provider; {provider} is the provider name",
+    "value": "Delete {provider} cookies"
   },
   "settings.displayMode.remaining": {
     "comment": "Segmented option: the percentage shows what is left. Title case because it is a picker option; quota.mode.remaining is the lowercase caption under a bar.",

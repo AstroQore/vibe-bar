@@ -949,11 +949,14 @@ struct CookieSourceControls: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if slots.isEmpty {
+            // The core-provider pages say this once, above, in the provider's
+            // own words ("No usable Cursor.app session — import cursor.com
+            // cookies below."); repeating it here read as two warnings.
+            if slots.isEmpty, emphasis == .compact {
                 Text(L10n.Settings.miscNoCookiesYet)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-            } else {
+            } else if !slots.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(slots) { slot in
                         CookieSlotRow(slot: slot) { deleteSlot(slot) }
@@ -967,10 +970,18 @@ struct CookieSourceControls: View {
                     importDetail
                 }
             case .standard:
-                // Button on its own line, caption beneath — the rhythm the
-                // rest of a core-provider page already uses.
-                importButton
-                importDetail
+                // The pair the sibling provider on the same page already has:
+                // full-size, named after the provider, import beside delete.
+                HStack {
+                    importButton
+                    Button(role: .destructive, action: deleteAllSlots) {
+                        Label(
+                            L10n.Settings.deleteProviderCookies(provider: tool.menuTitle),
+                            systemImage: "trash"
+                        )
+                    }
+                    .disabled(slots.isEmpty)
+                }
             }
             HStack(spacing: 6) {
                 SecureField(manualPrompt, text: $manualDraft)
@@ -1115,12 +1126,17 @@ struct CookieSourceControls: View {
     private var importButton: some View {
         switch emphasis {
         case .compact:
+            // Unnamed on purpose: the misc list puts one of these under every
+            // provider's own heading, where repeating the name is noise.
             Button(L10n.Onboarding.cookiesImportFromBrowser, action: importNow)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         case .standard:
             Button(action: importNow) {
-                Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
+                Label(
+                    L10n.Onboarding.cookiesImportProvider(provider: tool.menuTitle),
+                    systemImage: "safari"
+                )
             }
         }
     }
@@ -1130,6 +1146,32 @@ struct CookieSourceControls: View {
             .font(.caption)
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Every saved slot for this provider, the way the core-provider pages
+    /// delete a provider's web cookies in one go. The per-slot buttons above
+    /// stay: they are how a single stale browser profile is dropped.
+    private func deleteAllSlots() {
+        let snapshotTool = tool
+        let snapshotInstanceID = instanceID
+        let snapshotSlots = slots
+        DispatchQueue.global(qos: .userInitiated).async {
+            var removed = 0
+            for slot in snapshotSlots
+            where MiscCookieSlotStore.delete(
+                slotID: slot.id,
+                for: snapshotTool,
+                instanceID: snapshotInstanceID
+            ) {
+                removed += 1
+            }
+            DispatchQueue.main.async {
+                guard removed > 0 else { return }
+                importStatus = nil
+                reloadSlots()
+                triggerRefresh()
+            }
+        }
     }
 
     private func deleteSlot(_ slot: MiscCookieSlot) {
