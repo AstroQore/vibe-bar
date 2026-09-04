@@ -3059,4 +3059,136 @@ final class MenuBarCompositionTests: XCTestCase {
         canvas.availableHeight = 24
         return canvas
     }
+
+    // MARK: - Blocks bound together
+
+    /// Three blocks side by side, the middle two bound.
+    private func composedRun() -> (MenuBarComposition, [MenuBarToken]) {
+        let tokens = [
+            MenuBarToken.newLogo(.claude),
+            MenuBarToken.newText(),
+            MenuBarToken.newQuota(fieldId: "claude.five_hour"),
+            MenuBarToken.newSeparator()
+        ]
+        var composition = MenuBarComposition(isEnabled: true)
+        composition.segments = [MenuBarSegment(tokens: tokens)]
+        return (composition, tokens)
+    }
+
+    func testBlocksSideBySideInOneRowCanBeBound() {
+        var (composition, tokens) = composedRun()
+        let group = composition.group([tokens[1].id, tokens[2].id])
+        XCTAssertNotNil(group)
+        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[1].id, tokens[2].id])
+        XCTAssertTrue(composition.isGrouped(tokens[2].id))
+        XCTAssertFalse(composition.isGrouped(tokens[0].id))
+    }
+
+    func testTheGroupButtonAndTheGroupOperationAgree() {
+        var (composition, tokens) = composedRun()
+        let adjacent = [tokens[1].id, tokens[2].id]
+        let apart = [tokens[0].id, tokens[2].id]
+        let alone = [tokens[0].id]
+        XCTAssertTrue(composition.canGroup(adjacent))
+        XCTAssertFalse(composition.canGroup(apart))
+        XCTAssertFalse(composition.canGroup(alone))
+        XCTAssertNotNil(composition.group(adjacent))
+        var other = composition
+        XCTAssertNil(other.group(apart))
+        XCTAssertNil(other.group(alone))
+    }
+
+    func testBlocksWithAStrangerBetweenThemAreRefusedRatherThanRearranged() {
+        var (composition, tokens) = composedRun()
+        XCTAssertNil(composition.group([tokens[0].id, tokens[2].id]))
+        XCTAssertEqual(composition.segments.first?.top.map(\.id), tokens.map(\.id),
+                       "a refused binding must not move anything")
+        XCTAssertFalse(composition.isGrouped(tokens[0].id))
+    }
+
+    func testDraggingOneMemberBringsTheWholeRun() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        composition.move(tokens[2].id, before: tokens[0].id)
+        XCTAssertEqual(
+            composition.segments.first?.top.map(\.id),
+            [tokens[1].id, tokens[2].id, tokens[0].id, tokens[3].id]
+        )
+        XCTAssertTrue(composition.isGrouped(tokens[1].id), "the run stays bound after the move")
+    }
+
+    func testARunDraggedToTheEndOfARowArrivesInOrder() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[0].id, tokens[1].id])
+        let address = MenuBarComposition.RowAddress(
+            segment: composition.segments[0].id, row: .top
+        )
+        composition.move(tokens[0].id, toEndOf: address)
+        XCTAssertEqual(
+            composition.segments.first?.top.map(\.id),
+            [tokens[2].id, tokens[3].id, tokens[0].id, tokens[1].id]
+        )
+    }
+
+    func testDroppingABlockIntoTheMiddleOfARunDissolvesIt() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        composition.move(tokens[3].id, before: tokens[2].id)
+        XCTAssertEqual(
+            composition.segments.first?.top.map(\.id),
+            [tokens[0].id, tokens[1].id, tokens[3].id, tokens[2].id]
+        )
+        XCTAssertFalse(composition.isGrouped(tokens[1].id),
+                       "a run with a stranger through it is not a run")
+    }
+
+    func testARunDownToOneBlockIsNoLongerAGroup() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        composition.remove(tokens[2].id)
+        XCTAssertFalse(composition.isGrouped(tokens[1].id))
+        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[1].id])
+    }
+
+    func testAThirdMemberLeavesTheOthersBound() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id, tokens[3].id])
+        composition.remove(tokens[3].id)
+        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[1].id, tokens[2].id])
+    }
+
+    func testASegmentIsNotSplitThroughARun() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        composition.splitSegment(before: tokens[2].id)
+        XCTAssertEqual(composition.segments.count, 1, "the cut would have halved the run")
+        composition.splitSegment(before: tokens[1].id)
+        XCTAssertEqual(composition.segments.count, 2, "a run may start a segment")
+        XCTAssertTrue(composition.isGrouped(tokens[1].id))
+    }
+
+    func testUngroupingLeavesEveryBlockWhereItWas() {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[1].id, tokens[2].id])
+        composition.ungroup(tokens[2].id)
+        XCTAssertEqual(composition.segments.first?.top.map(\.id), tokens.map(\.id))
+        XCTAssertFalse(composition.isGrouped(tokens[1].id))
+    }
+
+    func testABindingSurvivesASaveAndReload() throws {
+        var (composition, tokens) = composedRun()
+        let group = try XCTUnwrap(composition.group([tokens[1].id, tokens[2].id]))
+        let data = try JSONEncoder().encode(composition)
+        let reloaded = try JSONDecoder().decode(MenuBarComposition.self, from: data)
+        XCTAssertEqual(reloaded.segments.first?.top[1].groupID, group)
+        XCTAssertEqual(reloaded.groupedRun(of: tokens[1].id), [tokens[1].id, tokens[2].id])
+    }
+
+    func testABlockFromBeforeGroupsExistedDecodesUnbound() throws {
+        let json = Data("""
+        {"id":"11111111-1111-1111-1111-111111111111","kind":{"case":"appIcon"}}
+        """.utf8)
+        let token = try JSONDecoder().decode(MenuBarToken.self, from: json)
+        XCTAssertNil(token.groupID)
+    }
 }

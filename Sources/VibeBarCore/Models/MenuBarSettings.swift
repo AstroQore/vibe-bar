@@ -308,14 +308,14 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         // default instead of discarding the settings blob.
         let rawStyles = try c.decodeIfPresent([String: String].self, forKey: .fieldStyles) ?? [:]
         self.fieldStyles = rawStyles.compactMapValues(MenuBarFieldStyle.init(rawValue:))
-        // Absent in every settings file written before group merging existed;
+        // Absent in every settings file written before segment merging existed;
         // off is the layout those bars were arranged against.
         self.mergesGroupWindows = try c.decodeIfPresent(Bool.self, forKey: .mergesGroupWindows) ?? false
         // Absent for every item that predates the composer, and lossy on
         // purpose: an unreadable strip falls back to the field-based bar
         // instead of taking the whole settings file down.
         self.composition = try? c.decodeIfPresent(MenuBarComposition.self, forKey: .composition)
-        // Absent before saved groups existed, and lossy per entry for the same
+        // Absent before saved segments existed, and lossy per entry for the same
         // reason the strip is: one unreadable preset must not cost the rest of
         // the library, let alone the item around it.
         let storedPresets = (try? c.decodeIfPresent([LossyMenuBarSegmentPreset].self, forKey: .segmentPresets))

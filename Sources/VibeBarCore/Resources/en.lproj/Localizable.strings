@@ -521,38 +521,17 @@
 /* Picker choosing a block's type weight. */
 "menuBar.composer.field.weight" = "Weight";
 
-/* Palette button adding an empty group to the strip. */
-"menuBar.composer.group.add" = "New group";
+/* Button that binds the selected blocks into one run */
+"menuBar.composer.group.bind" = "Group";
 
-/* Tooltip on the New group button. */
-"menuBar.composer.group.addHelp" = "Each group is one column of the strip. Give a group a second row to stack that column.";
+/* Explains how to bind blocks and what binding does */
+"menuBar.composer.group.hint" = "Shift-click blocks that sit side by side in one row. A group moves as one — drag any block in it and the whole run goes.";
 
-/* Menu item giving a group a second row. */
-"menuBar.composer.group.addRow" = "Add a second row";
+/* Shown when the selected blocks cannot be bound */
+"menuBar.composer.group.notAdjacent" = "Only blocks side by side in one row can be grouped.";
 
-/* Shown inside a group that has no blocks yet. */
-"menuBar.composer.group.empty" = "Empty group — drag a block in.";
-
-/* Menu action folding a group into the one before it. */
-"menuBar.composer.group.mergeLeft" = "Merge into the group before it";
-
-/* Menu action moving a group one place earlier. */
-"menuBar.composer.group.moveLeft" = "Move left";
-
-/* Menu action moving a group one place later. */
-"menuBar.composer.group.moveRight" = "Move right";
-
-/* Menu action deleting a group and the blocks in it. */
-"menuBar.composer.group.remove" = "Remove group and its blocks";
-
-/* Menu item closing a group's second row; its blocks join the end of the first. */
-"menuBar.composer.group.removeRow" = "Merge the second row up";
-
-/* Button starting a new group at the selected block. */
-"menuBar.composer.group.splitHere" = "Start a group here";
-
-/* Header over one group of blocks. Index counts from 1. */
-"menuBar.composer.group.title" = "Group %1$lld";
+/* Button that unbinds a run of blocks */
+"menuBar.composer.group.unbind" = "Ungroup";
 
 /* Quota metric: whichever percentage the app-wide Used/Remaining setting selects. */
 "menuBar.composer.metric.displayPercent" = "Percent (follows setting)";
@@ -609,7 +588,7 @@
 "menuBar.composer.palette" = "Add a block";
 
 /* Tooltip on a saved group. */
-"menuBar.composer.preset.insertHelp" = "Insert this group at the end of the strip.";
+"menuBar.composer.preset.insertHelp" = "Insert this segment at the end of the strip.";
 
 /* Text field for the name of a saved group. */
 "menuBar.composer.preset.name" = "Name";
@@ -624,10 +603,10 @@
 "menuBar.composer.preset.saveConfirm" = "Save";
 
 /* Title of the dialog naming a saved group. */
-"menuBar.composer.preset.saveTitle" = "Save this group";
+"menuBar.composer.preset.saveTitle" = "Save this segment";
 
 /* Caption over the saved groups that can be inserted. */
-"menuBar.composer.presets" = "Saved groups";
+"menuBar.composer.presets" = "Saved segments";
 
 /* Caption over the live preview of the composed strip. */
 "menuBar.composer.preview" = "Preview";
@@ -682,6 +661,39 @@
 
 /* Visibility rule: show once a quota's used percentage reaches a threshold. */
 "menuBar.composer.rule.whenUsedAtLeast" = "When used is at least";
+
+/* Palette button adding an empty group to the strip. */
+"menuBar.composer.segment.add" = "New segment";
+
+/* Tooltip on the New group button. */
+"menuBar.composer.segment.addHelp" = "Each segment is one column of the strip. Give a segment a second row to stack that column.";
+
+/* Menu item giving a group a second row. */
+"menuBar.composer.segment.addRow" = "Add a second row";
+
+/* Shown inside a group that has no blocks yet. */
+"menuBar.composer.segment.empty" = "Empty segment — drag a block in.";
+
+/* Menu action folding a group into the one before it. */
+"menuBar.composer.segment.mergeLeft" = "Merge into the segment before it";
+
+/* Menu action moving a group one place earlier. */
+"menuBar.composer.segment.moveLeft" = "Move left";
+
+/* Menu action moving a group one place later. */
+"menuBar.composer.segment.moveRight" = "Move right";
+
+/* Menu action deleting a group and the blocks in it. */
+"menuBar.composer.segment.remove" = "Remove segment and its blocks";
+
+/* Menu item closing a group's second row; its blocks join the end of the first. */
+"menuBar.composer.segment.removeRow" = "Merge the second row up";
+
+/* Button starting a new group at the selected block. */
+"menuBar.composer.segment.splitHere" = "Start a segment here";
+
+/* Header over one group of blocks. Index counts from 1. */
+"menuBar.composer.segment.title" = "Segment %1$lld";
 
 /* Caption over the controls for the selected block. */
 "menuBar.composer.selected" = "Selected block";
