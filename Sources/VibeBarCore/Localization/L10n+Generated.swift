@@ -2205,10 +2205,6 @@ extension L10n {
         public static func perModelLimits(count: Int, provider: String) -> String {
             L10n.string("quota.perModelLimits", count, provider)
         }
-        /// `quota.reset.in` — resets in {duration}
-        public static func resetIn(duration: String) -> String {
-            L10n.string("quota.reset.in", duration)
-        }
         /// `quota.reset.passedAt` — reset passed · {time}
         public static func resetPassedAt(time: String) -> String {
             L10n.string("quota.reset.passedAt", time)
@@ -6683,7 +6679,6 @@ extension L10n {
         "quota.pace.runsOutIn",
         "quota.pace.runsOutShort",
         "quota.perModelLimits",
-        "quota.reset.in",
         "quota.reset.passedAt",
         "quota.resetCredits.available",
         "quota.resetCredits.availableWithExpiry",

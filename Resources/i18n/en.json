@@ -2401,10 +2401,6 @@
     "comment": "Compact summary shown when per-model limits are collapsed; provider is a SubProvider name",
     "value": "{count, plural, one {1 per-model limit} other {# per-model limits}} · open {provider} for details"
   },
-  "quota.reset.in": {
-    "comment": "Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time",
-    "value": "resets in {duration}"
-  },
   "quota.reset.passedAt": {
     "comment": "Reset passed, with the absolute time it should have happened",
     "value": "reset passed · {time}"

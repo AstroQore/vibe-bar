@@ -1604,9 +1604,6 @@
 /* Compact projection in the mini window: when the quota is estimated to be exhausted */
 "quota.pace.runsOutShort" = "%1$@耗尽";
 
-/* Live countdown to a bucket's refill; duration is a compact span, sometimes followed by an absolute time */
-"quota.reset.in" = "距重置 %1$@";
-
 /* Reset passed, with the absolute time it should have happened */
 "quota.reset.passedAt" = "重置时间已过 · %1$@";
 

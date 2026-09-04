@@ -77,7 +77,7 @@ final class ResetCountdownFormatterTests: XCTestCase {
         )
 
         XCTAssertEqual(status?.isExpired, false)
-        XCTAssertEqual(status?.label, "resets in 3h 5m · 17:05")
+        XCTAssertEqual(status?.label, "Resets in 3h 5m · 17:05")
     }
 
     /// Inside the boundary-refresh grace the row still reads as live — the
@@ -94,7 +94,7 @@ final class ResetCountdownFormatterTests: XCTestCase {
         )
 
         XCTAssertEqual(status?.isExpired, false)
-        XCTAssertEqual(status?.label, "resets in now · 17:05")
+        XCTAssertEqual(status?.label, "Resets in now · 17:05")
     }
 
     /// Past the grace the snapshot belongs to a cycle that no longer exists,

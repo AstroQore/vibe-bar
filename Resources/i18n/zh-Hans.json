@@ -1628,9 +1628,6 @@
   "quota.perModelLimits": {
     "value": "{count, plural, other {# 个}}按模型的限额 · 打开 {provider} 查看详情"
   },
-  "quota.reset.in": {
-    "value": "距重置 {duration}"
-  },
   "quota.reset.passedAt": {
     "value": "重置时间已过 · {time}"
   },

@@ -99,7 +99,7 @@ public enum ResetCountdownFormatter {
         // The interpunct join is punctuation, not a sentence: both languages
         // read it the same way, so only the frame around it is translated.
         let detail = "\(countdown) · \(absolute)"
-        return ResetStatus(isExpired: false, label: L10n.Quota.resetIn(duration: detail))
+        return ResetStatus(isExpired: false, label: L10n.Quota.bucketResetsIn(when: detail))
     }
 
     /// Whether a bucket's reset already passed, plus the line to render for it.
