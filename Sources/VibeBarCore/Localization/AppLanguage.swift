@@ -30,7 +30,7 @@ public enum AppLanguage: String, Codable, CaseIterable, Sendable {
     /// are never translated; only "System" is.
     public var displayName: String {
         switch self {
-        case .system:            return L10n.Settings.languageSystem
+        case .system:            return L10n.Settings.Language.system
         case .english:          return "English"
         case .simplifiedChinese: return "简体中文"
         }

@@ -16,26 +16,26 @@ enum OnboardingStep: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .welcome: L10n.Onboarding.stepWelcomeTitle
-        case .subscriptions: L10n.Onboarding.stepSubscriptionsTitle
-        case .browserCookies: L10n.Onboarding.stepBrowserCookiesTitle
-        case .apiKeyProviders: L10n.Onboarding.stepApiKeyProvidersTitle
-        case .pricing: L10n.Onboarding.stepPricingTitle
+        case .welcome: L10n.Onboarding.Step.Welcome.title
+        case .subscriptions: L10n.Onboarding.Step.Subscriptions.title
+        case .browserCookies: L10n.Onboarding.Step.BrowserCookies.title
+        case .apiKeyProviders: L10n.Onboarding.Step.ApiKeyProviders.title
+        case .pricing: L10n.Onboarding.Step.Pricing.title
         // A login item is a macOS thing; no other client has one to offer.
-        case .launchAtLogin: L10n.Platform.macosLaunchAtLoginTitle
-        case .done: L10n.Onboarding.stepDoneTitle
+        case .launchAtLogin: L10n.Platform.Macos.LaunchAtLogin.title
+        case .done: L10n.Onboarding.Step.Done.title
         }
     }
 
     var subtitle: String {
         switch self {
-        case .welcome: L10n.Onboarding.stepWelcomeSubtitle
-        case .subscriptions: L10n.Onboarding.stepSubscriptionsSubtitle
-        case .browserCookies: L10n.Onboarding.stepBrowserCookiesSubtitle
-        case .apiKeyProviders: L10n.Onboarding.stepApiKeyProvidersSubtitle
-        case .pricing: L10n.Onboarding.stepPricingSubtitle
-        case .launchAtLogin: L10n.Platform.macosLaunchAtLoginSubtitle
-        case .done: L10n.Onboarding.stepDoneSubtitle
+        case .welcome: L10n.Onboarding.Step.Welcome.subtitle
+        case .subscriptions: L10n.Onboarding.Step.Subscriptions.subtitle
+        case .browserCookies: L10n.Onboarding.Step.BrowserCookies.subtitle
+        case .apiKeyProviders: L10n.Onboarding.Step.ApiKeyProviders.subtitle
+        case .pricing: L10n.Onboarding.Step.Pricing.subtitle
+        case .launchAtLogin: L10n.Platform.Macos.LaunchAtLogin.subtitle
+        case .done: L10n.Onboarding.Step.Done.subtitle
         }
     }
 
@@ -178,7 +178,7 @@ struct OnboardingView: View {
             }
 
             if let next = navigation.step.next {
-                Button(L10n.Onboarding.continue) {
+                Button(L10n.Onboarding.`continue`) {
                     navigation.step = next
                 }
                 .buttonStyle(WorkbenchPillButtonStyle(prominent: true))

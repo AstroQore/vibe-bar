@@ -39,12 +39,12 @@ public enum ResetTimeFormat: String, Codable, CaseIterable, Hashable, Sendable {
     /// Menu label for the composer's format picker.
     public var title: String {
         switch self {
-        case .automatic: return L10n.MenuBar.composerResetFormatAutomatic
-        case .time: return L10n.MenuBar.composerResetFormatTime
-        case .weekdayTime: return L10n.MenuBar.composerResetFormatWeekdayTime
-        case .date: return L10n.MenuBar.composerResetFormatDate
-        case .dateTime: return L10n.MenuBar.composerResetFormatDateTime
-        case .weekdayDateTime: return L10n.MenuBar.composerResetFormatWeekdayDateTime
+        case .automatic: return L10n.MenuBar.Composer.ResetFormat.automatic
+        case .time: return L10n.MenuBar.Composer.ResetFormat.time
+        case .weekdayTime: return L10n.MenuBar.Composer.ResetFormat.weekdayTime
+        case .date: return L10n.MenuBar.Composer.ResetFormat.date
+        case .dateTime: return L10n.MenuBar.Composer.ResetFormat.dateTime
+        case .weekdayDateTime: return L10n.MenuBar.Composer.ResetFormat.weekdayDateTime
         }
     }
 

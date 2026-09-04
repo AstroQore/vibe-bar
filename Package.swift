@@ -30,6 +30,13 @@ let package = Package(
         // "Chrome Safe Storage" Keychain decryption, and Safari
         // binarycookies / Firefox SQLite reads used by misc providers.
         .package(url: "https://github.com/steipete/SweetCookieKit", exact: "0.5.2"),
+        // Every user-facing string, shared with the cross-platform client.
+        // Pinned exactly, like the kit: a catalogue tag reaches a user only
+        // through a Vibe Bar build that carries it, and
+        // `bump-vibe-bar-i18n.yml` opens the pull request that moves the pin.
+        // `Package.resolved` is not committed, so the exact pin is what makes
+        // two machines build the same strings.
+        .package(url: "https://github.com/AstroQore/vibe-bar-i18n.git", exact: "0.2.0"),
         // Sparkle is the standard update framework for independently
         // distributed macOS applications. Pin the exact reviewed release:
         // update verification and installation are security-sensitive.
@@ -54,11 +61,10 @@ let package = Package(
             name: "VibeBarCore",
             dependencies: [
                 .product(name: "AgentSessionKit", package: "agent-session-kit"),
-                .product(name: "SweetCookieKit", package: "SweetCookieKit")
+                .product(name: "SweetCookieKit", package: "SweetCookieKit"),
+                .product(name: "VibeBarLocalization", package: "vibe-bar-i18n")
             ],
             resources: [
-                // Two kinds of resource share this directory.
-                //
                 // `pricing.json` is the model rate table, shipped as a
                 // bundle so rate updates can be merged without a code
                 // change. `PricingResolver` loads it via `Bundle.module`
@@ -66,16 +72,9 @@ let package = Package(
                 // can override it when `PricingRefresher` fetches a newer
                 // copy from the project's GitHub raw URL.
                 //
-                // `<lang>.lproj/Localizable.{strings,stringsdict}` are the
-                // compiled string catalogs `L10n` reads. They are generated
-                // from `Resources/i18n/*.json` by
-                // `Scripts/build_localizations.py` and checked in, so a
-                // clean machine builds Vibe Bar without Python; a test
-                // regenerates them and fails on a diff. `.process` is what
-                // makes SwiftPM keep them under their `.lproj` in the
-                // bundle — Core is where they live because it is the only
-                // target with a bundle of its own, and both targets resolve
-                // strings through Core's `L10n`.
+                // The string catalogs are not here any more: they ship in
+                // `vibe-bar-i18n`'s own resource bundle, which
+                // `Scripts/build_app.sh` copies into the app.
                 .process("Resources")
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]

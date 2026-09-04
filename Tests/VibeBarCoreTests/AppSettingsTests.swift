@@ -225,7 +225,7 @@ final class AppSettingsTests: XCTestCase {
         for language in AppLanguage.allCases {
             guard let code = language.localizationCode else { continue }
             XCTAssertTrue(
-                L10n.supported.contains(code),
+                AppLocalization.supported.contains(code),
                 "\(code) is selectable but no catalog ships for it"
             )
         }

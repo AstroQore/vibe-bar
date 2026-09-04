@@ -133,10 +133,10 @@ struct ResetLaneView: View {
                 // lane covers a single day (the sub-daily timeline).
                 let ticks: [(fraction: Double, label: String)] = horizonDays <= 1
                     ? [0.25, 0.5, 0.75, 1].map {
-                        ($0, L10n.Quota.upcomingAxisHours(hours: Int($0 * horizonDays * 24)))
+                        ($0, L10n.Quota.Upcoming.axisHours(hours: Int($0 * horizonDays * 24)))
                     }
                     : (1...Int(horizonDays)).map {
-                        (Double($0) / horizonDays, L10n.Quota.upcomingAxisDays(days: $0))
+                        (Double($0) / horizonDays, L10n.Quota.Upcoming.axisDays(days: $0))
                     }
                 ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
                     let x = width * CGFloat(tick.fraction)
@@ -180,7 +180,7 @@ struct ResetLaneView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            Text(L10n.Quota.upcomingResetsAt(
+            Text(L10n.Quota.Upcoming.resetsAt(
                 countdown: ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—",
                 // Same renderer as every other absolute reset time in the app,
                 // so the date reads as a date in whichever language is on.
@@ -188,14 +188,14 @@ struct ResetLaneView: View {
             ))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)
-            Text(L10n.Quota.upcomingLeftAndGain(
+            Text(L10n.Quota.Upcoming.leftAndGain(
                 remaining: Int(event.remainingPercent.rounded()),
                 gain: Int(event.gainPercent.rounded())
             ))
                 .font(.system(size: 9, design: .rounded).monospacedDigit())
                 .foregroundStyle(Theme.barColor(percent: event.remainingPercent, mode: .remaining))
             if let projected = event.forecastRemainingAtResetPercent {
-                Text(L10n.Quota.upcomingForecastAtReset(percent: Int(projected.rounded())))
+                Text(L10n.Quota.Forecast.Reset.enough(percent: Int(projected.rounded())))
                     .font(.system(size: 9, design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -265,7 +265,7 @@ struct ResetLaneView: View {
                 hoveredEventID = nil
             }
         }
-        .help(L10n.Quota.upcomingMarkerHelp(
+        .help(L10n.Quota.Upcoming.markerHelp(
             label: event.label,
             remaining: Int(event.remainingPercent.rounded()),
             gain: Int(event.gainPercent.rounded()),
@@ -298,15 +298,15 @@ struct UpcomingResetsCard: View {
         let events = UpcomingResets.events(environment: environment, now: now)
         CardShell(density: density, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(L10n.Quota.upcomingTitle)
+                Text(L10n.Quota.Upcoming.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer(minLength: 6)
-                Text(L10n.Quota.upcomingHorizon)
+                Text(L10n.Quota.Upcoming.horizon)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
             if events.isEmpty {
-                Text(L10n.Quota.upcomingEmpty)
+                Text(L10n.Quota.Upcoming.empty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 12)
@@ -333,7 +333,7 @@ struct UpcomingResetsCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Spacer(minLength: 6)
-            Text(L10n.Quota.upcomingGain(gain: Int(event.gainPercent.rounded())))
+            Text(L10n.Quota.Upcoming.gain(gain: Int(event.gainPercent.rounded())))
                 .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(Theme.barColor(percent: event.remainingPercent, mode: .remaining))
             Text(ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—")

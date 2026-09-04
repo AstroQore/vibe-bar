@@ -61,7 +61,7 @@ struct SessionManagerPage: View {
             Button(L10n.Common.delete, role: .destructive) { model.confirmDelete() }
             Button(L10n.Common.cancel, role: .cancel) { model.cancelDelete() }
         } message: {
-            Text(L10n.Workbench.sessionsDeleteMessage)
+            Text(L10n.Workbench.Sessions.Delete.message)
         }
         .task { model.activate() }
     }
@@ -74,7 +74,7 @@ struct SessionManagerPage: View {
     }
 
     private var deletionTitle: String {
-        L10n.Workbench.sessionsDeleteConfirm(count: model.pendingDeletion?.count ?? 0)
+        L10n.Workbench.Sessions.Delete.confirm(count: model.pendingDeletion?.count ?? 0)
     }
 
     @ViewBuilder
@@ -126,7 +126,7 @@ struct SessionFiltersBar: View {
                     SectionRefreshButton(isRefreshing: model.indexProgress != nil) {
                         model.refreshIndex()
                     }
-                    .help(L10n.Workbench.sessionsRefreshHelp)
+                    .help(L10n.Workbench.Sessions.refreshHelp)
                     allProvidersChip
                     companyFilterMenu
                     harnessFilterMenu
@@ -151,7 +151,7 @@ struct SessionFiltersBar: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: density.segmentedFontSize - 1))
                 .foregroundStyle(.secondary)
-            TextField(L10n.Workbench.sessionsSearchPlaceholder, text: $model.searchText)
+            TextField(L10n.Workbench.Sessions.Search.placeholder, text: $model.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: max(12, density.segmentedFontSize)))
                 // A text field draws nothing of its own to say keyboard focus
@@ -160,7 +160,7 @@ struct SessionFiltersBar: View {
             if !model.searchText.isEmpty {
                 BorderlessIconButton(
                     systemImage: "xmark.circle.fill",
-                    help: L10n.Workbench.sessionsSearchClearHelp
+                    help: L10n.Workbench.Sessions.Search.clearHelp
                 ) {
                     model.searchText = ""
                 }
@@ -182,12 +182,12 @@ struct SessionFiltersBar: View {
             }
             Divider()
             Text(model.isBodyIndexingEnabled
-                ? L10n.Workbench.sessionsSearchBodyIndexed
-                : L10n.Workbench.sessionsSearchBodyNotIndexed)
+                ? L10n.Workbench.Sessions.Search.bodyIndexed
+                : L10n.Workbench.Sessions.Search.bodyNotIndexed)
         } label: {
             menuLabel(
                 systemImage: "text.magnifyingglass",
-                title: L10n.Workbench.sessionsFilterScope,
+                title: L10n.Workbench.Sessions.Filter.scope,
                 detail: AppLocale.number(model.searchScopes.count)
             )
         }
@@ -205,36 +205,36 @@ struct SessionFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: "folder.badge.gearshape",
-                title: L10n.Workbench.sessionsFilterFolders,
-                detail: active ? L10n.Workbench.sessionsFilterFoldersFiltered : L10n.Common.all
+                title: L10n.Workbench.Sessions.Filter.folders,
+                detail: active ? L10n.Workbench.Sessions.Filter.foldersFiltered : L10n.Common.all
             )
         }
         .buttonStyle(WorkbenchPillButtonStyle(prominent: active))
         .popover(isPresented: $showsDirectoryFilters, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
-                Text(L10n.Workbench.sessionsFoldersTitle)
+                Text(L10n.Workbench.Sessions.Folders.title)
                     .font(.headline)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(L10n.Workbench.sessionsFoldersInclude)
+                    Text(L10n.Workbench.Sessions.Folders.include)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextField(
-                        L10n.Workbench.sessionsFoldersIncludePlaceholder,
+                        L10n.Workbench.Sessions.Folders.includePlaceholder,
                         text: $model.directoryIncludeText
                     )
                     .textFieldStyle(.roundedBorder)
                 }
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(L10n.Workbench.sessionsFoldersExclude)
+                    Text(L10n.Workbench.Sessions.Folders.exclude)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextField(
-                        L10n.Workbench.sessionsFoldersExcludePlaceholder,
+                        L10n.Workbench.Sessions.Folders.excludePlaceholder,
                         text: $model.directoryExcludeText
                     )
                     .textFieldStyle(.roundedBorder)
                 }
-                Text(L10n.Workbench.sessionsFoldersSeparatorHint)
+                Text(L10n.Workbench.Sessions.Folders.separatorHint)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 HStack {
@@ -255,11 +255,11 @@ struct SessionFiltersBar: View {
 
     private func scopeTitle(_ scope: SessionSearchScope) -> String {
         switch scope {
-        case .title: L10n.Workbench.sessionsScopeTitle
-        case .user: L10n.Workbench.sessionsScopeUser
-        case .assistant: L10n.Workbench.sessionsScopeAssistant
-        case .system: L10n.Workbench.sessionsScopeSystem
-        case .tool: L10n.Workbench.sessionsScopeTool
+        case .title: L10n.Workbench.Sessions.Scope.title
+        case .user: L10n.Workbench.Sessions.Scope.user
+        case .assistant: L10n.Workbench.Sessions.Scope.assistant
+        case .system: L10n.Workbench.Sessions.Scope.system
+        case .tool: L10n.Workbench.Sessions.Scope.tool
         }
     }
 
@@ -271,8 +271,8 @@ struct SessionFiltersBar: View {
                     .progressViewStyle(.linear)
                     .frame(width: 70)
                 Text(progress.total > 0
-                    ? L10n.Workbench.sessionsFraction(shown: progress.done, total: progress.total)
-                    : L10n.Workbench.sessionsIndexScanning)
+                    ? L10n.Workbench.Sessions.fraction(shown: progress.done, total: progress.total)
+                    : L10n.Workbench.Sessions.Index.scanning)
                     .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .rounded)
                         .monospacedDigit())
                     .foregroundStyle(.tertiary)
@@ -288,15 +288,15 @@ struct SessionFiltersBar: View {
     }
 
     private var countSummary: String {
-        guard model.isIndexAvailable else { return L10n.Workbench.sessionsIndexUnavailable }
+        guard model.isIndexAvailable else { return L10n.Workbench.Sessions.Index.unavailable }
         let shown = model.rows.count
         if model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            shown < model.totalSessionCount {
-            return L10n.Workbench.sessionsCountShownOfTotal(
+            return L10n.Workbench.Sessions.Count.shownOfTotal(
                 shown: shown, total: model.totalSessionCount
             )
         }
-        return L10n.Workbench.sessionsCountSessions(count: shown)
+        return L10n.Workbench.Sessions.Count.sessions(count: shown)
     }
 
     // MARK: - Harnesses
@@ -334,11 +334,11 @@ struct SessionFiltersBar: View {
         .buttonStyle(.vibeBar)
         .background(chipBackground(tint: .accentColor, selected: selected))
         .help(selected
-            ? L10n.Workbench.sessionsAllChipHelpSelected
-            : L10n.Workbench.sessionsAllChipHelpUnselected)
+            ? L10n.Usage.Filters.allHarnessesHelpNone
+            : L10n.Workbench.Sessions.AllChip.helpUnselected)
         .accessibilityLabel(selected
-            ? L10n.Workbench.sessionsAllChipLabelSelected
-            : L10n.Workbench.sessionsAllChipLabelUnselected)
+            ? L10n.Usage.Filters.allHarnessesSelectNone
+            : L10n.Workbench.Sessions.AllChip.labelUnselected)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -356,7 +356,7 @@ struct SessionFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: "building.2",
-                title: L10n.Workbench.sessionsFilterCompany,
+                title: L10n.Workbench.Sessions.Filter.company,
                 detail: selectedCompanySummary
             )
         }
@@ -374,7 +374,7 @@ struct SessionFiltersBar: View {
                     set: { _ in model.toggleHarness(harness) }
                 )) {
                     Label {
-                        Text(L10n.Workbench.sessionsFilterHarnessCount(
+                        Text(L10n.Workbench.Sessions.Filter.harnessCount(
                             harness: harness.displayName,
                             count: model.harnessCounts[harness] ?? 0
                         ))
@@ -391,7 +391,7 @@ struct SessionFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: "terminal",
-                title: L10n.Workbench.sessionsFilterHarness,
+                title: L10n.Usage.Table.Column.harness,
                 detail: selectedHarnessSummary
             )
         }
@@ -409,7 +409,7 @@ struct SessionFiltersBar: View {
     private var selectedCompanySummary: String {
         let selected = availableCompanyGroups.count(where: isSelected)
         guard selected != availableCompanyGroups.count else { return L10n.Common.all }
-        return L10n.Workbench.sessionsFraction(
+        return L10n.Workbench.Sessions.fraction(
             shown: selected, total: availableCompanyGroups.count
         )
     }
@@ -418,7 +418,7 @@ struct SessionFiltersBar: View {
         guard let filter = model.harnessFilter else { return L10n.Common.all }
         let count = availableHarnesses.count(where: filter.contains)
         guard count != availableHarnesses.count else { return L10n.Common.all }
-        return L10n.Workbench.sessionsFraction(shown: count, total: availableHarnesses.count)
+        return L10n.Workbench.Sessions.fraction(shown: count, total: availableHarnesses.count)
     }
 
     private func chipBackground(tint: Color, selected: Bool) -> some View {
@@ -432,7 +432,7 @@ struct SessionFiltersBar: View {
 
     private var rangeMenu: some View {
         Menu {
-            Picker(L10n.Workbench.sessionsFilterDateRange, selection: $model.dateRange) {
+            Picker(L10n.Workbench.Sessions.Filter.dateRange, selection: $model.dateRange) {
                 ForEach(SessionManagerModel.DateRange.allCases) { range in
                     Label(range.title, systemImage: range.systemImage).tag(range)
                 }
@@ -441,7 +441,7 @@ struct SessionFiltersBar: View {
         } label: {
             menuLabel(
                 systemImage: "calendar",
-                title: L10n.Workbench.sessionsFilterWhen,
+                title: L10n.Workbench.Sessions.Filter.when,
                 detail: model.dateRange.title
             )
         }
@@ -449,25 +449,25 @@ struct SessionFiltersBar: View {
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel(L10n.Workbench.sessionsFilterWhenHelp)
+        .accessibilityLabel(L10n.Workbench.Sessions.Filter.whenHelp)
     }
 
     private var sortMenu: some View {
         Menu {
-            Picker(L10n.Workbench.sessionsFilterSort, selection: $model.sortOrder) {
+            Picker(L10n.Workbench.Sessions.Filter.sort, selection: $model.sortOrder) {
                 ForEach(SessionManagerModel.SortOrder.allCases) { order in
                     Label(order.title, systemImage: order.systemImage).tag(order)
                 }
             }
             .pickerStyle(.inline)
             Divider()
-            Toggle(L10n.Workbench.sessionsGroupByProject, isOn: $model.groupByProject)
+            Toggle(L10n.Workbench.Sessions.groupByProject, isOn: $model.groupByProject)
         } label: {
             menuLabel(
                 systemImage: "arrow.up.arrow.down",
-                title: L10n.Workbench.sessionsFilterSort,
+                title: L10n.Workbench.Sessions.Filter.sort,
                 detail: model.groupByProject
-                    ? L10n.Workbench.sessionsFilterSortGrouped(order: model.sortOrder.title)
+                    ? L10n.Workbench.Sessions.Filter.sortGrouped(order: model.sortOrder.title)
                     : model.sortOrder.title
             )
         }
@@ -475,24 +475,24 @@ struct SessionFiltersBar: View {
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel(L10n.Workbench.sessionsFilterSortHelp)
+        .accessibilityLabel(L10n.Workbench.Sessions.Filter.sortHelp)
     }
 
     private var optionsMenu: some View {
         Menu {
-            Picker(L10n.Workbench.sessionsOptionsOpenIn, selection: terminalBinding) {
+            Picker(L10n.Workbench.Sessions.Options.openIn, selection: terminalBinding) {
                 ForEach(PreferredTerminal.allCases, id: \.self) { terminal in
                     Text(terminal.displayName).tag(terminal)
                 }
             }
             .pickerStyle(.inline)
             Divider()
-            Toggle(L10n.Workbench.sessionsOptionsIndexMessageText, isOn: bodyIndexingBinding)
-            Button(L10n.Workbench.sessionsOptionsRebuildIndex) { model.rebuildIndex() }
+            Toggle(L10n.Workbench.Sessions.Options.indexMessageText, isOn: bodyIndexingBinding)
+            Button(L10n.Workbench.Sessions.Options.rebuildIndex) { model.rebuildIndex() }
         } label: {
             menuLabel(
                 systemImage: "slider.horizontal.3",
-                title: L10n.Workbench.sessionsFilterOptions,
+                title: L10n.Workbench.Sessions.Filter.options,
                 detail: model.preferredTerminal.displayName
             )
         }
@@ -500,7 +500,7 @@ struct SessionFiltersBar: View {
         .buttonStyle(WorkbenchPillButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .accessibilityLabel(L10n.Workbench.sessionsOptionsHelp)
+        .accessibilityLabel(L10n.Workbench.Sessions.Options.help)
     }
 
     @ViewBuilder
@@ -511,7 +511,7 @@ struct SessionFiltersBar: View {
             } label: {
                 Text(model.checkedIDs.isEmpty
                     ? L10n.Common.delete
-                    : L10n.Workbench.sessionsDeleteCountButton(count: model.checkedIDs.count))
+                    : L10n.Workbench.Sessions.Delete.countButton(count: model.checkedIDs.count))
                     .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
             }
             .buttonStyle(WorkbenchPillButtonStyle(prominent: true, tint: .red))
@@ -522,7 +522,7 @@ struct SessionFiltersBar: View {
             model.isDeleteMode.toggle()
         } label: {
             Label(
-                model.isDeleteMode ? L10n.Common.done : L10n.Workbench.sessionsSelectMode,
+                model.isDeleteMode ? L10n.Common.done : L10n.Workbench.Sessions.selectMode,
                 systemImage: "checklist"
             )
                 .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
@@ -530,7 +530,7 @@ struct SessionFiltersBar: View {
         }
         .buttonStyle(WorkbenchPillButtonStyle())
         .fixedSize()
-        .help(L10n.Workbench.sessionsSelectModeHelp)
+        .help(L10n.Workbench.Sessions.selectModeHelp)
     }
 
     // MARK: - Bindings and labels

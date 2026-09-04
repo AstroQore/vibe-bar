@@ -27,27 +27,27 @@ struct MCPSettingsSection: View {
     // MARK: - Status
 
     private var statusSection: some View {
-        section(L10n.Settings.mcpTitle) {
-            Text(L10n.Settings.mcpIntro)
+        section(L10n.Settings.Mcp.title) {
+            Text(L10n.Settings.Mcp.intro)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Toggle(L10n.Settings.mcpEnable, isOn: $settingsStore.settings.mcpServer.enabled)
+            Toggle(L10n.Settings.Mcp.enable, isOn: $settingsStore.settings.mcpServer.enabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
             if settingsStore.settings.mcpServer.enabled {
-                infoRow(L10n.Settings.mcpStatus, controller.isRunning ? L10n.Settings.mcpListening : L10n.Settings.mcpNotListening)
-                infoRow(L10n.Settings.mcpSocket, controller.displaySocketPath)
-                infoRow(L10n.Settings.mcpConnectedClients, AppLocale.number(controller.connectionCount))
-                infoRow(L10n.Settings.mcpLastActivity, lastActivityText)
+                infoRow(L10n.Settings.Mcp.status, controller.isRunning ? L10n.Settings.Mcp.listening : L10n.Settings.Mcp.notListening)
+                infoRow(L10n.Settings.Mcp.socket, controller.displaySocketPath)
+                infoRow(L10n.Settings.Mcp.connectedClients, AppLocale.number(controller.connectionCount))
+                infoRow(L10n.Settings.Mcp.lastActivity, lastActivityText)
                 if let error = controller.startupError {
                     Text(error)
                         .font(.caption2)
                         .foregroundStyle(.orange)
                         .textSelection(.enabled)
                 }
-                Text(L10n.Settings.mcpSocketLifetime)
+                Text(L10n.Settings.Mcp.socketLifetime)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -62,51 +62,51 @@ struct MCPSettingsSection: View {
     // MARK: - Setup
 
     private var setupSection: some View {
-        section(L10n.Settings.mcpConnectAgent) {
-            Text(L10n.Settings.mcpQuickestPath)
+        section(L10n.Settings.Mcp.connectAgent) {
+            Text(L10n.Settings.Mcp.quickestPath)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             copyRow(
-                title: L10n.Settings.mcpSetupPrompt,
-                subtitle: L10n.Settings.mcpSetupPromptDetail,
+                title: L10n.Settings.Mcp.setupPrompt,
+                subtitle: L10n.Settings.Mcp.setupPromptDetail,
                 systemImage: "sparkles",
                 value: MCPClientConfig.agentSetupPrompt
             )
 
             Divider()
 
-            Text(L10n.Settings.mcpManualIntro(flag: MCPStdioBridge.commandLineFlag))
+            Text(L10n.Settings.Mcp.manualIntro(flag: MCPStdioBridge.commandLineFlag))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             copyRow(
                 title: "Claude Code",
-                subtitle: L10n.Settings.mcpRunInTerminal,
+                subtitle: L10n.Settings.Mcp.runInTerminal,
                 systemImage: "terminal",
                 value: MCPClientConfig.claudeCodeCommand(executablePath: executablePath)
             )
             copyRow(
                 title: "Codex CLI",
-                subtitle: L10n.Settings.mcpAppendCodexConfig,
+                subtitle: L10n.Settings.Mcp.appendCodexConfig,
                 systemImage: "doc.plaintext",
                 value: MCPClientConfig.codexTOML(executablePath: executablePath)
             )
             copyRow(
                 title: "Cursor",
-                subtitle: L10n.Settings.mcpMergeCursorConfig,
+                subtitle: L10n.Settings.Mcp.mergeCursorConfig,
                 systemImage: "curlybraces",
                 value: MCPClientConfig.cursorJSON(executablePath: executablePath)
             )
             copyRow(
-                title: L10n.Settings.mcpOtherStdioClient,
-                subtitle: L10n.Settings.mcpOtherStdioDetail,
+                title: L10n.Settings.Mcp.otherStdioClient,
+                subtitle: L10n.Settings.Mcp.otherStdioDetail,
                 systemImage: "puzzlepiece.extension",
                 value: MCPClientConfig.genericJSON(executablePath: executablePath)
             )
 
             if !isInstalledInApplications {
-                Text(L10n.Settings.mcpMovePrompt(path: executablePath))
+                Text(L10n.Settings.Mcp.movePrompt(path: executablePath))
                     .font(.caption2)
                     .foregroundStyle(.orange)
             }
@@ -129,34 +129,34 @@ struct MCPSettingsSection: View {
     // MARK: - Behaviour
 
     private var behaviourSection: some View {
-        section(L10n.Settings.mcpWhatAgentsMayDo) {
+        section(L10n.Settings.Mcp.whatAgentsMayDo) {
             Toggle(
-                L10n.Settings.mcpAllowRefresh,
+                L10n.Settings.Mcp.allowRefresh,
                 isOn: $settingsStore.settings.mcpServer.allowRefreshTools
             )
             .toggleStyle(.switch)
             .controlSize(.small)
             .disabled(!settingsStore.settings.mcpServer.enabled)
 
-            Text(L10n.Settings.mcpAllowRefreshDetail(
+            Text(L10n.Settings.Mcp.allowRefreshDetail(
                 seconds: Int(MCPServer.forcedRefreshMinimumInterval)
             ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Toggle(
-                L10n.Settings.mcpAllowSkills,
+                L10n.Settings.Mcp.allowSkills,
                 isOn: $settingsStore.settings.mcpServer.allowSkillInstall
             )
             .toggleStyle(.switch)
             .controlSize(.small)
             .disabled(!settingsStore.settings.mcpServer.enabled)
 
-            Text(L10n.Settings.mcpAllowSkillsDetail)
+            Text(L10n.Settings.Mcp.allowSkillsDetail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Text(L10n.Settings.mcpReadOnlyDetail)
+            Text(L10n.Settings.Mcp.readOnlyDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

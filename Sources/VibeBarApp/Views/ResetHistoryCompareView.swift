@@ -171,8 +171,8 @@ enum ResetHistoryLanes {
                 // Numbered only when a provider has more than one former
                 // identity, so the ordinary case reads plainly.
                 let label = accountIds.count > 1
-                    ? L10n.Quota.resetHistoryRetiredAccountNumbered(number: position + 1)
-                    : L10n.Quota.resetHistoryRetiredAccount
+                    ? L10n.ResetHistory.retiredAccountNumbered(number: position + 1)
+                    : L10n.ResetHistory.retiredAccount
                 for key in (accounts[accountId] ?? []).sorted(by: { $0.bucketId < $1.bucketId }) {
                     guard let samples = history[key], !samples.isEmpty else { continue }
                     out.append(
@@ -381,7 +381,7 @@ struct ResetHistoryCompareCard: View {
                     cardWidth = width
                 }
             if comparison.isEmpty {
-                Text(L10n.Quota.resetHistoryCompareEmpty)
+                Text(L10n.ResetHistory.compareEmpty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.vertical, 14)
@@ -392,7 +392,7 @@ struct ResetHistoryCompareCard: View {
         }
     }
 
-    private var title: String { titleOverride ?? L10n.Quota.resetHistoryCompareTitle }
+    private var title: String { titleOverride ?? L10n.ResetHistory.title }
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -465,9 +465,9 @@ struct ResetHistoryCompareCard: View {
                         }
                 }
                 .buttonStyle(.vibeBar(cornerRadius: 5))
-                .help(L10n.Quota.resetHistoryCompareWindow(window: option.spokenTitle(for: axis)))
+                .help(L10n.ResetHistory.compareWindow(window: option.spokenTitle(for: axis)))
                 .accessibilityLabel(
-                    L10n.Quota.resetHistoryCompareWindow(window: option.spokenTitle(for: axis))
+                    L10n.ResetHistory.compareWindow(window: option.spokenTitle(for: axis))
                 )
                 // The fill is the only sighted cue for which span is showing;
                 // VoiceOver needs the selection stated outright.
@@ -775,26 +775,26 @@ struct ResetHistoryCompareView: View {
                         .fill(Color.secondary)
                         .frame(width: 6, height: 6)
                 }
-                Text(L10n.Quota.resetHistoryLegendBarHeight)
+                Text(L10n.ResetHistory.Legend.barHeight)
             }
             // What the x position means, which is the one thing the axis
             // toggle changes about how to read the chart.
             Text(
                 comparison.axis == .cycle
-                    ? L10n.Quota.resetHistoryLegendPerCycle
-                    : L10n.Quota.resetHistoryLegendByDate
+                    ? L10n.ResetHistory.Legend.perCycle
+                    : L10n.ResetHistory.Legend.byDate
             )
             HStack(spacing: 4) {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .stroke(Color.secondary, style: StrokeStyle(lineWidth: 0.8, dash: [2, 1.5]))
                     .frame(width: 6, height: 9)
-                Text(L10n.Quota.resetHistoryAxisNow)
+                Text(L10n.ResetHistory.axisNow)
             }
             HStack(spacing: 3) {
                 Circle()
                     .fill(Color.secondary)
                     .frame(width: 3, height: 3)
-                Text(L10n.Quota.resetHistoryLegendRefilledEarly)
+                Text(L10n.ResetHistory.Legend.refilledEarly)
             }
             Spacer(minLength: 0)
         }
@@ -894,11 +894,11 @@ struct ResetHistoryCompareView: View {
                 .foregroundStyle(.secondary)
             Text(
                 cycle.isCompleted
-                    ? L10n.Quota.resetHistoryTooltipCompleted(
+                    ? L10n.ResetHistory.Tooltip.completed(
                         left: Int(cycle.wastedPercent.rounded()),
                         used: Int(cycle.usedPercent.rounded())
                     )
-                    : L10n.Quota.resetHistoryTooltipCurrent(
+                    : L10n.ResetHistory.Tooltip.current(
                         left: Int(cycle.wastedPercent.rounded()),
                         used: Int(cycle.usedPercent.rounded())
                     )
@@ -932,8 +932,8 @@ struct ResetHistoryCompareView: View {
         let start = ResetHistoryCompareFormatters.tooltip.string(from: cycle.start)
         let end = ResetHistoryCompareFormatters.tooltip.string(from: cycle.end)
         return cycle.isCompleted
-            ? L10n.Quota.resetHistoryTooltipRange(start: start, end: end)
-            : L10n.Quota.resetHistoryTooltipRangeDue(start: start, end: end)
+            ? L10n.ResetHistory.Tooltip.range(start: start, end: end)
+            : L10n.ResetHistory.Tooltip.rangeDue(start: start, end: end)
     }
 }
 

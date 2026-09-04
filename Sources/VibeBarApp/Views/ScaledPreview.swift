@@ -68,12 +68,12 @@ struct LayoutStudioButton: View {
     var body: some View {
         Button(action: open) {
             Label(
-                L10n.Settings.layoutOpenStudio,
+                L10n.Settings.Layout.openStudio,
                 systemImage: "rectangle.inset.filled.on.rectangle"
             )
             .font(.caption)
         }
         .buttonStyle(.vibeBar)
-        .help(L10n.Settings.layoutOpenStudioHelp)
+        .help(L10n.Settings.Layout.openStudioHelp)
     }
 }

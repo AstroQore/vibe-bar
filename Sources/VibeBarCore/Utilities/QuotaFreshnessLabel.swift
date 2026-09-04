@@ -26,7 +26,7 @@ public enum QuotaFreshnessLabel {
         }
     }
 
-    public static var defaultHelp: String { L10n.Quota.freshnessDefaultHelp }
+    public static var defaultHelp: String { L10n.Quota.Freshness.defaultHelp }
 
     /// - Parameters:
     ///   - lastSuccessAt: when the displayed data was actually fetched.
@@ -51,17 +51,17 @@ public enum QuotaFreshnessLabel {
         let failure = (trimmed?.isEmpty == false) ? trimmed : nil
         guard isStale || failure != nil else { return nil }
 
-        let dataPhrase = successAge.map { L10n.Quota.freshnessDataAge(age: compactAge($0)) }
-            ?? L10n.Quota.freshnessNoCachedData
+        let dataPhrase = successAge.map { L10n.Quota.Freshness.dataAge(age: compactAge($0)) }
+            ?? L10n.Quota.Freshness.noCachedData
         if let failure {
             let attemptAge = lastAttemptAt.map { max(0, now.timeIntervalSince($0)) }
             // Below the "just now" floor the elapsed time is noise; the data
             // age next to it is the number that matters either way.
             let attemptPhrase = (attemptAge.map { $0 >= 5 } ?? false)
-                ? L10n.Quota.freshnessRefreshFailedAgo(age: compactAge(attemptAge ?? 0))
-                : L10n.Quota.freshnessRefreshFailed
+                ? L10n.Quota.Freshness.refreshFailedAgo(age: compactAge(attemptAge ?? 0))
+                : L10n.Quota.Freshness.refreshFailed
             return Description(
-                label: L10n.Quota.freshnessLine(
+                label: L10n.Quota.Freshness.line(
                     attempt: attemptPhrase,
                     data: dataPhrase,
                     // The provider's own diagnosis, trimmed to fit. It is
@@ -73,11 +73,11 @@ public enum QuotaFreshnessLabel {
         }
         guard let successAge else {
             return Description(
-                label: L10n.Quota.freshnessStaleNeverUpdated, help: defaultHelp
+                label: L10n.Quota.Freshness.staleNeverUpdated, help: defaultHelp
             )
         }
         return Description(
-            label: L10n.Quota.freshnessStaleUpdatedAgo(age: compactAge(successAge)),
+            label: L10n.Quota.Freshness.staleUpdatedAgo(age: compactAge(successAge)),
             help: defaultHelp
         )
     }
@@ -87,12 +87,12 @@ public enum QuotaFreshnessLabel {
     /// ages and an error message on one line.
     public static func compactAge(_ interval: TimeInterval) -> String {
         let seconds = Int(max(0, interval).rounded())
-        if seconds < 60 { return L10n.Quota.freshnessAgeSeconds(seconds: seconds) }
+        if seconds < 60 { return L10n.Quota.Freshness.Age.seconds(seconds: seconds) }
         let minutes = seconds / 60
-        if minutes < 60 { return L10n.Quota.freshnessAgeMinutes(minutes: minutes) }
+        if minutes < 60 { return L10n.Common.Duration.minutes(minutes: minutes) }
         let hours = minutes / 60
-        if hours < 24 { return L10n.Quota.freshnessAgeHours(hours: hours) }
-        return L10n.Quota.freshnessAgeDays(days: hours / 24)
+        if hours < 24 { return L10n.Common.Duration.hours(hours: hours) }
+        return L10n.Common.Duration.days(days: hours / 24)
     }
 
     /// Provider errors are written for a tooltip, not a one-line badge. Keep

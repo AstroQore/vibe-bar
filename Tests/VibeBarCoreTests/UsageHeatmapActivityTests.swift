@@ -9,9 +9,9 @@ final class UsageHeatmapActivityTests: XCTestCase {
     /// "3 PM", a Chinese reader "15时". Pinning the language is what makes
     /// these assertions independent of the machine's own locale.
     private func withLanguage(_ language: AppLanguage, _ body: () -> Void) {
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
-        L10n.languageOverride = language
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
+        AppLocalization.languageOverride = language
         body()
     }
 

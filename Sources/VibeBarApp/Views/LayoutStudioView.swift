@@ -170,7 +170,7 @@ struct LayoutStudioView: View {
                 // so the page only follows the subject with a new identity.
                 .id(tab)
             } else {
-                Text(L10n.Settings.layoutPreviewUnavailable)
+                Text(L10n.Settings.Layout.previewUnavailable)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -378,9 +378,9 @@ struct LayoutStudioView: View {
         switch subject {
         case let .popoverPage(page):
             return OverviewPage.allCases.first { $0.layoutPageID == page }?.label
-                ?? L10n.Popover.tabOverview
+                ?? L10n.Popover.Tab.overview
         case let .miniWindow(id):
-            return settingsStore.settings.miniWindow.config(id: id)?.name ?? L10n.Popover.headerMini
+            return settingsStore.settings.miniWindow.config(id: id)?.name ?? L10n.Popover.Header.mini
         }
     }
 
@@ -953,8 +953,8 @@ struct LayoutStudioView: View {
 
     private var trayCaption: String {
         switch model.subject {
-        case .popoverPage: return L10n.Settings.layoutStudioTrayHidden
-        case .miniWindow:  return L10n.Settings.layoutStudioTrayNotShown
+        case .popoverPage: return L10n.Settings.Layout.studioTrayHidden
+        case .miniWindow:  return L10n.Settings.Layout.studioTrayNotShown
         }
     }
 
@@ -982,7 +982,7 @@ struct LayoutStudioView: View {
             Spacer(minLength: 8)
             HStack(spacing: 8) {
                 if !model.undoStack.isEmpty {
-                    glassIconButton(systemImage: "arrow.uturn.backward", help: L10n.Settings.layoutStudioUndo) {
+                    glassIconButton(systemImage: "arrow.uturn.backward", help: L10n.Settings.Layout.studioUndo) {
                         undo()
                     }
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
@@ -990,7 +990,7 @@ struct LayoutStudioView: View {
                 zoomPill
                 glassIconButton(
                     systemImage: model.isInspectorShown ? "sidebar.trailing" : "sidebar.leading",
-                    help: L10n.Settings.layoutStudioToggleInspector
+                    help: L10n.Settings.Layout.studioToggleInspector
                 ) {
                     withAnimation(.smooth(duration: 0.28)) { model.isInspectorShown.toggle() }
                 }
@@ -1006,7 +1006,7 @@ struct LayoutStudioView: View {
 
     private var subjectMenu: some View {
         Menu {
-            Section(L10n.Settings.layoutStudioSubjectPages) {
+            Section(L10n.Settings.Layout.studioSubjectPages) {
                 ForEach(subjects.filter { if case .popoverPage = $0 { return true } else { return false } }, id: \.self) { subject in
                     Button {
                         withAnimation(.smooth(duration: 0.28)) { model.subject = subject }
@@ -1015,7 +1015,7 @@ struct LayoutStudioView: View {
                     }
                 }
             }
-            Section(L10n.Settings.layoutStudioSubjectMiniWindows) {
+            Section(L10n.Settings.Section.miniWindows) {
                 ForEach(subjects.filter { if case .miniWindow = $0 { return true } else { return false } }, id: \.self) { subject in
                     Button {
                         withAnimation(.smooth(duration: 0.28)) { model.subject = subject }
@@ -1132,7 +1132,7 @@ struct LayoutStudioView: View {
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.vibeBar(cornerRadius: 11))
-            .help(L10n.Settings.layoutStudioZoomOut)
+            .help(L10n.Settings.Layout.studioZoomOut)
             Button { zoomToFit() } label: {
                 Text(L10n.Common.percent(value: Int((scale * 100).rounded())))
                     .font(.system(size: 11, weight: .semibold).monospacedDigit())
@@ -1140,14 +1140,14 @@ struct LayoutStudioView: View {
                     .frame(height: 22)
             }
             .buttonStyle(.vibeBar(cornerRadius: 11))
-            .help(L10n.Settings.layoutStudioZoomFitHelp)
+            .help(L10n.Settings.Layout.studioZoomFitHelp)
             Button { zoom(by: 1) } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 10, weight: .bold))
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.vibeBar(cornerRadius: 11))
-            .help(L10n.Settings.layoutStudioZoomIn)
+            .help(L10n.Settings.Layout.studioZoomIn)
         }
         .foregroundStyle(.primary)
         .padding(3)
@@ -1211,17 +1211,17 @@ struct LayoutStudioView: View {
 
     private func modeLabel(_ mode: PageLayoutMode) -> String {
         switch mode {
-        case .auto:    return L10n.Settings.layoutStudioModeAuto
-        case .compact: return L10n.Settings.layoutStudioModeCompact
-        case .manual:  return L10n.Settings.layoutStudioModeManual
+        case .auto:    return L10n.Common.auto
+        case .compact: return L10n.MenuBar.Composer.Template.compact
+        case .manual:  return L10n.Settings.Layout.studioModeManual
         }
     }
 
     private func ratioLabel(_ ratio: PageColumnRatio) -> String {
         switch ratio {
-        case .narrowWide: return L10n.Settings.layoutStudioRatioNarrowWide
-        case .equal:      return L10n.Settings.layoutStudioRatioEqual
-        case .wideNarrow: return L10n.Settings.layoutStudioRatioWideNarrow
+        case .narrowWide: return L10n.Settings.Layout.studioRatioNarrowWide
+        case .equal:      return L10n.Settings.Layout.studioRatioEqual
+        case .wideNarrow: return L10n.Settings.Layout.studioRatioWideNarrow
         }
     }
 
@@ -1288,8 +1288,8 @@ struct LayoutStudioView: View {
 
     private var trayHelp: String {
         switch model.subject {
-        case .popoverPage: return L10n.Settings.layoutStudioTrayShowHelp
-        case .miniWindow:  return L10n.Settings.layoutStudioTrayAddHelp
+        case .popoverPage: return L10n.Settings.Layout.studioTrayShowHelp
+        case .miniWindow:  return L10n.Settings.Layout.studioTrayAddHelp
         }
     }
 
@@ -1302,7 +1302,7 @@ struct LayoutStudioView: View {
         return HStack(spacing: 8) {
             Image(systemName: isPage ? "eye.slash" : "minus.circle")
                 .font(.system(size: 12, weight: .semibold))
-            Text(isPage ? L10n.Settings.layoutStudioWellHide : L10n.Settings.layoutStudioWellRemove)
+            Text(isPage ? L10n.Settings.Layout.studioWellHide : L10n.Common.remove)
                 .font(.system(size: 12, weight: .semibold))
         }
         .foregroundStyle(drag.isOverWell ? Color.white : Color.primary)
@@ -1319,12 +1319,12 @@ struct LayoutStudioView: View {
     private var hintText: String? {
         switch model.subject {
         case .popoverPage:
-            return L10n.Settings.layoutStudioHintPage
+            return L10n.Settings.Layout.studioHintPage
         case let .miniWindow(id):
             guard let config = miniConfig(id) else { return nil }
             return config.displayMode.supportsStageArranging
-                ? L10n.Settings.layoutStudioHintMini
-                : L10n.Settings.layoutStudioHintFixedStyle
+                ? L10n.Settings.Layout.studioHintMini
+                : L10n.Settings.Layout.studioHintFixedStyle
         }
     }
 

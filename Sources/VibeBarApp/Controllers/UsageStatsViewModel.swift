@@ -33,13 +33,13 @@ final class UsageStatsViewModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .all:    L10n.Cost.timeframeAll
-            case .today:  L10n.Cost.timeframeToday
-            case .day1:   L10n.Usage.filtersRange24h
-            case .day7:   L10n.Cost.timeframeWeekShort
-            case .day14:  L10n.Usage.filtersRange14d
-            case .day30:  L10n.Cost.timeframeMonthShort
-            case .custom: L10n.Usage.filtersRangeCustom
+            case .all:    L10n.Cost.Timeframe.all
+            case .today:  L10n.Cost.Timeframe.today
+            case .day1:   L10n.Usage.Filters.range24h
+            case .day7:   L10n.Cost.Timeframe.weekShort
+            case .day14:  L10n.Usage.Filters.range14d
+            case .day30:  L10n.Cost.Timeframe.monthShort
+            case .custom: L10n.Usage.Filters.rangeCustom
             }
         }
 
@@ -76,11 +76,11 @@ final class UsageStatsViewModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .periods: L10n.Usage.breakdownPeriods
-            case .requests: L10n.Usage.breakdownRequests
-            case .providers: L10n.Usage.breakdownProviders
-            case .projects: L10n.Usage.breakdownProjects
-            case .models: L10n.Usage.breakdownModels
+            case .periods: L10n.Usage.Breakdown.periods
+            case .requests: L10n.Usage.Breakdown.requests
+            case .providers: L10n.Usage.Breakdown.providers
+            case .projects: L10n.Usage.Breakdown.projects
+            case .models: L10n.Usage.Breakdown.models
             }
         }
     }
@@ -97,7 +97,7 @@ final class UsageStatsViewModel: ObservableObject {
         var title: String {
             self == .off
                 ? L10n.Common.off
-                : L10n.Usage.filtersRefreshInterval(seconds: rawValue)
+                : L10n.Usage.Filters.refreshInterval(seconds: rawValue)
         }
     }
 

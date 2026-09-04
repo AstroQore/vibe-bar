@@ -162,7 +162,7 @@ private func remainingPercent(_ entry: MiniEntry) -> Double {
 
 private struct MiniEmptyHint: View {
     var body: some View {
-        Text(L10n.Quota.miniNoLiveData)
+        Text(L10n.Quota.Mini.noLiveData)
             .font(.system(size: 10, weight: .medium, design: .rounded))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -503,7 +503,7 @@ struct MiniStripLayout: View {
                 .foregroundStyle(color)
         }
         .help(
-            L10n.Quota.miniRowHelp(
+            L10n.Quota.Mini.rowHelp(
                 subProvider: entry.subProviderDisplayName,
                 row: entry.rowLabel,
                 percent: Int(percent.rounded())
@@ -532,7 +532,7 @@ struct MiniStripLayout: View {
         }
         .frame(width: width, alignment: .leading)
         .help(
-            L10n.Quota.miniRowHelp(
+            L10n.Quota.Mini.rowHelp(
                 subProvider: entry.subProviderDisplayName,
                 row: entry.rowLabel,
                 percent: Int(percent.rounded())
@@ -761,7 +761,7 @@ struct MiniFocusLayout: View {
                         }
                     } else {
                         Text(
-                            L10n.Quota.miniPageIndicator(
+                            L10n.Quota.Mini.pageIndicator(
                                 index: index + 1, total: pages.count
                             )
                         )
@@ -777,7 +777,7 @@ struct MiniFocusLayout: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.vibeBar)
-                        .help(L10n.Quota.miniNextProvider)
+                        .help(L10n.Quota.Mini.nextProvider)
                     }
                 }
                 .padding(.top, 3)
@@ -815,7 +815,7 @@ struct MiniFocusLayout: View {
         guard let countdown = ResetCountdownFormatter.string(from: entry.bucket.resetAt, now: now) else {
             return " "
         }
-        return L10n.Quota.miniResets(countdown: countdown)
+        return L10n.Quota.Mini.resets(countdown: countdown)
     }
 }
 
@@ -876,13 +876,13 @@ struct MiniRailLayout: View {
     private func content(now: Date) -> some View {
         let events = events(now: now)
         VStack(spacing: 4) {
-            Text(L10n.Quota.miniRailTitle(days: Int(MiniRailMetrics.horizonDays)))
+            Text(L10n.Quota.Mini.railTitle(days: Int(MiniRailMetrics.horizonDays)))
                 .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(1.6)
                 .padding(.top, 12)
             if events.isEmpty {
-                Text(L10n.Quota.miniRailEmpty)
+                Text(L10n.Quota.Mini.railEmpty)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                     .frame(maxHeight: .infinity)
@@ -918,7 +918,7 @@ struct MiniRailLayout: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Spacer(minLength: 6)
-            Text(L10n.Quota.upcomingGain(gain: Int(event.gainPercent.rounded())))
+            Text(L10n.Quota.Upcoming.gain(gain: Int(event.gainPercent.rounded())))
                 .font(.system(size: 9.5, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(Theme.barColor(percent: event.remainingPercent, mode: .remaining))
             Text(ResetCountdownFormatter.string(from: event.resetAt, now: now) ?? "—")

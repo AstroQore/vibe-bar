@@ -26,17 +26,17 @@ struct SkillWiringPopover: View {
                             .appendingPathComponent(skill.directory, isDirectory: true)
                     ])
                 } label: {
-                    Label(L10n.Workbench.skillsWiringReveal, systemImage: "folder")
+                    Label(L10n.Workbench.Skills.Wiring.reveal, systemImage: "folder")
                         .font(.system(size: max(9, density.resetCountdownFontSize - 1), weight: .semibold))
                 }
                 .buttonStyle(.vibeBar)
                 .foregroundStyle(.secondary)
-                .help(L10n.Workbench.skillsWiringRevealHelp)
+                .help(L10n.Workbench.Skills.Wiring.revealHelp)
             }
 
             wiringRow(
-                title: L10n.Workbench.skillsWiringSource,
-                lines: [line(L10n.Workbench.skillsWiringSourceDetail)],
+                title: L10n.Workbench.Skills.Wiring.source,
+                lines: [line(L10n.Workbench.Skills.Wiring.sourceDetail)],
                 path: skill.wiring(for: .codex).sourcePath
             )
 
@@ -48,7 +48,7 @@ struct SkillWiringPopover: View {
 
             Divider().opacity(0.4)
 
-            Text(L10n.Workbench.skillsWiringFooter)
+            Text(L10n.Workbench.Skills.Wiring.footer)
                 .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -98,13 +98,13 @@ struct SkillWiringPopover: View {
         case .enabled: (L10n.Common.on, .green)
         case .coupled: (
             wiring.viaGeminiCompatibility
-                ? L10n.Workbench.skillsWiringStateCoupledGemini
-                : L10n.Workbench.skillsWiringStateCoupledSharedRoot,
+                ? L10n.Workbench.Skills.Wiring.stateCoupledGemini
+                : L10n.Workbench.Skills.Wiring.stateCoupledSharedRoot,
             .secondary
         )
-        case .disabledInHarness: (L10n.Workbench.skillsWiringStateNativeOff, .orange)
-        case .notProjected: (L10n.Workbench.skillsWiringStateNotLinked, .secondary)
-        case .unknown: (L10n.Workbench.skillsWiringStateConfigUnreadable, .orange)
+        case .disabledInHarness: (L10n.Workbench.Skills.Wiring.stateNativeOff, .orange)
+        case .notProjected: (L10n.Workbench.Skills.Wiring.stateNotLinked, .secondary)
+        case .unknown: (L10n.Workbench.Skills.Wiring.stateConfigUnreadable, .orange)
         }
         Text(text)
             .font(.system(size: max(9, density.resetCountdownFontSize - 1), weight: .semibold))
@@ -115,9 +115,9 @@ struct SkillWiringPopover: View {
     private func mechanismLines(_ wiring: SkillHarnessWiring) -> [String] {
         var lines: [String] = []
         if wiring.viaGeminiCompatibility {
-            lines.append(L10n.Workbench.skillsWiringMechanismGeminiCompat)
+            lines.append(L10n.Workbench.Skills.Wiring.mechanismGeminiCompat)
         } else if wiring.discoversSharedRoot {
-            lines.append(L10n.Workbench.skillsWiringMechanismSharedRoot)
+            lines.append(L10n.Workbench.Skills.Wiring.mechanismSharedRoot)
         }
         if let projection = wiring.projection {
             // Four whole sentences rather than a kind word plus an optional
@@ -126,23 +126,23 @@ struct SkillWiringPopover: View {
             let path = wiring.projectionPath
             switch (projection.method, projection.adopted) {
             case (.symlink, false):
-                lines.append(L10n.Workbench.skillsWiringProjectionSymlink(path: path))
+                lines.append(L10n.Workbench.Skills.Wiring.projectionSymlink(path: path))
             case (.symlink, true):
-                lines.append(L10n.Workbench.skillsWiringProjectionSymlinkAdopted(path: path))
+                lines.append(L10n.Workbench.Skills.Wiring.projectionSymlinkAdopted(path: path))
             case (_, false):
-                lines.append(L10n.Workbench.skillsWiringProjectionCopy(path: path))
+                lines.append(L10n.Workbench.Skills.Wiring.projectionCopy(path: path))
             case (_, true):
-                lines.append(L10n.Workbench.skillsWiringProjectionCopyAdopted(path: path))
+                lines.append(L10n.Workbench.Skills.Wiring.projectionCopyAdopted(path: path))
             }
         } else if !wiring.discoversSharedRoot, !wiring.viaGeminiCompatibility {
             lines.append(
-                L10n.Workbench.skillsWiringProjectionMissing(path: wiring.projectionPath)
+                L10n.Workbench.Skills.Wiring.projectionMissing(path: wiring.projectionPath)
             )
         }
         if let path = wiring.nativeConfigPath, let key = wiring.nativeConfigKey {
-            lines.append(L10n.Workbench.skillsWiringNativeSwitch(key: key, path: path))
+            lines.append(L10n.Workbench.Skills.Wiring.nativeSwitch(key: key, path: path))
         } else {
-            lines.append(L10n.Workbench.skillsWiringNoNativeSwitch)
+            lines.append(L10n.Workbench.Skills.Wiring.noNativeSwitch)
         }
         return lines
     }
@@ -162,20 +162,20 @@ struct SkillSyncExplainerPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.Workbench.skillsSyncTitle)
+            Text(L10n.Workbench.Skills.Sync.title)
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
 
             paragraph(
-                L10n.Workbench.skillsSyncSsotLead,
-                L10n.Workbench.skillsSyncSsotBody(path: SkillAppCatalog.ssotRelativePath)
+                L10n.Workbench.Skills.Sync.ssotLead,
+                L10n.Workbench.Skills.Sync.ssotBody(path: SkillAppCatalog.ssotRelativePath)
             )
             paragraph(
-                L10n.Workbench.skillsSyncProjectionsLead,
-                L10n.Workbench.skillsSyncProjectionsBody
+                L10n.Workbench.Skills.Sync.projectionsLead,
+                L10n.Workbench.Skills.Sync.projectionsBody
             )
             paragraph(
-                L10n.Workbench.skillsSyncNativeSwitchesLead,
-                L10n.Workbench.skillsSyncNativeSwitchesBody
+                L10n.Workbench.Skills.Sync.nativeSwitchesLead,
+                L10n.Workbench.Skills.Sync.nativeSwitchesBody
             )
 
             Divider().opacity(0.4)
@@ -186,7 +186,7 @@ struct SkillSyncExplainerPopover: View {
 
             Divider().opacity(0.4)
 
-            Text(L10n.Workbench.skillsSyncFooter(path: SkillAppCatalog.ssotRelativePath))
+            Text(L10n.Workbench.Skills.Sync.footer(path: SkillAppCatalog.ssotRelativePath))
                 .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -222,23 +222,23 @@ struct SkillSyncExplainerPopover: View {
         var parts: [String] = []
         parts.append(
             app.discoversSharedSkillRoot
-                ? L10n.Workbench.skillsSyncScansSharedRoot(
+                ? L10n.Workbench.Skills.Sync.scansSharedRoot(
                     path: SkillAppCatalog.ssotRelativePath
                 )
-                : L10n.Workbench.skillsSyncReadsOwnFolder(
+                : L10n.Workbench.Skills.Sync.readsOwnFolder(
                     path: SkillAppCatalog.relativePath(for: app)
                 )
         )
         if let key = app.nativeConfigKeyDescription, let path = app.nativeConfigRelativePath {
-            parts.append(L10n.Workbench.skillsSyncPerSkillSwitch(key: key, path: path))
+            parts.append(L10n.Workbench.Skills.Sync.perSkillSwitch(key: key, path: path))
         } else if app == .antigravity {
             parts.append(
-                L10n.Workbench.skillsSyncNoSwitchAlsoReads(
+                L10n.Workbench.Skills.Sync.noSwitchAlsoReads(
                     path: SkillAppCatalog.relativePath(for: .gemini)
                 )
             )
         } else {
-            parts.append(L10n.Workbench.skillsSyncNoPerSkillSwitch)
+            parts.append(L10n.Workbench.Skills.Sync.noPerSkillSwitch)
         }
         return parts.joined(separator: " · ")
     }

@@ -21,14 +21,14 @@ private enum CostChartMetric: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .cost: "$"
-        case .tokens: L10n.Cost.chartMetricTokens
+        case .tokens: L10n.Cost.Chart.metricTokens
         }
     }
 
     var help: String {
         switch self {
-        case .cost: L10n.Cost.chartMetricCostHelp
-        case .tokens: L10n.Cost.chartMetricTokensHelp
+        case .cost: L10n.Cost.Chart.metricCostHelp
+        case .tokens: L10n.Cost.Chart.metricTokensHelp
         }
     }
 }
@@ -62,7 +62,7 @@ private struct CostGranularityOption: Identifiable, Equatable {
     /// reason about. `count` is language-independent, so the control width
     /// below can still be computed once.
     static var all: [CostGranularityOption] {[
-        CostGranularityOption(mode: .auto, label: L10n.Cost.granularityAuto, granularity: nil),
+        CostGranularityOption(mode: .auto, label: L10n.Common.auto, granularity: nil),
         CostGranularityOption(
             mode: .manual(.hour),
             label: CostChartGranularity.hour.displayName,
@@ -113,19 +113,19 @@ private enum CostRangePreset: String, CaseIterable, Identifiable {
 
     var shortLabel: String {
         switch self {
-        case .today: L10n.Cost.timeframeToday
-        case .week: L10n.Cost.timeframeWeekShort
-        case .month: L10n.Cost.timeframeMonthShort
-        case .all: L10n.Cost.timeframeAll
+        case .today: L10n.Cost.Timeframe.today
+        case .week: L10n.Cost.Timeframe.weekShort
+        case .month: L10n.Cost.Timeframe.monthShort
+        case .all: L10n.Cost.Timeframe.all
         }
     }
 
     var label: String {
         switch self {
-        case .today: L10n.Cost.timeframeToday
-        case .week: L10n.Cost.timeframeWeek
-        case .month: L10n.Cost.timeframeMonth
-        case .all: L10n.Cost.timeframeAll
+        case .today: L10n.Cost.Timeframe.today
+        case .week: L10n.Cost.Timeframe.week
+        case .month: L10n.Cost.Timeframe.month
+        case .all: L10n.Cost.Timeframe.all
         }
     }
 }
@@ -266,7 +266,7 @@ struct CostHistoryView: View {
     private func header(window: ChartTimeWindow?) -> some View {
         VStack(alignment: .trailing, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(titleOverride ?? L10n.Cost.historyTitle)
+                Text(titleOverride ?? L10n.Cost.History.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer(minLength: 8)
                 metricToggle
@@ -358,10 +358,10 @@ struct CostHistoryView: View {
 
     private var emptyNote: some View {
         VStack(spacing: 4) {
-            Text(L10n.Cost.historyBuilding)
+            Text(L10n.Cost.History.building)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.tertiary)
-            Text(L10n.Cost.historyBuildingDetail)
+            Text(L10n.Cost.History.buildingDetail)
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
         }
@@ -394,7 +394,7 @@ struct CostHistoryView: View {
                 window: binding,
                 accent: .accentColor,
                 height: density.chartBrushHeight,
-                accessibilityDescription: L10n.Cost.historyNavigator
+                accessibilityDescription: L10n.Cost.History.navigator
             ) { geometry in
                 miniBars(in: geometry)
             }
@@ -444,8 +444,8 @@ struct CostHistoryView: View {
         .overlay {
             if points.isEmpty {
                 Text(chartMetric == .cost
-                    ? L10n.Cost.historyEmptyCost
-                    : L10n.Cost.historyEmptyTokens)
+                    ? L10n.Cost.History.emptyCost
+                    : L10n.Cost.History.emptyTokens)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                     .allowsHitTesting(false)
@@ -727,7 +727,7 @@ struct CostHistoryView: View {
                 modelRow(model)
             }
             if point.models.count > 3 {
-                Text(L10n.Cost.historyMoreModels(count: point.models.count - 3))
+                Text(L10n.Cost.History.moreModels(count: point.models.count - 3))
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -749,7 +749,7 @@ struct CostHistoryView: View {
             if let point = inspectedPoint {
                 HStack(spacing: 8) {
                     Text(
-                        L10n.Cost.historyModelsAt(
+                        L10n.Cost.History.modelsAt(
                             when: tooltipDate(point.date, granularity: granularity)
                         )
                     )
@@ -762,11 +762,11 @@ struct CostHistoryView: View {
                     }
                     .buttonStyle(.vibeBar)
                     .foregroundStyle(.secondary)
-                    .help(L10n.Cost.historyClearModelSelection)
+                    .help(L10n.Cost.History.clearModelSelection)
                 }
 
                 if point.models.isEmpty {
-                    Text(L10n.Cost.historyModelDetailUnavailable)
+                    Text(L10n.Cost.History.modelDetailUnavailable)
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -895,15 +895,15 @@ struct CostHistoryView: View {
         resolved: CostResolvedGranularity
     ) -> some View {
         HStack(alignment: .top, spacing: spacing) {
-            metric(label: L10n.Cost.historyMetricTotal, value: formatMetric(total))
+            metric(label: L10n.Cost.History.metricTotal, value: formatMetric(total))
             metric(
-                label: L10n.Cost.historyMetricAverage(
+                label: L10n.Cost.History.metricAverage(
                     granularity: resolved.granularity.displayName.lowercased()
                 ),
                 value: formatMetric(average)
             )
             metric(
-                label: L10n.Cost.historyMetricPeak,
+                label: L10n.Cost.History.metricPeak,
                 value: formatMetric(peak),
                 detail: peakDate.map { peakDetail($0, granularity: resolved.granularity) }
             )
@@ -920,7 +920,7 @@ struct CostHistoryView: View {
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
             if resolved.hourlyFallback {
-                Text(L10n.Cost.historyHourlyFallback)
+                Text(L10n.Cost.History.hourlyFallback)
                     .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                     .foregroundStyle(.tertiary)
             }
@@ -1100,11 +1100,11 @@ struct CostHistoryView: View {
                 .disabled(!enabled)
                 .help(
                     enabled
-                        ? L10n.Cost.historyGroupBy(granularity: option.label.lowercased())
-                        : L10n.Cost.historyGranularityDisabled(granularity: option.label)
+                        ? L10n.Cost.History.groupBy(granularity: option.label.lowercased())
+                        : L10n.Cost.History.granularityDisabled(granularity: option.label)
                 )
                 .accessibilityLabel(
-                    L10n.Cost.historyGroupBy(granularity: option.label.lowercased())
+                    L10n.Cost.History.groupBy(granularity: option.label.lowercased())
                 )
             }
         }
@@ -1484,7 +1484,7 @@ struct CostHistoryView: View {
             : Self.extentFormatter
         let start = formatter.string(from: window.visibleStart)
         let end = formatter.string(from: window.visibleEnd)
-        return L10n.Cost.historyExtentNote(span: span, start: start, end: end)
+        return L10n.Cost.History.extentNote(span: span, start: start, end: end)
     }
 
     /// Past this the day-of-month stops disambiguating anything.
@@ -1492,12 +1492,12 @@ struct CostHistoryView: View {
 
     private static func spanLabel(_ seconds: TimeInterval) -> String {
         if seconds < 90 * 60 {
-            return L10n.Common.durationMinutes(minutes: max(1, Int((seconds / 60).rounded())))
+            return L10n.Common.Duration.minutes(minutes: max(1, Int((seconds / 60).rounded())))
         }
         if seconds < 48 * 3_600 {
-            return L10n.Common.durationHours(hours: Int((seconds / 3_600).rounded()))
+            return L10n.Common.Duration.hours(hours: Int((seconds / 3_600).rounded()))
         }
-        return L10n.Common.durationDays(days: Int((seconds / 86_400).rounded()))
+        return L10n.Common.Duration.days(days: Int((seconds / 86_400).rounded()))
     }
 
     private func formatCost(_ value: Double) -> String {
@@ -1519,7 +1519,7 @@ struct CostHistoryView: View {
         } else {
             amount = String(format: "%.2fB", Double(tokens) / 1_000_000_000)
         }
-        return L10n.Usage.activityTokensShort(tokens: amount)
+        return L10n.Usage.Activity.tokensShort(tokens: amount)
     }
 
     // MARK: - Metric plumbing
@@ -1582,7 +1582,7 @@ struct CostHistoryView: View {
         switch granularity {
         case .hour: Self.hourFormatter.string(from: date)
         case .day: Self.dayFormatter.string(from: date)
-        case .week: L10n.Cost.historyWeekOf(date: Self.dayFormatter.string(from: date))
+        case .week: L10n.Cost.History.weekOf(date: Self.dayFormatter.string(from: date))
         case .month: Self.monthFormatter.string(from: date)
         }
     }
@@ -1593,7 +1593,7 @@ struct CostHistoryView: View {
         switch granularity {
         case .hour: Self.peakHourFormatter.string(from: date)
         case .day: Self.extentFormatter.string(from: date)
-        case .week: L10n.Cost.historyWeekShortOf(date: Self.extentFormatter.string(from: date))
+        case .week: L10n.Cost.History.weekShortOf(date: Self.extentFormatter.string(from: date))
         case .month: Self.monthFormatter.string(from: date)
         }
     }

@@ -1778,16 +1778,26 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(zh["quota.forecast.verdict.surplus"], "盈余")
     }
 
-    /// The two catalogs as flat key → value maps.
+    /// The two catalogs as flat key → value maps, read from the shared
+    /// catalogue's checkout — the one `Package.swift` pins, which SwiftPM puts
+    /// under `.build/checkouts` on the first build — or from the directory
+    /// `VIBEBAR_I18N_CATALOG` names while a change to both repositories is in
+    /// flight and the package is consumed by path.
     private static func catalogs() throws -> ([String: String], [String: String]) {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Resources/i18n")
+        let root: URL
+        if let named = ProcessInfo.processInfo.environment["VIBEBAR_I18N_CATALOG"] {
+            root = URL(fileURLWithPath: named, isDirectory: true)
+        } else {
+            root = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent(".build/checkouts/vibe-bar-i18n/catalog")
+        }
         func load(_ name: String) throws -> [String: String] {
             let data = try Data(contentsOf: root.appendingPathComponent(name))
-            let raw = try JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] ?? [:]
+            let document = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            let raw = document["keys"] as? [String: [String: Any]] ?? [:]
             return raw.compactMapValues { $0["value"] as? String }
         }
         return (try load("en.json"), try load("zh-Hans.json"))
@@ -2055,10 +2065,10 @@ final class MenuBarCompositionTests: XCTestCase {
     /// Run `body` with each supported language selected, restoring whatever
     /// was set before.
     private func underEachLanguage(_ body: (AppLanguage) -> Void) {
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
         for language in [AppLanguage.english, .simplifiedChinese] {
-            L10n.languageOverride = language
+            AppLocalization.languageOverride = language
             body(language)
         }
     }
@@ -2095,8 +2105,8 @@ final class MenuBarCompositionTests: XCTestCase {
         // string that differs between the two languages. A value that is the
         // same in both is either punctuation or a naming-axis identifier, and
         // those are safe to store.
-        let restore = L10n.languageOverride
-        defer { L10n.languageOverride = restore }
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
 
         func storedStrings() -> [String] {
             var seeded = MenuBarComposition.seeded(template: .roomy, from: fieldItem())
@@ -2110,9 +2120,9 @@ final class MenuBarCompositionTests: XCTestCase {
             }
         }
 
-        L10n.languageOverride = .english
+        AppLocalization.languageOverride = .english
         let english = storedStrings()
-        L10n.languageOverride = .simplifiedChinese
+        AppLocalization.languageOverride = .simplifiedChinese
         let chinese = storedStrings()
         XCTAssertEqual(english, chinese)
         for value in english where !value.isEmpty {

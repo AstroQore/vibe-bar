@@ -90,14 +90,14 @@ struct SessionListView: View {
     @ViewBuilder
     private func contextMenu(for row: SessionManagerModel.Row) -> some View {
         let canResume = model.resumeCommand(for: row.summary) != nil
-        Button(L10n.Workbench.sessionsOpenInTerminal) { model.resumeInTerminal(row.summary) }
+        Button(L10n.Workbench.Sessions.openInTerminal) { model.resumeInTerminal(row.summary) }
             .disabled(!canResume)
-        Button(L10n.Workbench.sessionsCopyResumeCommand) {
+        Button(L10n.Workbench.Sessions.copyResumeCommand) {
             model.copyResumeCommand(for: row.summary)
         }
         .disabled(!canResume)
         Divider()
-        Button(L10n.Workbench.sessionsDeleteEllipsis, role: .destructive) {
+        Button(L10n.Workbench.Sessions.deleteEllipsis, role: .destructive) {
             model.requestDelete([row.summary])
         }
             .disabled(!SessionManagerModel.isDeletable(row.summary))
@@ -107,7 +107,7 @@ struct SessionListView: View {
     /// builds rows lazily and then keeps every one of them. Saying so beats
     /// letting the scroll quietly end short of an 11 000-session index.
     private var capNotice: some View {
-        Text(L10n.Workbench.sessionsListCapNotice(
+        Text(L10n.Workbench.Sessions.List.capNotice(
             shown: SessionManagerModel.maximumLoadedSummaries,
             total: model.totalSessionCount
         ))
@@ -152,23 +152,23 @@ struct SessionListView: View {
     /// "no sessions match" would blame the data for a filter the user set.
     private var emptyTitle: String {
         guard model.isIndexAvailable else {
-            return L10n.Workbench.sessionsEmptyIndexUnavailableTitle
+            return L10n.Workbench.Sessions.Empty.indexUnavailableTitle
         }
         return hasNoHarnessSelected
-            ? L10n.Usage.noHarnessSelectedTitle
-            : L10n.Workbench.sessionsEmptyNoMatchTitle
+            ? L10n.Usage.NoHarnessSelected.title
+            : L10n.Workbench.Sessions.Empty.noMatchTitle
     }
 
     private var emptyDetail: String {
         guard model.isIndexAvailable else {
-            return L10n.Workbench.sessionsEmptyIndexUnavailableDetail
+            return L10n.Workbench.Sessions.Empty.indexUnavailableDetail
         }
-        if hasNoHarnessSelected { return L10n.Usage.noHarnessSelectedDetail }
-        if model.indexProgress != nil { return L10n.Workbench.sessionsEmptyScanningDetail }
+        if hasNoHarnessSelected { return L10n.Usage.NoHarnessSelected.detail }
+        if model.indexProgress != nil { return L10n.Workbench.Sessions.Empty.scanningDetail }
         if !model.searchText.isEmpty {
-            return L10n.Workbench.sessionsEmptySearchNoMatchDetail
+            return L10n.Workbench.Sessions.Empty.searchNoMatchDetail
         }
-        return L10n.Workbench.sessionsEmptyNoLogsDetail(count: Harness.allCases.count)
+        return L10n.Workbench.Sessions.Empty.noLogsDetail(count: Harness.allCases.count)
     }
 }
 
@@ -244,8 +244,8 @@ private struct SessionRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint(isDeleteMode
-            ? L10n.Workbench.sessionsRowToggleForDeletion
-            : L10n.Workbench.sessionsRowShowTranscript)
+            ? L10n.Workbench.Sessions.Row.toggleForDeletion
+            : L10n.Workbench.Sessions.Row.showTranscript)
     }
 
     private var rowFill: Color {
@@ -265,9 +265,9 @@ private struct SessionRow: View {
             .opacity(SessionManagerModel.isDeletable(summary) ? 1 : 0.3)
             .padding(.top, 2)
             .help(SessionManagerModel.isDeletable(summary)
-                ? L10n.Workbench.sessionsRowIncludeInDeletion
+                ? L10n.Workbench.Sessions.Row.includeInDeletion
                 : SessionDeleteError.providerIsReadOnly(summary.provider).message)
-            .accessibilityLabel(L10n.Workbench.sessionsRowSelect)
+            .accessibilityLabel(L10n.Workbench.Sessions.Row.select)
     }
 
     private var title: String {
@@ -325,11 +325,11 @@ private struct SessionRow: View {
                     .padding(.horizontal, 5)
                     .frame(minHeight: 14)
                     .background(Capsule().fill(Color.primary.opacity(0.07)))
-                    .help(L10n.Workbench.sessionsRowMessageCount(count: summary.messageCount))
+                    .help(L10n.Workbench.Sessions.Row.messageCount(count: summary.messageCount))
             }
             if row.reviewCount > 0 {
                 Label(AppLocale.number(row.reviewCount), systemImage: "checkmark.bubble")
-                    .help(L10n.Workbench.sessionsRowAutoReviewsMerged(count: row.reviewCount))
+                    .help(L10n.Workbench.Sessions.Row.autoReviewsMerged(count: row.reviewCount))
             }
         }
         .font(.system(size: max(10, density.resetCountdownFontSize - 1)))

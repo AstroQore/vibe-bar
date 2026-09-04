@@ -15,7 +15,7 @@ final class LanguageSettingBindingTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        restoreLanguage = L10n.languageOverride
+        restoreLanguage = AppLocalization.languageOverride
         home = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("language-setting-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
@@ -23,7 +23,7 @@ final class LanguageSettingBindingTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        L10n.languageOverride = restoreLanguage
+        AppLocalization.languageOverride = restoreLanguage
         try? FileManager.default.removeItem(at: home)
         try super.tearDownWithError()
     }
@@ -40,7 +40,7 @@ final class LanguageSettingBindingTests: XCTestCase {
     func testChangingTheSettingChangesWhatTheNextLookupReturns() throws {
         let store = try makeStore()
         store.settings.language = .simplifiedChinese
-        XCTAssertEqual(L10n.languageOverride, .simplifiedChinese)
+        XCTAssertEqual(AppLocalization.languageOverride, .simplifiedChinese)
         XCTAssertEqual(L10n.Common.refresh, "刷新")
 
         store.settings.language = .english
@@ -49,8 +49,8 @@ final class LanguageSettingBindingTests: XCTestCase {
         // `.system` hands the decision back to macOS rather than pinning
         // whichever language happened to be showing.
         store.settings.language = .system
-        XCTAssertEqual(L10n.languageOverride, .system)
-        XCTAssertEqual(L10n.resolvedLanguageCode, L10n.resolve(override: .system))
+        XCTAssertEqual(AppLocalization.languageOverride, .system)
+        XCTAssertEqual(AppLocalization.resolvedLanguageCode, AppLocalization.resolve(override: .system))
     }
 
     /// `didSet` does not run for an assignment made inside `init`, so a
@@ -59,11 +59,11 @@ final class LanguageSettingBindingTests: XCTestCase {
     func testALanguageChosenLastSessionIsInstalledAtLoad() throws {
         try Data(#"{"displayMode":"remaining","language":"zh-Hans"}"#.utf8)
             .write(to: settingsURL)
-        L10n.languageOverride = .system
+        AppLocalization.languageOverride = .system
 
         let store = try makeStore()
         XCTAssertEqual(store.settings.language, .simplifiedChinese)
-        XCTAssertEqual(L10n.languageOverride, .simplifiedChinese)
+        XCTAssertEqual(AppLocalization.languageOverride, .simplifiedChinese)
         XCTAssertEqual(L10n.Common.refresh, "刷新")
     }
 }

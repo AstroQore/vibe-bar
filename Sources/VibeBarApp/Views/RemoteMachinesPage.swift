@@ -4,18 +4,18 @@ import VibeBarCore
 enum RemoteSyncStatusCopy {
     static func title(for code: String) -> String {
         switch code {
-        case "network_offline": return L10n.Settings.remoteSyncOffline
-        case "network_timeout": return L10n.Settings.remoteSyncTimeout
-        case "host_lookup_failed": return L10n.Settings.remoteSyncHostLookupFailed
-        case "connection_failed": return L10n.Settings.remoteSyncConnectionFailed
-        case "secure_connection_failed": return L10n.Settings.remoteSyncSecureConnectionFailed
-        case "relay_http_401", "relay_http_403": return L10n.Settings.remoteSyncRejected
-        case "relay_http_429", "relay_http_503": return L10n.Settings.remoteSyncBusy
-        case "sequence_gap": return L10n.Settings.remoteSyncSequenceGap
-        case "invalid_signature", "unauthorized_producer": return L10n.Settings.remoteSyncUnverifiedProbe
-        case "invalid_response": return L10n.Settings.remoteSyncInvalidResponse
-        case "sync_failed", "transport_failed": return L10n.Settings.remoteSyncTransportFailed
-        default: return L10n.Settings.remoteSyncUnknown
+        case "network_offline": return L10n.Settings.Remote.Sync.offline
+        case "network_timeout": return L10n.Settings.Remote.Sync.timeout
+        case "host_lookup_failed": return L10n.Settings.Remote.Sync.hostLookupFailed
+        case "connection_failed": return L10n.Settings.Remote.Sync.connectionFailed
+        case "secure_connection_failed": return L10n.Settings.Remote.Sync.secureConnectionFailed
+        case "relay_http_401", "relay_http_403": return L10n.Settings.Remote.Sync.rejected
+        case "relay_http_429", "relay_http_503": return L10n.Settings.Remote.Sync.busy
+        case "sequence_gap": return L10n.Settings.Remote.Sync.sequenceGap
+        case "invalid_signature", "unauthorized_producer": return L10n.Settings.Remote.Sync.unverifiedProbe
+        case "invalid_response": return L10n.Settings.Remote.Sync.invalidResponse
+        case "sync_failed", "transport_failed": return L10n.Settings.Remote.Sync.transportFailed
+        default: return L10n.Settings.Remote.Sync.unknown
         }
     }
 
@@ -23,17 +23,17 @@ enum RemoteSyncStatusCopy {
         switch code {
         case "network_timeout", "connection_failed", "secure_connection_failed",
              "relay_http_429", "relay_http_503":
-            return L10n.Settings.remoteSyncRetryDetail
+            return L10n.Settings.Remote.Sync.retryDetail
         case "network_offline", "host_lookup_failed":
-            return L10n.Settings.remoteSyncNetworkDetail
+            return L10n.Settings.Remote.Sync.networkDetail
         case "relay_http_401", "relay_http_403":
-            return L10n.Settings.remoteSyncRejectedDetail
+            return L10n.Settings.Remote.Sync.rejectedDetail
         case "sequence_gap":
-            return L10n.Settings.remoteSyncSequenceGapDetail
+            return L10n.Settings.Remote.Sync.sequenceGapDetail
         case "invalid_signature", "unauthorized_producer":
-            return L10n.Settings.remoteSyncUnverifiedProbeDetail
+            return L10n.Settings.Remote.Sync.unverifiedProbeDetail
         default:
-            return L10n.Settings.remoteSyncUnknownDetail
+            return L10n.Settings.Remote.Sync.unknownDetail
         }
     }
 }
@@ -61,15 +61,15 @@ struct RemoteMachinesPage: View {
             if !service.isConfigured {
                 stateCard(
                     icon: "lock.slash",
-                    title: L10n.Popover.machinesNotConfigured,
-                    detail: L10n.Popover.machinesNotConfiguredDetail
+                    title: L10n.Popover.Machines.notConfigured,
+                    detail: L10n.Popover.Machines.notConfiguredDetail
                 )
             } else if service.machines.isEmpty {
                 stateCard(
                     icon: service.isRefreshing ? "arrow.triangle.2.circlepath" : "server.rack",
-                    title: service.isRefreshing ? L10n.Popover.machinesChecking : L10n.Popover.machinesNoData,
+                    title: service.isRefreshing ? L10n.Popover.Machines.checking : L10n.Popover.Machines.noData,
                     detail: service.lastErrorCode.map { RemoteSyncStatusCopy.detail(for: $0) }
-                        ?? L10n.Popover.machinesNoDataDetail
+                        ?? L10n.Popover.Machines.noDataDetail
                 )
             } else {
                 if let error = service.lastErrorCode {
@@ -124,7 +124,7 @@ struct RemoteMachinesPage: View {
                 Text(machine.alias)
                     .font(.system(size: density.titleFontSize, weight: .semibold))
                     .lineLimit(1)
-                Text(L10n.Settings.remoteMachineDetail(platform: machine.platform, version: machine.probeVersion))
+                Text(L10n.Settings.Remote.machineDetail(platform: machine.platform, version: machine.probeVersion))
                     .font(.system(size: max(9, density.subtitleFontSize - 1)))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -136,14 +136,14 @@ struct RemoteMachinesPage: View {
 
     private func metrics(_ machine: RemoteMachineSummary) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            metric(L10n.Cost.timeframeToday, Text(machine.todayTokens, format: tokenFormat))
+            metric(L10n.Cost.Timeframe.today, Text(machine.todayTokens, format: tokenFormat))
             metricDivider
-            metric(L10n.Cost.timeframeWeek, Text(machine.last7DaysTokens, format: tokenFormat))
+            metric(L10n.Cost.Timeframe.week, Text(machine.last7DaysTokens, format: tokenFormat))
             metricDivider
-            metric(L10n.Cost.timeframeMonth, Text(machine.last30DaysTokens, format: tokenFormat))
+            metric(L10n.Cost.Timeframe.month, Text(machine.last30DaysTokens, format: tokenFormat))
             metricDivider
             metric(
-                L10n.Popover.machinesThirtyDayCost,
+                L10n.Popover.Machines.thirtyDayCost,
                 Text(machine.last30DaysCostUSD, format: costFormat)
             )
         }
@@ -239,15 +239,15 @@ struct RemoteMachinesPage: View {
                 sourceCapsule(source, status: machine.sourceStatuses[source] ?? Self.unknownSourceStatus)
             }
             Spacer(minLength: 8)
-            Text(L10n.Popover.machinesSequence(value: String(machine.lastSequence)))
+            Text(L10n.Popover.Machines.sequence(value: String(machine.lastSequence)))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
-            Toggle(L10n.Popover.machinesIncludeInTotals, isOn: includedInTotals(machine))
+            Toggle(L10n.Popover.Machines.includeInTotals, isOn: includedInTotals(machine))
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .font(.system(size: max(9, density.subtitleFontSize - 1)))
                 .fixedSize()
-                .help(L10n.Popover.machinesIncludeInTotalsHelp)
+                .help(L10n.Popover.Machines.includeInTotalsHelp)
         }
     }
 
@@ -260,7 +260,7 @@ struct RemoteMachinesPage: View {
     private func sourceCapsule(_ source: String, status: String) -> some View {
         let isHealthy = status == "ok"
         let label = ToolType(rawValue: source)?.menuTitle ?? source.capitalized
-        return Text(L10n.Popover.machinesLabelWithStatus(label: label, status: status))
+        return Text(L10n.Popover.Machines.labelWithStatus(label: label, status: status))
             .font(.system(size: max(8, density.subtitleFontSize - 3), weight: .medium))
             .foregroundStyle(isHealthy ? Color.secondary : Color.orange)
             .lineLimit(1)
@@ -282,13 +282,13 @@ struct RemoteMachinesPage: View {
         let color: Color
         switch freshness {
         case .live:
-            label = L10n.Popover.machinesFreshnessLive
+            label = L10n.Popover.Machines.Freshness.live
             color = .green
         case .delayed:
-            label = L10n.Popover.machinesFreshnessDelayed
+            label = L10n.Popover.Machines.Freshness.delayed
             color = .orange
         case .stale:
-            label = L10n.Popover.machinesFreshnessStale
+            label = L10n.Popover.Machines.Freshness.stale
             color = .red
         }
         return HStack(spacing: 5) {

@@ -30,7 +30,7 @@ struct ServiceStatusCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: density.statusGroupSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text(L10n.Status.cardTitle)
+                Text(L10n.Status.Card.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let last = serviceStatus.lastFetched {
@@ -38,7 +38,7 @@ struct ServiceStatusCard: View {
                         .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.tertiary)
                 }
-                BorderlessIconButton(systemImage: "arrow.clockwise", help: L10n.Status.cardRefresh) {
+                BorderlessIconButton(systemImage: "arrow.clockwise", help: L10n.Status.Card.refresh) {
                     serviceStatus.refreshAll()
                 }
             }
@@ -62,9 +62,9 @@ struct ServiceStatusCard: View {
 
     private func timeAgo(_ date: Date) -> String {
         let seconds = Int(Date().timeIntervalSince(date))
-        if seconds < 60 { return L10n.Status.cardUpdatedJustNow }
-        if seconds < 3600 { return L10n.Status.cardUpdatedMinutesAgo(minutes: seconds / 60) }
-        return L10n.Status.cardUpdatedHoursAgo(hours: seconds / 3600)
+        if seconds < 60 { return L10n.Common.Updated.justNow }
+        if seconds < 3600 { return L10n.Status.Card.updatedMinutesAgo(minutes: seconds / 60) }
+        return L10n.Status.Card.updatedHoursAgo(hours: seconds / 3600)
     }
 }
 
@@ -101,13 +101,13 @@ private struct ServiceStatusRow: View {
                 if let snapshot {
                     let agg = snapshot.displayUptimePercent
                     if agg > 0 {
-                        Text(L10n.Status.cardUptime(percent: String(format: "%.2f%%", agg)))
+                        Text(L10n.Status.Card.uptime(percent: String(format: "%.2f%%", agg)))
                             .font(.system(size: density.resetCountdownFontSize, weight: .medium, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
-                BorderlessIconButton(systemImage: "arrow.up.right.square", help: L10n.Status.cardOpenStatusPage(
-                    host: tool.statusPageURL.host ?? L10n.Status.cardStatusPageFallback
+                BorderlessIconButton(systemImage: "arrow.up.right.square", help: L10n.Status.Card.openStatusPage(
+                    host: tool.statusPageURL.host ?? L10n.Status.Card.statusPageFallback
                 )) {
                     NSWorkspace.shared.open(tool.statusPageURL)
                 }
@@ -129,7 +129,7 @@ private struct ServiceStatusRow: View {
             } else if let snapshot, let latest = snapshot.recentIncidents.first {
                 IncidentRow(incident: latest, density: density)
             } else if snapshot != nil {
-                Text(L10n.Status.cardNoIncidents)
+                Text(L10n.Status.Card.noIncidents)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }
@@ -147,7 +147,7 @@ private struct ServiceStatusRow: View {
         // Google AI / SpaceXAI keep the all-expanded behaviour.
         if snapshot.groups.isEmpty {
             ComponentGroupBlock(
-                title: L10n.Status.cardComponents,
+                title: L10n.Status.Card.components,
                 components: snapshot.components,
                 density: density,
                 // The group *name* stays English: `defaultExpanded` matches on
@@ -176,7 +176,7 @@ private struct ServiceStatusRow: View {
                 let ungrouped = snapshot.components(in: nil)
                 if !ungrouped.isEmpty {
                     ComponentGroupBlock(
-                        title: L10n.Status.componentOther,
+                        title: L10n.Status.Component.other,
                         components: ungrouped,
                         density: density,
                         defaultExpanded: false
@@ -249,7 +249,7 @@ private struct ComponentGroupBlock: View {
                     Text(title)
                         .font(.system(size: density.subtitleFontSize, weight: .semibold))
                         .foregroundStyle(.primary)
-                    Text(L10n.Status.cardComponentCount(count: components.count))
+                    Text(L10n.Status.Card.componentCount(count: components.count))
                         .font(.system(size: density.resetCountdownFontSize))
                         .foregroundStyle(.secondary)
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
@@ -257,7 +257,7 @@ private struct ComponentGroupBlock: View {
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 6)
                     if let uptime = aggregateUptime {
-                        Text(L10n.Status.cardUptime(percent: String(format: "%.2f%%", uptime)))
+                        Text(L10n.Status.Card.uptime(percent: String(format: "%.2f%%", uptime)))
                             .font(.system(size: density.resetCountdownFontSize, weight: .medium, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
@@ -357,7 +357,7 @@ private struct ComponentBar: View {
                         .foregroundStyle(componentColor(component.status))
                 }
                 if let uptime = component.uptimePercent {
-                    Text(L10n.Status.cardUptime(percent: String(format: "%.2f%%", uptime)))
+                    Text(L10n.Status.Card.uptime(percent: String(format: "%.2f%%", uptime)))
                         .font(.system(size: max(8, density.resetCountdownFontSize - 1), weight: .medium, design: .rounded).monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
@@ -414,11 +414,11 @@ private func componentColor(_ status: ComponentStatusLevel) -> Color {
 
 private func componentLabel(_ status: ComponentStatusLevel) -> String {
     switch status {
-    case .operational:         return L10n.Status.componentOperational
-    case .underMaintenance:    return L10n.Status.componentMaintenance
-    case .degradedPerformance: return L10n.Status.componentDegraded
-    case .partialOutage:       return L10n.Status.componentPartialOutage
-    case .majorOutage:         return L10n.Status.componentMajorOutage
+    case .operational:         return L10n.Status.Component.operational
+    case .underMaintenance:    return L10n.Status.Component.maintenance
+    case .degradedPerformance: return L10n.Status.Component.degraded
+    case .partialOutage:       return L10n.Status.Component.partialOutage
+    case .majorOutage:         return L10n.Status.Component.majorOutage
     }
 }
 
@@ -457,11 +457,11 @@ private struct StatusPill: View {
     private var text: String {
         if let description, !description.isEmpty { return description }
         switch indicator {
-        case .none?, nil:    return L10n.Status.indicatorLoading
-        case .maintenance?:  return L10n.Status.indicatorMaintenance
-        case .minor?:        return L10n.Status.indicatorMinor
-        case .major?:        return L10n.Status.indicatorMajor
-        case .critical?:     return L10n.Status.indicatorCritical
+        case .none?, nil:    return L10n.Status.Indicator.loading
+        case .maintenance?:  return L10n.Status.Component.maintenance
+        case .minor?:        return L10n.Status.Indicator.minor
+        case .major?:        return L10n.Status.Indicator.major
+        case .critical?:     return L10n.Status.Indicator.critical
         }
     }
 }
@@ -494,7 +494,7 @@ private struct UptimeStrip: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L10n.Status.cardUptimeStrip(days: days.count))
+        .accessibilityLabel(L10n.Status.Card.uptimeStrip(days: days.count))
     }
 }
 
@@ -524,7 +524,7 @@ private struct IncidentRow: View {
                 .lineLimit(2)
             Spacer(minLength: 4)
             if let url = incident.url {
-                BorderlessIconButton(systemImage: "arrow.up.right", help: L10n.Status.cardOpenIncident, size: 9) {
+                BorderlessIconButton(systemImage: "arrow.up.right", help: L10n.Status.Card.openIncident, size: 9) {
                     NSWorkspace.shared.open(url)
                 }
             }

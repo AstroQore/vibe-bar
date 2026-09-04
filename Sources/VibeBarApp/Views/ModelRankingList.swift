@@ -15,11 +15,11 @@ struct ModelRankingList: View {
     /// Right-hand subtitle next to the card title. Defaults to the all-time
     /// scope; the Overview's combined card overrides it with the
     /// all-providers wording so the scope is unambiguous.
-    var subtitle: String = L10n.Cost.modelRankingAllTime
+    var subtitle: String = L10n.Cost.ModelRanking.allTime
 
     @EnvironmentObject var environment: AppEnvironment
 
-    init(snapshot: CostSnapshot?, density: Theme.Density, maxHeight: CGFloat = 180, subtitle: String = L10n.Cost.modelRankingAllTime) {
+    init(snapshot: CostSnapshot?, density: Theme.Density, maxHeight: CGFloat = 180, subtitle: String = L10n.Cost.ModelRanking.allTime) {
         self.breakdowns = snapshot?.modelBreakdowns ?? []
         self.density = density
         self.maxHeight = maxHeight
@@ -30,7 +30,7 @@ struct ModelRankingList: View {
         breakdowns: [CostSnapshot.ModelBreakdown],
         density: Theme.Density,
         maxHeight: CGFloat = 180,
-        subtitle: String = L10n.Cost.modelRankingAllTime
+        subtitle: String = L10n.Cost.ModelRanking.allTime
     ) {
         self.breakdowns = breakdowns
         self.density = density
@@ -46,7 +46,7 @@ struct ModelRankingList: View {
         if !models.isEmpty {
             VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(L10n.Cost.modelRankingTitle)
+                    Text(L10n.Cost.ModelRanking.title)
                         .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                     Spacer()
                     Text(subtitle)
@@ -111,7 +111,7 @@ struct ModelRankingList: View {
         let share = total > 0 ? (model.costUSD / total) * 100 : 0
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline) {
-                Text(L10n.Cost.modelRankingRank(rank: rank))
+                Text(verbatim: "#" + AppLocale.number(rank))
                     .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(rankColor(rank))
                     .lineLimit(1)

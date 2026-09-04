@@ -40,37 +40,37 @@ struct UsageDistributionDashboard: View {
         ) {
             DistributionDonutCard(
                 density: density,
-                title: L10n.Usage.mixTokenFlowTitle,
-                subtitle: L10n.Usage.mixTokenFlowSubtitle,
-                emptyMessage: L10n.Usage.mixTokenFlowEmpty,
+                title: L10n.Usage.Mix.TokenFlow.title,
+                subtitle: L10n.Usage.Mix.TokenFlow.subtitle,
+                emptyMessage: L10n.Usage.Mix.TokenFlow.empty,
                 slices: collapsed(flowSlices)
             )
             DistributionDonutCard(
                 density: density,
-                title: L10n.Usage.mixHarnessTitle,
-                subtitle: L10n.Usage.mixHarnessSubtitle,
-                emptyMessage: L10n.Usage.harnessMixEmpty,
+                title: L10n.Usage.Mix.Harness.title,
+                subtitle: L10n.Usage.Mix.Harness.subtitle,
+                emptyMessage: L10n.Usage.HarnessMix.empty,
                 slices: collapsed(harnessSlices)
             )
             DistributionDonutCard(
                 density: density,
-                title: L10n.Usage.mixProviderTitle,
-                subtitle: L10n.Usage.mixProviderSubtitle,
-                emptyMessage: L10n.Usage.mixProviderEmpty,
+                title: L10n.Usage.Mix.Provider.title,
+                subtitle: L10n.Usage.Mix.Provider.subtitle,
+                emptyMessage: L10n.Usage.Mix.Provider.empty,
                 slices: collapsed(providerSlices)
             )
             DistributionDonutCard(
                 density: density,
-                title: L10n.Usage.mixProjectTitle,
-                subtitle: L10n.Usage.mixProjectSubtitle,
-                emptyMessage: L10n.Usage.mixProjectEmpty,
+                title: L10n.Usage.Mix.Project.title,
+                subtitle: L10n.Usage.Mix.Project.subtitle,
+                emptyMessage: L10n.Usage.Mix.Project.empty,
                 slices: collapsed(projectSlices)
             )
             DistributionDonutCard(
                 density: density,
-                title: L10n.Usage.mixModelTitle,
-                subtitle: L10n.Usage.mixModelSubtitle,
-                emptyMessage: L10n.Usage.mixModelEmpty,
+                title: L10n.Usage.Mix.Model.title,
+                subtitle: L10n.Usage.Mix.Model.subtitle,
+                emptyMessage: L10n.Usage.Mix.Model.empty,
                 slices: collapsed(modelSlices)
             )
         }
@@ -78,16 +78,16 @@ struct UsageDistributionDashboard: View {
 
     private var flowSlices: [Slice] {
         [
-            Slice(id: "fresh", label: L10n.Usage.tokensInput, detail: nil,
+            Slice(id: "fresh", label: L10n.Usage.Tokens.input, detail: nil,
                   tokens: summary.freshInput, costMicros: nil,
                   color: Self.palette[0]),
-            Slice(id: "cache-read", label: L10n.Usage.tokensCacheRead, detail: nil,
+            Slice(id: "cache-read", label: L10n.Usage.Tokens.cacheRead, detail: nil,
                   tokens: summary.cacheRead, costMicros: nil,
                   color: Self.palette[1]),
-            Slice(id: "cache-write", label: L10n.Usage.tokensCacheWrite, detail: nil,
+            Slice(id: "cache-write", label: L10n.Usage.Tokens.cacheWrite, detail: nil,
                   tokens: summary.cacheCreation, costMicros: nil,
                   color: Self.palette[4]),
-            Slice(id: "output", label: L10n.Usage.tokensOutput, detail: nil,
+            Slice(id: "output", label: L10n.Usage.Tokens.output, detail: nil,
                   tokens: summary.output, costMicros: nil,
                   color: Self.palette[2]),
         ].filter { $0.tokens > 0 }
@@ -152,8 +152,8 @@ struct UsageDistributionDashboard: View {
         return Array(sorted.prefix(visible)) + [
             Slice(
                 id: "other:\(sorted.first?.id ?? "empty")",
-                label: L10n.Usage.mixOther,
-                detail: L10n.Usage.mixOtherCount(count: tail.count),
+                label: L10n.Usage.Mix.other,
+                detail: L10n.Usage.Mix.otherCount(count: tail.count),
                 tokens: tail.reduce(0) { $0 + $1.tokens },
                 costMicros: tail.compactMap(\.costMicros).reduce(0, +),
                 color: Color.secondary.opacity(0.55)
@@ -232,7 +232,7 @@ private struct DistributionDonutCard: View {
                         Text(UsageFormatting.compactTokens(total))
                             .font(.system(size: density.bucketTitleFontSize, weight: .bold,
                                           design: .rounded).monospacedDigit())
-                        Text(L10n.Usage.mixDonutUnit)
+                        Text(L10n.Usage.Mix.donutUnit)
                             .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                             .foregroundStyle(.tertiary)
                     }

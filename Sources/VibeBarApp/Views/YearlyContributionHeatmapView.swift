@@ -91,7 +91,7 @@ struct YearlyContributionHeatmapView: View {
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .firstTextBaseline) {
-                Text(L10n.Usage.yearHeatmapTitle(provider: toolName))
+                Text(L10n.Usage.YearHeatmap.title(provider: toolName))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer()
                 if let total = totalLabel(cachedTotal) {
@@ -117,7 +117,7 @@ struct YearlyContributionHeatmapView: View {
                 }
             }
             HStack(spacing: 6) {
-                Text(L10n.Usage.yearHeatmapLess)
+                Text(L10n.Usage.YearHeatmap.less)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                 ForEach(0..<5, id: \.self) { step in
@@ -125,7 +125,7 @@ struct YearlyContributionHeatmapView: View {
                         .fill(yearlyLevelColor(step))
                         .frame(width: metrics.cellSize, height: metrics.cellSize)
                 }
-                Text(L10n.Usage.yearHeatmapMore)
+                Text(L10n.Usage.YearHeatmap.more)
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -194,7 +194,7 @@ struct YearlyContributionHeatmapView: View {
                     columns: columns,
                     metrics: metrics,
                     thresholds: thresholds,
-                    accessibilityLabel: L10n.Usage.yearHeatmapA11y(
+                    accessibilityLabel: L10n.Usage.YearHeatmap.a11y(
                         provider: toolName, count: columns.count
                     )
                 )
@@ -304,7 +304,7 @@ struct YearlyContributionHeatmapView: View {
         let amount = total < 100
             ? String(format: "$%.2f", total)
             : String(format: "$%.0f", total)
-        return L10n.Usage.yearHeatmapTotal(amount: amount)
+        return L10n.Usage.YearHeatmap.total(amount: amount)
     }
 
     /// Per-tool quartile thresholds computed from the history's non-zero days.
@@ -418,7 +418,7 @@ private func yearlyCellTooltip(for entry: DailyCostPoint) -> String {
     let cost: String = entry.costUSD < 0.01 ? "$0.00"
         : entry.costUSD < 100 ? String(format: "$%.2f", entry.costUSD)
         : String(format: "$%.0f", entry.costUSD)
-    return L10n.Usage.yearHeatmapTooltip(
+    return L10n.Usage.YearHeatmap.tooltip(
         date: yearlyTooltipFormatter.string(from: entry.date), amount: cost
     )
 }

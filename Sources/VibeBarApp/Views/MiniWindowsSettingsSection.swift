@@ -156,7 +156,7 @@ struct MiniWindowsSettingsSection: View {
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.vibeBar)
-            .help(L10n.Settings.miniWindowAdd)
+            .help(L10n.Settings.MiniWindow.add)
             Spacer(minLength: 0)
         }
         .padding(3)
@@ -198,14 +198,14 @@ struct MiniWindowsSettingsSection: View {
                 )
             )
             .frame(width: 140)
-            Button(L10n.Settings.miniWindowOpenClose) {
+            Button(L10n.Settings.MiniWindow.openClose) {
                 NotificationCenter.default.post(
                     name: .vibeBarToggleMiniWindow,
                     object: nil,
                     userInfo: ["configID": config.id.uuidString]
                 )
             }
-            .help(L10n.Settings.miniWindowToggleHelp)
+            .help(L10n.Settings.MiniWindow.toggleHelp)
             Spacer(minLength: 8)
             Button(role: .destructive) {
                 removeWindow(config.id)
@@ -215,8 +215,8 @@ struct MiniWindowsSettingsSection: View {
             }
             .disabled(windows.count <= 1)
             .help(windows.count <= 1
-                    ? L10n.Settings.miniWindowLastCannotBeRemoved
-                    : L10n.Settings.miniWindowRemoveHelp)
+                    ? L10n.Settings.MiniWindow.lastCannotBeRemoved
+                    : L10n.Settings.MiniWindow.removeHelp)
         }
 
         modePicker(config)
@@ -224,7 +224,7 @@ struct MiniWindowsSettingsSection: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         if config.displayMode == .strip {
-            Picker(L10n.Settings.miniWindowStripDensity, selection: Binding(
+            Picker(L10n.Settings.MiniWindow.stripDensity, selection: Binding(
                 get: { selectedWindow?.stripDensity ?? .roomy },
                 set: { value in update { $0.stripDensity = value } }
             )) {
@@ -238,26 +238,26 @@ struct MiniWindowsSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
 
-        Text(L10n.Settings.miniWindowStyleCycle)
+        Text(L10n.Settings.MiniWindow.styleCycle)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         cycleEditor(config)
 
-        Text(L10n.Settings.miniWindowTreeDetail)
+        Text(L10n.Settings.MiniWindow.treeDetail)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         HStack(spacing: 4) {
-            namingScopeButton(.shared, label: L10n.Settings.miniWindowNamesAllWindows)
-            namingScopeButton(.window, label: L10n.Settings.miniWindowNamesThisWindow(name: config.name))
-            namingScopeButton(.style, label: L10n.Settings.miniWindowNamesThisStyle(mode: config.displayMode.label))
+            namingScopeButton(.shared, label: L10n.Settings.MiniWindow.namesAllWindows)
+            namingScopeButton(.window, label: L10n.Settings.MiniWindow.namesThisWindow(name: config.name))
+            namingScopeButton(.style, label: L10n.Settings.MiniWindow.namesThisStyle(mode: config.displayMode.label))
             Spacer(minLength: 0)
         }
         .padding(3)
         .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.045)))
         if namingScope == .window {
-            Text(L10n.Settings.miniWindowOverridesWindow)
+            Text(L10n.Settings.MiniWindow.overridesWindow)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -265,14 +265,14 @@ struct MiniWindowsSettingsSection: View {
         windowSkeleton(config)
 
         if namingScope == .style {
-            Text(L10n.Settings.miniWindowOverridesStyle(mode: config.displayMode.label))
+            Text(L10n.Settings.MiniWindow.overridesStyle(mode: config.displayMode.label))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         arrangementList(config)
 
-        Text(L10n.Settings.miniWindowNotInWindow(name: config.name))
+        Text(L10n.Settings.MiniWindow.notInWindow(name: config.name))
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -298,7 +298,7 @@ struct MiniWindowsSettingsSection: View {
         let groups = arrangeGroups(arrangeRows(config))
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(L10n.Settings.miniWindowPreview)
+                Text(L10n.MenuBar.Composer.preview)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .textCase(.uppercase)
@@ -314,7 +314,7 @@ struct MiniWindowsSettingsSection: View {
                 }
             }
             if groups.isEmpty {
-                Text(L10n.Settings.miniWindowNoFieldsSelected)
+                Text(L10n.Settings.MiniWindow.noFieldsSelected)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             } else {
@@ -402,7 +402,7 @@ struct MiniWindowsSettingsSection: View {
                 } label: {
                     HStack(spacing: 5) {
                         if let position {
-                            Text(L10n.Settings.miniWindowPosition(position: position + 1))
+                            Text(AppLocale.number(position + 1))
                                 .font(.system(size: 8.5, weight: .bold, design: .rounded).monospacedDigit())
                                 .foregroundStyle(Color.accentColor)
                                 .frame(width: 12, height: 12)
@@ -429,7 +429,7 @@ struct MiniWindowsSettingsSection: View {
                     .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
                 .buttonStyle(.vibeBar(cornerRadius: 6))
-                .help(L10n.Settings.miniWindowIncludeStyle(mode: mode.label))
+                .help(L10n.Settings.MiniWindow.includeStyle(mode: mode.label))
             }
         }
     }
@@ -495,7 +495,7 @@ struct MiniWindowsSettingsSection: View {
         }
         return VStack(alignment: .leading, spacing: 12) {
             if sections.isEmpty {
-                Text(L10n.Settings.miniWindowAllBucketsIncluded)
+                Text(L10n.Settings.MiniWindow.allBucketsIncluded)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -555,8 +555,8 @@ struct MiniWindowsSettingsSection: View {
                 .buttonStyle(.vibeBar)
                 .help(
                     entry.discovered != nil
-                        ? L10n.Settings.miniWindowForgetDiscovered
-                        : L10n.Settings.miniWindowDismissBuiltIn
+                        ? L10n.Settings.MiniWindow.forgetDiscovered
+                        : L10n.Settings.MiniWindow.dismissBuiltIn
                 )
             }
         }
@@ -661,7 +661,7 @@ struct MiniWindowsSettingsSection: View {
     private func arrangementList(_ config: MiniWindowConfig) -> some View {
         let rows = arrangeRows(config)
         if rows.isEmpty {
-            Text(L10n.Settings.miniWindowNoFieldsSelected)
+            Text(L10n.Settings.MiniWindow.noFieldsSelected)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         } else {
@@ -804,7 +804,7 @@ struct MiniWindowsSettingsSection: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             if !isLive {
-                Text(L10n.Settings.miniWindowOffline)
+                Text(L10n.Settings.MiniWindow.offline)
                     .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.tertiary)
             }
@@ -845,7 +845,7 @@ struct MiniWindowsSettingsSection: View {
                     .frame(width: 16, height: 16)
             }
             .buttonStyle(.vibeBar)
-            .help(L10n.Settings.miniWindowRemoveFromWindow)
+            .help(L10n.Settings.MiniWindow.removeFromWindow)
         }
         .padding(.horizontal, 8)
         .padding(.leading, 8)

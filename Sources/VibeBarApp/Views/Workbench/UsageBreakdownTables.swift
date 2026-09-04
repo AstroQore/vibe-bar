@@ -126,7 +126,7 @@ struct UsageBreakdownTables: View {
             if model.isLoadingMore {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityLabel(L10n.Usage.tableLoadingMore)
+                    .accessibilityLabel(L10n.Usage.Table.loadingMore)
             }
         }
     }
@@ -138,22 +138,22 @@ struct UsageBreakdownTables: View {
         switch rows {
         case .periods(let points):
             switch model.trend.bucket {
-            case .hour: return L10n.Usage.tableActiveHours(count: points.count)
-            case .day: return L10n.Usage.tableActiveDays(count: points.count)
-            case .week: return L10n.Usage.tableActiveWeeks(count: points.count)
+            case .hour: return L10n.Usage.Table.activeHours(count: points.count)
+            case .day: return L10n.Usage.Table.activeDays(count: points.count)
+            case .week: return L10n.Usage.Table.activeWeeks(count: points.count)
             }
         case .requests:
             let loaded = model.requestRows.count
             let total = model.requestTotalCount
             return loaded < total
-                ? L10n.Usage.tableRequestsLoaded(loaded: loaded, total: total)
+                ? L10n.Usage.Table.requestsLoaded(loaded: loaded, total: total)
                 : L10n.Usage.requestCount(count: AppLocale.number(total))
         case .providers:
-            return L10n.Usage.tableCompanyCount(count: model.companyProviderStats.count)
+            return L10n.Usage.Table.companyCount(count: model.companyProviderStats.count)
         case .projects:
-            return L10n.Usage.tableProjectCount(count: model.projectStats.count)
+            return L10n.Usage.Table.projectCount(count: model.projectStats.count)
         case .models:
-            return L10n.Usage.tableModelCount(count: model.modelStats.count)
+            return L10n.Usage.Table.modelCount(count: model.modelStats.count)
         }
     }
 
@@ -164,31 +164,31 @@ struct UsageBreakdownTables: View {
         switch rows {
         case .periods(let points):
             if points.isEmpty {
-                empty(L10n.Usage.tableEmptyPeriods)
+                empty(L10n.Usage.Table.emptyPeriods)
             } else {
                 periodsTable(points)
             }
         case .requests:
             if model.requestRows.isEmpty {
-                empty(L10n.Usage.tableEmptyRequests)
+                empty(L10n.Usage.Table.emptyRequests)
             } else {
                 requestsTable
             }
         case .providers(let stats):
             if stats.isEmpty {
-                empty(L10n.Usage.tableEmptyProviders)
+                empty(L10n.Usage.Table.emptyProviders)
             } else {
                 providersTable(stats)
             }
         case .projects(let stats):
             if stats.isEmpty {
-                empty(L10n.Usage.tableEmptyProjects)
+                empty(L10n.Usage.Table.emptyProjects)
             } else {
                 projectsTable(stats)
             }
         case .models(let stats):
             if stats.isEmpty {
-                empty(L10n.Usage.tableEmptyModels)
+                empty(L10n.Usage.Table.emptyModels)
             } else {
                 modelsTable(stats)
             }
@@ -224,7 +224,7 @@ struct UsageBreakdownTables: View {
                         Button {
                             visiblePeriodLimit += Self.periodPageSize
                         } label: {
-                            Text(L10n.Usage.tableShowMorePeriods(
+                            Text(L10n.Usage.Table.showMorePeriods(
                                 count: min(
                                     Self.periodPageSize,
                                     points.count - visiblePeriodLimit
@@ -314,7 +314,7 @@ struct UsageBreakdownTables: View {
                 }
                 .frame(width: columns.tableWidth, alignment: .leading)
             }
-            .accessibilityLabel(L10n.Usage.tableRequestsLabel)
+            .accessibilityLabel(L10n.Usage.Table.requestsLabel)
         }
         .frame(height: requestsViewportHeight)
     }
@@ -335,8 +335,8 @@ struct UsageBreakdownTables: View {
                         .font(.system(size: 11, weight: .medium))
                 }
                 Text(model.isLoadingMore
-                    ? L10n.Usage.tableLoadingMore
-                    : L10n.Usage.tableLoadMore(remaining: remaining))
+                    ? L10n.Usage.Table.loadingMore
+                    : L10n.Usage.Table.loadMore(remaining: remaining))
                     .font(.system(size: 11, weight: .medium))
             }
             .foregroundStyle(.secondary)
@@ -501,7 +501,7 @@ struct UsageBreakdownTables: View {
                 .lineLimit(1)
         }
         .frame(width: column.width, alignment: column.frameAlignment)
-        .help(L10n.Usage.tableHarnessHelp(
+        .help(L10n.Usage.Table.harnessHelp(
             company: harness.companyName, harness: harness.displayName
         ))
     }
@@ -529,7 +529,7 @@ struct UsageBreakdownTables: View {
             Text(UsageFormatting.compactTokens(row.freshInput))
                 .font(numericFont)
             if row.cacheRead > 0 || row.cacheCreation > 0 {
-                Text(L10n.Usage.tableCacheReadWrite(
+                Text(L10n.Usage.Table.cacheReadWrite(
                     read: UsageFormatting.compactTokens(row.cacheRead),
                     write: UsageFormatting.compactTokens(row.cacheCreation)
                 ))
@@ -541,7 +541,7 @@ struct UsageBreakdownTables: View {
         .frame(width: column.width, alignment: column.frameAlignment)
         // One key, newlines included: the three lines are one block, and a
         // translation may need to reorder them.
-        .help(L10n.Usage.tableInputHelp(
+        .help(L10n.Usage.Table.inputHelp(
             input: UsageFormatting.formatTokens(row.freshInput),
             read: UsageFormatting.formatTokens(row.cacheRead),
             write: UsageFormatting.formatTokens(row.cacheCreation)
@@ -585,11 +585,11 @@ struct UsageBreakdownTables: View {
             if let micros {
                 moneyCell(micros, column)
             } else {
-                Text(L10n.Usage.tableUnpriced)
+                Text(L10n.Usage.Table.unpriced)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.tertiary)
                     .frame(width: column.width, alignment: column.frameAlignment)
-                    .help(L10n.Usage.tableUnpricedHelp)
+                    .help(L10n.Usage.Table.unpricedHelp)
             }
         }
     }
@@ -646,14 +646,14 @@ struct UsageBreakdownTables: View {
 
     private var periodColumnTitle: String {
         switch model.trend.bucket {
-        case .hour: L10n.Usage.tableColumnHour
-        case .day: L10n.Usage.tableColumnDay
-        case .week: L10n.Usage.tableColumnWeekOf
+        case .hour: L10n.Usage.Table.Column.hour
+        case .day: L10n.Usage.Table.Column.day
+        case .week: L10n.Usage.Table.Column.weekOf
         }
     }
 
     private func periodAccessibilityLabel(_ point: UsageTrendPoint, label: String) -> String {
-        L10n.Usage.tablePeriodRow(
+        L10n.Usage.Table.periodRow(
             period: label,
             tokens: UsageFormatting.formatTokens(point.totalTokens),
             cost: UsageFormatting.formatMicroUSD(point.costMicros)
@@ -665,13 +665,13 @@ struct UsageBreakdownTables: View {
         time: String,
         model: String
     ) -> String {
-        L10n.Usage.tableRequestRow(
+        L10n.Usage.Table.requestRow(
             time: time,
             harness: row.harness.displayName,
             model: model,
             tokens: UsageFormatting.formatTokens(row.totalTokens),
             cost: row.costMicros.map { UsageFormatting.formatMicroUSD($0) }
-                ?? L10n.Usage.tableUnpriced
+                ?? L10n.Usage.Table.unpriced
         )
     }
 
@@ -680,7 +680,7 @@ struct UsageBreakdownTables: View {
     private func statAccessibilityLabel(
         name: String, requests: Int, tokens: Int64, costMicros: Int64
     ) -> String {
-        L10n.Usage.tableStatRow(
+        L10n.Usage.Table.statRow(
             name: name,
             requests: requests,
             tokens: UsageFormatting.formatTokens(tokens),
@@ -811,10 +811,10 @@ private extension Array where Element == UsageTableColumn {
 /// ordinary Workbench width, and only the descriptive leading column flexes.
 private struct PeriodColumns {
     let period: UsageTableColumn
-    let input = UsageTableColumn(L10n.Usage.tableColumnInput, 108, .trailing)
-    let output = UsageTableColumn(L10n.Usage.tableColumnOutput, 108, .trailing)
-    let cache = UsageTableColumn(L10n.Usage.tableColumnCache, 108, .trailing)
-    let tokens = UsageTableColumn(L10n.Usage.tokensTitle, 108, .trailing)
+    let input = UsageTableColumn(L10n.Usage.Table.Column.input, 108, .trailing)
+    let output = UsageTableColumn(L10n.Usage.Mix.Flow.output, 108, .trailing)
+    let cache = UsageTableColumn(L10n.Usage.Mix.Flow.cache, 108, .trailing)
+    let tokens = UsageTableColumn(L10n.Usage.Tokens.title, 108, .trailing)
     let cost = UsageTableColumn(L10n.Cost.title, 108, .trailing)
 
     init(title: String, contentWidth: CGFloat) {
@@ -826,13 +826,13 @@ private struct PeriodColumns {
 
 private struct ProviderColumns {
     let provider: UsageTableColumn
-    let requests = UsageTableColumn(L10n.Usage.tableColumnRequests, 112, .trailing)
-    let tokens = UsageTableColumn(L10n.Usage.tokensTitle, 132, .trailing)
+    let requests = UsageTableColumn(L10n.Usage.Table.Column.requests, 112, .trailing)
+    let tokens = UsageTableColumn(L10n.Usage.Tokens.title, 132, .trailing)
     let cost = UsageTableColumn(L10n.Cost.title, 120, .trailing)
 
     init(contentWidth: CGFloat) {
         provider = UsageTableColumn(
-            L10n.Usage.tableColumnProvider,
+            L10n.Common.provider,
             Swift.max(180, contentWidth - 112 - 132 - 120)
         )
     }
@@ -842,14 +842,14 @@ private struct ProviderColumns {
 
 private struct ModelColumns {
     let model: UsageTableColumn
-    let requests = UsageTableColumn(L10n.Usage.tableColumnRequests, 112, .trailing)
-    let tokens = UsageTableColumn(L10n.Usage.tokensTitle, 132, .trailing)
+    let requests = UsageTableColumn(L10n.Usage.Table.Column.requests, 112, .trailing)
+    let tokens = UsageTableColumn(L10n.Usage.Tokens.title, 132, .trailing)
     let cost = UsageTableColumn(L10n.Cost.title, 120, .trailing)
-    let average = UsageTableColumn(L10n.Usage.tableColumnAverage, 128, .trailing)
+    let average = UsageTableColumn(L10n.Usage.Table.Column.average, 128, .trailing)
 
     init(contentWidth: CGFloat) {
         model = UsageTableColumn(
-            L10n.Usage.tableColumnModel,
+            L10n.Usage.Table.Column.model,
             Swift.max(200, contentWidth - 112 - 132 - 120 - 128)
         )
     }
@@ -867,8 +867,8 @@ private struct RequestColumns {
     let time: UsageTableColumn
     let harness: UsageTableColumn
     let model: UsageTableColumn
-    let input = UsageTableColumn(L10n.Usage.tableColumnInput, 114, .trailing)
-    let output = UsageTableColumn(L10n.Usage.tableColumnOutput, 88, .trailing)
+    let input = UsageTableColumn(L10n.Usage.Table.Column.input, 114, .trailing)
+    let output = UsageTableColumn(L10n.Usage.Mix.Flow.output, 88, .trailing)
     let cost = UsageTableColumn(L10n.Cost.title, 96, .trailing)
     let tier: UsageTableColumn
 
@@ -878,10 +878,10 @@ private struct RequestColumns {
             tableWidth - UsageTableMetrics.horizontalInset * 2
         )
         let extra = contentWidth - Self.minimumContentWidth
-        time = UsageTableColumn(L10n.Usage.tableColumnTime, 138 + extra * 0.12)
-        harness = UsageTableColumn(L10n.Usage.tableColumnHarness, 138 + extra * 0.20)
-        model = UsageTableColumn(L10n.Usage.tableColumnModel, 220 + extra * 0.50)
-        tier = UsageTableColumn(L10n.Usage.tableColumnTier, 86 + extra * 0.18)
+        time = UsageTableColumn(L10n.Usage.Table.Column.time, 138 + extra * 0.12)
+        harness = UsageTableColumn(L10n.Usage.Table.Column.harness, 138 + extra * 0.20)
+        model = UsageTableColumn(L10n.Usage.Table.Column.model, 220 + extra * 0.50)
+        tier = UsageTableColumn(L10n.Usage.Table.Column.tier, 86 + extra * 0.18)
     }
 
     var all: [UsageTableColumn] { [time, harness, model, input, output, cost, tier] }

@@ -21,29 +21,29 @@ public enum QuotaError: Error, Equatable, Hashable, Sendable {
 
     public var userFacingMessage: String {
         switch self {
-        case .noCredential:    return L10n.Errors.noCredential
-        case .needsLogin:      return L10n.Errors.needsLogin
+        case .noCredential:    return L10n.Error.noAccountFound
+        case .needsLogin:      return L10n.Error.needsReLogin
         case .credentialRejected(let m):
             // The payload is the provider's own copy, so it stays as it
             // arrived: translating it here would mean inventing a Chinese
             // sentence for text this build has never seen.
-            return m.isEmpty ? L10n.Errors.credentialRejected : m
+            return m.isEmpty ? L10n.Error.credentialRejected : m
         case .network(let m):
             return m.isEmpty
-                ? L10n.Errors.network
-                : L10n.Errors.networkDetail(reason: m)
-        case .rateLimited:     return L10n.Errors.rateLimited
+                ? L10n.Error.network
+                : L10n.Error.networkWithReason(reason: m)
+        case .rateLimited:     return L10n.Error.rateLimited
         // The adapter's own diagnosis is the whole point of the payload:
         // "no Coding Plan subscription on this account" is actionable in a
         // way "Response format changed" never was. Only a genuinely empty
         // message falls back to the generic line.
         case .parseFailure(let m):
-            return m.isEmpty ? L10n.Errors.parseFailure : m
-        case .notImplemented:  return L10n.Errors.notImplemented
+            return m.isEmpty ? L10n.Error.parseFailure : m
+        case .notImplemented:  return L10n.Error.notImplemented
         case .unknown(let m):
             return m.isEmpty
-                ? L10n.Errors.unknown
-                : L10n.Errors.unknownDetail(reason: m)
+                ? L10n.Error.unknown
+                : L10n.Error.unknownDetail(reason: m)
         }
     }
 

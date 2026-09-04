@@ -29,11 +29,11 @@ struct CodexBarProviderBridgeCard: View {
                 .background(Circle().fill(Color.accentColor.opacity(0.12)))
                 .overlay(Circle().stroke(Color.accentColor.opacity(0.35), lineWidth: 0.7))
             VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.Quota.bridgeTitle)
+                Text(L10n.Quota.Bridge.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Text(
-                    snapshot?.version.map { L10n.Quota.bridgeSubtitleVersion(version: $0) }
-                        ?? L10n.Quota.bridgeSubtitle
+                    snapshot?.version.map { L10n.Quota.Bridge.subtitleVersion(version: $0) }
+                        ?? L10n.Quota.Bridge.subtitle
                 )
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
@@ -41,7 +41,7 @@ struct CodexBarProviderBridgeCard: View {
             Spacer(minLength: 4)
             BorderlessIconButton(
                 systemImage: "arrow.clockwise",
-                help: L10n.Quota.bridgeRefresh,
+                help: L10n.Quota.Bridge.refresh,
                 size: density.subtitleFontSize
             ) {
                 Task { await refresh() }
@@ -72,7 +72,7 @@ struct CodexBarProviderBridgeCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 10)
         } else {
-            Text(L10n.Quota.bridgeEmpty)
+            Text(L10n.Quota.Bridge.empty)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -119,7 +119,7 @@ struct CodexBarProviderBridgeCard: View {
                 height: max(3, density.bucketBarHeight - 1)
             )
             if let countdown = ResetCountdownFormatter.stringWithAbsoluteTime(from: window.resetAt) {
-                Text(L10n.Quota.bucketResetsIn(when: countdown))
+                Text(L10n.Quota.Reset.`in`(when: countdown))
                     .font(.system(size: density.resetCountdownFontSize))
                     .foregroundStyle(.tertiary)
             }

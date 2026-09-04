@@ -32,11 +32,11 @@ public enum StatusIndicator: String, Codable, Sendable {
     /// reporting a provider's own indicator uses this.
     public var summaryDescription: String {
         switch self {
-        case .none:        return L10n.Status.summaryAllOperational
-        case .maintenance: return L10n.Status.summaryUnderMaintenance
-        case .minor:       return L10n.Status.summaryServiceIssue
-        case .major:       return L10n.Status.summaryPartialOutage
-        case .critical:    return L10n.Status.summaryMajorOutage
+        case .none:        return L10n.Status.Summary.allOperational
+        case .maintenance: return L10n.Status.Summary.underMaintenance
+        case .minor:       return L10n.Status.Summary.serviceIssue
+        case .major:       return L10n.Status.Component.partialOutage
+        case .critical:    return L10n.Status.Component.majorOutage
         }
     }
 }
@@ -266,10 +266,10 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
         guard effectiveIndicator.severity > indicator.severity else { return statedDescription }
         switch effectiveIndicator {
         case .none:        return statedDescription
-        case .maintenance: return L10n.Status.summaryUnderMaintenance
-        case .minor:       return L10n.Status.summaryActiveIncident
-        case .major:       return L10n.Status.summaryPartialOutage
-        case .critical:    return L10n.Status.summaryMajorOutage
+        case .maintenance: return L10n.Status.Summary.underMaintenance
+        case .minor:       return L10n.Status.Summary.activeIncident
+        case .major:       return L10n.Status.Component.partialOutage
+        case .critical:    return L10n.Status.Component.majorOutage
         }
     }
 

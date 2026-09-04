@@ -46,15 +46,15 @@ public enum MenuBarQuotaMetric: String, Codable, CaseIterable, Sendable {
     /// Menu label for the stage-2 editor's metric picker.
     public var title: String {
         switch self {
-        case .usedPercent: return L10n.MenuBar.composerMetricUsedPercent
-        case .remainingPercent: return L10n.MenuBar.composerMetricRemainingPercent
-        case .displayPercent: return L10n.MenuBar.composerMetricDisplayPercent
-        case .pace: return L10n.MenuBar.composerMetricPace
-        case .forecastPercent: return L10n.MenuBar.composerMetricForecastPercent
-        case .resetsIn: return L10n.MenuBar.composerMetricResetsIn
-        case .resetAt: return L10n.MenuBar.composerMetricResetAt
-        case .runsOutIn: return L10n.MenuBar.composerMetricRunsOutIn
-        case .label: return L10n.MenuBar.composerMetricLabel
+        case .usedPercent: return L10n.MenuBar.Composer.Metric.usedPercent
+        case .remainingPercent: return L10n.MenuBar.Composer.Metric.remainingPercent
+        case .displayPercent: return L10n.MenuBar.Composer.Metric.displayPercent
+        case .pace: return L10n.MenuBar.Composer.Metric.pace
+        case .forecastPercent: return L10n.Quota.Forecast.Metric.forecastAtReset
+        case .resetsIn: return L10n.MenuBar.Composer.Metric.resetsIn
+        case .resetAt: return L10n.MenuBar.Composer.Metric.resetAt
+        case .runsOutIn: return L10n.MenuBar.Composer.Metric.runsOutIn
+        case .label: return L10n.Common.name
         }
     }
 
@@ -311,9 +311,9 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
 
         public var title: String {
             switch self {
-            case .regular: return L10n.MenuBar.composerSizeRegular
-            case .small: return L10n.MenuBar.composerSizeSmall
-            case .mini: return L10n.MenuBar.composerSizeMini
+            case .regular: return L10n.MenuBar.Composer.Size.regular
+            case .small: return L10n.MenuBar.Composer.Size.small
+            case .mini: return L10n.MenuBar.Composer.Size.mini
             }
         }
 
@@ -326,9 +326,9 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
 
         public var title: String {
             switch self {
-            case .regular: return L10n.MenuBar.composerWeightRegular
-            case .medium: return L10n.MenuBar.composerWeightMedium
-            case .semibold: return L10n.MenuBar.composerWeightSemibold
+            case .regular: return L10n.MenuBar.Composer.Weight.regular
+            case .medium: return L10n.MenuBar.Composer.Weight.medium
+            case .semibold: return L10n.MenuBar.Composer.Weight.semibold
             }
         }
     }
@@ -768,17 +768,17 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
 
         public var title: String {
             switch self {
-            case .compact: return L10n.MenuBar.composerTemplateCompact
-            case .roomy: return L10n.MenuBar.composerTemplateRoomy
-            case .twoColumn: return L10n.MenuBar.composerTemplateTwoRows
+            case .compact: return L10n.MenuBar.Composer.Template.compact
+            case .roomy: return L10n.MenuBar.Composer.Template.roomy
+            case .twoColumn: return L10n.MenuBar.Composer.Template.twoRows
             }
         }
 
         public var detail: String {
             switch self {
-            case .compact: return L10n.MenuBar.composerTemplateCompactDetail
-            case .roomy: return L10n.MenuBar.composerTemplateRoomyDetail
-            case .twoColumn: return L10n.MenuBar.composerTemplateTwoRowsDetail
+            case .compact: return L10n.MenuBar.Composer.Template.compactDetail
+            case .roomy: return L10n.MenuBar.Composer.Template.roomyDetail
+            case .twoColumn: return L10n.MenuBar.Composer.Template.twoRowsDetail
             }
         }
 
@@ -2625,23 +2625,23 @@ public extension MenuBarComposition {
         case .label:
             return value
         case .usedPercent:
-            return L10n.MenuBar.spokenUsed(label: quota.label, value: value)
+            return L10n.MenuBar.Spoken.used(label: quota.label, value: value)
         case .remainingPercent:
-            return L10n.MenuBar.spokenRemaining(label: quota.label, value: value)
+            return L10n.MenuBar.Spoken.remaining(label: quota.label, value: value)
         case .displayPercent:
             return displayMode == .used
-                ? L10n.MenuBar.spokenUsed(label: quota.label, value: value)
-                : L10n.MenuBar.spokenRemaining(label: quota.label, value: value)
+                ? L10n.MenuBar.Spoken.used(label: quota.label, value: value)
+                : L10n.MenuBar.Spoken.remaining(label: quota.label, value: value)
         case .pace:
-            return L10n.MenuBar.spokenPace(label: quota.label, value: value)
+            return L10n.MenuBar.Spoken.pace(label: quota.label, value: value)
         case .forecastPercent:
-            return L10n.MenuBar.spokenForecast(label: quota.label, value: value)
+            return L10n.MenuBar.Spoken.forecast(label: quota.label, value: value)
         case .resetsIn:
-            return L10n.MenuBar.spokenResetsIn(label: quota.label, value: value)
+            return L10n.MenuBar.Spoken.resetsIn(label: quota.label, value: value)
         case .resetAt:
-            return L10n.MenuBar.spokenResetAt(label: quota.label, value: value)
+            return L10n.MenuBar.Spoken.resetAt(label: quota.label, value: value)
         case .runsOutIn:
-            return L10n.MenuBar.spokenRunsOutIn(label: quota.label, value: value)
+            return L10n.MenuBar.Spoken.runsOutIn(label: quota.label, value: value)
         }
     }
 

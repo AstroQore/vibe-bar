@@ -30,10 +30,10 @@ struct OverviewUsageMixCard: View {
 
         var title: String {
             switch self {
-            case .projects: L10n.Usage.mixDimensionProjects
-            case .harnesses: L10n.Usage.mixDimensionHarnesses
-            case .models: L10n.Usage.mixDimensionModels
-            case .flow: L10n.Usage.mixTokenFlowTitle
+            case .projects: L10n.Usage.Breakdown.projects
+            case .harnesses: L10n.Usage.Mix.Dimension.harnesses
+            case .models: L10n.Usage.Breakdown.models
+            case .flow: L10n.Usage.Mix.TokenFlow.title
             }
         }
     }
@@ -87,10 +87,10 @@ struct OverviewUsageMixCard: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(L10n.Usage.mixTitle)
+            Text(L10n.Usage.Mix.title)
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
             Spacer(minLength: 6)
-            Text(L10n.Usage.mixLastThirtyDays)
+            Text(L10n.Usage.Mix.lastThirtyDays)
                 .font(.system(size: density.resetCountdownFontSize))
                 .foregroundStyle(.tertiary)
             SectionRefreshButton(isRefreshing: costService.isRefreshing || isLoading) {
@@ -178,7 +178,7 @@ struct OverviewUsageMixCard: View {
                         Text(UsageFormatting.compactTokens(total))
                             .font(.system(size: density.bucketTitleFontSize, weight: .bold,
                                           design: .rounded).monospacedDigit())
-                        Text(L10n.Usage.mixDonutUnit)
+                        Text(L10n.Usage.Mix.donutUnit)
                             .font(.system(size: max(8, density.resetCountdownFontSize - 1)))
                             .foregroundStyle(.tertiary)
                     }
@@ -269,14 +269,14 @@ struct OverviewUsageMixCard: View {
         case .flow:
             let summary = snapshot.summary
             raw = [
-                Slice(id: "fresh", label: L10n.Usage.mixFlowFreshInput, detail: nil,
+                Slice(id: "fresh", label: L10n.Usage.Mix.Flow.freshInput, detail: nil,
                       tokens: summary.freshInput, costMicros: 0,
                       color: Color(red: 0.30, green: 0.78, blue: 0.74)),
-                Slice(id: "cache", label: L10n.Usage.mixFlowCache,
-                      detail: L10n.Usage.mixFlowCacheDetail,
+                Slice(id: "cache", label: L10n.Usage.Mix.Flow.cache,
+                      detail: L10n.Usage.Mix.Flow.cacheDetail,
                       tokens: summary.cacheRead + summary.cacheCreation, costMicros: 0,
                       color: Color(red: 0.55, green: 0.40, blue: 0.92)),
-                Slice(id: "output", label: L10n.Usage.mixFlowOutput, detail: nil,
+                Slice(id: "output", label: L10n.Usage.Mix.Flow.output, detail: nil,
                       tokens: summary.output, costMicros: 0,
                       color: Color(red: 0.96, green: 0.62, blue: 0.20)),
             ]
@@ -291,8 +291,8 @@ struct OverviewUsageMixCard: View {
         let tail = sorted.dropFirst(visibleCount)
         let other = Slice(
             id: "other:\(dimension.rawValue)",
-            label: L10n.Usage.mixOther,
-            detail: L10n.Usage.mixOtherCount(count: tail.count),
+            label: L10n.Usage.Mix.other,
+            detail: L10n.Usage.Mix.otherCount(count: tail.count),
             tokens: tail.reduce(Int64(0)) { $0 + $1.tokens },
             costMicros: tail.reduce(Int64(0)) { $0 + $1.costMicros },
             color: Color.secondary.opacity(0.55)
@@ -308,15 +308,15 @@ struct OverviewUsageMixCard: View {
     }
 
     private var emptyMessage: String {
-        if loadFailed { return L10n.Usage.mixLedgerUnreadable }
+        if loadFailed { return L10n.Usage.Mix.ledgerUnreadable }
         // The Workbench's distribution dashboard says these four things
         // already; a second wording of "nothing here" is how two screens
         // start disagreeing about what empty means.
         switch dimension {
-        case .projects: return L10n.Usage.mixProjectEmpty
-        case .harnesses: return L10n.Usage.harnessMixEmpty
-        case .models: return L10n.Usage.mixModelEmpty
-        case .flow: return L10n.Usage.mixTokenFlowEmpty
+        case .projects: return L10n.Usage.Mix.Project.empty
+        case .harnesses: return L10n.Usage.HarnessMix.empty
+        case .models: return L10n.Usage.Mix.Model.empty
+        case .flow: return L10n.Usage.Mix.TokenFlow.empty
         }
     }
 

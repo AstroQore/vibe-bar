@@ -24,10 +24,10 @@ struct SkillBackupsSheet: View {
         .frame(width: 620, height: 520)
         .confirmationDialog(
             pendingDeletion.map {
-                L10n.Workbench.skillsBackupsDeleteConfirmTitle(
+                L10n.Workbench.Skills.Backups.deleteConfirmTitle(
                     skill: $0.skill?.name ?? $0.directoryName
                 )
-            } ?? L10n.Workbench.skillsBackupsDeleteConfirmTitleGeneric,
+            } ?? L10n.Workbench.Skills.Backups.deleteConfirmTitleGeneric,
             isPresented: Binding(
                 get: { pendingDeletion != nil },
                 set: { if !$0 { pendingDeletion = nil } }
@@ -40,22 +40,22 @@ struct SkillBackupsSheet: View {
             }
             Button(L10n.Common.cancel, role: .cancel) { pendingDeletion = nil }
         } message: {
-            Text(L10n.Workbench.skillsBackupsDeleteConfirmMessage)
+            Text(L10n.Workbench.Skills.Backups.deleteConfirmMessage)
         }
     }
 
     private var header: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.Workbench.skillsBackupsTitle)
+                Text(L10n.Workbench.Skills.Backups.title)
                     .font(.system(size: density.titleFontSize, weight: .semibold))
-                Text(L10n.Workbench.skillsBackupsSubtitle)
+                Text(L10n.Workbench.Skills.Backups.subtitle)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             SectionRefreshButton(isRefreshing: false) { model.reloadBackups() }
-                .help(L10n.Workbench.skillsBackupsRefreshHelp)
+                .help(L10n.Workbench.Skills.Backups.refreshHelp)
         }
         .padding(.horizontal, density.popoverPaddingH)
         .padding(.vertical, 12)
@@ -68,7 +68,7 @@ struct SkillBackupsSheet: View {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 24, weight: .light))
                     .foregroundStyle(.secondary)
-                Text(L10n.Workbench.skillsBackupsEmpty)
+                Text(L10n.Workbench.Skills.Backups.empty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
             }
@@ -107,10 +107,10 @@ struct SkillBackupsSheet: View {
             if busy {
                 ProgressView().controlSize(.small)
             }
-            Button(L10n.Workbench.skillsBackupsRestore) { model.restoreBackup(backup) }
+            Button(L10n.Workbench.Skills.Backups.restore) { model.restoreBackup(backup) }
                 .buttonStyle(.bordered)
                 .disabled(busy)
-                .help(L10n.Workbench.skillsBackupsRestoreHelp)
+                .help(L10n.Workbench.Skills.Backups.restoreHelp)
             Button {
                 pendingDeletion = backup
             } label: {
@@ -119,14 +119,14 @@ struct SkillBackupsSheet: View {
             }
             .buttonStyle(.vibeBar)
             .disabled(busy)
-            .accessibilityLabel(L10n.Workbench.skillsBackupsDeleteAccessibility)
+            .accessibilityLabel(L10n.Workbench.Skills.Backups.deleteAccessibility)
         }
         .padding(.vertical, 4)
     }
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Text(L10n.Workbench.skillsBackupsFooter)
+            Text(L10n.Workbench.Skills.Backups.footer)
                 .font(.system(size: max(9, density.resetCountdownFontSize)))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)

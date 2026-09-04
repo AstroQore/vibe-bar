@@ -26,18 +26,18 @@ struct UsageCompositionCards: View {
     var body: some View {
         CardShell(density: density, spacing: 11) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(L10n.Usage.harnessMixTitle)
+                Text(L10n.Usage.HarnessMix.title)
                     .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .tracking(0.7)
                 Spacer(minLength: 6)
-                Text(L10n.Usage.harnessMixByRealTokens)
+                Text(L10n.Usage.HarnessMix.byRealTokens)
                     .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
                     .foregroundStyle(.tertiary)
             }
 
             if harnessRows.isEmpty {
-                Text(L10n.Usage.harnessMixEmpty)
+                Text(L10n.Usage.HarnessMix.empty)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 110, alignment: .center)
@@ -48,7 +48,7 @@ struct UsageCompositionCards: View {
                 Spacer(minLength: 0)
                 Divider().opacity(0.45)
                 HStack {
-                    Text(L10n.Usage.harnessMixActiveCount(count: harnessRows.count))
+                    Text(L10n.Usage.HarnessMix.activeCount(count: harnessRows.count))
                     Spacer(minLength: 8)
                     Text(L10n.Usage.requestCount(count: summary.requests.formatted(.number.grouping(.automatic).locale(AppLocale.current))))
                 }

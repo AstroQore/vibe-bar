@@ -22,10 +22,10 @@ final class SessionManagerModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .all:   L10n.Workbench.sessionsRangeAll
-            case .today: L10n.Workbench.sessionsRangeToday
-            case .week:  L10n.Workbench.sessionsRangeWeek
-            case .month: L10n.Workbench.sessionsRangeMonth
+            case .all:   L10n.Workbench.Sessions.Range.all
+            case .today: L10n.Cost.Timeframe.today
+            case .week:  L10n.Cost.Timeframe.week
+            case .month: L10n.Cost.Timeframe.month
             }
         }
 
@@ -58,9 +58,9 @@ final class SessionManagerModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .recentFirst: L10n.Workbench.sessionsSortRecentFirst
-            case .oldestFirst: L10n.Workbench.sessionsSortOldestFirst
-            case .byProject:   L10n.Workbench.sessionsSortByProject
+            case .recentFirst: L10n.Workbench.Sessions.Sort.recentFirst
+            case .oldestFirst: L10n.Workbench.Sessions.Sort.oldestFirst
+            case .byProject:   L10n.Workbench.Sessions.Sort.byProject
             }
         }
 
@@ -108,8 +108,8 @@ final class SessionManagerModel: ObservableObject {
         var title: String {
             switch self {
             case let .named(name): name
-            case .noProject:       L10n.Workbench.sessionsProjectNone
-            case .projectless:     L10n.Workbench.sessionsProjectProjectless
+            case .noProject:       L10n.Workbench.Sessions.Project.none
+            case .projectless:     L10n.Workbench.Sessions.Project.projectless
             }
         }
     }
@@ -441,7 +441,7 @@ final class SessionManagerModel: ObservableObject {
         Task { [weak self] in
             let cleared = (try? await store.eraseAll()) != nil
             guard let self else { return }
-            if !cleared { self.show(toast: L10n.Workbench.sessionsToastIndexNotCleared) }
+            if !cleared { self.show(toast: L10n.Workbench.Sessions.Toast.indexNotCleared) }
             self.invalidateIndexDerivedState()
             self.summaries = []
             self.hits = []
@@ -985,7 +985,7 @@ final class SessionManagerModel: ObservableObject {
     /// Computed, and `nonisolated` so the detached parse can read it too: a
     /// `static let` would freeze the language it was first resolved in.
     nonisolated static var cancelledTranscriptMessage: String {
-        L10n.Workbench.sessionsTranscriptCancelled
+        L10n.Workbench.Sessions.Transcript.cancelled
     }
 
     /// Cancel the parse itself, not just the task waiting on it.
@@ -1023,7 +1023,7 @@ final class SessionManagerModel: ObservableObject {
         }
         guard let adapter = registry.adapter(for: summary.provider) else {
             isLoadingTranscript = false
-            transcriptError = L10n.Workbench.sessionsTranscriptNoReader(
+            transcriptError = L10n.Workbench.Sessions.Transcript.noReader(
                 provider: summary.provider.displayName
             )
             return
@@ -1132,7 +1132,7 @@ final class SessionManagerModel: ObservableObject {
                     messages.append(SessionMessage(
                         seq: messages.count,
                         role: .system,
-                        text: L10n.Workbench.sessionsTranscriptAutoReviewDivider,
+                        text: L10n.Workbench.Sessions.Transcript.autoReviewDivider,
                         timestamp: review.createdAt
                     ))
                     let childStart = messages.count
@@ -1178,7 +1178,7 @@ final class SessionManagerModel: ObservableObject {
                 return ParsedTranscript(
                     document: nil,
                     errorMessage: (error as? LocalizedError)?.errorDescription
-                        ?? L10n.Workbench.sessionsTranscriptReadFailed,
+                        ?? L10n.Workbench.Sessions.Transcript.readFailed,
                     focusSeq: nil,
                     truncation: nil
                 )
@@ -1210,7 +1210,7 @@ final class SessionManagerModel: ObservableObject {
 
     func copyResumeCommand(for summary: SessionSummary) {
         guard let line = resumeShellLine(for: summary) else {
-            show(toast: L10n.Workbench.sessionsToastNoResumeCommand)
+            show(toast: L10n.Workbench.Sessions.Toast.noResumeCommand)
             return
         }
         Task { [weak self] in
@@ -1222,7 +1222,7 @@ final class SessionManagerModel: ObservableObject {
 
     func resumeInTerminal(_ summary: SessionSummary) {
         guard let line = resumeShellLine(for: summary) else {
-            show(toast: L10n.Workbench.sessionsToastNoResumeCommand)
+            show(toast: L10n.Workbench.Sessions.Toast.noResumeCommand)
             return
         }
         let preferred = settingsStore.settings.preferredTerminal
@@ -1236,10 +1236,10 @@ final class SessionManagerModel: ObservableObject {
     private func report(_ result: TerminalLauncher.Result) {
         switch result {
         case let .launched(target):
-            show(toast: L10n.Workbench.sessionsToastOpenedIn(terminal: target.displayName))
+            show(toast: L10n.Workbench.Sessions.Toast.openedIn(terminal: target.displayName))
         case let .copiedToClipboard(reason):
-            show(toast: reason.map { L10n.Workbench.sessionsToastCopiedWithReason(reason: $0) }
-                ?? L10n.Workbench.sessionsToastCopied)
+            show(toast: reason.map { L10n.Workbench.Sessions.Toast.copiedWithReason(reason: $0) }
+                ?? L10n.Workbench.Sessions.Toast.copied)
         case let .failed(message):
             show(toast: message)
         }
@@ -1330,11 +1330,11 @@ final class SessionManagerModel: ObservableObject {
 
         let failures = outcomes.filter { !$0.success }
         if failures.isEmpty {
-            show(toast: L10n.Workbench.sessionsToastDeleted(count: removed.count))
+            show(toast: L10n.Workbench.Sessions.Toast.deleted(count: removed.count))
         } else if let first = failures.first?.failureReason {
             show(toast: removed.isEmpty
                 ? first.message
-                : L10n.Workbench.sessionsToastDeletedPartial(
+                : L10n.Workbench.Sessions.Toast.deletedPartial(
                     deleted: removed.count,
                     kept: failures.count,
                     reason: first.message
@@ -1380,8 +1380,8 @@ final class SessionManagerModel: ObservableObject {
             }
             guard let self else { return }
             self.show(toast: dropped
-                ? L10n.Workbench.sessionsToastBodyIndexDropped
-                : L10n.Workbench.sessionsToastBodyIndexDropFailed)
+                ? L10n.Workbench.Sessions.Toast.bodyIndexDropped
+                : L10n.Workbench.Sessions.Toast.bodyIndexDropFailed)
         }
     }
 

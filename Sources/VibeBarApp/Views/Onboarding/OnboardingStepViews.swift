@@ -14,32 +14,32 @@ struct OnboardingWelcomeStep: View {
         // skips the assistant still finds the control in Settings.
         LanguageSettingsSection(density: density)
         CardShell(density: density) {
-            Text(L10n.Onboarding.welcomeIntro)
+            Text(L10n.Onboarding.Welcome.intro)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
             OnboardingFeatureRow(
                 systemImage: "gauge.with.dots.needle.33percent",
-                title: L10n.Onboarding.welcomeQuotasTitle,
-                detail: L10n.Onboarding.welcomeQuotasDetail
+                title: L10n.Onboarding.Welcome.Quotas.title,
+                detail: L10n.Onboarding.Welcome.Quotas.detail
             )
             OnboardingFeatureRow(
                 systemImage: "dollarsign.circle",
-                title: L10n.Onboarding.welcomeCostTitle,
-                detail: L10n.Onboarding.welcomeCostDetail
+                title: L10n.Onboarding.Welcome.Cost.title,
+                detail: L10n.Onboarding.Welcome.Cost.detail
             )
             OnboardingFeatureRow(
                 systemImage: "rectangle.stack",
-                title: L10n.Onboarding.welcomeSessionsTitle,
-                detail: L10n.Onboarding.welcomeSessionsDetail
+                title: L10n.Onboarding.Welcome.Sessions.title,
+                detail: L10n.Onboarding.Welcome.Sessions.detail
             )
             OnboardingFeatureRow(
                 systemImage: "point.3.connected.trianglepath.dotted",
-                title: L10n.Onboarding.welcomeMcpTitle,
-                detail: L10n.Onboarding.welcomeMcpDetail
+                title: L10n.Onboarding.Welcome.Mcp.title,
+                detail: L10n.Onboarding.Welcome.Mcp.detail
             )
         }
-        Text(L10n.Onboarding.welcomeFooter)
+        Text(L10n.Onboarding.Welcome.footer)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -78,7 +78,7 @@ struct OnboardingSubscriptionsStep: View {
     @EnvironmentObject private var settingsStore: SettingsStore
 
     var body: some View {
-        Text(L10n.Onboarding.subscriptionsIntro)
+        Text(L10n.Onboarding.Subscriptions.intro)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -110,7 +110,7 @@ private struct OnboardingCoreProviderCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
-                Toggle(L10n.Onboarding.subscriptionsShowInOverview, isOn: visibilityBinding)
+                Toggle(L10n.Onboarding.Subscriptions.showInOverview, isOn: visibilityBinding)
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .font(.caption)
@@ -123,10 +123,10 @@ private struct OnboardingCoreProviderCard: View {
 
     private var productLine: String {
         switch tool {
-        case .codex: L10n.Onboarding.subscriptionsProductLineCodex
-        case .claude: L10n.Onboarding.subscriptionsProductLineClaude
-        case .gemini: L10n.Onboarding.subscriptionsProductLineGemini
-        case .grok: L10n.Onboarding.subscriptionsProductLineGrok
+        case .codex: L10n.Onboarding.Subscriptions.ProductLine.codex
+        case .claude: L10n.Onboarding.Subscriptions.ProductLine.claude
+        case .gemini: L10n.Onboarding.Subscriptions.ProductLine.gemini
+        case .grok: L10n.Onboarding.Subscriptions.ProductLine.grok
         default: tool.subtitle
         }
     }
@@ -144,29 +144,29 @@ private struct OnboardingCoreProviderCard: View {
         case .codex:
             cliHint(
                 account: environment.account(for: .codex),
-                detected: L10n.Onboarding.subscriptionsCodexDetected,
-                web: L10n.Onboarding.subscriptionsCodexWeb,
-                missing: L10n.Onboarding.subscriptionsCodexMissing
+                detected: L10n.Onboarding.Subscriptions.Codex.detected,
+                web: L10n.Onboarding.Subscriptions.Codex.web,
+                missing: L10n.Onboarding.Subscriptions.Codex.missing
             )
         case .claude:
             cliHint(
                 account: environment.account(for: .claude),
-                detected: L10n.Onboarding.subscriptionsClaudeDetected,
-                web: L10n.Onboarding.subscriptionsClaudeWeb,
-                missing: L10n.Onboarding.subscriptionsClaudeMissing
+                detected: L10n.Onboarding.Subscriptions.Claude.detected,
+                web: L10n.Onboarding.Subscriptions.Claude.web,
+                missing: L10n.Onboarding.Subscriptions.Claude.missing
             )
         case .gemini:
             hintLabel(
-                L10n.Onboarding.subscriptionsGeminiHint,
+                L10n.Onboarding.Subscriptions.Gemini.hint,
                 systemImage: "info.circle",
                 tint: .secondary
             )
         case .grok:
             if GrokCredentialsStore.hasCredentials() {
-                hintLabel(L10n.Onboarding.subscriptionsGrokDetected, systemImage: "checkmark.circle", tint: .green)
+                hintLabel(L10n.Onboarding.Subscriptions.Grok.detected, systemImage: "checkmark.circle", tint: .green)
             } else {
                 hintLabel(
-                    L10n.Onboarding.subscriptionsGrokMissing,
+                    L10n.Onboarding.Subscriptions.Grok.missing,
                     systemImage: "exclamationmark.circle",
                     tint: .secondary
                 )
@@ -205,38 +205,38 @@ private struct OnboardingCoreProviderCard: View {
                 Button {
                     environment.importOpenAIBrowserCookies()
                 } label: {
-                    Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
+                    Label(L10n.Onboarding.Cookies.importFromBrowser, systemImage: "safari")
                 }
                 .disabled(environment.isImportingOpenAIBrowserCookies)
                 Button {
                     environment.openOpenAIWebLogin()
                 } label: {
-                    Label(L10n.Onboarding.cookiesOpenWebViewLogin, systemImage: "person.crop.circle.badge.key")
+                    Label(L10n.Onboarding.Cookies.openWebViewLogin, systemImage: "person.crop.circle.badge.key")
                 }
             case .claude:
                 Button {
                     environment.importClaudeBrowserCookies()
                 } label: {
-                    Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
+                    Label(L10n.Onboarding.Cookies.importFromBrowser, systemImage: "safari")
                 }
                 .disabled(environment.isImportingClaudeBrowserCookies)
                 Button {
                     environment.openClaudeWebLogin()
                 } label: {
-                    Label(L10n.Onboarding.cookiesOpenWebViewLogin, systemImage: "person.crop.circle.badge.key")
+                    Label(L10n.Onboarding.Cookies.openWebViewLogin, systemImage: "person.crop.circle.badge.key")
                 }
             case .gemini:
                 Button {
                     environment.importGeminiBrowserCookies()
                 } label: {
-                    Label(L10n.Onboarding.cookiesImportGemini, systemImage: "safari")
+                    Label(L10n.Onboarding.Cookies.importGemini, systemImage: "safari")
                 }
                 .disabled(environment.isImportingGeminiBrowserCookies)
             case .grok:
                 Button {
                     environment.importGrokBrowserCookies()
                 } label: {
-                    Label(L10n.Onboarding.cookiesImportGrok, systemImage: "safari")
+                    Label(L10n.Onboarding.Cookies.importGrok, systemImage: "safari")
                 }
                 .disabled(environment.isImportingGrokBrowserCookies)
             default:
@@ -266,7 +266,7 @@ private struct OnboardingCoreProviderCard: View {
     private var statusLines: some View {
         let (saved, status) = cookieState
         if saved {
-            Text(L10n.Onboarding.cookiesSaved)
+            Text(L10n.Onboarding.Cookies.saved)
                 .font(.caption2)
                 .foregroundStyle(.green)
         }
@@ -294,7 +294,7 @@ struct OnboardingBrowserCookiesStep: View {
 
     var body: some View {
         CardShell(density: density) {
-            Text(L10n.Onboarding.cookiesIntro)
+            Text(L10n.Onboarding.Cookies.intro)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             Button {
@@ -305,8 +305,8 @@ struct OnboardingBrowserCookiesStep: View {
             } label: {
                 Label(
                     isImportingAny
-                        ? L10n.Onboarding.cookiesImporting
-                        : L10n.Onboarding.cookiesImportAll,
+                        ? L10n.Onboarding.Cookies.importing
+                        : L10n.Onboarding.Cookies.importAll,
                     systemImage: "safari"
                 )
             }
@@ -337,11 +337,11 @@ struct OnboardingBrowserCookiesStep: View {
                 status: environment.grokBrowserCookieImportStatus
             )
         }
-        Text(L10n.Onboarding.cookiesSignInFirst)
+        Text(L10n.Onboarding.Cookies.signInFirst)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-        Text(L10n.Onboarding.cookiesBatchScope)
+        Text(L10n.Onboarding.Cookies.batchScope)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -363,16 +363,16 @@ struct OnboardingBrowserCookiesStep: View {
     @ViewBuilder
     private func statusText(importing: Bool, saved: Bool, status: String?) -> some View {
         if importing {
-            Text(L10n.Onboarding.cookiesImporting)
+            Text(L10n.Onboarding.Cookies.importing)
                 .foregroundStyle(.secondary)
         } else if let status {
             Text(status)
                 .foregroundStyle(status.hasPrefix("Imported") ? .green : .secondary)
         } else if saved {
-            Text(L10n.Onboarding.cookiesSaved)
+            Text(L10n.Onboarding.Cookies.saved)
                 .foregroundStyle(.green)
         } else {
-            Text(L10n.Onboarding.cookiesNotImported)
+            Text(L10n.Onboarding.Cookies.notImported)
                 .foregroundStyle(.tertiary)
         }
     }
@@ -390,7 +390,7 @@ struct OnboardingAPIKeyProvidersStep: View {
     @State private var expanded: Set<String> = []
 
     var body: some View {
-        Text(L10n.Onboarding.apiKeysIntro)
+        Text(L10n.Onboarding.ApiKeys.intro)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -417,7 +417,7 @@ struct OnboardingAPIKeyProvidersStep: View {
                 }
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .help(L10n.Onboarding.apiKeysShowOnMiscPage(provider: instance.tool.menuTitle))
+                .help(L10n.Onboarding.ApiKeys.showOnMiscPage(provider: instance.tool.menuTitle))
                 ToolBrandBadge(tool: instance.tool, iconSize: 17, containerSize: 24)
                     .opacity(visible ? 1 : 0.55)
                 // `menuTitle` alone renders both Volcengine plans as
@@ -438,7 +438,7 @@ struct OnboardingAPIKeyProvidersStep: View {
                     }
                 } label: {
                     Label(
-                        unfolded ? L10n.Onboarding.apiKeysHide : L10n.Onboarding.apiKeysSetUp,
+                        unfolded ? L10n.Onboarding.ApiKeys.hide : L10n.Onboarding.ApiKeys.setUp,
                         systemImage: unfolded ? "chevron.up" : "chevron.down"
                     )
                         .font(.caption)
@@ -474,7 +474,7 @@ struct OnboardingPricingStep: View {
 
     var body: some View {
         CardShell(density: density) {
-            Text(L10n.Onboarding.pricingIntro(
+            Text(L10n.Onboarding.Pricing.intro(
                 interval: intervalLabel(settingsStore.settings.pricingRefreshIntervalSeconds)
             ))
                 .font(.system(size: 13))
@@ -483,21 +483,21 @@ struct OnboardingPricingStep: View {
                 Button(action: environment.refreshPricingNow) {
                     Label(
                         environment.isRefreshingPricing
-                            ? L10n.Onboarding.pricingFetching
-                            : L10n.Onboarding.pricingFetchNow,
+                            ? L10n.Onboarding.Pricing.fetching
+                            : L10n.Onboarding.Pricing.fetchNow,
                         systemImage: "arrow.triangle.2.circlepath"
                     )
                 }
                 .disabled(environment.isRefreshingPricing)
                 if let date = environment.pricingRefreshStatus.mergedAt {
-                    Text(L10n.Onboarding.pricingMerged(
+                    Text(L10n.Onboarding.Pricing.merged(
                         when: AppLocale.string(date, dateStyle: .medium, timeStyle: .short),
                         count: environment.pricingRefreshStatus.mergedModelCount
                     ))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 } else {
-                    Text(L10n.Onboarding.pricingNotFetched)
+                    Text(L10n.Onboarding.Pricing.notFetched)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -507,7 +507,7 @@ struct OnboardingPricingStep: View {
                 sourceRow(source)
             }
         }
-        Text(L10n.Onboarding.pricingFooter)
+        Text(L10n.Onboarding.Pricing.footer)
             .font(.caption)
             .foregroundStyle(.secondary)
     }
@@ -528,12 +528,12 @@ struct OnboardingPricingStep: View {
     }
 
     private func sourceDetail(_ status: PricingSourceStatus?) -> String {
-        guard let status else { return L10n.Onboarding.pricingSourceNotRefreshed }
+        guard let status else { return L10n.Onboarding.Pricing.Source.notRefreshed }
         switch status.result {
-        case .ready: return L10n.Onboarding.pricingSourceModels(count: status.modelCount)
-        case .unchanged: return L10n.Onboarding.pricingSourceUnchanged(count: status.modelCount)
-        case .failed: return L10n.Onboarding.pricingSourceFailed(count: status.modelCount)
-        case .never: return L10n.Onboarding.pricingSourceNotRefreshed
+        case .ready: return L10n.Onboarding.Pricing.Source.models(count: status.modelCount)
+        case .unchanged: return L10n.Onboarding.Pricing.Source.unchanged(count: status.modelCount)
+        case .failed: return L10n.Onboarding.Pricing.Source.failed(count: status.modelCount)
+        case .never: return L10n.Onboarding.Pricing.Source.notRefreshed
         }
     }
 
@@ -548,8 +548,8 @@ struct OnboardingPricingStep: View {
     private func intervalLabel(_ seconds: Int) -> String {
         let hours = seconds / 3600
         return hours == 1
-            ? L10n.Onboarding.pricingIntervalHour
-            : L10n.Onboarding.pricingIntervalHours(hours: hours)
+            ? L10n.Onboarding.Pricing.Interval.hour
+            : L10n.Onboarding.Pricing.Interval.hours(hours: hours)
     }
 }
 
@@ -576,15 +576,15 @@ struct OnboardingLaunchAtLoginStep: View {
     private var statusText: String {
         guard !DemoMode.isEnabled else {
             return settingsStore.settings.launchAtLogin
-                ? L10n.Platform.macosLaunchAtLoginEnabled
-                : L10n.Platform.macosLaunchAtLoginOff
+                ? L10n.Platform.Macos.LaunchAtLogin.enabled
+                : L10n.Common.off
         }
         return systemStatusText
     }
 
     var body: some View {
         CardShell(density: density) {
-            Toggle(L10n.Platform.macosLaunchAtLoginToggle, isOn: binding)
+            Toggle(L10n.Platform.Macos.LaunchAtLogin.toggle, isOn: binding)
                 .toggleStyle(.switch)
             Text(statusText)
                 .font(.caption2)
@@ -595,7 +595,7 @@ struct OnboardingLaunchAtLoginStep: View {
                     .foregroundStyle(.orange)
             }
             Divider()
-            Text(L10n.Platform.macosLaunchAtLoginDetail)
+            Text(L10n.Platform.Macos.LaunchAtLogin.detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -651,26 +651,26 @@ struct OnboardingDoneStep: View {
 
     var body: some View {
         CardShell(density: density) {
-            Text(L10n.Onboarding.doneIntro)
+            Text(L10n.Onboarding.Done.intro)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
-            summaryRow(L10n.Onboarding.doneSubscriptions, value: visibleCoreProviders)
+            summaryRow(L10n.Onboarding.Step.Subscriptions.title, value: visibleCoreProviders)
             summaryRow(
-                L10n.Onboarding.doneBrowserCookies,
-                value: L10n.Onboarding.doneCookieCount(saved: savedCookieCount, total: 4)
+                L10n.Onboarding.Step.BrowserCookies.title,
+                value: L10n.Onboarding.Done.cookieCount(saved: savedCookieCount, total: 4)
             )
             summaryRow(
-                L10n.Onboarding.doneApiKeyProviders,
-                value: L10n.Onboarding.doneMiscCount(count: visibleMiscCount)
+                L10n.Onboarding.Done.apiKeyProviders,
+                value: L10n.Onboarding.Done.miscCount(count: visibleMiscCount)
             )
-            summaryRow(L10n.Onboarding.doneModelPricing, value: pricingSummary)
+            summaryRow(L10n.Onboarding.Step.Pricing.title, value: pricingSummary)
             summaryRow(
-                L10n.Onboarding.doneLaunchAtLogin,
+                L10n.Platform.Macos.LaunchAtLogin.title,
                 value: settingsStore.settings.launchAtLogin ? L10n.Common.on : L10n.Common.off
             )
         }
-        Text(L10n.Onboarding.doneFooter)
+        Text(L10n.Onboarding.Done.footer)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -692,7 +692,7 @@ struct OnboardingDoneStep: View {
         let names = ToolType.coreProviderRepresentatives
             .filter { settingsStore.settings.isCoreProviderVisible($0) }
             .map(\.vendorName)
-        return names.isEmpty ? L10n.Onboarding.doneNoneShown : names.joined(separator: ", ")
+        return names.isEmpty ? L10n.Onboarding.Done.noneShown : names.joined(separator: ", ")
     }
 
     private var savedCookieCount: Int {
@@ -712,8 +712,8 @@ struct OnboardingDoneStep: View {
 
     private var pricingSummary: String {
         if let date = environment.pricingRefreshStatus.mergedAt {
-            return L10n.Onboarding.donePricingMerged(when: AppLocale.string(date, dateStyle: .medium, timeStyle: .short))
+            return L10n.Onboarding.Done.pricingMerged(when: AppLocale.string(date, dateStyle: .medium, timeStyle: .short))
         }
-        return L10n.Onboarding.donePricingBundled
+        return L10n.Onboarding.Done.pricingBundled
     }
 }

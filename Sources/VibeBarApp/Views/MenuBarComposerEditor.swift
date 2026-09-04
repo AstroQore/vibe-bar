@@ -167,14 +167,14 @@ struct MenuBarComposerEditor: View {
             footerRow(availability: availability)
         }
         .alert(
-            L10n.MenuBar.composerPresetSaveTitle,
+            L10n.MenuBar.Composer.Preset.saveTitle,
             isPresented: Binding(
                 get: { savingPresetFrom != nil },
                 set: { if !$0 { savingPresetFrom = nil } }
             )
         ) {
-            TextField(L10n.MenuBar.composerPresetName, text: $presetDraftName)
-            Button(L10n.MenuBar.composerPresetSaveConfirm) { savePendingPreset() }
+            TextField(L10n.Common.name, text: $presetDraftName)
+            Button(L10n.Common.save) { savePendingPreset() }
                 .disabled(
                     presetDraftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 )
@@ -225,7 +225,7 @@ struct MenuBarComposerEditor: View {
 
     private func templateRow(_ composition: MenuBarComposition) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Picker(L10n.MenuBar.composerTemplate, selection: templateBinding()) {
+            Picker(L10n.MenuBar.Composer.template, selection: templateBinding()) {
                 ForEach(MenuBarComposition.Template.allCases, id: \.self) { template in
                     Text(template.title).tag(template)
                 }
@@ -241,7 +241,7 @@ struct MenuBarComposerEditor: View {
 
     private func previewRow(_ composition: MenuBarComposition) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            caption(L10n.MenuBar.composerPreview)
+            caption(L10n.MenuBar.Composer.preview)
             // A countdown block is wrong a minute later with no new data
             // behind it, and nothing else here invalidates the view. Gated on
             // the strip actually printing one: `QuotaClockSchedule` yields a
@@ -275,12 +275,12 @@ struct MenuBarComposerEditor: View {
                         template: composition.template,
                         highlighted: selectedID
                     )
-                    Text(L10n.MenuBar.composerPreviewGrounds)
+                    Text(L10n.MenuBar.Composer.Preview.grounds)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     if plan.rows.filter({ !$0.isEmpty }).count >= 2 {
-                        Text(L10n.MenuBar.composerPreviewTwoRowScaling)
+                        Text(L10n.MenuBar.Composer.Preview.twoRowScaling)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -298,7 +298,7 @@ struct MenuBarComposerEditor: View {
         bound: Set<UUID>
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            caption(L10n.MenuBar.composerBlocks)
+            caption(L10n.MenuBar.Composer.blocks)
             // Keyed on the *committed* strip, not the one being drawn. With no
             // chips and no landing strips left, this placeholder is the only
             // target a palette drag can reach — and staging the block makes
@@ -312,7 +312,7 @@ struct MenuBarComposerEditor: View {
                         .contentShape(Rectangle())
                         .onDrop(of: [.text], delegate: chipDrop(.newStrip))
                     if composition.segments.isEmpty {
-                        Text(L10n.MenuBar.composerBlocksEmpty)
+                        Text(L10n.MenuBar.Composer.Blocks.empty)
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     } else {
@@ -350,21 +350,21 @@ struct MenuBarComposerEditor: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Text(L10n.MenuBar.composerSegmentTitle(index: index + 1))
+                Text(L10n.MenuBar.Composer.Segment.title(index: index + 1))
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .textCase(.uppercase)
                 Spacer(minLength: 4)
                 Menu {
-                    Button(L10n.MenuBar.composerSegmentMoveLeft) {
+                    Button(L10n.MenuBar.Composer.Segment.moveLeft) {
                         mutate { $0.moveSegment(segment.id, by: -1) }
                     }
                     .disabled(index == 0)
-                    Button(L10n.MenuBar.composerSegmentMoveRight) {
+                    Button(L10n.MenuBar.Composer.Segment.moveRight) {
                         mutate { $0.moveSegment(segment.id, by: 1) }
                     }
                     .disabled(index == composition.segments.count - 1)
-                    Button(L10n.MenuBar.composerSegmentMergeLeft) {
+                    Button(L10n.MenuBar.Composer.Segment.mergeLeft) {
                         mutate { $0.mergeSegmentIntoPrevious(segment.id) }
                     }
                     .disabled(index == 0)
@@ -375,22 +375,22 @@ struct MenuBarComposerEditor: View {
                     // one says where its blocks go, which is why the label
                     // says "merge" rather than "remove" — nothing is deleted.
                     if segment.isStacked {
-                        Button(L10n.MenuBar.composerSegmentRemoveRow) {
+                        Button(L10n.MenuBar.Composer.Segment.removeRow) {
                             mutate { $0.removeRow(fromSegment: segment.id) }
                         }
                     } else {
-                        Button(L10n.MenuBar.composerSegmentAddRow) {
+                        Button(L10n.MenuBar.Composer.Segment.addRow) {
                             mutate { $0.addRow(toSegment: segment.id) }
                         }
                     }
                     Divider()
-                    Button(L10n.MenuBar.composerPresetSave) {
+                    Button(L10n.MenuBar.Composer.Preset.save) {
                         presetDraftName = ""
                         savingPresetFrom = segment.id
                     }
                     .disabled(segment.isEmpty)
                     Divider()
-                    Button(L10n.MenuBar.composerSegmentRemove, role: .destructive) {
+                    Button(L10n.MenuBar.Composer.Segment.remove, role: .destructive) {
                         selection.subtract(segment.tokens.map(\.id))
                         mutate { $0.removeSegment(segment.id) }
                     }
@@ -459,8 +459,8 @@ struct MenuBarComposerEditor: View {
                     // Two sentences, because they are two different situations.
                     Text(
                         segment.isStacked
-                            ? L10n.MenuBar.composerRowEmpty
-                            : L10n.MenuBar.composerSegmentEmpty
+                            ? L10n.MenuBar.Composer.Row.empty
+                            : L10n.MenuBar.Composer.Segment.empty
                     )
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -533,7 +533,7 @@ struct MenuBarComposerEditor: View {
         HStack(spacing: 6) {
             Image(systemName: "trash")
                 .font(.system(size: 10, weight: .semibold))
-            Text(L10n.MenuBar.composerRemoveTarget)
+            Text(L10n.MenuBar.Composer.removeTarget)
                 .font(.caption)
         }
         .foregroundStyle(isOverRemoveTarget ? Color.red : Color.secondary)
@@ -653,9 +653,9 @@ struct MenuBarComposerEditor: View {
         let canBind = composition.canGroup(ids)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                caption(L10n.MenuBar.composerGroupSelected(count: selection.count))
+                caption(L10n.MenuBar.Composer.Group.selected(count: selection.count))
                 Spacer(minLength: 8)
-                Button(L10n.MenuBar.composerGroupBind) {
+                Button(L10n.MenuBar.Composer.Group.bind) {
                     mutate { $0.group(ids) }
                     selection = []
                 }
@@ -664,7 +664,7 @@ struct MenuBarComposerEditor: View {
                 Button(L10n.Common.clear) { selection = [] }
                     .buttonStyle(.vibeBar)
             }
-            Text(canBind ? L10n.MenuBar.composerGroupHint : L10n.MenuBar.composerGroupNotAdjacent)
+            Text(canBind ? L10n.MenuBar.Composer.Group.hint : L10n.MenuBar.Composer.Group.notAdjacent)
                 .font(.caption2)
                 .foregroundStyle(canBind ? .tertiary : .secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -697,7 +697,7 @@ struct MenuBarComposerEditor: View {
             return logo.name
         case let .text(text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? L10n.MenuBar.composerBlockEmptyText : MenuBarToken.truncated(trimmed)
+            return trimmed.isEmpty ? L10n.MenuBar.Composer.Block.emptyText : MenuBarToken.truncated(trimmed)
         case let .quota(fieldId, metric):
             // SubProvider first: a strip holding three "Weekly" blocks has to
             // say which is Codex's, which Claude's, which Grok Bot's. The
@@ -709,15 +709,15 @@ struct MenuBarComposerEditor: View {
         case let .space(width):
             let width = MenuBarToken.clampedSpaceWidth(width)
             return width == MenuBarToken.defaultSpaceWidth
-                ? L10n.MenuBar.composerBlockSpace
-                : L10n.MenuBar.composerSpaceWidthValue(count: width)
+                ? L10n.MenuBar.Composer.Block.space
+                : L10n.MenuBar.Composer.Space.widthValue(count: width)
         case let .separator(separator):
             let trimmed = separator.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? L10n.MenuBar.composerBlockGap : trimmed
+            return trimmed.isEmpty ? L10n.MenuBar.Composer.Block.gap : trimmed
         case .appIcon:
-            return L10n.MenuBar.composerBlockAppIcon
+            return L10n.MenuBar.Composer.Block.appIcon
         case .unsupported:
-            return L10n.MenuBar.composerBlockUnsupported
+            return L10n.MenuBar.Composer.Block.unsupported
         }
     }
 
@@ -740,10 +740,10 @@ struct MenuBarComposerEditor: View {
 
     private func chipHelp(_ token: MenuBarToken, isSilent: Bool, isDegraded: Bool) -> String {
         if isSilent {
-            return L10n.MenuBar.composerWarningSilent
+            return L10n.MenuBar.Composer.Warning.silent
         }
         if isDegraded {
-            return L10n.MenuBar.composerWarningDegraded
+            return L10n.MenuBar.Composer.Warning.degraded
         }
         return chipTitle(token)
     }
@@ -752,9 +752,9 @@ struct MenuBarComposerEditor: View {
 
     private func paletteRow(_ composition: MenuBarComposition) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            caption(L10n.MenuBar.composerPalette)
-            paletteGroup(L10n.MenuBar.composerBlockLogo) {
-                paletteButton(title: L10n.MenuBar.composerBlockAppIcon, icon: "menubar.rectangle") {
+            caption(L10n.MenuBar.Composer.palette)
+            paletteGroup(L10n.MenuBar.Composer.Block.logo) {
+                paletteButton(title: L10n.MenuBar.Composer.Block.appIcon, icon: "menubar.rectangle") {
                     MenuBarToken.newAppIcon()
                 }
                 ForEach(paletteLogoTools, id: \.self) { tool in
@@ -768,17 +768,17 @@ struct MenuBarComposerEditor: View {
                     }
                 }
             }
-            paletteGroup(L10n.MenuBar.composerBlockText) {
-                paletteButton(title: L10n.MenuBar.composerBlockText, icon: "textformat") {
+            paletteGroup(L10n.MenuBar.Composer.Block.text) {
+                paletteButton(title: L10n.MenuBar.Composer.Block.text, icon: "textformat") {
                     MenuBarToken.newText()
                 }
             }
             paletteQuotaGroup()
-            paletteGroup(L10n.MenuBar.composerBlockStructure) {
-                paletteButton(title: L10n.MenuBar.composerBlockSpace, icon: "space") {
+            paletteGroup(L10n.MenuBar.Composer.Block.structure) {
+                paletteButton(title: L10n.MenuBar.Composer.Block.space, icon: "space") {
                     MenuBarToken.newSpace()
                 }
-                paletteButton(title: L10n.MenuBar.composerBlockSeparator, icon: "line.diagonal") {
+                paletteButton(title: L10n.MenuBar.Composer.Block.separator, icon: "line.diagonal") {
                     MenuBarToken.newSeparator()
                 }
                 // No "New row" block here on purpose. A row is a place blocks
@@ -786,12 +786,12 @@ struct MenuBarComposerEditor: View {
                 // is an action on the segment, and it lives in the segment's own
                 // menu beside move, merge and remove.
                 paletteButton(
-                    title: L10n.MenuBar.composerSegmentAdd,
+                    title: L10n.MenuBar.Composer.Segment.add,
                     icon: "rectangle.split.2x1"
                 ) {
                     addSegment()
                 }
-                .help(L10n.MenuBar.composerSegmentAddHelp)
+                .help(L10n.MenuBar.Composer.Segment.addHelp)
             }
             presetsRow()
         }
@@ -807,7 +807,7 @@ struct MenuBarComposerEditor: View {
     /// draggable chips.
     @ViewBuilder
     private func paletteQuotaGroup() -> some View {
-        paletteGroup(L10n.MenuBar.composerBlockQuota) {
+        paletteGroup(L10n.MenuBar.Composer.Block.quota) {
             ForEach(paletteQuotaSections) { section in
                 paletteButton(
                     title: section.title,
@@ -838,14 +838,14 @@ struct MenuBarComposerEditor: View {
     @ViewBuilder
     private func presetsRow() -> some View {
         if !item.segmentPresets.isEmpty {
-            paletteGroup(L10n.MenuBar.composerPresets) {
+            paletteGroup(L10n.MenuBar.Composer.presets) {
                 ForEach(item.segmentPresets) { preset in
                     paletteButton(title: preset.name, icon: "square.on.square") {
                         insert(preset: preset)
                     }
-                    .help(L10n.MenuBar.composerPresetInsertHelp)
+                    .help(L10n.MenuBar.Composer.Preset.insertHelp)
                     .contextMenu {
-                        Button(L10n.MenuBar.composerPresetRemove, role: .destructive) {
+                        Button(L10n.MenuBar.Composer.Preset.remove, role: .destructive) {
                             mutatePresets { $0.removeAll { $0.id == preset.id } }
                         }
                     }
@@ -941,7 +941,7 @@ struct MenuBarComposerEditor: View {
         } else if let id = selectedID, let token = composition.token(id) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    caption(L10n.MenuBar.composerSelected)
+                    caption(L10n.MenuBar.Composer.selected)
                     Spacer(minLength: 8)
                     // Only where it would do something — the model's own
                     // predicate, so a visible action is never a no-op. A block
@@ -949,29 +949,29 @@ struct MenuBarComposerEditor: View {
                     // column is cut through its top row, and a cut through a
                     // bound run is refused.
                     if composition.canSplitSegment(before: id) {
-                        Button(L10n.MenuBar.composerSegmentSplitHere) {
+                        Button(L10n.MenuBar.Composer.Segment.splitHere) {
                             mutate { $0.splitSegment(before: id) }
                         }
                         .buttonStyle(.vibeBar)
                     }
                     if composition.isGrouped(id) {
-                        Button(L10n.MenuBar.composerGroupUnbind) {
+                        Button(L10n.MenuBar.Composer.Group.unbind) {
                             mutate { $0.ungroup(id) }
                         }
                         .buttonStyle(.vibeBar)
                     }
-                    Button(L10n.MenuBar.composerActionDuplicate) { mutate { $0.duplicate(id) } }
+                    Button(L10n.MenuBar.Composer.Action.duplicate) { mutate { $0.duplicate(id) } }
                         .buttonStyle(.vibeBar)
-                    Button(L10n.MenuBar.composerActionRemove) {
+                    Button(L10n.Common.remove) {
                         selection = []
                         mutate { $0.remove(id) }
                     }
                     .buttonStyle(.vibeBar)
                 }
                 if availability.silentTokenIds.contains(id) {
-                    warning(L10n.MenuBar.composerWarningSilent)
+                    warning(L10n.MenuBar.Composer.Warning.silent)
                 } else if availability.degradedTokenIds.contains(id) {
-                    warning(L10n.MenuBar.composerWarningDegraded)
+                    warning(L10n.MenuBar.Composer.Warning.degraded)
                 }
                 MenuBarTokenInspector(
                     brandLogos: paletteBrandLogos,
@@ -1019,28 +1019,28 @@ struct MenuBarComposerEditor: View {
     private func footerRow(availability: MenuBarComposition.Availability) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if !availability.isFullyAvailable {
-                warning(L10n.MenuBar.composerWarningMissing(
+                warning(L10n.MenuBar.Composer.Warning.missing(
                     fields: availability.missingFieldIds
                         .map { optionsById[$0]?.displayTitle ?? $0 }
                         .joined(separator: ", ")
                 ))
             }
             HStack(spacing: 8) {
-                Button(L10n.MenuBar.composerStartOver) { isConfirmingReseed = true }
+                Button(L10n.MenuBar.Composer.startOver) { isConfirmingReseed = true }
                     .buttonStyle(.vibeBar)
                 Spacer(minLength: 8)
             }
-            Text(L10n.MenuBar.composerStartOverDetail)
+            Text(L10n.MenuBar.Composer.StartOver.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .confirmationDialog(
-            L10n.MenuBar.composerStartOverConfirmTitle,
+            L10n.MenuBar.Composer.StartOver.confirmTitle,
             isPresented: $isConfirmingReseed,
             titleVisibility: .visible
         ) {
-            Button(L10n.MenuBar.composerStartOverConfirm, role: .destructive) {
+            Button(L10n.MenuBar.Composer.StartOver.confirm, role: .destructive) {
                 selection = []
                 var updated = item
                 updated.reseedComposedStrip(
@@ -1052,7 +1052,7 @@ struct MenuBarComposerEditor: View {
             }
             Button(L10n.Common.cancel, role: .cancel) {}
         } message: {
-            Text(L10n.MenuBar.composerStartOverConfirmMessage)
+            Text(L10n.MenuBar.Composer.StartOver.confirmMessage)
         }
     }
 
@@ -1338,14 +1338,14 @@ private struct MenuBarTokenInspector: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .automatic: return L10n.MenuBar.composerColourAutomatic
-            case .forecast: return L10n.MenuBar.composerColourForecast
-            case .followsQuota: return L10n.MenuBar.composerColourFollowsQuota
-            case .brand: return L10n.MenuBar.composerColourBrand
-            case .primary: return L10n.MenuBar.composerColourPrimary
-            case .secondary: return L10n.MenuBar.composerColourSecondary
-            case .tertiary: return L10n.MenuBar.composerColourTertiary
-            case .fixed: return L10n.MenuBar.composerColourFixed
+            case .automatic: return L10n.MenuBar.Composer.Colour.automatic
+            case .forecast: return L10n.MenuBar.Composer.Colour.forecast
+            case .followsQuota: return L10n.MenuBar.Composer.Colour.followsQuota
+            case .brand: return L10n.MenuBar.Composer.Colour.brand
+            case .primary: return L10n.MenuBar.Composer.Colour.primary
+            case .secondary: return L10n.MenuBar.Composer.Colour.secondary
+            case .tertiary: return L10n.MenuBar.Composer.Colour.tertiary
+            case .fixed: return L10n.MenuBar.Composer.Colour.fixed
             }
         }
     }
@@ -1355,10 +1355,10 @@ private struct MenuBarTokenInspector: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .always: return L10n.MenuBar.composerRuleAlways
-            case .whenUsedAtLeast: return L10n.MenuBar.composerRuleWhenUsedAtLeast
-            case .whenRemainingAtMost: return L10n.MenuBar.composerRuleWhenRemainingAtMost
-            case .whenForecast: return L10n.MenuBar.composerRuleWhenForecast
+            case .always: return L10n.MenuBar.Composer.Rule.always
+            case .whenUsedAtLeast: return L10n.MenuBar.Composer.Rule.whenUsedAtLeast
+            case .whenRemainingAtMost: return L10n.MenuBar.Composer.Rule.whenRemainingAtMost
+            case .whenForecast: return L10n.MenuBar.Composer.Rule.whenForecast
             }
         }
     }
@@ -1373,17 +1373,17 @@ private struct MenuBarTokenInspector: View {
                 Divider().opacity(0.4)
                 colorControls
                 HStack(spacing: 10) {
-                    Picker(L10n.MenuBar.composerFieldSize, selection: sizeBinding) {
+                    Picker(L10n.MenuBar.Composer.Field.size, selection: sizeBinding) {
                         ForEach(MenuBarToken.SizeStep.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
                     .frame(width: 150)
-                    Picker(L10n.MenuBar.composerFieldWeight, selection: weightBinding) {
+                    Picker(L10n.MenuBar.Composer.Field.weight, selection: weightBinding) {
                         ForEach(MenuBarToken.Weight.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
                     .frame(width: 165)
                 }
-                Toggle(L10n.MenuBar.composerFieldMonospacedDigits, isOn: monospacedBinding)
-                    .help(L10n.MenuBar.composerFieldMonospacedDigitsHelp)
+                Toggle(L10n.MenuBar.Composer.Field.monospacedDigits, isOn: monospacedBinding)
+                    .help(L10n.MenuBar.Composer.Field.monospacedDigitsHelp)
             }
             Divider().opacity(0.4)
             ruleControls
@@ -1398,9 +1398,9 @@ private struct MenuBarTokenInspector: View {
         switch token.kind {
         case let .text(text):
             HStack(spacing: 8) {
-                Text(L10n.MenuBar.composerBlockText).frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.Composer.Block.text).frame(width: 62, alignment: .leading)
                 DebouncedSettingsTextField(
-                    prompt: L10n.MenuBar.composerTextPlaceholder,
+                    prompt: L10n.MenuBar.Composer.Text.placeholder,
                     pending: pending,
                     pendingKey: "text.\(token.id)",
                     value: Binding(
@@ -1416,15 +1416,15 @@ private struct MenuBarTokenInspector: View {
             }
             Text(
                 text.isEmpty
-                    ? L10n.MenuBar.composerTextEmpty
-                    : L10n.MenuBar.composerTextLimit(count: MenuBarToken.maximumTextLength)
+                    ? L10n.MenuBar.Composer.Text.empty
+                    : L10n.MenuBar.Composer.Text.limit(count: MenuBarToken.maximumTextLength)
             )
             .font(.caption2)
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
         case let .separator(separator):
             HStack(spacing: 8) {
-                Text(L10n.MenuBar.composerBlockSeparator).frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.Composer.Block.separator).frame(width: 62, alignment: .leading)
                 DebouncedSettingsTextField(
                     prompt: " · ",
                     pending: pending,
@@ -1437,13 +1437,13 @@ private struct MenuBarTokenInspector: View {
             }
         case let .quota(fieldId, metric):
             HStack(spacing: 8) {
-                Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.Composer.Block.quota).frame(width: 62, alignment: .leading)
                 fieldPicker(selected: fieldId) { newId in
                     update { $0.kind = .quota(fieldId: newId, metric: metric) }
                 }
             }
             HStack(spacing: 8) {
-                Text(L10n.MenuBar.composerFieldShows).frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.Composer.Field.shows).frame(width: 62, alignment: .leading)
                 Picker("", selection: Binding(
                     get: { metric },
                     set: { value in update { $0.kind = .quota(fieldId: fieldId, metric: value) } }
@@ -1460,7 +1460,7 @@ private struct MenuBarTokenInspector: View {
             // that fire while the user is still moving them.
             if metric == .resetAt {
                 HStack(spacing: 8) {
-                    Text(L10n.MenuBar.composerFieldResetFormat)
+                    Text(L10n.MenuBar.Composer.Field.resetFormat)
                         .frame(width: 62, alignment: .leading)
                     Picker("", selection: Binding(
                         get: { token.style.resetFormat },
@@ -1471,11 +1471,11 @@ private struct MenuBarTokenInspector: View {
                     .labelsHidden()
                     .frame(width: 220)
                 }
-                .help(L10n.MenuBar.composerFieldResetFormatHelp)
+                .help(L10n.MenuBar.Composer.Field.resetFormatHelp)
             }
         case .logo, .brandLogo:
             HStack(spacing: 8) {
-                Text(L10n.MenuBar.composerFieldProvider).frame(width: 62, alignment: .leading)
+                Text(L10n.Common.provider).frame(width: 62, alignment: .leading)
                 Picker("", selection: Binding(
                     get: { token.kind },
                     set: { value in update { $0.kind = value } }
@@ -1495,7 +1495,7 @@ private struct MenuBarTokenInspector: View {
             }
         case let .space(width):
             HStack(spacing: 8) {
-                Text(L10n.MenuBar.composerSpaceWidth).frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.Composer.Space.width).frame(width: 62, alignment: .leading)
                 // Same queue as every other repeating control here: a held
                 // stepper auto-repeats, and each repeat would otherwise
                 // publish settings and re-render the menu bar.
@@ -1508,15 +1508,15 @@ private struct MenuBarTokenInspector: View {
                 }
                 Spacer(minLength: 0)
             }
-            Text(L10n.MenuBar.composerSpaceDetail)
+            Text(L10n.MenuBar.Composer.Space.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         case .appIcon:
-            Text(L10n.MenuBar.composerAppIconDetail)
+            Text(L10n.MenuBar.Composer.AppIcon.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         case .unsupported:
-            Text(L10n.MenuBar.composerUnsupportedDetail)
+            Text(L10n.MenuBar.Composer.Unsupported.detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1528,7 +1528,7 @@ private struct MenuBarTokenInspector: View {
     @ViewBuilder
     private var colorControls: some View {
         HStack(spacing: 8) {
-            Text(L10n.MenuBar.composerFieldColour).frame(width: 62, alignment: .leading)
+            Text(L10n.MenuBar.Composer.Field.colour).frame(width: 62, alignment: .leading)
             Picker("", selection: colorChoiceBinding) {
                 ForEach(ColorChoice.allCases) { Text($0.title).tag($0) }
             }
@@ -1623,7 +1623,7 @@ private struct MenuBarTokenInspector: View {
     @ViewBuilder
     private var ruleControls: some View {
         HStack(spacing: 8) {
-            Text(L10n.MenuBar.composerFieldShow).frame(width: 62, alignment: .leading)
+            Text(L10n.MenuBar.Composer.Field.show).frame(width: 62, alignment: .leading)
             Picker("", selection: ruleChoiceBinding) {
                 ForEach(RuleChoice.allCases) { Text($0.title).tag($0) }
             }
@@ -1670,14 +1670,14 @@ private struct MenuBarTokenInspector: View {
             )
         case let .whenForecast(fieldId, verdicts):
             HStack(spacing: 8) {
-                Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.Composer.Block.quota).frame(width: 62, alignment: .leading)
                 fieldPicker(selected: fieldId) { newId in
                     update { $0.visibility = .whenForecast(fieldId: newId, verdicts: verdicts) }
                 }
                 Spacer(minLength: 0)
             }
             HStack(spacing: 6) {
-                Text(L10n.MenuBar.composerFieldVerdicts).frame(width: 62, alignment: .leading)
+                Text(L10n.MenuBar.Composer.Field.verdicts).frame(width: 62, alignment: .leading)
                 ForEach(Self.selectableVerdicts, id: \.self) { verdict in
                     Toggle(Self.verdictTitle(verdict), isOn: Binding(
                         get: { verdicts.contains(verdict) },
@@ -1726,7 +1726,7 @@ private struct MenuBarTokenInspector: View {
         setPercent: @escaping (Double) -> Void
     ) -> some View {
         HStack(spacing: 8) {
-            Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
+            Text(L10n.MenuBar.Composer.Block.quota).frame(width: 62, alignment: .leading)
             fieldPicker(selected: fieldId) { setField($0) }
             DebouncedPercentStepper(
                 percent: percent,
@@ -1766,7 +1766,7 @@ private struct MenuBarTokenInspector: View {
                 let title = MenuBarComposerEditor.fieldTitle(option)
                 Text(liveFieldIds.contains(option.id)
                     ? title
-                    : L10n.MenuBar.composerFieldOfflineOption(title: title))
+                    : L10n.MenuBar.Composer.Field.offlineOption(title: title))
                     .tag(option.id)
             }
         }
@@ -1881,7 +1881,7 @@ private struct DebouncedSpaceWidthStepper: View {
 
     var body: some View {
         Stepper(value: $draft, in: MenuBarToken.spaceWidthRange) {
-            Text(L10n.MenuBar.composerSpaceWidthValue(count: draft))
+            Text(L10n.MenuBar.Composer.Space.widthValue(count: draft))
                 .font(.system(size: 11.5).monospacedDigit())
                 .frame(width: 76, alignment: .trailing)
         }

@@ -24,7 +24,7 @@ public enum ResetCountdownFormatter {
     ) -> String? {
         guard let resetAt else { return nil }
         let total = Int(resetAt.timeIntervalSince(now).rounded(.toNearestOrAwayFromZero))
-        if total <= 0 { return L10n.Common.durationNow }
+        if total <= 0 { return L10n.Common.Duration.now }
 
         let days = total / 86_400
         let hours = (total % 86_400) / 3_600
@@ -34,40 +34,40 @@ public enum ResetCountdownFormatter {
         case .compact:
             if days >= 1 {
                 return hours > 0
-                    ? L10n.Common.durationDaysHours(days: days, hours: hours)
-                    : L10n.Common.durationDays(days: days)
+                    ? L10n.Common.Duration.daysHours(days: days, hours: hours)
+                    : L10n.Common.Duration.days(days: days)
             }
             if hours >= 1 {
                 return minutes > 0
-                    ? L10n.Common.durationHoursMinutes(hours: hours, minutes: minutes)
-                    : L10n.Common.durationHours(hours: hours)
+                    ? L10n.Common.Duration.hoursMinutes(hours: hours, minutes: minutes)
+                    : L10n.Common.Duration.hours(hours: hours)
             }
             if minutes >= 1 {
-                return L10n.Common.durationMinutes(minutes: minutes)
+                return L10n.Common.Duration.minutes(minutes: minutes)
             }
-            return L10n.Common.durationLessThanMinute
+            return L10n.Common.Duration.lessThanMinute
         case .full:
             // Each unit is a plural of its own, and the pair is a key rather
             // than a join: English wants "and" between them and Chinese wants
             // nothing, which is not something a separator constant can say.
             if days >= 1 {
-                let d = L10n.Common.durationFullDays(count: days)
+                let d = L10n.Common.Duration.Full.days(count: days)
                 guard hours > 0 else { return d }
-                return L10n.Common.durationFullDaysHours(
-                    days: d, hours: L10n.Common.durationFullHours(count: hours)
+                return L10n.Common.Duration.Full.daysHours(
+                    days: d, hours: L10n.Common.Duration.Full.hours(count: hours)
                 )
             }
             if hours >= 1 {
-                let h = L10n.Common.durationFullHours(count: hours)
+                let h = L10n.Common.Duration.Full.hours(count: hours)
                 guard minutes > 0 else { return h }
-                return L10n.Common.durationFullHoursMinutes(
-                    hours: h, minutes: L10n.Common.durationFullMinutes(count: minutes)
+                return L10n.Common.Duration.Full.hoursMinutes(
+                    hours: h, minutes: L10n.Common.Duration.Full.minutes(count: minutes)
                 )
             }
             if minutes >= 1 {
-                return L10n.Common.durationFullMinutes(count: minutes)
+                return L10n.Common.Duration.Full.minutes(count: minutes)
             }
-            return L10n.Common.durationLessThanMinute
+            return L10n.Common.Duration.lessThanMinute
         }
     }
 
@@ -135,13 +135,13 @@ public enum ResetCountdownFormatter {
         guard let resetAt else { return nil }
         let absolute = absoluteTime(for: resetAt, now: now, calendar: calendar, timeZone: timeZone)
         if now.timeIntervalSince(resetAt) > max(0, graceSeconds) {
-            return ResetStatus(isExpired: true, label: L10n.Quota.resetPassedAt(time: absolute))
+            return ResetStatus(isExpired: true, label: L10n.Quota.Reset.passedAt(time: absolute))
         }
         guard let countdown = string(from: resetAt, now: now) else { return nil }
         // The interpunct join is punctuation, not a sentence: both languages
         // read it the same way, so only the frame around it is translated.
         let detail = "\(countdown) · \(absolute)"
-        return ResetStatus(isExpired: false, label: L10n.Quota.bucketResetsIn(when: detail))
+        return ResetStatus(isExpired: false, label: L10n.Quota.Reset.`in`(when: detail))
     }
 
     /// Whether a bucket's reset already passed, plus the line to render for it.
@@ -158,17 +158,17 @@ public enum ResetCountdownFormatter {
     /// "Updated 10 seconds ago", "Updated 3 minutes ago", "Updated just now",
     /// "Never updated". Date in the future is treated as "just now".
     public static func updatedAgo(from date: Date?, now: Date = Date()) -> String {
-        guard let date else { return L10n.Common.updatedNever }
+        guard let date else { return L10n.Common.Updated.never }
         let interval = Int(now.timeIntervalSince(date))
-        if interval < 5 { return L10n.Common.updatedJustNow }
-        if interval < 60 { return L10n.Common.updatedSecondsAgo(seconds: interval) }
+        if interval < 5 { return L10n.Common.Updated.justNow }
+        if interval < 60 { return L10n.Common.Updated.secondsAgo(seconds: interval) }
         // No `== 1` branch: the catalog carries the plural, so English gets
         // "1 minute" from its `one` category and Chinese — which has only
         // `other` — never has to pretend the distinction exists.
         let minutes = interval / 60
-        if minutes < 60 { return L10n.Common.updatedMinutesAgo(minutes: minutes) }
+        if minutes < 60 { return L10n.Common.Updated.minutesAgo(minutes: minutes) }
         let hours = minutes / 60
-        if hours < 24 { return L10n.Common.updatedHoursAgo(hours: hours) }
-        return L10n.Common.updatedDaysAgo(days: hours / 24)
+        if hours < 24 { return L10n.Common.Updated.hoursAgo(hours: hours) }
+        return L10n.Common.Updated.daysAgo(days: hours / 24)
     }
 }

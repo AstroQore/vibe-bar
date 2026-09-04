@@ -25,7 +25,7 @@ never copy).
 
 What is allowed, and why each is not a loophole:
 
-  * A term in `Resources/i18n/_glossary.json`. Company, SubProvider,
+  * A term in vibe-bar-i18n's `catalog/_glossary.json`. Company, SubProvider,
     product, model and harness names are identifiers, not copy —
     `AGENTS.md` § 7.1 — and translating one makes two surfaces disagree
     about what a thing is called. The list is data so the app, the
@@ -39,12 +39,23 @@ Run:
     Scripts/lint_localization.py --helpers  # print the derived helper set
 """
 import json
+import os
 import pathlib
 import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GLOSSARY = ROOT / "Resources/i18n/_glossary.json"
+# The never-translate list is data in the shared catalogue repository, which
+# SwiftPM checks out on the first `swift build`; the lint reads it from there
+# so the app cannot carry a second copy that drifts.
+# `VIBEBAR_I18N_CATALOG` names the catalogue directory of a local checkout of
+# the shared repository instead, for a tree that consumes the package by path
+# while a change to both is in flight.
+GLOSSARY = (
+    pathlib.Path(os.environ["VIBEBAR_I18N_CATALOG"]) / "_glossary.json"
+    if os.environ.get("VIBEBAR_I18N_CATALOG")
+    else ROOT / ".build/checkouts/vibe-bar-i18n/catalog/_glossary.json"
+)
 
 # Files that have been through the localization pass. Adding a file here
 # is a promise that every user-facing string in it goes through `L10n`;
@@ -566,6 +577,11 @@ ALLOWED: dict = {
     "value the user types, and every language types the same shape": {
         "Views/RemoteSettingsSection.swift": {"VB-XXXXX-XXXXX"},
     },
+    "the names of the terminal apps the picker offers, as their bundles "
+    "spell them; a catalogue term would force the generic word 'terminal' "
+    "to stay English in every sentence that uses it": {
+        "Models/PreferredTerminal.swift": {"Terminal", "iTerm2"},
+    },
 }
 
 
@@ -575,7 +591,12 @@ def glossary_terms() -> set:
     for field, value in document.items():
         if field in {"schema", "note", "rules"} or not isinstance(value, list):
             continue
-        terms.update(value)
+        # The shared catalogue spells each entry as {"term": …, "kind": …};
+        # a bare string is accepted too, for a hand-written list.
+        for item in value:
+            term = item.get("term") if isinstance(item, dict) else item
+            if isinstance(term, str) and term:
+                terms.add(term)
     return terms
 
 
@@ -858,10 +879,10 @@ def main() -> int:
             print(f"  {relative}:{line}: {detail}  in {where}", file=sys.stderr)
         print(
             f"\n{len(findings)} finding(s). Either route the string through "
-            f"L10n (add the key to Resources/i18n/en.json and zh-Hans.json, "
-            f"then run Scripts/build_localizations.py), or — if it is a "
+            f"L10n (add the key to vibe-bar-i18n's catalog/en.json and zh-Hans.json, "
+            f"tag a release and bump the pin in Package.swift), or — if it is a "
             f"company, product, model or harness name — add it to "
-            f"Resources/i18n/_glossary.json.",
+            f"its catalog/_glossary.json.",
             file=sys.stderr,
         )
         return 1
