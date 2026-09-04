@@ -65,7 +65,8 @@ fi
 # is a visible gap where a wrong one is not.
 if [[ ! -f "$DEMO_HOME/.vibebar/remote_core.json" ]]; then
   SURFACES=("${SURFACES[@]:#popover-machines=*}")
-  echo "capture: no remote_core.json in the demo home — skipping popover-machines" >&2
+  echo "capture: no remote_core.json in the demo home — skipping popover-machines;" >&2
+  echo "capture: docs/screenshots/popover-machines*.png keeps whatever it already had" >&2
 fi
 
 # Asking for only that surface is a supported invocation, and skipping it can
