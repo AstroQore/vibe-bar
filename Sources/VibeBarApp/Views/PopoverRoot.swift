@@ -2041,7 +2041,9 @@ struct ProviderQuotaCard: View {
                     }
                 }
                 HStack(alignment: .center, spacing: 6) {
-                    ToolBrandIconView(tool: tool, size: 13)
+                    // Bucket-aware, like the name beside it: drawing `tool`
+                    // here put Cursor's cube next to the word "Grok Bot".
+                    QuotaBrandIconView(tool: tool, bucketID: scopedBucketID, size: 13)
                         .opacity(0.85)
                     Text(subProviderTitle)
                         .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
@@ -2154,8 +2156,20 @@ struct ProviderQuotaCard: View {
         displayBuckets(from: resolvedQuota)
     }
 
+    /// The one bucket this card is scoped to, when it is scoped to one.
+    ///
+    /// That is how a SubProvider riding another company's account gets its own
+    /// identity: Grok Bot's quota arrives as Cursor's `grok_bot_weekly`, so a
+    /// card built for that bucket alone is Grok Bot's card, not Cursor's. A
+    /// card scoped to several buckets — Cursor Models is two — is still the
+    /// account holder's, and resolves to it.
+    private var scopedBucketID: String? {
+        guard let includedBucketIDs, includedBucketIDs.count == 1 else { return nil }
+        return includedBucketIDs.first
+    }
+
     private var subProviderTitle: String {
-        tool.quotaSubProviderName()
+        tool.quotaSubProviderName(bucketID: scopedBucketID)
     }
 
     private func displayBuckets(from quota: AccountQuota?) -> [QuotaBucket] {
