@@ -701,8 +701,8 @@
   "menuBar.composer.selected": {
     "value": "已选积木"
   },
-  "menuBar.composer.size.large": {
-    "value": "大"
+  "menuBar.composer.size.mini": {
+    "value": "迷你"
   },
   "menuBar.composer.size.regular": {
     "value": "标准"

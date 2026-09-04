@@ -686,8 +686,8 @@
 /* Caption over the controls for the selected block. */
 "menuBar.composer.selected" = "Selected block";
 
-/* Type size choice. */
-"menuBar.composer.size.large" = "Large";
+/* Smallest of the three block sizes in the menu-bar composer. */
+"menuBar.composer.size.mini" = "Mini";
 
 /* Type size choice. */
 "menuBar.composer.size.regular" = "Regular";

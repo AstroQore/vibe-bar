@@ -686,8 +686,8 @@
 /* Caption over the controls for the selected block. */
 "menuBar.composer.selected" = "已选积木";
 
-/* Type size choice. */
-"menuBar.composer.size.large" = "大";
+/* Smallest of the three block sizes in the menu-bar composer. */
+"menuBar.composer.size.mini" = "迷你";
 
 /* Type size choice. */
 "menuBar.composer.size.regular" = "标准";

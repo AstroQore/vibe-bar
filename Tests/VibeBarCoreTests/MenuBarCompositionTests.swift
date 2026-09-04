@@ -378,12 +378,12 @@ final class MenuBarCompositionTests: XCTestCase {
             template: .compact,
             tokens: [
                 MenuBarToken(kind: .text("s"), style: .init(size: .small)),
-                MenuBarToken(kind: .text("l"), style: .init(size: .large))
+                MenuBarToken(kind: .text("l"), style: .init(size: .mini))
             ]
         ).plan(quotas: [], displayMode: .used, colorBasis: .actual, now: reference)
         let scale = MenuBarComposition.Template.compact.fontScale
         XCTAssertEqual(rendered.rows[0].tokens[0].fontScale, scale * 0.85, accuracy: 1e-9)
-        XCTAssertEqual(rendered.rows[0].tokens[1].fontScale, scale * 1.2, accuracy: 1e-9)
+        XCTAssertEqual(rendered.rows[0].tokens[1].fontScale, scale * 0.72, accuracy: 1e-9)
     }
 
     // MARK: - Colour
@@ -1213,7 +1213,6 @@ final class MenuBarCompositionTests: XCTestCase {
         // Guards the test above from passing because nothing overflows.
         let base = MenuBarStripGeometry.nominalTwoRowFontSize
         let worst = base * MenuBarComposition.fontScaleRange.upperBound
-            * MenuBarToken.SizeStep.large.multiplier
         let content = MenuBarStripGeometry.twoRowContentHeight(
             rowFontSizes: [worst, worst],
             lineSpacing: MenuBarStripGeometry.nominalTwoRowLineSpacing,
@@ -1726,10 +1725,15 @@ final class MenuBarCompositionTests: XCTestCase {
         // colloquial rendering of "surplus" — all of which read as chat rather
         // than as an interface.
         let banned = ["你", "您", "吧", "呢", "啦", "！", "用不完"]
+        // 迷你 is the standard transliteration of "mini" and the 你 in it is
+        // not a pronoun. Stripping the word before the scan keeps the check
+        // on the register rather than on the characters — the alternative is
+        // an exemption list that grows every time a loanword contains one.
         for (key, value) in zh where key.hasPrefix("menuBar.") {
+            let scanned = value.replacingOccurrences(of: "迷你", with: "")
             for term in banned {
                 XCTAssertFalse(
-                    value.contains(term),
+                    scanned.contains(term),
                     "\(key) uses \(term), which the written register does not allow: \(value)"
                 )
             }
@@ -2304,7 +2308,7 @@ final class MenuBarCompositionTests: XCTestCase {
 
     func testCompositionRoundTripsThroughTheSettingsFile() throws {
         let tokens = [
-            MenuBarToken(kind: .logo(.codex), style: .init(color: .brand(.codex), size: .large)),
+            MenuBarToken(kind: .logo(.codex), style: .init(color: .brand(.codex), size: .mini)),
             MenuBarToken(kind: .text("Codex"), style: .label),
             MenuBarToken(
                 kind: .quota(fieldId: "codex.weekly", metric: .runsOutIn),
@@ -2963,173 +2967,53 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("width"))
     }
 
-    // MARK: - A size choice costs only the block that made it
+    // MARK: - No size choice can cost a block that did not make it
 
-    func testASpanningColumnIsFittedAgainstTheWholeCanvasNotTheTopRow() {
-        // A one-cell column is centred across both bands, so its height is the
-        // whole canvas. Counting it in the top row's demand let a Large title
-        // cap every stacked top cell — and capped the title itself as though
-        // it had half the room it actually has.
-        var composed = columns([
-            MenuBarSegment(top: [MenuBarToken(kind: .text("VB"), style: .init(size: .large))]),
-            MenuBarSegment(
-                top: [MenuBarToken(kind: .text("a"))],
-                bottom: [MenuBarToken(kind: .text("b"))]
-            )
-        ])
-        composed.fontScale = 1
-        // The nominal canvas, where it bites: two rows plus their spacing are
-        // already over budget with nothing resized, so a stacked cell is
-        // shrunk to fit. A cell that spans both rows is not stacked and pays
-        // none of that — 18pt is the whole of its budget, and 1.2 fits.
-        let rendered = composed.plan(
-            quotas: [], displayMode: .used, colorBasis: .actual,
-            now: reference, canvas: .nominalTwoRow
-        )
-        let spanning = rendered.columns[0].top.tokens[0].fontScale
-        let stackedTop = rendered.columns[1].top.tokens[0].fontScale
-        XCTAssertEqual(
-            spanning, 1.2, accuracy: 0.0001,
-            "a spanning cell must keep the size it asked for; the whole canvas is its row"
-        )
-        XCTAssertLessThan(
-            stackedTop, 1.0,
-            "the stacked rows still share one canvas and are still fitted to it"
-        )
-    }
-
-    private func twoRowScales(
-        top: MenuBarToken.SizeStep,
-        bottom: MenuBarToken.SizeStep,
-        compositionScale: Double = 1,
-        canvas: MenuBarStripCanvas = .nominalTwoRow
-    ) -> (top: Double, bottom: Double) {
-        var composed = columns([MenuBarSegment(
-            top: [MenuBarToken(kind: .text("a"), style: .init(size: top))],
-            bottom: [MenuBarToken(kind: .text("b"), style: .init(size: bottom))]
-        )])
-        composed.fontScale = compositionScale
-        let rendered = composed.plan(
-            quotas: [],
-            displayMode: .used,
-            colorBasis: .actual,
-            now: reference,
-            canvas: canvas
-        )
-        return (
-            rendered.columns[0].top.tokens[0].fontScale,
-            rendered.columns[0].bottom?.tokens[0].fontScale ?? 0
-        )
-    }
-
-    func testGrowingOneRowNeverChangesTheRowThatAskedForNothing() {
-        // The complaint, as a property. Choosing Large used to solve one
-        // uniform scale for the whole strip, so every block the user had not
-        // touched came out smaller than before they touched anything.
-        for canvas in [MenuBarStripCanvas.nominalTwoRow, roomierCanvas] {
-            for scale in [0.8, 1.0, 1.3, MenuBarComposition.fontScaleRange.upperBound] {
-                let untouched = twoRowScales(
-                    top: .regular, bottom: .regular, compositionScale: scale, canvas: canvas
-                )
-                for chosen in MenuBarToken.SizeStep.allCases {
-                    let after = twoRowScales(
-                        top: chosen, bottom: .regular, compositionScale: scale, canvas: canvas
-                    )
-                    let label = "\(chosen) at \(scale), canvas \(canvas.availableHeight)"
-                    // Never smaller. That is the whole rule: the cost of a
-                    // size choice lands on the block that made it.
-                    XCTAssertGreaterThanOrEqual(
-                        after.bottom, untouched.bottom - 1e-9,
-                        "the untouched row shrank for \(label)"
-                    )
-                    if chosen != .small {
-                        // Growing takes only from the surplus, so the row that
-                        // asked for nothing is exactly where it was. (A row
-                        // that asked to be *smaller* gives height back, and
-                        // the strip is allowed to stop squeezing the other
-                        // one — a bigger untouched row is not a cost.)
-                        XCTAssertEqual(
-                            after.bottom, untouched.bottom, accuracy: 1e-9,
-                            "the untouched row moved for \(label)"
-                        )
-                    }
-                }
-            }
+    func testEverySizeStepIsAtOrBelowTheStripsOwnScale() {
+        // The property that replaced the surplus arithmetic. A step above 1
+        // would have to be paid for by the blocks around it, because the bar
+        // is 22 points and the default already fills it — so there is no
+        // such step, and the whole question disappears.
+        for step in MenuBarToken.SizeStep.allCases {
+            XCTAssertLessThanOrEqual(step.multiplier, 1.0, "\(step) asks to be bigger than the strip")
+            XCTAssertGreaterThan(step.multiplier, 0.5, "\(step) is smaller than anyone could read")
         }
+        XCTAssertEqual(MenuBarToken.Style().size, .regular, "the default is the largest step")
     }
 
-    func testABlockThatAsksToBeSmallerStillGetsSmaller() {
-        // The cap is a ceiling, never a floor: giving height back is always
-        // allowed, and it is what pays for the other row's growth.
-        let scales = twoRowScales(top: .small, bottom: .regular, canvas: roomierCanvas)
-        XCTAssertLessThan(scales.top, scales.bottom)
-    }
-
-    func testAGrowingRowGetsAsMuchAsTheCanvasCanPayForAndNoMore() {
-        let canvas = roomierCanvas
-        let grown = twoRowScales(top: .large, bottom: .regular, canvas: canvas)
-        XCTAssertGreaterThan(grown.top, 1, "there is surplus, so Large is larger")
-        XCTAssertLessThanOrEqual(
-            grown.top,
-            MenuBarToken.SizeStep.large.multiplier + 1e-9,
-            "and never larger than what was asked for"
-        )
-        let content = MenuBarStripGeometry.twoRowContentHeight(
-            rowFontSizes: [grown.top, grown.bottom].map { canvas.baseFontSize * $0 },
-            lineSpacing: canvas.lineSpacing,
-            lineHeightRatio: canvas.lineHeightRatio
-        )
-        XCTAssertLessThanOrEqual(content, canvas.availableHeight + 1e-9)
-    }
-
-    func testEveryCappedTwoRowStripFitsAndStaysLegible() {
-        // The property the uniform fit already had, restated over the caps:
-        // whatever the editor can produce still fits the canvas, and fitting
-        // never turns legible type into a smudge.
-        for canvas in [MenuBarStripCanvas.nominalTwoRow, roomierCanvas] {
-            for scale in [
-                MenuBarComposition.fontScaleRange.lowerBound, 1.0, 1.3,
-                MenuBarComposition.fontScaleRange.upperBound
-            ] {
-                for first in MenuBarToken.SizeStep.allCases {
-                    for second in MenuBarToken.SizeStep.allCases {
-                        let scales = twoRowScales(
-                            top: first, bottom: second, compositionScale: scale, canvas: canvas
-                        )
-                        let sizes = [scales.top, scales.bottom].map { canvas.baseFontSize * $0 }
-                        let content = MenuBarStripGeometry.twoRowContentHeight(
-                            rowFontSizes: sizes,
-                            lineSpacing: canvas.lineSpacing,
-                            lineHeightRatio: canvas.lineHeightRatio
-                        )
-                        let label = "scale \(scale), \(first)/\(second), canvas \(canvas.availableHeight)"
-                        XCTAssertLessThanOrEqual(content, canvas.availableHeight + 1e-9, "does not fit at \(label)")
-                        let requested = [first, second]
-                            .map { canvas.baseFontSize * scale * $0.multiplier }
-                        for (drawn, asked) in zip(sizes, requested)
-                        where asked >= MenuBarStripFit.legibleFontSize {
-                            XCTAssertGreaterThanOrEqual(
-                                drawn, MenuBarStripFit.legibleFontSize,
-                                "fitting made it illegible at \(label)"
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    func testAOneRowStripIsNotFittedAtAll() {
-        // One row has the whole bar, so Large there simply is large.
-        let rendered = plan(
-            [MenuBarToken(kind: .text("a"), style: .init(size: .large))],
+    func testChoosingASmallerSizeLeavesEveryOtherBlockAlone() {
+        let neutral = plan(
+            [MenuBarToken(kind: .text("a")), MenuBarToken(kind: .text("b"))],
             quotas: []
         )
-        XCTAssertEqual(
-            rendered.rows[0].tokens[0].fontScale,
-            MenuBarToken.SizeStep.large.multiplier,
-            accuracy: 1e-9
-        )
+        for step in MenuBarToken.SizeStep.allCases {
+            let rendered = plan(
+                [
+                    MenuBarToken(kind: .text("a"), style: .init(size: step)),
+                    MenuBarToken(kind: .text("b"))
+                ],
+                quotas: []
+            )
+            XCTAssertEqual(
+                rendered.rows[0].tokens[1].fontScale,
+                neutral.rows[0].tokens[1].fontScale,
+                accuracy: 1e-9,
+                "the untouched block moved when its neighbour chose \(step)"
+            )
+            XCTAssertEqual(
+                rendered.rows[0].tokens[0].fontScale, step.multiplier, accuracy: 1e-9,
+                "\(step) did not draw at the size it asked for"
+            )
+        }
+    }
+
+    func testTheRetiredLargeStepDecodesToTheLargestOneLeft() throws {
+        // Written by a build that had Large. The block is kept — losing it
+        // would be the deletion this file has a whole section about — and it
+        // draws at the biggest size that exists now, which is the default.
+        let composed = try decodeComposition(tokens: [tokenJSON(size: #""large""#)])
+        XCTAssertEqual(composed.tokens.count, 1)
+        XCTAssertEqual(composed.tokens[0].style.size, .regular)
     }
 
     /// A bar tall enough that two neutral rows fit with something to spare —

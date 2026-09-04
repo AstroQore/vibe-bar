@@ -1002,9 +1002,9 @@
     "comment": "Caption over the controls for the selected block.",
     "value": "Selected block"
   },
-  "menuBar.composer.size.large": {
-    "comment": "Type size choice.",
-    "value": "Large"
+  "menuBar.composer.size.mini": {
+    "comment": "Smallest of the three block sizes in the menu-bar composer.",
+    "value": "Mini"
   },
   "menuBar.composer.size.regular": {
     "comment": "Type size choice.",
