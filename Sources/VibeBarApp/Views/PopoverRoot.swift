@@ -221,14 +221,25 @@ struct ProviderSectionTitle: View {
     let subtitleFontSize: CGFloat
     var iconSize: CGFloat = 17
     var badgeSize: CGFloat = 24
+    /// Nearly every caller titles this with `vendorName` — an L1 company — so
+    /// the company mark is the default and a product-level heading opts out.
+    var showsCompanyMark: Bool = true
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            ToolBrandBadge(
-                tool: tool,
-                iconSize: iconSize,
-                containerSize: badgeSize
-            )
+            if showsCompanyMark {
+                CompanyBrandBadge(
+                    tool: tool,
+                    iconSize: iconSize,
+                    containerSize: badgeSize
+                )
+            } else {
+                ToolBrandBadge(
+                    tool: tool,
+                    iconSize: iconSize,
+                    containerSize: badgeSize
+                )
+            }
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text(title)
                     .font(.system(size: titleFontSize, weight: .semibold))
@@ -414,10 +425,13 @@ private struct OverviewSwitchIcon: View {
         // Overview with 13pt for the rest, and ProviderBrandIconView
         // for codex/claude with ToolBrandIconView for gemini/grok,
         // made the row read "高低不齐" (uneven baselines / sizes).
-        // One renderer (`ToolBrandIconView` driven off the L2-
-        // representative ToolType) keeps every tab visually pinned to
-        // the same baseline. Overview and Misc still get SF symbols
-        // because they aren't single-provider tabs.
+        // One renderer keeps every tab visually pinned to the same
+        // baseline. Overview and Misc still get SF symbols because
+        // they aren't single-provider tabs.
+        //
+        // The strip labels L1 companies, so it draws L1 marks:
+        // `CompanyBrandIconView` gives Google AI and SpaceXAI their own
+        // rather than borrowing Gemini's spark and Grok's slash.
         Group {
             switch page {
             case .overview:
@@ -434,9 +448,9 @@ private struct OverviewSwitchIcon: View {
             case .claude:
                 ToolBrandIconView(tool: .claude, size: Self.iconSize)
             case .googleAI:
-                ToolBrandIconView(tool: .gemini, size: Self.iconSize)
+                CompanyBrandIconView(tool: .gemini, size: Self.iconSize)
             case .grok:
-                ToolBrandIconView(tool: .grok, size: Self.iconSize)
+                CompanyBrandIconView(tool: .grok, size: Self.iconSize)
             }
         }
         .opacity(isSelected ? 1 : 0.72)
@@ -956,7 +970,7 @@ private struct GrokCombinedCard: View {
 
                 if showsGrokBot {
                     HStack(alignment: .center, spacing: 6) {
-                        ToolBrandIconView(tool: .grok, size: 13)
+                        BrandMarkIconView(mark: .grokBot, size: 13)
                             .opacity(0.85)
                         Text("Grok Bot")
                             .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
@@ -1034,7 +1048,9 @@ private struct GeminiCostEmptyCard: View {
                     titleFontSize: density.titleFontSize,
                     subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16,
-                    badgeSize: 24
+                    badgeSize: 24,
+                    // Titled with the product, so it keeps the product's mark.
+                    showsCompanyMark: false
                 )
                 Spacer(minLength: 4)
             }
@@ -1331,7 +1347,7 @@ private struct OverviewStatusSummaryCard: View {
                 // tile (height − chrome) / rows — at compact density that is
                 // 45 pt, and four points of air here were what pushed the
                 // detail line out of it.
-                ToolBrandIconView(tool: tool, size: density.bucketTitleFontSize + 6)
+                CompanyBrandIconView(tool: tool, size: density.bucketTitleFontSize + 6)
                     .opacity(0.9)
                     .frame(
                         width: density.bucketTitleFontSize + 6,

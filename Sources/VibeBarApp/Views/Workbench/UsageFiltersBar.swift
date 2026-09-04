@@ -90,7 +90,7 @@ struct UsageFiltersBar: View {
             model.toggleHarnesses(group.harnessSet)
         } label: {
             HStack(spacing: 4) {
-                ToolBrandIconView(tool: group.company, size: max(9, density.segmentedFontSize - 1))
+                CompanyBrandIconView(tool: group.company, size: max(9, density.segmentedFontSize - 1))
                 Text(group.company.vendorName)
                     .font(.system(size: max(9, density.segmentedFontSize - 2), weight: .semibold))
                     .tracking(0.3)

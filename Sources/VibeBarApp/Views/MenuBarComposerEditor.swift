@@ -580,7 +580,11 @@ struct MenuBarComposerEditor: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            ToolBrandIconView(tool: section.tool, size: 11)
+                            QuotaBrandIconView(
+                                tool: section.tool,
+                                bucketID: section.options.first?.bucketId,
+                                size: 11
+                            )
                             Text(section.title).font(.system(size: 11, weight: .medium))
                         }
                     }

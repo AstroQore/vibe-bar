@@ -255,7 +255,9 @@ struct SettingsSidebarView: View {
         return sidebarRow(
             destination: .coreProvider(tool),
             title: coreProviderTitle(tool),
-            icon: AnyView(ToolBrandIconView(tool: tool, size: 17).frame(width: 20, height: 20)),
+            // The row is titled with the company (`coreProviderTitle`),
+            // so it is marked with the company too.
+            icon: AnyView(CompanyBrandIconView(tool: tool, size: 17).frame(width: 20, height: 20)),
             enabled: enabled,
             showsStatusDot: true,
             showsDragHandle: true

@@ -729,7 +729,8 @@ struct SettingsView: View {
             environment.routeHealth[route]?.status == .ok
         }
         return HStack(spacing: 10) {
-            ToolBrandIconView(tool: representative, size: 20)
+            // `statusProviderName` is the L1 vendor, so this is a company row.
+            CompanyBrandIconView(tool: representative, size: 20)
                 .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 1) {
                 Text(representative.statusProviderName)
@@ -1287,10 +1288,11 @@ struct MiniWindowFieldProviderSection: Identifiable {
         .init(tool: .antigravity, title: ToolType.antigravity.toolName,    fields: MenuBarFieldCatalog.antigravityFields),
         .init(tool: .grok,        title: ToolType.grok.toolName,           fields: MenuBarFieldCatalog.grokFields),
         .init(tool: .cursor,      title: ToolType.cursor.toolName,         fields: MenuBarFieldCatalog.cursorFields),
-        // Grok Bot shares Cursor's adapter and brand icon but is a separate
-        // L2 SubProvider, so it gets its own header rather than an unexplained
-        // third row under Cursor. Sectioning is keyed by title, not by tool,
-        // because two sections legitimately share `.cursor`.
+        // Grok Bot shares Cursor's adapter but is a separate L2 SubProvider,
+        // so it gets its own header — and, since `BrandMark.subProvider`,
+        // its own mark — rather than an unexplained third row under Cursor.
+        // Sectioning is keyed by title, not by tool, because two sections
+        // legitimately share `.cursor`.
         .init(
             tool: .cursor,
             title: ToolType.cursor.quotaSubProviderName(bucketID: "grok_bot_weekly"),

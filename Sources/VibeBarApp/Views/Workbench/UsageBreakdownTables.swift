@@ -495,7 +495,7 @@ struct UsageBreakdownTables: View {
     /// still follows the L1 company, matching the Harness Mix card.
     private func harnessCell(_ harness: Harness, _ column: UsageTableColumn) -> some View {
         HStack(spacing: 7) {
-            ToolBrandBadge(tool: harness.company, iconSize: 13, containerSize: 16)
+            CompanyBrandBadge(tool: harness.company, iconSize: 13, containerSize: 16)
             Text(harness.displayName)
                 .font(bodyFont)
                 .lineLimit(1)
@@ -512,7 +512,7 @@ struct UsageBreakdownTables: View {
         _ column: UsageTableColumn
     ) -> some View {
         HStack(spacing: 7) {
-            ToolBrandBadge(tool: tool, iconSize: 13, containerSize: 16)
+            CompanyBrandBadge(tool: tool, iconSize: 13, containerSize: 16)
             Text(name)
                 .font(bodyFont)
                 .lineLimit(1)
