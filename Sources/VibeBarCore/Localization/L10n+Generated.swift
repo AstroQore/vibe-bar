@@ -629,7 +629,7 @@ extension L10n {
         public static var composerBlockUnsupported: String {
             L10n.string("menuBar.composer.block.unsupported")
         }
-        /// `menuBar.composer.blocks` — Blocks — drag to reorder
+        /// `menuBar.composer.blocks` — Blocks — drag to reorder or to move between groups
         public static var composerBlocks: String {
             L10n.string("menuBar.composer.blocks")
         }
@@ -709,6 +709,42 @@ extension L10n {
         public static var composerFieldWeight: String {
             L10n.string("menuBar.composer.field.weight")
         }
+        /// `menuBar.composer.group.add` — New group
+        public static var composerGroupAdd: String {
+            L10n.string("menuBar.composer.group.add")
+        }
+        /// `menuBar.composer.group.addHelp` — Each group is one column of the strip. A row break inside a group stacks that column.
+        public static var composerGroupAddHelp: String {
+            L10n.string("menuBar.composer.group.addHelp")
+        }
+        /// `menuBar.composer.group.empty` — Empty group — drag a block in.
+        public static var composerGroupEmpty: String {
+            L10n.string("menuBar.composer.group.empty")
+        }
+        /// `menuBar.composer.group.mergeLeft` — Merge into the group before it
+        public static var composerGroupMergeLeft: String {
+            L10n.string("menuBar.composer.group.mergeLeft")
+        }
+        /// `menuBar.composer.group.moveLeft` — Move left
+        public static var composerGroupMoveLeft: String {
+            L10n.string("menuBar.composer.group.moveLeft")
+        }
+        /// `menuBar.composer.group.moveRight` — Move right
+        public static var composerGroupMoveRight: String {
+            L10n.string("menuBar.composer.group.moveRight")
+        }
+        /// `menuBar.composer.group.remove` — Remove group and its blocks
+        public static var composerGroupRemove: String {
+            L10n.string("menuBar.composer.group.remove")
+        }
+        /// `menuBar.composer.group.splitHere` — Start a group here
+        public static var composerGroupSplitHere: String {
+            L10n.string("menuBar.composer.group.splitHere")
+        }
+        /// `menuBar.composer.group.title` — Group {index}
+        public static func composerGroupTitle(index: Int) -> String {
+            L10n.string("menuBar.composer.group.title", index)
+        }
         /// `menuBar.composer.metric.displayPercent` — Percent (follows setting)
         public static var composerMetricDisplayPercent: String {
             L10n.string("menuBar.composer.metric.displayPercent")
@@ -781,6 +817,34 @@ extension L10n {
         public static var composerPalette: String {
             L10n.string("menuBar.composer.palette")
         }
+        /// `menuBar.composer.preset.insertHelp` — Insert this group at the end of the strip.
+        public static var composerPresetInsertHelp: String {
+            L10n.string("menuBar.composer.preset.insertHelp")
+        }
+        /// `menuBar.composer.preset.name` — Name
+        public static var composerPresetName: String {
+            L10n.string("menuBar.composer.preset.name")
+        }
+        /// `menuBar.composer.preset.remove` — Remove preset
+        public static var composerPresetRemove: String {
+            L10n.string("menuBar.composer.preset.remove")
+        }
+        /// `menuBar.composer.preset.save` — Save as preset…
+        public static var composerPresetSave: String {
+            L10n.string("menuBar.composer.preset.save")
+        }
+        /// `menuBar.composer.preset.saveConfirm` — Save
+        public static var composerPresetSaveConfirm: String {
+            L10n.string("menuBar.composer.preset.saveConfirm")
+        }
+        /// `menuBar.composer.preset.saveTitle` — Save this group
+        public static var composerPresetSaveTitle: String {
+            L10n.string("menuBar.composer.preset.saveTitle")
+        }
+        /// `menuBar.composer.presets` — Saved groups
+        public static var composerPresets: String {
+            L10n.string("menuBar.composer.presets")
+        }
         /// `menuBar.composer.preview` — Preview
         public static var composerPreview: String {
             L10n.string("menuBar.composer.preview")
@@ -801,7 +865,7 @@ extension L10n {
         public static var composerPreviewLight: String {
             L10n.string("menuBar.composer.preview.light")
         }
-        /// `menuBar.composer.preview.twoRowScaling` — Two rows share the menu bar's height, so large sizes are scaled down to fit — the preview scales with them.
+        /// `menuBar.composer.preview.twoRowScaling` — Two rows share the menu bar's height, so a size that does not fit is capped to the largest one that does. Blocks you did not resize keep the size they had.
         public static var composerPreviewTwoRowScaling: String {
             L10n.string("menuBar.composer.preview.twoRowScaling")
         }
@@ -841,9 +905,17 @@ extension L10n {
         public static var composerSizeSmall: String {
             L10n.string("menuBar.composer.size.small")
         }
-        /// `menuBar.composer.space.detail` — A gap one space wide. Size changes how wide.
+        /// `menuBar.composer.space.detail` — A gap this many spaces wide, at the block's own size.
         public static var composerSpaceDetail: String {
             L10n.string("menuBar.composer.space.detail")
+        }
+        /// `menuBar.composer.space.width` — Width
+        public static var composerSpaceWidth: String {
+            L10n.string("menuBar.composer.space.width")
+        }
+        /// `menuBar.composer.space.widthValue` — {count, plural, one {1 space} other {# spaces}}
+        public static func composerSpaceWidthValue(count: Int) -> String {
+            L10n.string("menuBar.composer.space.widthValue", count)
         }
         /// `menuBar.composer.startOver` — Start over from the current strip…
         public static var composerStartOver: String {
@@ -6308,6 +6380,15 @@ extension L10n {
         "menuBar.composer.field.size",
         "menuBar.composer.field.verdicts",
         "menuBar.composer.field.weight",
+        "menuBar.composer.group.add",
+        "menuBar.composer.group.addHelp",
+        "menuBar.composer.group.empty",
+        "menuBar.composer.group.mergeLeft",
+        "menuBar.composer.group.moveLeft",
+        "menuBar.composer.group.moveRight",
+        "menuBar.composer.group.remove",
+        "menuBar.composer.group.splitHere",
+        "menuBar.composer.group.title",
         "menuBar.composer.metric.displayPercent",
         "menuBar.composer.metric.forecastPercent",
         "menuBar.composer.metric.label",
@@ -6326,6 +6407,13 @@ extension L10n {
         "menuBar.composer.newRow.detail",
         "menuBar.composer.newRow.help",
         "menuBar.composer.palette",
+        "menuBar.composer.preset.insertHelp",
+        "menuBar.composer.preset.name",
+        "menuBar.composer.preset.remove",
+        "menuBar.composer.preset.save",
+        "menuBar.composer.preset.saveConfirm",
+        "menuBar.composer.preset.saveTitle",
+        "menuBar.composer.presets",
         "menuBar.composer.preview",
         "menuBar.composer.preview.dark",
         "menuBar.composer.preview.empty",
@@ -6342,6 +6430,8 @@ extension L10n {
         "menuBar.composer.size.regular",
         "menuBar.composer.size.small",
         "menuBar.composer.space.detail",
+        "menuBar.composer.space.width",
+        "menuBar.composer.space.widthValue",
         "menuBar.composer.startOver",
         "menuBar.composer.startOver.confirm",
         "menuBar.composer.startOver.confirmMessage",
@@ -7665,6 +7755,7 @@ extension L10n {
         "common.updated.daysAgo",
         "common.updated.hoursAgo",
         "common.updated.minutesAgo",
+        "menuBar.composer.space.widthValue",
         "quota.forecast.metric.comparableCycles",
         "quota.forecast.metric.recentIntervals",
         "quota.history.curveCount",

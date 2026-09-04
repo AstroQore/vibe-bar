@@ -450,7 +450,7 @@
 "menuBar.composer.block.unsupported" = "来自更新版本";
 
 /* Caption over the reorderable list of blocks. */
-"menuBar.composer.blocks" = "积木 · 拖动可重新排序";
+"menuBar.composer.blocks" = "积木 · 拖动可重新排序或在分组间移动";
 
 /* Shown when the strip has no blocks. */
 "menuBar.composer.blocks.empty" = "尚无积木。可从下方面板添加。";
@@ -509,6 +509,33 @@
 /* Picker choosing a block's type weight. */
 "menuBar.composer.field.weight" = "字重";
 
+/* Palette button adding an empty group to the strip. */
+"menuBar.composer.group.add" = "新建分组";
+
+/* Tooltip on the New group button. */
+"menuBar.composer.group.addHelp" = "每个分组是条带中的一列。分组内的换行会让该列上下堆叠。";
+
+/* Shown inside a group that has no blocks yet. */
+"menuBar.composer.group.empty" = "空分组，可将积木拖入。";
+
+/* Menu action folding a group into the one before it. */
+"menuBar.composer.group.mergeLeft" = "并入前一个分组";
+
+/* Menu action moving a group one place earlier. */
+"menuBar.composer.group.moveLeft" = "向左移动";
+
+/* Menu action moving a group one place later. */
+"menuBar.composer.group.moveRight" = "向右移动";
+
+/* Menu action deleting a group and the blocks in it. */
+"menuBar.composer.group.remove" = "删除分组及其积木";
+
+/* Button starting a new group at the selected block. */
+"menuBar.composer.group.splitHere" = "从此处开始新分组";
+
+/* Header over one group of blocks. Index counts from 1. */
+"menuBar.composer.group.title" = "分组 %1$lld";
+
 /* Quota metric: whichever percentage the app-wide Used/Remaining setting selects. */
 "menuBar.composer.metric.displayPercent" = "百分比（跟随设置）";
 
@@ -563,6 +590,27 @@
 /* Caption over the list of blocks that can be added. */
 "menuBar.composer.palette" = "添加积木";
 
+/* Tooltip on a saved group. */
+"menuBar.composer.preset.insertHelp" = "在条带末尾插入该分组。";
+
+/* Text field for the name of a saved group. */
+"menuBar.composer.preset.name" = "名称";
+
+/* Menu action deleting a saved group. */
+"menuBar.composer.preset.remove" = "删除预设";
+
+/* Menu action saving a group to use again. */
+"menuBar.composer.preset.save" = "存为预设…";
+
+/* Button confirming the name of a saved group. */
+"menuBar.composer.preset.saveConfirm" = "保存";
+
+/* Title of the dialog naming a saved group. */
+"menuBar.composer.preset.saveTitle" = "保存该分组";
+
+/* Caption over the saved groups that can be inserted. */
+"menuBar.composer.presets" = "已存分组";
+
 /* Caption over the live preview of the composed strip. */
 "menuBar.composer.preview" = "预览";
 
@@ -578,8 +626,8 @@
 /* Accessibility label for the light-background preview. */
 "menuBar.composer.preview.light" = "浅色菜单栏预览";
 
-/* Explains that a two-row strip is scaled to fit the menu bar's height. */
-"menuBar.composer.preview.twoRowScaling" = "两行共用菜单栏高度，较大字号会等比缩小以适应，预览同步缩放。";
+/* Explains how a two-row strip handles a size that does not fit the menu bar's height. */
+"menuBar.composer.preview.twoRowScaling" = "两行共用菜单栏高度，放不下的字号会限制到能放下的最大值。未调整过字号的积木保持原有大小。";
 
 /* Drop target that deletes the dragged block. */
 "menuBar.composer.removeTarget" = "拖到此处移除";
@@ -609,7 +657,10 @@
 "menuBar.composer.size.small" = "小";
 
 /* What a space block does. */
-"menuBar.composer.space.detail" = "宽度为一个空格的间隔。字号决定其宽度。";
+"menuBar.composer.space.detail" = "按积木自身字号计算的若干个空格宽的间隔。";
+
+/* Stepper choosing how wide a space block is. */
+"menuBar.composer.space.width" = "宽度";
 
 /* Button rebuilding every block from the default strip. */
 "menuBar.composer.startOver" = "从当前样式重新开始…";

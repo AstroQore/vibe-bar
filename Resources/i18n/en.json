@@ -656,7 +656,7 @@
   },
   "menuBar.composer.blocks": {
     "comment": "Caption over the reorderable list of blocks.",
-    "value": "Blocks — drag to reorder"
+    "value": "Blocks — drag to reorder or to move between groups"
   },
   "menuBar.composer.blocks.empty": {
     "comment": "Shown when the strip has no blocks.",
@@ -734,6 +734,45 @@
     "comment": "Picker choosing a block's type weight.",
     "value": "Weight"
   },
+  "menuBar.composer.group.add": {
+    "comment": "Palette button adding an empty group to the strip.",
+    "value": "New group"
+  },
+  "menuBar.composer.group.addHelp": {
+    "comment": "Tooltip on the New group button.",
+    "value": "Each group is one column of the strip. A row break inside a group stacks that column."
+  },
+  "menuBar.composer.group.empty": {
+    "comment": "Shown inside a group that has no blocks yet.",
+    "value": "Empty group — drag a block in."
+  },
+  "menuBar.composer.group.mergeLeft": {
+    "comment": "Menu action folding a group into the one before it.",
+    "value": "Merge into the group before it"
+  },
+  "menuBar.composer.group.moveLeft": {
+    "comment": "Menu action moving a group one place earlier.",
+    "value": "Move left"
+  },
+  "menuBar.composer.group.moveRight": {
+    "comment": "Menu action moving a group one place later.",
+    "value": "Move right"
+  },
+  "menuBar.composer.group.remove": {
+    "comment": "Menu action deleting a group and the blocks in it.",
+    "value": "Remove group and its blocks"
+  },
+  "menuBar.composer.group.splitHere": {
+    "comment": "Button starting a new group at the selected block.",
+    "value": "Start a group here"
+  },
+  "menuBar.composer.group.title": {
+    "args": {
+      "index": "int"
+    },
+    "comment": "Header over one group of blocks. Index counts from 1.",
+    "value": "Group {index}"
+  },
   "menuBar.composer.metric.displayPercent": {
     "comment": "Quota metric: whichever percentage the app-wide Used/Remaining setting selects.",
     "value": "Percent (follows setting)"
@@ -806,6 +845,34 @@
     "comment": "Caption over the list of blocks that can be added.",
     "value": "Add a block"
   },
+  "menuBar.composer.preset.insertHelp": {
+    "comment": "Tooltip on a saved group.",
+    "value": "Insert this group at the end of the strip."
+  },
+  "menuBar.composer.preset.name": {
+    "comment": "Text field for the name of a saved group.",
+    "value": "Name"
+  },
+  "menuBar.composer.preset.remove": {
+    "comment": "Menu action deleting a saved group.",
+    "value": "Remove preset"
+  },
+  "menuBar.composer.preset.save": {
+    "comment": "Menu action saving a group to use again.",
+    "value": "Save as preset…"
+  },
+  "menuBar.composer.preset.saveConfirm": {
+    "comment": "Button confirming the name of a saved group.",
+    "value": "Save"
+  },
+  "menuBar.composer.preset.saveTitle": {
+    "comment": "Title of the dialog naming a saved group.",
+    "value": "Save this group"
+  },
+  "menuBar.composer.presets": {
+    "comment": "Caption over the saved groups that can be inserted.",
+    "value": "Saved groups"
+  },
   "menuBar.composer.preview": {
     "comment": "Caption over the live preview of the composed strip.",
     "value": "Preview"
@@ -827,8 +894,8 @@
     "value": "Light menu bar preview"
   },
   "menuBar.composer.preview.twoRowScaling": {
-    "comment": "Explains that a two-row strip is scaled to fit the menu bar's height.",
-    "value": "Two rows share the menu bar's height, so large sizes are scaled down to fit — the preview scales with them."
+    "comment": "Explains how a two-row strip handles a size that does not fit the menu bar's height.",
+    "value": "Two rows share the menu bar's height, so a size that does not fit is capped to the largest one that does. Blocks you did not resize keep the size they had."
   },
   "menuBar.composer.removeTarget": {
     "comment": "Drop target that deletes the dragged block.",
@@ -868,7 +935,18 @@
   },
   "menuBar.composer.space.detail": {
     "comment": "What a space block does.",
-    "value": "A gap one space wide. Size changes how wide."
+    "value": "A gap this many spaces wide, at the block's own size."
+  },
+  "menuBar.composer.space.width": {
+    "comment": "Stepper choosing how wide a space block is.",
+    "value": "Width"
+  },
+  "menuBar.composer.space.widthValue": {
+    "args": {
+      "count": "int"
+    },
+    "comment": "How wide a space block is, in space characters.",
+    "value": "{count, plural, one {1 space} other {# spaces}}"
   },
   "menuBar.composer.startOver": {
     "comment": "Button rebuilding every block from the default strip.",

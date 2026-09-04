@@ -172,6 +172,15 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
     /// reseeding over their work. Every field-mode setting above stays intact
     /// either way; the two modes never write over each other.
     public var composition: MenuBarComposition?
+    /// Groups of blocks the user saved to insert again.
+    ///
+    /// Beside the composition rather than inside it, because "Start over"
+    /// replaces the composition wholesale and a library that vanished with it
+    /// would be a library nobody trusts. Beside it rather than at the top of
+    /// `AppSettings` because a preset is a piece of *this* strip, there is one
+    /// menu-bar item, and the item already has the tolerant per-item decoder
+    /// this list wants.
+    public var segmentPresets: [MenuBarSegmentPreset]
 
     public var id: MenuBarItemKind { kind }
 
@@ -187,7 +196,8 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         customLabels: [String: String] = [:],
         fieldStyles: [String: MenuBarFieldStyle] = [:],
         mergesGroupWindows: Bool = false,
-        composition: MenuBarComposition? = nil
+        composition: MenuBarComposition? = nil,
+        segmentPresets: [MenuBarSegmentPreset] = []
     ) {
         self.kind = kind
         self.isVisible = isVisible
@@ -198,6 +208,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         self.fieldStyles = fieldStyles
         self.mergesGroupWindows = mergesGroupWindows
         self.composition = composition
+        self.segmentPresets = segmentPresets
     }
 
     public func style(for fieldId: String) -> MenuBarFieldStyle {
@@ -263,6 +274,7 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         case fieldStyles
         case mergesGroupWindows
         case composition
+        case segmentPresets
     }
 
     public init(from decoder: Decoder) throws {
@@ -290,6 +302,12 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         // purpose: an unreadable strip falls back to the field-based bar
         // instead of taking the whole settings file down.
         self.composition = try? c.decodeIfPresent(MenuBarComposition.self, forKey: .composition)
+        // Absent before saved groups existed, and lossy per entry for the same
+        // reason the strip is: one unreadable preset must not cost the rest of
+        // the library, let alone the item around it.
+        let storedPresets = (try? c.decodeIfPresent([LossyMenuBarSegmentPreset].self, forKey: .segmentPresets))
+            .flatMap { $0 } ?? []
+        self.segmentPresets = storedPresets.compactMap(\.value)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -303,6 +321,22 @@ public struct MenuBarItemSettings: Codable, Equatable, Identifiable, Sendable {
         try c.encode(fieldStyles, forKey: .fieldStyles)
         try c.encode(mergesGroupWindows, forKey: .mergesGroupWindows)
         try c.encodeIfPresent(composition, forKey: .composition)
+        if !segmentPresets.isEmpty {
+            try c.encode(segmentPresets, forKey: .segmentPresets)
+        }
+    }
+}
+
+/// Tolerant wrapper for one saved group. See `MenuBarItemSettings.segmentPresets`.
+private struct LossyMenuBarSegmentPreset: Codable {
+    let value: MenuBarSegmentPreset?
+
+    init(from decoder: Decoder) throws {
+        self.value = try? MenuBarSegmentPreset(from: decoder)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try value?.encode(to: encoder)
     }
 }
 

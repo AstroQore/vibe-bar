@@ -5,7 +5,7 @@ import VibeBarCore
 
 private enum MenuBarStatusMetrics {
     static let twoRowFontSize = MenuBarStripMetrics.twoRowFontSize
-    static let twoRowColumnSpacing: CGFloat = 8
+    static let twoRowColumnSpacing = MenuBarStripMetrics.twoRowColumnSpacing
     static let twoRowLineSpacing = MenuBarStripMetrics.twoRowLineSpacing
     static let twoRowHorizontalPadding: CGFloat = 2
     static let twoRowVerticalPadding = MenuBarStripMetrics.twoRowVerticalPadding
@@ -1052,57 +1052,59 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         settings: AppSettings
     ) {
         let strip = composedStrip(composition, itemSettings: itemSettings, settings: settings)
-        let rows = strip.plan.rows.filter { !$0.isEmpty }
-        if rows.count >= 2 {
-            let capped = Array(rows.prefix(MenuBarComposition.maximumRows))
+        let planned = strip.plan.columns
+        if strip.plan.isTwoRow {
             let base = MenuBarStripMetrics.baseFontSize(
                 template: composition.template,
-                rowCount: capped.count
+                rowCount: MenuBarComposition.maximumRows
             )
-            var cells = capped.map {
-                composedCell(row: $0, strip: strip, settings: settings, baseFontSize: base)
-            }
-            // Two rows of `.large` blocks, or a composition scaled towards
-            // 1.6, are taller than the ~22pt status bar. The canvas used to be
-            // capped while the row heights were not, so the upper row was
-            // cropped or the rows overlapped. Shrink the type to fit instead:
-            // a smaller strip is honest, a cropped one is a bug.
-            let fit = MenuBarStripFit.scale(
-                contentHeight: Double(Self.twoRowContentHeight(cells)),
-                availableHeight: Double(Self.twoRowAvailableHeight())
-            )
-            if fit < 1 {
-                cells = capped.map {
-                    composedCell(
-                        row: $0,
-                        strip: strip,
-                        settings: settings,
-                        baseFontSize: base * CGFloat(fit)
+            func rasterize(_ size: CGFloat) -> [TwoRowMenuColumn] {
+                planned.map { column in
+                    TwoRowMenuColumn(
+                        top: composedCell(
+                            row: column.top, strip: strip, settings: settings, baseFontSize: size
+                        ),
+                        bottom: column.bottom.map {
+                            composedCell(row: $0, strip: strip, settings: settings, baseFontSize: size)
+                        }
                     )
                 }
             }
-            installTwoRowImageContent(
-                in: button,
-                item: item,
-                columns: [TwoRowMenuColumn(top: cells[0], bottom: cells[1])]
+            var columns = rasterize(base)
+            // The planner has already capped each row's type to what the
+            // canvas can pay for, and it did that from the type metrics. This
+            // measures the strings that were actually built — a face or a
+            // glyph taller than the arithmetic expected still has to fit, and
+            // the canvas is capped afterwards regardless, so a strip that
+            // overflowed here would be cropped rather than small. It is a
+            // guard, not the fitting: after the caps it is normally exactly 1.
+            let fit = MenuBarStripFit.scale(
+                contentHeight: Double(Self.twoRowContentHeight(columns)),
+                availableHeight: Double(Self.twoRowAvailableHeight())
             )
+            if fit < 1 {
+                columns = rasterize(base * CGFloat(fit))
+            }
+            installTwoRowImageContent(in: button, item: item, columns: columns)
         } else {
-            // Every block the user kept fell away — no quota is answering, or
-            // every rule said no. Show the same "—" the field strip shows
-            // rather than an empty status item nobody can find to click. No
-            // title in front of it: in custom mode the title is a block the
-            // user may have deleted, so reviving it here would be a surprise.
-            // Not always the system face: a strip seeded from the Compact
-            // layout has to be drawn at the face that layout draws at, or the
-            // seed is visibly bigger than the strip it reproduced.
+            // One row: the groups run side by side in a single attributed
+            // string, where a logo can ride along as a text attachment.
+            //
+            // With nothing left — no quota answering, or every rule saying no
+            // — show the same "—" the field strip shows rather than an empty
+            // status item nobody can find to click. No title in front of it:
+            // in custom mode the title is a block the user may have deleted,
+            // so reviving it here would be a surprise. Not always the system
+            // face: a strip seeded from the Compact layout has to be drawn at
+            // the face that layout draws at, or the seed is visibly bigger
+            // than the strip it reproduced.
             let base = MenuBarStripMetrics.baseFontSize(
                 template: composition.template,
-                rowCount: max(1, rows.count)
+                rowCount: 1
             )
-            button.attributedTitle = rows.isEmpty
+            button.attributedTitle = planned.isEmpty
                 ? Self.composedPlaceholder(fontSize: base)
-                : composedAttributedRow(
-                    rows[0],
+                : composedAttributedStrip(
                     strip: strip,
                     settings: settings,
                     baseFontSize: base
@@ -1136,10 +1138,55 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 quotas: quotas,
                 displayMode: settings.displayMode,
                 colorBasis: settings.menuBarColorBasis,
-                now: now
+                now: now,
+                // The real bar's height, not the nominal one: how much a block
+                // may grow depends on how tall this Mac's menu bar actually
+                // is, and the preview asks for the same canvas.
+                canvas: MenuBarStripMetrics.twoRowCanvas()
             ),
             quotas: quotas
         )
+    }
+
+    /// A one-row composed strip: every group in order, with the template's own
+    /// divider between them.
+    ///
+    /// The divider is the plan's, from `MenuBarFieldStripRules` — the same
+    /// table the seed reads, so a strip the user grouped by hand is separated
+    /// the way the layout it came from separates its entries. On a template
+    /// that draws none, the gap between the groups is the boundary.
+    private func composedAttributedStrip(
+        strip: ComposedStrip,
+        settings: AppSettings,
+        baseFontSize: CGFloat
+    ) -> NSAttributedString {
+        let attributed = NSMutableAttributedString()
+        for (index, column) in strip.plan.columns.enumerated() {
+            if index > 0 {
+                if let gap = composedGap(strip.plan, baseFontSize: baseFontSize) {
+                    attributed.append(gap)
+                }
+                if let separator = strip.plan.columnSeparator {
+                    attributed.append(NSAttributedString(
+                        string: separator,
+                        attributes: [
+                            .foregroundColor: NSColor.tertiaryLabelColor,
+                            .font: NSFont.systemFont(ofSize: baseFontSize, weight: .regular)
+                        ]
+                    ))
+                    if let gap = composedGap(strip.plan, baseFontSize: baseFontSize) {
+                        attributed.append(gap)
+                    }
+                }
+            }
+            attributed.append(composedAttributedRow(
+                column.top,
+                strip: strip,
+                settings: settings,
+                baseFontSize: baseFontSize
+            ))
+        }
+        return attributed
     }
 
     /// One composed row as an attributed string. Used for a single-row strip,
@@ -1764,11 +1811,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return max(textHeight, glyphHeight)
     }
 
-    /// Stacked height of a set of row cells, including the deliberate
-    /// negative line spacing that tucks the two bands together.
-    nonisolated private static func twoRowContentHeight(_ cells: [TwoRowMenuCell]) -> CGFloat {
-        cells.reduce(0) { $0 + cellHeight($1) }
-            + MenuBarStatusMetrics.twoRowLineSpacing * CGFloat(max(0, cells.count - 1))
+    /// Stacked height of a rasterized strip, including the deliberate negative
+    /// line spacing that tucks the two bands together.
+    ///
+    /// Each band is as tall as the tallest cell in it across every column,
+    /// which is exactly what `twoRowImage` lays the image out with — measuring
+    /// one column and drawing another is how a strip gets cropped.
+    nonisolated private static func twoRowContentHeight(_ columns: [TwoRowMenuColumn]) -> CGFloat {
+        let top = columns.map { cellHeight($0.top) }.max() ?? 0
+        let bottoms = columns.compactMap { $0.bottom.map(cellHeight) }
+        guard let bottom = bottoms.max() else { return top }
+        return top + bottom + MenuBarStatusMetrics.twoRowLineSpacing
     }
 
     /// Height the rasterized image actually has for content, after padding.

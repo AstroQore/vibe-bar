@@ -47,9 +47,24 @@ enum MenuBarStripMetrics {
         }
     }
 
+    /// Points between two adjacent columns of a rasterized strip.
+    static let twoRowColumnSpacing: CGFloat = 8
+
     /// Height the rasterized image actually has for content, after padding.
     static func twoRowAvailableHeight() -> CGFloat {
         max(18, NSStatusBar.system.thickness - 2) - twoRowVerticalPadding * 2
+    }
+
+    /// The canvas a stacked strip is planned against — this Mac's bar, not the
+    /// nominal one. The status item and the preview both ask for it here, so a
+    /// block capped in the bar is capped in the preview by the same arithmetic.
+    static func twoRowCanvas() -> MenuBarStripCanvas {
+        MenuBarStripCanvas(
+            availableHeight: Double(twoRowAvailableHeight()),
+            baseFontSize: Double(twoRowFontSize),
+            lineHeightRatio: Double(lineHeightRatio),
+            lineSpacing: Double(twoRowLineSpacing)
+        )
     }
 
     /// The fit-to-height scale for a plan drawn at `baseFontSize`, estimated
@@ -57,8 +72,9 @@ enum MenuBarStripMetrics {
     /// same `MenuBarStripFit` rule to its real measurements — this is the
     /// preview's approximation of it, so a two-row strip previews at roughly
     /// the size it will actually be drawn.
-    static func estimatedFitScale(rows: [MenuBarRenderRow], baseFontSize: CGFloat) -> CGFloat {
-        guard rows.count >= 2 else { return 1 }
+    static func estimatedFitScale(plan: MenuBarRenderPlan, baseFontSize: CGFloat) -> CGFloat {
+        guard plan.isTwoRow else { return 1 }
+        let rows = plan.rows
         let content = CGFloat(MenuBarStripGeometry.twoRowContentHeight(
             rowFontSizes: rows.map { Double(baseFontSize) * ($0.tokens.map(\.fontScale).max() ?? 1) },
             lineSpacing: Double(twoRowLineSpacing),
@@ -400,24 +416,34 @@ struct MenuBarStripView: View {
     /// Rows the strip actually draws — the same count the status item uses to
     /// pick its face and its glyph box.
     private var drawnRowCount: Int {
-        plan.rows.reduce(0) { $0 + ($1.isEmpty ? 0 : 1) }
+        plan.isTwoRow ? 2 : 1
     }
 
     var body: some View {
-        let rows = plan.rows.filter { !$0.isEmpty }
         Group {
-            if rows.isEmpty {
+            if plan.columns.isEmpty {
                 Text("—")
                     .font(.system(size: baseFontSize, weight: .regular).monospacedDigit())
                     .foregroundStyle(.tertiary)
+            } else if plan.isTwoRow {
+                // Columns side by side at the rasterizer's own spacing, each
+                // cell centred inside the column — `twoRowImage` centres a
+                // narrower cell inside the width its column earned, and a
+                // preview that left-aligned it would show the user something
+                // the menu bar will not draw.
+                HStack(alignment: .center, spacing: MenuBarStripMetrics.twoRowColumnSpacing) {
+                    ForEach(Array(plan.columns.enumerated()), id: \.offset) { _, column in
+                        VStack(alignment: .center, spacing: 0) {
+                            rowView(column.top)
+                            if let bottom = column.bottom { rowView(bottom) }
+                        }
+                    }
+                }
             } else {
-                // Centred, because `twoRowImage` centres each cell inside the
-                // column's shared width. An odd number of entries leaves the
-                // second row narrower, and a preview that left-aligns it shows
-                // the user something the menu bar will not draw.
-                VStack(alignment: .center, spacing: 0) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        rowView(row)
+                HStack(spacing: 0) {
+                    ForEach(Array(plan.columns.enumerated()), id: \.offset) { index, column in
+                        if index > 0 { columnBoundary }
+                        rowView(column.top)
                     }
                 }
             }
@@ -428,6 +454,22 @@ struct MenuBarStripView: View {
                 ? L10n.MenuBar.composerPreviewEmpty
                 : plan.spokenDescription
         )
+    }
+
+    /// What a one-row strip puts between two groups: the template's divider
+    /// with the strip's own gap on each side, or just the gap.
+    @ViewBuilder
+    private var columnBoundary: some View {
+        let gap = baseFontSize * plan.tokenSpacing * Self.spacingToPoints
+        if let separator = plan.columnSeparator {
+            Text(separator)
+                .font(.system(size: baseFontSize, weight: .regular))
+                .foregroundStyle(Color.primary.opacity(0.45))
+                .fixedSize()
+                .padding(.horizontal, gap)
+        } else {
+            Color.clear.frame(width: gap, height: 0)
+        }
     }
 
     private func rowView(_ row: MenuBarRenderRow) -> some View {
@@ -565,9 +607,11 @@ struct MenuBarStripPreview: View {
         // rasterized two-row strip at 9pt, then shrinks two rows that do not
         // fit. The preview does all three, or it is previewing a strip the
         // user will never see.
-        let rows = plan.rows.filter { !$0.isEmpty }
-        let base = MenuBarStripMetrics.baseFontSize(template: template, rowCount: rows.count)
-        let fit = MenuBarStripMetrics.estimatedFitScale(rows: rows, baseFontSize: base)
+        let base = MenuBarStripMetrics.baseFontSize(
+            template: template,
+            rowCount: plan.isTwoRow ? 2 : 1
+        )
+        let fit = MenuBarStripMetrics.estimatedFitScale(plan: plan, baseFontSize: base)
         return MenuBarStripView(
             plan: plan,
             quotas: quotas,

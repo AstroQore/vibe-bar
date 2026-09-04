@@ -456,7 +456,7 @@
     "value": "来自更新版本"
   },
   "menuBar.composer.blocks": {
-    "value": "积木 · 拖动可重新排序"
+    "value": "积木 · 拖动可重新排序或在分组间移动"
   },
   "menuBar.composer.blocks.empty": {
     "value": "尚无积木。可从下方面板添加。"
@@ -515,6 +515,33 @@
   "menuBar.composer.field.weight": {
     "value": "字重"
   },
+  "menuBar.composer.group.add": {
+    "value": "新建分组"
+  },
+  "menuBar.composer.group.addHelp": {
+    "value": "每个分组是条带中的一列。分组内的换行会让该列上下堆叠。"
+  },
+  "menuBar.composer.group.empty": {
+    "value": "空分组，可将积木拖入。"
+  },
+  "menuBar.composer.group.mergeLeft": {
+    "value": "并入前一个分组"
+  },
+  "menuBar.composer.group.moveLeft": {
+    "value": "向左移动"
+  },
+  "menuBar.composer.group.moveRight": {
+    "value": "向右移动"
+  },
+  "menuBar.composer.group.remove": {
+    "value": "删除分组及其积木"
+  },
+  "menuBar.composer.group.splitHere": {
+    "value": "从此处开始新分组"
+  },
+  "menuBar.composer.group.title": {
+    "value": "分组 {index}"
+  },
   "menuBar.composer.metric.displayPercent": {
     "value": "百分比（跟随设置）"
   },
@@ -569,6 +596,27 @@
   "menuBar.composer.palette": {
     "value": "添加积木"
   },
+  "menuBar.composer.preset.insertHelp": {
+    "value": "在条带末尾插入该分组。"
+  },
+  "menuBar.composer.preset.name": {
+    "value": "名称"
+  },
+  "menuBar.composer.preset.remove": {
+    "value": "删除预设"
+  },
+  "menuBar.composer.preset.save": {
+    "value": "存为预设…"
+  },
+  "menuBar.composer.preset.saveConfirm": {
+    "value": "保存"
+  },
+  "menuBar.composer.preset.saveTitle": {
+    "value": "保存该分组"
+  },
+  "menuBar.composer.presets": {
+    "value": "已存分组"
+  },
   "menuBar.composer.preview": {
     "value": "预览"
   },
@@ -585,7 +633,7 @@
     "value": "浅色菜单栏预览"
   },
   "menuBar.composer.preview.twoRowScaling": {
-    "value": "两行共用菜单栏高度，较大字号会等比缩小以适应，预览同步缩放。"
+    "value": "两行共用菜单栏高度，放不下的字号会限制到能放下的最大值。未调整过字号的积木保持原有大小。"
   },
   "menuBar.composer.removeTarget": {
     "value": "拖到此处移除"
@@ -615,7 +663,13 @@
     "value": "小"
   },
   "menuBar.composer.space.detail": {
-    "value": "宽度为一个空格的间隔。字号决定其宽度。"
+    "value": "按积木自身字号计算的若干个空格宽的间隔。"
+  },
+  "menuBar.composer.space.width": {
+    "value": "宽度"
+  },
+  "menuBar.composer.space.widthValue": {
+    "value": "{count, plural, other {# 个空格}}"
   },
   "menuBar.composer.startOver": {
     "value": "从当前样式重新开始…"

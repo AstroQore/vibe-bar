@@ -45,6 +45,10 @@ struct MenuBarComposerEditor: View {
     @State private var dragCancelTask: Task<Void, Never>?
     @State private var isOverRemoveTarget = false
     @State private var isConfirmingReseed = false
+    /// The group whose "Save as preset…" dialog is open, and the name being
+    /// typed into it.
+    @State private var savingPresetFrom: UUID?
+    @State private var presetDraftName = ""
 
     // Everything expensive is cached and rebuilt on a data change, never on a
     // keystroke: resolving a quota can compute a personal forecast, and this
@@ -118,6 +122,20 @@ struct MenuBarComposerEditor: View {
             paletteRow(composition)
             inspectorRow(composition, availability: availability)
             footerRow(availability: availability)
+        }
+        .alert(
+            L10n.MenuBar.composerPresetSaveTitle,
+            isPresented: Binding(
+                get: { savingPresetFrom != nil },
+                set: { if !$0 { savingPresetFrom = nil } }
+            )
+        ) {
+            TextField(L10n.MenuBar.composerPresetName, text: $presetDraftName)
+            Button(L10n.MenuBar.composerPresetSaveConfirm) { savePendingPreset() }
+                .disabled(
+                    presetDraftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+            Button(L10n.Common.cancel, role: .cancel) { savingPresetFrom = nil }
         }
         .onAppear {
             inputs.start(environment: environment)
@@ -198,7 +216,13 @@ struct MenuBarComposerEditor: View {
                     quotas: snapshots,
                     displayMode: settingsStore.settings.displayMode,
                     colorBasis: settingsStore.settings.menuBarColorBasis,
-                    now: context.date
+                    now: context.date,
+                    // The bar's real canvas, the same one the status item
+                    // plans against. How much a block may grow depends on how
+                    // tall this Mac's menu bar is, and a preview that capped
+                    // against a different height would be previewing a
+                    // different strip.
+                    canvas: MenuBarStripMetrics.twoRowCanvas()
                 )
                 VStack(alignment: .leading, spacing: 4) {
                     MenuBarStripPreview(
@@ -231,13 +255,82 @@ struct MenuBarComposerEditor: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             caption(L10n.MenuBar.composerBlocks)
-            if composition.tokens.isEmpty {
+            if composition.segments.isEmpty {
                 Text(L10n.MenuBar.composerBlocksEmpty)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
+                // The groups themselves wrap, the same way the chips inside
+                // them do — a strip can hold more columns than one line of
+                // this settings pane is wide.
+                MenuBarChipFlow(spacing: 8, lineSpacing: 8) {
+                    ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
+                        segmentBox(segment, index: index, of: composition, availability: availability)
+                    }
+                }
+            }
+            removeTarget
+        }
+    }
+
+    /// One group: a header that can move, save or remove it, then its blocks.
+    private func segmentBox(
+        _ segment: MenuBarSegment,
+        index: Int,
+        of composition: MenuBarComposition,
+        availability: MenuBarComposition.Availability
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(L10n.MenuBar.composerGroupTitle(index: index + 1))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
+                Spacer(minLength: 4)
+                Menu {
+                    Button(L10n.MenuBar.composerGroupMoveLeft) {
+                        mutate { $0.moveSegment(segment.id, by: -1) }
+                    }
+                    .disabled(index == 0)
+                    Button(L10n.MenuBar.composerGroupMoveRight) {
+                        mutate { $0.moveSegment(segment.id, by: 1) }
+                    }
+                    .disabled(index == composition.segments.count - 1)
+                    Button(L10n.MenuBar.composerGroupMergeLeft) {
+                        mutate { $0.mergeSegmentIntoPrevious(segment.id) }
+                    }
+                    .disabled(index == 0)
+                    Divider()
+                    Button(L10n.MenuBar.composerPresetSave) {
+                        presetDraftName = ""
+                        savingPresetFrom = segment.id
+                    }
+                    .disabled(segment.isEmpty)
+                    Divider()
+                    Button(L10n.MenuBar.composerGroupRemove, role: .destructive) {
+                        if let selection, segment.tokens.contains(where: { $0.id == selection }) {
+                            self.selection = nil
+                        }
+                        mutate { $0.removeSegment(segment.id) }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            }
+            if segment.isEmpty {
+                Text(L10n.MenuBar.composerGroupEmpty)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(minWidth: 96, minHeight: 22, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.text], delegate: chipDrop(.endOf(segment.id)))
+            } else {
                 MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
-                    ForEach(composition.tokens) { token in
+                    ForEach(segment.tokens) { token in
                         chip(token, availability: availability)
                             .onDrag {
                                 // A queued colour or threshold has to land
@@ -252,38 +345,38 @@ struct MenuBarComposerEditor: View {
                                 dragComposition = self.composition
                                 return NSItemProvider(object: token.id.uuidString as NSString)
                             }
-                            .onDrop(
-                                of: [.text],
-                                delegate: MenuBarChipDropDelegate(
-                                    target: token.id,
-                                    dragged: $draggedTokenId,
-                                    provisional: $dragComposition,
-                                    commit: { commitDrag() },
-                                    entered: { dragEnteredTarget() },
-                                    exited: { dragLeftTarget() }
-                                )
-                            )
+                            .onDrop(of: [.text], delegate: chipDrop(.before(token.id)))
                     }
                     // Trailing landing strip, so a block can be dragged to the
-                    // very end without having to hit the last chip exactly.
+                    // end of this group without having to hit its last chip.
                     Color.clear
                         .frame(width: 16, height: 22)
                         .contentShape(Rectangle())
-                        .onDrop(
-                            of: [.text],
-                            delegate: MenuBarChipDropDelegate(
-                                target: nil,
-                                dragged: $draggedTokenId,
-                                provisional: $dragComposition,
-                                commit: { commitDrag() },
-                                entered: { dragEnteredTarget() },
-                                exited: { dragLeftTarget() }
-                            )
-                        )
+                        .onDrop(of: [.text], delegate: chipDrop(.endOf(segment.id)))
                 }
             }
-            removeTarget
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+        )
+    }
+
+    private func chipDrop(_ target: MenuBarChipDropTarget) -> MenuBarChipDropDelegate {
+        MenuBarChipDropDelegate(
+            target: target,
+            dragged: $draggedTokenId,
+            provisional: $dragComposition,
+            commit: { commitDrag() },
+            entered: { dragEnteredTarget() },
+            exited: { dragLeftTarget() }
+        )
     }
 
     private var removeTarget: some View {
@@ -389,8 +482,11 @@ struct MenuBarComposerEditor: View {
         case let .quota(fieldId, metric):
             let name = optionsById[fieldId]?.displayDefaultLabel ?? fieldId
             return "\(name) · \(metric.title)"
-        case .space:
-            return L10n.MenuBar.composerBlockSpace
+        case let .space(width):
+            let width = MenuBarToken.clampedSpaceWidth(width)
+            return width == MenuBarToken.defaultSpaceWidth
+                ? L10n.MenuBar.composerBlockSpace
+                : L10n.MenuBar.composerSpaceWidthValue(count: width)
         case let .separator(separator):
             let trimmed = separator.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? L10n.MenuBar.composerBlockGap : trimmed
@@ -461,14 +557,44 @@ struct MenuBarComposerEditor: View {
                 paletteButton(title: L10n.MenuBar.composerBlockNewRow, icon: "return") {
                     add(.newLineBreak())
                 }
-                // Two rows is all the status item can draw; offering a third
-                // break would build a row the bar silently folds away.
-                .disabled(!composition.canAddLineBreak)
+                // Two rows is all the status item can draw, and a group is one
+                // column with two rows of its own — so the cap is asked of the
+                // group the block would land in, not of the whole strip.
+                .disabled(!composition.canAddLineBreak(toSegment: targetSegment))
                 .help(
-                    composition.canAddLineBreak
+                    composition.canAddLineBreak(toSegment: targetSegment)
                         ? L10n.MenuBar.composerNewRowHelp
                         : L10n.MenuBar.composerNewRowCapped
                 )
+                paletteButton(
+                    title: L10n.MenuBar.composerGroupAdd,
+                    icon: "rectangle.split.2x1"
+                ) {
+                    addSegment()
+                }
+                .help(L10n.MenuBar.composerGroupAddHelp)
+            }
+            presetsRow()
+        }
+    }
+
+    /// The saved groups, if there are any. Click one to insert it at the end
+    /// of the strip.
+    @ViewBuilder
+    private func presetsRow() -> some View {
+        if !item.segmentPresets.isEmpty {
+            paletteGroup(L10n.MenuBar.composerPresets) {
+                ForEach(item.segmentPresets) { preset in
+                    paletteButton(title: preset.name, icon: "square.on.square") {
+                        insert(preset: preset)
+                    }
+                    .help(L10n.MenuBar.composerPresetInsertHelp)
+                    .contextMenu {
+                        Button(L10n.MenuBar.composerPresetRemove, role: .destructive) {
+                            mutatePresets { $0.removeAll { $0.id == preset.id } }
+                        }
+                    }
+                }
             }
         }
     }
@@ -526,6 +652,14 @@ struct MenuBarComposerEditor: View {
                 HStack(spacing: 8) {
                     caption(L10n.MenuBar.composerSelected)
                     Spacer(minLength: 8)
+                    // Only where it would do something: a block that already
+                    // starts its group has no group to start.
+                    if (composition.location(of: id)?.offset ?? 0) > 0 {
+                        Button(L10n.MenuBar.composerGroupSplitHere) {
+                            mutate { $0.splitSegment(before: id) }
+                        }
+                        .buttonStyle(.vibeBar)
+                    }
                     Button(L10n.MenuBar.composerActionDuplicate) { mutate { $0.duplicate(id) } }
                         .buttonStyle(.vibeBar)
                     Button(L10n.MenuBar.composerActionRemove) {
@@ -551,10 +685,7 @@ struct MenuBarComposerEditor: View {
                     // carry pre-flush state and silently undo the colour or
                     // threshold the user had just set.
                     apply: { change in
-                        mutate { composed in
-                            guard let index = composed.index(of: id) else { return }
-                            change(&composed.tokens[index])
-                        }
+                        mutate { composed in composed.updateToken(id) { change(&$0) } }
                     }
                 )
                 // Selecting a different chip is a different inspector, so its
@@ -656,6 +787,39 @@ struct MenuBarComposerEditor: View {
         settingsStore.settings.setMenuBarItem(updated)
     }
 
+    /// Presets live on the item, not on the composition, so they survive
+    /// "Start over" — see `MenuBarItemSettings.segmentPresets`.
+    private func mutatePresets(_ change: (inout [MenuBarSegmentPreset]) -> Void) {
+        pendingCommit.flush()
+        var updated = item
+        let before = updated.segmentPresets
+        change(&updated.segmentPresets)
+        guard updated.segmentPresets != before else { return }
+        settingsStore.settings.setMenuBarItem(updated)
+    }
+
+    /// Save the group the dialog was opened on, under the name that was typed.
+    ///
+    /// The blocks are copied exactly as they are, quota ids and all: a preset
+    /// naming a bucket this Mac stopped returning is a block the availability
+    /// warning already explains, and repairing it here would be editing
+    /// something the user arranged.
+    private func savePendingPreset() {
+        defer { savingPresetFrom = nil }
+        guard let id = savingPresetFrom,
+              let index = composition.segmentIndex(of: id),
+              !composition.segments[index].isEmpty
+        else { return }
+        // No fallback name. A derived one would be a localized string in
+        // `settings.json`, which reads as the wrong language the moment the
+        // user switches — the same defect a seeded label had. The Save button
+        // is disabled until they type something instead.
+        let name = presetDraftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let tokens = composition.segments[index].tokens
+        mutatePresets { $0.append(MenuBarSegmentPreset(name: name, tokens: tokens)) }
+    }
+
     /// The pointer is over a drop target again, so the drag is still live.
     private func dragEnteredTarget() {
         dragCancelTask?.cancel()
@@ -691,9 +855,9 @@ struct MenuBarComposerEditor: View {
             draggedTokenId = nil
             return
         }
-        let tokens = reordered.tokens
+        let segments = reordered.segments
         // `mutate` clears the drag state before writing.
-        mutate { $0.tokens = tokens }
+        mutate { $0.segments = segments }
     }
 
     private func removeDragged(_ id: UUID) {
@@ -701,15 +865,36 @@ struct MenuBarComposerEditor: View {
         // Start from the provisional order when there is one, so a block that
         // was dragged across the strip and then onto the bin does not
         // resurrect the intermediate order it passed through.
-        let base = dragComposition ?? composition
-        var tokens = base.tokens
-        tokens.removeAll { $0.id == id }
-        mutate { $0.tokens = tokens }
+        var base = dragComposition ?? composition
+        base.remove(id)
+        let segments = base.segments
+        mutate { $0.segments = segments }
+    }
+
+    /// Where a new block goes: into the group the user is working in, else at
+    /// the end of the strip.
+    private var targetSegment: Int? {
+        selection.flatMap { composition.location(of: $0)?.segment }
+            ?? composition.segments.indices.last
     }
 
     private func add(_ token: MenuBarToken) {
-        mutate { $0.append(token) }
+        let segment = targetSegment
+        mutate { $0.append(token, toSegment: segment) }
         selection = token.id
+    }
+
+    private func addSegment() {
+        let segment = MenuBarSegment()
+        mutate { $0.appendSegment(segment) }
+        // Nothing to select — the group is empty — but the next added block
+        // has to land in it rather than in whatever was selected before.
+        selection = nil
+    }
+
+    private func insert(preset: MenuBarSegmentPreset) {
+        mutate { $0.appendSegment(preset.segment()) }
+        selection = nil
     }
 
     private func templateBinding() -> Binding<MenuBarComposition.Template> {
@@ -930,9 +1115,21 @@ private struct MenuBarTokenInspector: View {
                 .labelsHidden()
                 .frame(width: 220)
             }
-        case .space:
-            // Nothing to configure until the model grows a width; size and
-            // colour below still apply to the gap it draws.
+        case let .space(width):
+            HStack(spacing: 8) {
+                Text(L10n.MenuBar.composerSpaceWidth).frame(width: 62, alignment: .leading)
+                // Same queue as every other repeating control here: a held
+                // stepper auto-repeats, and each repeat would otherwise
+                // publish settings and re-render the menu bar.
+                DebouncedSpaceWidthStepper(
+                    width: MenuBarToken.clampedSpaceWidth(width),
+                    pending: pending,
+                    key: "spaceWidth.\(token.id)"
+                ) { value in
+                    update { $0.kind = .space(width: value) }
+                }
+                Spacer(minLength: 0)
+            }
             Text(L10n.MenuBar.composerSpaceDetail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
@@ -1280,6 +1477,35 @@ private struct MenuBarTokenInspector: View {
     }
 }
 
+/// A space-width stepper on the same debounce as everything else in this
+/// inspector. See `DebouncedPercentStepper` for why the queue is the editor's
+/// rather than this view's.
+private struct DebouncedSpaceWidthStepper: View {
+    let width: Int
+    let pending: PendingEditQueue
+    let key: String
+    let commit: (Int) -> Void
+
+    @State private var draft = MenuBarToken.defaultSpaceWidth
+
+    var body: some View {
+        Stepper(value: $draft, in: MenuBarToken.spaceWidthRange) {
+            Text(L10n.MenuBar.composerSpaceWidthValue(count: draft))
+                .font(.system(size: 11.5).monospacedDigit())
+                .frame(width: 76, alignment: .trailing)
+        }
+        .onAppear { draft = width }
+        .onChange(of: width) { _, updated in
+            if updated != draft { draft = updated }
+        }
+        .onChange(of: draft) { _, value in
+            guard value != width else { return }
+            let commit = self.commit
+            pending.schedule(key) { commit(value) }
+        }
+    }
+}
+
 /// A percent stepper that writes settings on an idle window rather than on
 /// every repeat.
 ///
@@ -1320,11 +1546,21 @@ private struct DebouncedPercentStepper: View {
 
 // MARK: - Drag and drop
 
-/// Reorder onto a chip, or onto the trailing landing strip when `target` is
-/// nil. The move itself is `MenuBarComposition.move`, so the delegate decides
-/// only *where*, never *how*.
+/// Where a drop lands: in front of a chip, or at the end of a group.
+///
+/// A flattened index cannot say which side of a group boundary it means, and a
+/// drag onto the first chip of a group has to land *in* that group or the
+/// gesture does nothing — so the target names the group instead.
+enum MenuBarChipDropTarget {
+    case before(UUID)
+    case endOf(UUID)
+}
+
+/// Reorder onto a chip, or onto a group's trailing landing strip. The move
+/// itself is `MenuBarComposition.move`, so the delegate decides only *where*,
+/// never *how*.
 private struct MenuBarChipDropDelegate: DropDelegate {
-    let target: UUID?
+    let target: MenuBarChipDropTarget
     @Binding var dragged: UUID?
     /// Reordered in place on every crossing. Local state, not settings.
     @Binding var provisional: MenuBarComposition?
@@ -1336,11 +1572,13 @@ private struct MenuBarChipDropDelegate: DropDelegate {
 
     func dropEntered(info: DropInfo) {
         entered()
-        guard let dragged, provisional != nil else { return }
-        if let target {
-            provisional?.move(dragged, before: target)
-        } else {
-            provisional?.move(dragged, to: provisional?.tokens.count ?? 0)
+        guard let dragged, let composition = provisional else { return }
+        switch target {
+        case let .before(id):
+            provisional?.move(dragged, before: id)
+        case let .endOf(id):
+            guard let segment = composition.segmentIndex(of: id) else { return }
+            provisional?.move(dragged, toEndOfSegment: segment)
         }
     }
 
