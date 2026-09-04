@@ -143,6 +143,13 @@ final class SessionManagerModel: ObservableObject {
     @Published private(set) var hits: [SessionSearchHit] = [] {
         didSet { refreshRows() }
     }
+    /// Rows the whole index finds by label — title, id, project folder,
+    /// harness, company — for the current search, beyond the page the list
+    /// has loaded. The loaded page is filtered in memory on every keystroke;
+    /// this is what makes an older session findable by the same fields.
+    @Published private(set) var labelHits: [SessionSummary] = [] {
+        didSet { refreshRows() }
+    }
     @Published private(set) var indexProgress: IndexProgress?
     @Published private(set) var isIndexAvailable = true
 
@@ -290,6 +297,10 @@ final class SessionManagerModel: ObservableObject {
     /// Long enough that a fast typist never pays for an intermediate query,
     /// short enough that pausing to read the list feels like it already ran.
     private static let searchDebounce = Duration.milliseconds(250)
+    /// The label scan walks the index in these pages and stops at this many
+    /// matches — the same ceiling the full-text search has.
+    private nonisolated static let labelScanPageSize = 1_000
+    private nonisolated static let labelHitLimit = 200
     /// The index reports per file; publishing every one of those would put
     /// thousands of main-actor hops between the user and a scroll.
     private nonisolated static let progressStride = 250
@@ -445,6 +456,7 @@ final class SessionManagerModel: ObservableObject {
             self.invalidateIndexDerivedState()
             self.summaries = []
             self.hits = []
+            self.labelHits = []
             self.totalSessionCount = 0
             self.refreshIndex()
         }
@@ -474,12 +486,7 @@ final class SessionManagerModel: ObservableObject {
         let offset = reset ? 0 : summaries.count
         let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
         let since = dateRange.start()
-        let order: SessionSummaryOrder
-        switch sortOrder {
-        case .recentFirst: order = .recentFirst
-        case .oldestFirst: order = .oldestFirst
-        case .byProject: order = .byProject
-        }
+        let order = summaryOrder
         // Chip counts and the Auto Review children are whole-index facts:
         // they do not depend on the harness, date, sort or directory filter
         // that triggered this reload. Re-asking for up to 2 000 review
@@ -561,6 +568,7 @@ final class SessionManagerModel: ObservableObject {
         guard !needle.isEmpty else {
             relatedHitByParent = [:]
             hits = []
+            labelHits = []
             return
         }
         searchGeneration &+= 1
@@ -580,18 +588,39 @@ final class SessionManagerModel: ObservableObject {
     private func runSearch(_ needle: String, generation: UInt64) async {
         guard let service else { return }
         guard !HarnessSelection.isNothing(harnessFilter) else {
-            if generation == searchGeneration { hits = [] }
+            if generation == searchGeneration {
+                hits = []
+                labelHits = []
+            }
             return
         }
         let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
-        let found = (try? await service.search(
+        // Two passes over the index at once: what was said inside sessions,
+        // and what the rows are labelled with. The index only searches text
+        // it has tokenised (titles and messages), so folder, harness and
+        // company matches come from walking its summaries.
+        async let fullText = service.search(
             needle,
             harnesses: harnesses,
-            scopes: searchScopes,
+            // Titles are always in: the scope menu offers only message roles.
+            scopes: searchScopes.union([.title]),
             projectIncludes: directoryIncludes,
             projectExcludes: directoryExcludes,
-            limit: 200
-        )) ?? []
+            limit: Self.labelHitLimit
+        )
+        async let labels = Self.scanLabels(
+            service: service,
+            needle: needle,
+            harnesses: harnesses,
+            since: dateRange.start(),
+            projectIncludes: directoryIncludes,
+            projectExcludes: directoryExcludes,
+            order: summaryOrder
+        )
+        let found = (try? await fullText) ?? []
+        let labelled = await labels
+        guard generation == searchGeneration else { return }
+        labelHits = labelled
 
         // Resolve every Auto Review child to its parent in one hop.
         //
@@ -645,6 +674,53 @@ final class SessionManagerModel: ObservableObject {
         hits = resolved
     }
 
+    private var summaryOrder: SessionSummaryOrder {
+        switch sortOrder {
+        case .recentFirst: .recentFirst
+        case .oldestFirst: .oldestFirst
+        case .byProject: .byProject
+        }
+    }
+
+    /// Walks the index's summaries, under the same filters and order as the
+    /// list, and keeps the ones `matches` finds — so a session older than the
+    /// loaded page is still found by its folder or harness. Detached, because
+    /// a needle that matches nothing reads every summary there is; the pages
+    /// are large so that is a dozen round trips, not fifty.
+    private nonisolated static func scanLabels(
+        service: SessionIndexService,
+        needle: String,
+        harnesses: [Harness]?,
+        since: Date?,
+        projectIncludes: [String],
+        projectExcludes: [String],
+        order: SessionSummaryOrder
+    ) async -> [SessionSummary] {
+        await Task.detached(priority: .userInitiated) {
+            var out: [SessionSummary] = []
+            var offset = 0
+            while out.count < labelHitLimit, !Task.isCancelled {
+                guard let page = try? await service.summaryPage(
+                    harnesses: harnesses,
+                    since: since,
+                    projectIncludes: projectIncludes,
+                    projectExcludes: projectExcludes,
+                    excludingProviderVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix,
+                    order: order,
+                    offset: offset,
+                    limit: labelScanPageSize
+                ) else { break }
+                for summary in page.summaries where matches(summary, needle: needle) {
+                    out.append(summary)
+                    if out.count >= labelHitLimit { break }
+                }
+                offset += page.summaries.count
+                if page.summaries.isEmpty || offset >= page.totalCount { break }
+            }
+            return out
+        }.value
+    }
+
     /// One detached pass over the deduped parent ids. Cancellation is checked
     /// per id so an abandoned search stops paying immediately.
     private nonisolated static func resolveParentSummaries(
@@ -696,6 +772,7 @@ final class SessionManagerModel: ObservableObject {
         let input = RowInput(
             summaries: summaries,
             hits: hits,
+            labelHits: labelHits,
             relatedHitByParent: relatedHitByParent,
             reviewCounts: reviewSummariesByParent.reduce(into: [String: Int]()) {
                 $0[$1.key] = $1.value.count
@@ -727,6 +804,7 @@ final class SessionManagerModel: ObservableObject {
     private struct RowInput: Sendable {
         let summaries: [SessionSummary]
         let hits: [SessionSearchHit]
+        let labelHits: [SessionSummary]
         let relatedHitByParent: [String: SessionSummary]
         let reviewCounts: [String: Int]
         let needle: String
@@ -751,19 +829,25 @@ final class SessionManagerModel: ObservableObject {
     /// before the character appeared in the field.
     private nonisolated static func buildRows(_ input: RowInput) async -> RowOutput {
         await Task.detached(priority: .userInitiated) {
-            let base: [Row]
-            if !input.needle.isEmpty, !input.hits.isEmpty {
-                base = input.hits.map {
-                    Row(
-                        summary: $0.summary,
-                        snippet: $0.snippet,
-                        matchedSeq: $0.matchedSeq,
-                        matchedRelated: input.relatedHitByParent[$0.summary.id],
-                        reviewCount: input.reviewCounts[$0.summary.sessionID] ?? 0
-                    )
-                }
-            } else {
-                base = filteredSummaries(input).map {
+            // Both kinds of hit, together: what the index found inside
+            // sessions (with a snippet), then every loaded row whose own
+            // label matches and the index did not already return. Full-text
+            // hits used to replace the label matches outright, so typing
+            // "codex" found messages that said codex and lost the Codex
+            // sessions themselves.
+            let hitRows = input.needle.isEmpty ? [] : input.hits.map {
+                Row(
+                    summary: $0.summary,
+                    snippet: $0.snippet,
+                    matchedSeq: $0.matchedSeq,
+                    matchedRelated: input.relatedHitByParent[$0.summary.id],
+                    reviewCount: input.reviewCounts[$0.summary.sessionID] ?? 0
+                )
+            }
+            let hitIDs = Set(hitRows.map(\.id))
+            let labelRows = filteredSummaries(input)
+                .filter { !hitIDs.contains($0.id) }
+                .map {
                     Row(
                         summary: $0,
                         snippet: nil,
@@ -772,7 +856,7 @@ final class SessionManagerModel: ObservableObject {
                         reviewCount: input.reviewCounts[$0.sessionID] ?? 0
                     )
                 }
-            }
+            let base = hitRows + labelRows
             let rows = input.needle.isEmpty
                 ? base
                 : sorted(base.filter { passesFilters($0, input) }, order: input.sortOrder)
@@ -828,17 +912,37 @@ final class SessionManagerModel: ObservableObject {
             && date.allSatisfy { Int($0) != nil }
     }
 
+    /// The loaded page filtered in memory — instant, on every keystroke —
+    /// followed by what the index-wide label scan added once it landed.
     private nonisolated static func filteredSummaries(_ input: RowInput) -> [SessionSummary] {
         guard !input.needle.isEmpty else { return input.summaries }
-        guard input.scopes.contains(.title) else { return [] }
-        return input.summaries.filter { matches($0, needle: input.needle) }
+        var seen: Set<String> = []
+        var out: [SessionSummary] = []
+        for summary in input.summaries where matches(summary, needle: input.needle) {
+            if seen.insert(summary.id).inserted { out.append(summary) }
+        }
+        for summary in input.labelHits where seen.insert(summary.id).inserted {
+            out.append(summary)
+        }
+        return out
     }
 
-    /// Immediate metadata preview while the debounced SQLite query is in
-    /// flight. It obeys the title scope exactly; project paths have their own
-    /// include/exclude controls and transcript roles are answered by FTS.
+    /// Whether a row is found by what it shows: its title, its id, its
+    /// project folder (the last path component and the whole path), and the
+    /// harness and company it is labelled with. Not gated on a scope — the
+    /// scopes choose which *messages* the index searches; a search that
+    /// cannot find "codex" or a folder name that is right there on the row
+    /// is the one nobody trusts.
     nonisolated static func matches(_ summary: SessionSummary, needle: String) -> Bool {
-        let fields = [summary.title, summary.sessionID]
+        let harness = summary.effectiveHarness
+        let fields: [String?] = [
+            summary.title,
+            summary.sessionID,
+            summary.projectDir,
+            projectBucket(for: summary).title,
+            harness.displayName,
+            harness.companyName,
+        ]
         for field in fields {
             guard let field else { continue }
             if field.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil {
@@ -1369,6 +1473,7 @@ final class SessionManagerModel: ObservableObject {
             return
         }
         hits = []
+        labelHits = []
         Task { [weak self] in
             var dropped = false
             do {

@@ -127,9 +127,7 @@ struct SessionFiltersBar: View {
                         model.refreshIndex()
                     }
                     .help(L10n.Workbench.Sessions.refreshHelp)
-                    allProvidersChip
-                    companyFilterMenu
-                    harnessFilterMenu
+                    harnessPicker
                     rangeMenu
                     sortMenu
                     optionsMenu
@@ -172,15 +170,27 @@ struct SessionFiltersBar: View {
         .workbenchFieldSurface(cornerRadius: 15)
     }
 
+    /// What the search field covers. Titles, project folders and harness
+    /// names are always searched — they are what the row shows, and a search
+    /// that cannot find what is on screen is the one nobody trusts. The
+    /// toggles are for what is *inside* a session, by message role, and the
+    /// switch that makes those searchable at all sits right here rather than
+    /// two menus away.
     private var searchScopeMenu: some View {
-        Menu {
-            ForEach(SessionSearchScope.allCases, id: \.self) { scope in
-                Toggle(scopeTitle(scope), isOn: Binding(
-                    get: { model.searchScopes.contains(scope) },
-                    set: { _ in model.toggleSearchScope(scope) }
-                ))
+        let roles = SessionSearchScope.allCases.filter { $0 != .title }
+        return Menu {
+            Text(L10n.Workbench.Sessions.Search.metadataAlways)
+            Divider()
+            Section(L10n.Workbench.Sessions.Search.messagesHeading) {
+                ForEach(roles, id: \.self) { scope in
+                    Toggle(scopeTitle(scope), isOn: Binding(
+                        get: { model.searchScopes.contains(scope) },
+                        set: { _ in model.toggleSearchScope(scope) }
+                    ))
+                }
             }
             Divider()
+            Toggle(L10n.Workbench.Sessions.Options.indexMessageText, isOn: bodyIndexingBinding)
             Text(model.isBodyIndexingEnabled
                 ? L10n.Workbench.Sessions.Search.bodyIndexed
                 : L10n.Workbench.Sessions.Search.bodyNotIndexed)
@@ -188,7 +198,7 @@ struct SessionFiltersBar: View {
             menuLabel(
                 systemImage: "text.magnifyingglass",
                 title: L10n.Workbench.Sessions.Filter.scope,
-                detail: AppLocale.number(model.searchScopes.count)
+                detail: AppLocale.number(roles.count(where: model.searchScopes.contains))
             )
         }
         .menuStyle(.button)
@@ -317,101 +327,35 @@ struct SessionFiltersBar: View {
         )
     }
 
-    /// The All chip is a switch, not a shortcut: lit means every harness is
-    /// listed and clicking it clears the selection outright; anything else
-    /// and it puts every harness back.
-    private var allProvidersChip: some View {
-        let selected = model.harnessFilter == nil
-        return Button {
-            model.toggleAllHarnesses()
-        } label: {
-            Text(L10n.Common.all)
-                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                .foregroundStyle(selected ? .primary : .secondary)
-                .padding(.horizontal, 10)
-                .frame(minHeight: 28)
-        }
-        .buttonStyle(.vibeBar)
-        .background(chipBackground(tint: .accentColor, selected: selected))
-        .help(selected
-            ? L10n.Usage.Filters.allHarnessesHelpNone
-            : L10n.Workbench.Sessions.AllChip.helpUnselected)
-        .accessibilityLabel(selected
-            ? L10n.Usage.Filters.allHarnessesSelectNone
-            : L10n.Workbench.Sessions.AllChip.labelUnselected)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-    }
-
-    /// L1 companies and harnesses are separate compact menus: the company
-    /// remains a batch control, while the row no longer pretends OpenAI and
-    /// Codex are peers or consumes the entire toolbar with nine chips.
-    private var companyFilterMenu: some View {
-        Menu {
-            ForEach(availableCompanyGroups) { group in
-                Toggle(group.company.vendorName, isOn: Binding(
-                    get: { isSelected(group) },
-                    set: { _ in model.toggleHarnesses(group.harnessSet) }
-                ))
-            }
-        } label: {
-            menuLabel(
-                systemImage: "building.2",
-                title: L10n.Workbench.Sessions.Filter.company,
-                detail: selectedCompanySummary
+    /// One pill, one picker: every harness grouped under its company, with
+    /// the session count beside each, findable by typing any of its names.
+    /// The two menus this replaces closed on every click, so narrowing to
+    /// three harnesses meant opening them three times.
+    private var harnessPicker: some View {
+        FilterPickerButton(
+            density: density,
+            systemImage: "terminal",
+            title: L10n.Usage.Table.Column.harness,
+            detail: selectedHarnessSummary,
+            prominent: model.harnessFilter != nil,
+            accessibilityLabel: L10n.Usage.Table.Column.harness
+        ) {
+            FilterPickerList(
+                density: density,
+                sections: HarnessPickerRows.sections(
+                    groups: availableCompanyGroups,
+                    density: density,
+                    detail: { AppLocale.number(model.harnessCounts[$0] ?? 0) }
+                ),
+                searchPlaceholder: L10n.Workbench.Filter.searchHarnesses,
+                isSelected: { model.harnessFilter?.contains($0) ?? true },
+                toggle: { model.toggleHarness($0) },
+                solo: { model.soloHarness($0) },
+                toggleGroup: { model.toggleHarnesses(Set($0)) },
+                selectAll: { model.setHarnessFilter(nil) },
+                selectNone: { model.setHarnessFilter([]) }
             )
         }
-        .menuStyle(.button)
-        .buttonStyle(WorkbenchPillButtonStyle())
-        .menuIndicator(.hidden)
-        .fixedSize()
-    }
-
-    private var harnessFilterMenu: some View {
-        Menu {
-            ForEach(availableHarnesses, id: \.self) { harness in
-                Toggle(isOn: Binding(
-                    get: { model.harnessFilter?.contains(harness) ?? true },
-                    set: { _ in model.toggleHarness(harness) }
-                )) {
-                    Label {
-                        Text(L10n.Workbench.Sessions.Filter.harnessCount(
-                            harness: harness.displayName,
-                            count: model.harnessCounts[harness] ?? 0
-                        ))
-                    } icon: {
-                        // Monochrome on purpose, unlike the list this menu
-                        // filters. A highlighted menu row is painted in the
-                        // *user's* accent colour, which can be any hue, so no
-                        // fixed brand tint can be guaranteed legible on it —
-                        // and the label spells the harness out anyway.
-                        HarnessBrandIconView(harness: harness, size: 12)
-                    }
-                }
-            }
-        } label: {
-            menuLabel(
-                systemImage: "terminal",
-                title: L10n.Usage.Table.Column.harness,
-                detail: selectedHarnessSummary
-            )
-        }
-        .menuStyle(.button)
-        .buttonStyle(WorkbenchPillButtonStyle())
-        .menuIndicator(.hidden)
-        .fixedSize()
-    }
-
-    private func isSelected(_ group: Harness.ChipGroup) -> Bool {
-        guard let filter = model.harnessFilter else { return true }
-        return group.harnesses.allSatisfy(filter.contains)
-    }
-
-    private var selectedCompanySummary: String {
-        let selected = availableCompanyGroups.count(where: isSelected)
-        guard selected != availableCompanyGroups.count else { return L10n.Common.all }
-        return L10n.Workbench.Sessions.fraction(
-            shown: selected, total: availableCompanyGroups.count
-        )
     }
 
     private var selectedHarnessSummary: String {
@@ -421,12 +365,6 @@ struct SessionFiltersBar: View {
         return L10n.Workbench.Sessions.fraction(shown: count, total: availableHarnesses.count)
     }
 
-    private func chipBackground(tint: Color, selected: Bool) -> some View {
-        ZStack {
-            Capsule().fill(tint.opacity(selected ? 0.16 : 0.05))
-            Capsule().stroke(tint.opacity(selected ? 0.55 : 0.18), lineWidth: 0.8)
-        }
-    }
 
     // MARK: - Controls
 
