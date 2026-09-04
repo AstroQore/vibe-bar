@@ -96,6 +96,14 @@ struct MenuBarComposerEditor: View {
     /// editable a few controls above this one.
     private struct SnapshotKey: Equatable {
         var requirements: [MenuBarQuotaRequirement]
+        /// What the block being dragged out of the palette asks for, if
+        /// anything. The preview draws the provisional order, so a quota the
+        /// committed strip never referenced has no snapshot and would be
+        /// missing from the preview for the whole drag. Keyed off the token
+        /// rather than the provisional order on purpose: the order changes on
+        /// every chip the pointer crosses, and rebuilding there would put
+        /// quota resolution on the drag path.
+        var stagedRequirements: [MenuBarQuotaRequirement]
         var displayMode: DisplayMode
         var colorBasis: MenuBarColorBasis
         var customLabels: [String: String]
@@ -113,10 +121,18 @@ struct MenuBarComposerEditor: View {
     private var snapshotKey: SnapshotKey {
         SnapshotKey(
             requirements: composition.quotaRequirements,
+            stagedRequirements: stagedRequirements,
             displayMode: settingsStore.settings.displayMode,
             colorBasis: settingsStore.settings.menuBarColorBasis,
             customLabels: item.customLabels
         )
+    }
+
+    private var stagedRequirements: [MenuBarQuotaRequirement] {
+        guard let token = draggedNewToken else { return [] }
+        var staged = MenuBarComposition(isEnabled: true)
+        staged.append(token, to: nil)
+        return staged.quotaRequirements
     }
 
     var body: some View {
@@ -263,28 +279,43 @@ struct MenuBarComposerEditor: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             caption(L10n.MenuBar.composerBlocks)
-            if composition.segments.isEmpty {
-                // A drop target as well as a message: with no chips and no
-                // landing strips left, this is the only place a palette drag
-                // can reach, and without it the strip could only be refilled
-                // by clicking.
-                Text(L10n.MenuBar.composerBlocksEmpty)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onDrop(of: [.menuBarBlock], delegate: chipDrop(.newStrip))
-            } else {
-                // The groups themselves wrap, the same way the chips inside
-                // them do — a strip can hold more columns than one line of
-                // this settings pane is wide.
-                MenuBarChipFlow(spacing: 8, lineSpacing: 8) {
-                    ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
-                        segmentBox(segment, index: index, of: composition, availability: availability)
+            // Keyed on the *committed* strip, not the one being drawn. With no
+            // chips and no landing strips left, this placeholder is the only
+            // target a palette drag can reach — and staging the block makes
+            // the drawn strip non-empty at once, so switching on that would
+            // pull the target out from under the pointer before the drop
+            // could land, and the 200 ms rollback would undo the insertion.
+            if self.composition.segments.isEmpty {
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                        .contentShape(Rectangle())
+                        .onDrop(of: [.menuBarBlock], delegate: chipDrop(.newStrip))
+                    if composition.segments.isEmpty {
+                        Text(L10n.MenuBar.composerBlocksEmpty)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        segmentFlow(composition, availability: availability)
                     }
                 }
+            } else {
+                segmentFlow(composition, availability: availability)
             }
             removeTarget
+        }
+    }
+
+    /// The groups themselves wrap, the same way the chips inside them do — a
+    /// strip can hold more columns than one line of this settings pane is wide.
+    private func segmentFlow(
+        _ composition: MenuBarComposition,
+        availability: MenuBarComposition.Availability
+    ) -> some View {
+        MenuBarChipFlow(spacing: 8, lineSpacing: 8) {
+            ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
+                segmentBox(segment, index: index, of: composition, availability: availability)
+            }
         }
     }
 
@@ -1083,7 +1114,8 @@ struct MenuBarComposerEditor: View {
 
     private func rebuildSnapshots() {
         snapshots = MenuBarStripResolver.snapshots(
-            for: composition,
+            // The order being drawn, so a block staged mid-drag resolves.
+            for: displayedComposition,
             itemSettings: item,
             settings: settingsStore.settings,
             environment: environment
