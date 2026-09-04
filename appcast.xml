@@ -4,22 +4,22 @@
         <title>Vibe Bar</title>
         <item>
             <title>1.6.2</title>
-            <pubDate>Fri, 04 Sep 2026 06:41:23 +0000</pubDate>
-            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.2-dev.65</link>
+            <pubDate>Fri, 04 Sep 2026 07:23:33 +0000</pubDate>
+            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.2-dev.66</link>
             <sparkle:channel>dev</sparkle:channel>
-            <sparkle:version>65</sparkle:version>
+            <sparkle:version>66</sparkle:version>
             <sparkle:shortVersionString>1.6.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.6.2 (dev)
 
-See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.2-dev.65).
+See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.2-dev.66).
 ]]></description>
-            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.6.2-dev.65/Vibe-Bar-1.6.2-dev.65-macOS-arm64.zip" length="13135983" type="application/octet-stream" sparkle:edSignature="ZwrIueTT0Ekng1DCunWDh76LyOuAvOXmpUoG02IBtp7cjRQcsyOEPI1dyfLEYXUORlEgoZCV/+LrwY3cMMZTAw=="/>
+            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.6.2-dev.66/Vibe-Bar-1.6.2-dev.66-macOS-arm64.zip" length="13136285" type="application/octet-stream" sparkle:edSignature="XBKvYsahvzhwcQWqKyQI0SUGKAeywlRf3VfcKbZh2lt1Q6rxfezM3bHACRaZd5BEuhkVA9qn3rn8ZM39y1/6CQ=="/>
         </item>
         <item>
             <title>1.6.1</title>
-            <pubDate>Fri, 04 Sep 2026 06:41:22 +0000</pubDate>
+            <pubDate>Fri, 04 Sep 2026 07:23:32 +0000</pubDate>
             <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.1</link>
             <sparkle:version>60</sparkle:version>
             <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
