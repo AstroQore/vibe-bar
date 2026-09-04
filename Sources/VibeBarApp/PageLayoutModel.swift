@@ -633,6 +633,64 @@ final class PageLayoutModel: ObservableObject {
         apply(next, for: page, available: available, mode: .manual)
     }
 
+    /// One write for a drop on the Layout Studio's stage: the columns the drag
+    /// produced, the segment membership it implies, and the mode such an
+    /// arrangement lives in — plus, for a card dragged back out of the hidden
+    /// tray, the visibility flip. One write rather than `setMode` followed by
+    /// `applySegments`, because every settings write fans out to every
+    /// subscriber and a drop is one gesture.
+    ///
+    /// A page that was `auto` or `compact` becomes `manual` here: the user
+    /// moved a card with their hand, and an arrangement the balancer would
+    /// undo on the next measurement is not what they asked for. `available`
+    /// must already include a card being un-hidden.
+    func applyStudioArrangement(
+        _ config: PageLayoutConfig,
+        segments: [[PageLayoutModuleID]],
+        for page: PageLayoutPageID,
+        available: [PageLayoutModuleID],
+        unhiding: PageLayoutModuleID? = nil
+    ) {
+        let stored = storedLayouts[page]
+        let merged = PageLayoutResolver.mergingEdit(
+            config,
+            into: configuredConfig(for: page),
+            available: available
+        )
+        var hidden = stored?.hidden ?? []
+        if let unhiding {
+            hidden.removeAll { $0 == unhiding }
+        }
+        settingsStore.settings.pageLayouts[page] = StoredPageLayout(
+            mode: .manual,
+            ratio: merged.ratio,
+            columns: merged.columns,
+            segments: PageLayoutSegments.mergingEdit(
+                segments,
+                into: stored?.segments ?? [],
+                available: available
+            ),
+            hidden: hidden
+        )
+        compactPackings.removeValue(forKey: page)
+    }
+
+    /// The saved entry as it is, for the Studio's undo.
+    func storedLayout(for page: PageLayoutPageID) -> StoredPageLayout? {
+        storedLayouts[page]
+    }
+
+    /// Put a saved entry back exactly — `nil` forgets the page, which is what
+    /// undoing the first edit of an untouched page means.
+    func restoreStoredLayout(_ stored: StoredPageLayout?, for page: PageLayoutPageID) {
+        if let stored {
+            settingsStore.settings.pageLayouts[page] = stored
+        } else {
+            settingsStore.settings.pageLayouts.removeValue(forKey: page)
+        }
+        compactPackings.removeValue(forKey: page)
+    }
+
     /// Forget a page's arrangement, returning it to the built-in layout. The
     /// only path that discards saved intent, including the positions of modules
     /// that are not on screen. Saved presets are untouched — they exist so an

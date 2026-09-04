@@ -63,7 +63,7 @@ chart is two providers as far as the reader is concerned.
 gradient because it encodes magnitude. Backgrounds, cards, sidebars and
 buttons may not.
 
-## 3. The one exception: the mini window's Liquid Glass
+## 3. The two exceptions: floating surfaces over content
 
 `MiniQuotaWindowView` wraps its content in
 `.glassEffect(.regular.interactive(), in: .rect(cornerRadius:
@@ -72,9 +72,19 @@ borderless always-on-top panel — the outer *surface* of a floating
 window, which is exactly what the effect is for. Its **content** is
 flat like everywhere else.
 
-Do not remove it, do not copy it. No other view in the app may call
-`.glassEffect` or use `.regularMaterial` / `.ultraThinMaterial`. If you
-find one, it is a regression.
+The Layout Studio (`LayoutStudioView`) is the second, for the same
+reason. Its stage shows a real popover page or mini window, and its
+chrome — the subject menu, the mode and zoom pills, the hide well, the
+tray, the hint, the inspector — floats *over* that surface rather than
+sitting in a page beside it. Glass and material are what let the chrome
+sit on top of live content without hiding it, which is the mini window's
+situation again. The studio's own content is flat: the surface on the
+stage draws exactly as it does in production, and the tray's chips are
+the flat pill recipe.
+
+Do not remove either, do not copy them. No other view in the app may
+call `.glassEffect` or use `.regularMaterial` / `.ultraThinMaterial`. If
+you find one, it is a regression.
 
 ## 4. Where the tokens live
 
@@ -113,11 +123,13 @@ That is the whole recipe. Then:
 
 ## 6. Review checklist
 
-- `grep -rn "glassEffect\|regularMaterial\|ultraThinMaterial" Sources/`
-  returns exactly one hit: `MiniQuotaWindowView`.
+- `grep -rln "glassEffect\|regularMaterial\|ultraThinMaterial" Sources/`
+  returns exactly two files: `MiniQuotaWindowView` and
+  `LayoutStudioView` (§ 3).
 - `grep -rn "\.shadow(" Sources/VibeBarApp/Views/` returns only
-  data-viz marks (`PaceMarkerCapsule`) and drag affordances
-  (`LayoutEditorView`), never a card.
+  data-viz marks (`PaceMarkerCapsule`), drag affordances
+  (`LayoutEditorView`, `LayoutStudioView`'s drag image) and the
+  studio's lit stage, never a card.
 - No *new* card draws its own `RoundedRectangle` background and stroke.
   Small chrome (a 6pt status chip, a 7pt selection row) may still carry
   its own radius; a card may not.

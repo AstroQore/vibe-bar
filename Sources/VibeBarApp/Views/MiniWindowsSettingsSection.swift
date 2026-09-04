@@ -435,15 +435,7 @@ struct MiniWindowsSettingsSection: View {
     }
 
     private func modeIcon(_ mode: MiniWindowDisplayMode) -> String {
-        switch mode {
-        case .regular: return "circle.grid.2x2"
-        case .compact: return "chart.bar"
-        case .ledger:  return "list.bullet"
-        case .strip:   return "rectangle.split.3x1"
-        case .tile:    return "square.grid.3x2"
-        case .focus:   return "scope"
-        case .rail:    return "timeline.selection"
-        }
+        mode.symbolName
     }
 
     // MARK: - Field picker

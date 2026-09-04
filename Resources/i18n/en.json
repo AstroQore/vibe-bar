@@ -3190,6 +3190,50 @@
     "comment": "Shown when a layout page has no popover tab to draw",
     "value": "This page has no popover tab to preview."
   },
+  "settings.layout.studioHintFixedStyle": {
+    "comment": "One-line hint for a mini window style (Focus, Rail) that arranges itself",
+    "value": "This style arranges itself. Add or remove fields from the tray below, or open the controls."
+  },
+  "settings.layout.studioHintMini": {
+    "comment": "One-line hint shown when the studio opens on a mini window whose cells can be dragged",
+    "value": "Drag a gauge to reorder it. Drop it on the well below to take it out of the window."
+  },
+  "settings.layout.studioHintPage": {
+    "comment": "One-line hint shown when the studio opens on a popover page",
+    "value": "Drag a card to move it. Drop it on the well below to hide it."
+  },
+  "settings.layout.studioModeAuto": {
+    "comment": "Arranging mode in the studio's mode pill",
+    "value": "Auto"
+  },
+  "settings.layout.studioModeCompact": {
+    "comment": "Arranging mode in the studio's mode pill",
+    "value": "Compact"
+  },
+  "settings.layout.studioModeManual": {
+    "comment": "Arranging mode in the studio's mode pill",
+    "value": "Manual"
+  },
+  "settings.layout.studioRatioEqual": {
+    "comment": "Tooltip for a column-width split",
+    "value": "Equal columns"
+  },
+  "settings.layout.studioRatioNarrowWide": {
+    "comment": "Tooltip for a column-width split",
+    "value": "Narrow left, wide right"
+  },
+  "settings.layout.studioRatioWideNarrow": {
+    "comment": "Tooltip for a column-width split",
+    "value": "Wide left, narrow right"
+  },
+  "settings.layout.studioSubjectMiniWindows": {
+    "comment": "Menu section in the studio's subject picker: the mini windows",
+    "value": "Mini windows"
+  },
+  "settings.layout.studioSubjectPages": {
+    "comment": "Menu section in the studio's subject picker: the popover's pages",
+    "value": "Popover pages"
+  },
   "settings.layout.studioTitle": {
     "comment": "Title of the layout studio window",
     "value": "Layout Studio"
@@ -3198,13 +3242,49 @@
     "comment": "Tooltip for the button that hides the studio's controls",
     "value": "Show or hide the controls"
   },
-  "settings.layout.studioZoomActual": {
-    "comment": "Zoom control: draw the surface at its own size",
-    "value": "Actual size"
+  "settings.layout.studioTrayAddHelp": {
+    "comment": "Tooltip for a not-shown field's chip in the tray",
+    "value": "Click to add it at the end, or drag it into the window."
+  },
+  "settings.layout.studioTrayHidden": {
+    "comment": "Caption of the tray of hidden cards under a page",
+    "value": "Hidden"
+  },
+  "settings.layout.studioTrayNotShown": {
+    "comment": "Caption of the tray of fields a mini window is not showing",
+    "value": "Not shown"
+  },
+  "settings.layout.studioTrayShowHelp": {
+    "comment": "Tooltip for a hidden card's chip in the tray",
+    "value": "Click to show it where it was, or drag it onto the page."
+  },
+  "settings.layout.studioUndo": {
+    "comment": "Tooltip for the studio's undo button",
+    "value": "Undo the last change (⌘Z)"
+  },
+  "settings.layout.studioWellHide": {
+    "comment": "Drop target shown under a page while a card is being dragged",
+    "value": "Hide"
+  },
+  "settings.layout.studioWellRemove": {
+    "comment": "Drop target shown under a mini window while a gauge is being dragged",
+    "value": "Remove"
   },
   "settings.layout.studioZoomFit": {
     "comment": "Zoom control: shrink the surface to fit the stage",
     "value": "Fit"
+  },
+  "settings.layout.studioZoomFitHelp": {
+    "comment": "Tooltip for the zoom readout, which resets the zoom to fit the stage",
+    "value": "Fit to the window (⌘0)"
+  },
+  "settings.layout.studioZoomIn": {
+    "comment": "Tooltip for the studio's zoom-in button",
+    "value": "Zoom in (⌘+)"
+  },
+  "settings.layout.studioZoomOut": {
+    "comment": "Tooltip for the studio's zoom-out button",
+    "value": "Zoom out (⌘−)"
   },
   "settings.mcp.allowRefresh": {
     "comment": "Toggle label",

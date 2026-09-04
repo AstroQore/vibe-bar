@@ -15,7 +15,7 @@ Humans are welcome here too. The shorter, human-focused version is
 | [AGENTS.md](AGENTS.md) (this file) | AI agents (and curious humans) | Comprehensive operating manual: orientation, build, conventions, home-directory rule, PR, release. |
 | [AGENT-DEPLOY.md](AGENT-DEPLOY.md) | AI agents | Focused "clone → build → smoke-test → optional install" walkthrough. |
 | [AGENT-PR.md](AGENT-PR.md) | AI agents | Focused "branch → verify → push → open PR" walkthrough. |
-| [docs/DESIGN.md](docs/DESIGN.md) | Anyone touching UI | The visual language: the one flat card recipe, density profiles, where the tokens live, and the mini window's Liquid Glass exception. |
+| [docs/DESIGN.md](docs/DESIGN.md) | Anyone touching UI | The visual language: the one flat card recipe, density profiles, where the tokens live, and the two Liquid Glass exceptions (the mini window, the Layout Studio's chrome). |
 | [RELEASING.md](RELEASING.md) | Maintainers | Tag → verified asset → draft GitHub Release, with optional Developer ID notarization. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Humans | Short version of this file's project rules. |
 | [SECURITY.md](SECURITY.md) | Anyone | Security disclosure policy and what not to paste in reports. |

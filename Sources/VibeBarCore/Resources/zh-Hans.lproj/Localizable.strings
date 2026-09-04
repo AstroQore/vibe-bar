@@ -2081,17 +2081,77 @@
 /* Shown when a layout page has no popover tab to draw */
 "settings.layout.previewUnavailable" = "该页面没有可预览的 popover 标签页。";
 
+/* One-line hint for a mini window style (Focus, Rail) that arranges itself */
+"settings.layout.studioHintFixedStyle" = "这个样式会自动排布。可在下方托盘增减字段，或打开控件。";
+
+/* One-line hint shown when the studio opens on a mini window whose cells can be dragged */
+"settings.layout.studioHintMini" = "拖动指标即可重新排序；拖到下方的槽里即可从窗口移除。";
+
+/* One-line hint shown when the studio opens on a popover page */
+"settings.layout.studioHintPage" = "拖动卡片即可移动；拖到下方的槽里可以隐藏它。";
+
+/* Arranging mode in the studio's mode pill */
+"settings.layout.studioModeAuto" = "自动";
+
+/* Arranging mode in the studio's mode pill */
+"settings.layout.studioModeCompact" = "紧凑";
+
+/* Arranging mode in the studio's mode pill */
+"settings.layout.studioModeManual" = "手动";
+
+/* Tooltip for a column-width split */
+"settings.layout.studioRatioEqual" = "等宽";
+
+/* Tooltip for a column-width split */
+"settings.layout.studioRatioNarrowWide" = "左窄右宽";
+
+/* Tooltip for a column-width split */
+"settings.layout.studioRatioWideNarrow" = "左宽右窄";
+
+/* Menu section in the studio's subject picker: the mini windows */
+"settings.layout.studioSubjectMiniWindows" = "迷你窗口";
+
+/* Menu section in the studio's subject picker: the popover's pages */
+"settings.layout.studioSubjectPages" = "弹出面板页面";
+
 /* Title of the layout studio window */
 "settings.layout.studioTitle" = "布局工作台";
 
 /* Tooltip for the button that hides the studio's controls */
 "settings.layout.studioToggleInspector" = "显示或隐藏控件";
 
-/* Zoom control: draw the surface at its own size */
-"settings.layout.studioZoomActual" = "实际大小";
+/* Tooltip for a not-shown field's chip in the tray */
+"settings.layout.studioTrayAddHelp" = "点按即可添加到末尾，或拖进窗口。";
+
+/* Caption of the tray of hidden cards under a page */
+"settings.layout.studioTrayHidden" = "已隐藏";
+
+/* Caption of the tray of fields a mini window is not showing */
+"settings.layout.studioTrayNotShown" = "未显示";
+
+/* Tooltip for a hidden card's chip in the tray */
+"settings.layout.studioTrayShowHelp" = "点按即可回到原位显示，或拖到页面上。";
+
+/* Tooltip for the studio's undo button */
+"settings.layout.studioUndo" = "撤销上一步（⌘Z）";
+
+/* Drop target shown under a page while a card is being dragged */
+"settings.layout.studioWellHide" = "隐藏";
+
+/* Drop target shown under a mini window while a gauge is being dragged */
+"settings.layout.studioWellRemove" = "移除";
 
 /* Zoom control: shrink the surface to fit the stage */
 "settings.layout.studioZoomFit" = "适应";
+
+/* Tooltip for the zoom readout, which resets the zoom to fit the stage */
+"settings.layout.studioZoomFitHelp" = "适应窗口（⌘0）";
+
+/* Tooltip for the studio's zoom-in button */
+"settings.layout.studioZoomIn" = "放大（⌘+）";
+
+/* Tooltip for the studio's zoom-out button */
+"settings.layout.studioZoomOut" = "缩小（⌘−）";
 
 /* Toggle label */
 "settings.mcp.allowRefresh" = "允许 agent 刷新额度";

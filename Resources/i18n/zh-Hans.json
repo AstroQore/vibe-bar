@@ -2138,17 +2138,77 @@
   "settings.layout.previewUnavailable": {
     "value": "该页面没有可预览的 popover 标签页。"
   },
+  "settings.layout.studioHintFixedStyle": {
+    "value": "这个样式会自动排布。可在下方托盘增减字段，或打开控件。"
+  },
+  "settings.layout.studioHintMini": {
+    "value": "拖动指标即可重新排序；拖到下方的槽里即可从窗口移除。"
+  },
+  "settings.layout.studioHintPage": {
+    "value": "拖动卡片即可移动；拖到下方的槽里可以隐藏它。"
+  },
+  "settings.layout.studioModeAuto": {
+    "value": "自动"
+  },
+  "settings.layout.studioModeCompact": {
+    "value": "紧凑"
+  },
+  "settings.layout.studioModeManual": {
+    "value": "手动"
+  },
+  "settings.layout.studioRatioEqual": {
+    "value": "等宽"
+  },
+  "settings.layout.studioRatioNarrowWide": {
+    "value": "左窄右宽"
+  },
+  "settings.layout.studioRatioWideNarrow": {
+    "value": "左宽右窄"
+  },
+  "settings.layout.studioSubjectMiniWindows": {
+    "value": "迷你窗口"
+  },
+  "settings.layout.studioSubjectPages": {
+    "value": "弹出面板页面"
+  },
   "settings.layout.studioTitle": {
     "value": "布局工作台"
   },
   "settings.layout.studioToggleInspector": {
     "value": "显示或隐藏控件"
   },
-  "settings.layout.studioZoomActual": {
-    "value": "实际大小"
+  "settings.layout.studioTrayAddHelp": {
+    "value": "点按即可添加到末尾，或拖进窗口。"
+  },
+  "settings.layout.studioTrayHidden": {
+    "value": "已隐藏"
+  },
+  "settings.layout.studioTrayNotShown": {
+    "value": "未显示"
+  },
+  "settings.layout.studioTrayShowHelp": {
+    "value": "点按即可回到原位显示，或拖到页面上。"
+  },
+  "settings.layout.studioUndo": {
+    "value": "撤销上一步（⌘Z）"
+  },
+  "settings.layout.studioWellHide": {
+    "value": "隐藏"
+  },
+  "settings.layout.studioWellRemove": {
+    "value": "移除"
   },
   "settings.layout.studioZoomFit": {
     "value": "适应"
+  },
+  "settings.layout.studioZoomFitHelp": {
+    "value": "适应窗口（⌘0）"
+  },
+  "settings.layout.studioZoomIn": {
+    "value": "放大（⌘+）"
+  },
+  "settings.layout.studioZoomOut": {
+    "value": "缩小（⌘−）"
   },
   "settings.mcp.allowRefresh": {
     "value": "允许 agent 刷新额度"
