@@ -80,7 +80,16 @@ struct RemoteSettingsSection: View {
     // MARK: - Status
 
     private var statusSection: some View {
-        section(L10n.Settings.remoteCore) {
+        // The badge is on the first section rather than every one: it marks
+        // the feature, not each control inside it.
+        SettingsSectionCard(
+            title: L10n.Settings.remoteCore,
+            badge: L10n.Settings.remoteExperimentalBadge,
+            density: density
+        ) {
+            Text(L10n.Settings.remoteExperimentalNote)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             if service.isConfigured {
                 infoRow(L10n.Settings.remoteWorkspace, service.workspaceID?.uuidString.lowercased() ?? "—")
                 infoRow(L10n.Settings.remoteRelay, service.relayURL?.absoluteString ?? "—")

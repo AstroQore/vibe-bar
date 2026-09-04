@@ -56,6 +56,27 @@ fi
 
 [[ -x "$APP" ]] || { echo "capture: no app at $APP — run ./Scripts/build_app.sh first" >&2; exit 1; }
 [[ -d "$DEMO_HOME/.vibebar" ]] || { echo "capture: no demo home at $DEMO_HOME — run ./Scripts/demo_home.py first" >&2; exit 1; }
+
+# Machines is hidden until a workspace is connected, so on a Mac with no
+# Remote Core the popover would answer this request with Overview and save
+# it under the Machines name — quietly replacing a published README
+# screenshot with the wrong page. Drop the capture and say so instead:
+# demo_home.py skips the remote build the same way, and a missing screenshot
+# is a visible gap where a wrong one is not.
+if [[ ! -f "$DEMO_HOME/.vibebar/remote_core.json" ]]; then
+  SURFACES=("${SURFACES[@]:#popover-machines=*}")
+  echo "capture: no remote_core.json in the demo home — skipping popover-machines;" >&2
+  echo "capture: docs/screenshots/popover-machines*.png keeps whatever it already had" >&2
+fi
+
+# Asking for only that surface is a supported invocation, and skipping it can
+# empty the list. Stop here rather than falling through to the optimizer,
+# whose "$OUT"/*.png is a fatal unmatched glob in zsh when nothing was
+# captured — an obscure abort in place of the clean skip just announced.
+if (( ${#SURFACES[@]} == 0 )); then
+  echo "capture: nothing to capture" >&2
+  exit 0
+fi
 mkdir -p "$OUT"
 
 capture_one() {

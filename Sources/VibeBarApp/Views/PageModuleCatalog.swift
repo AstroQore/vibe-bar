@@ -112,7 +112,10 @@ enum PageModuleCatalog {
     /// Driven by the same `OverviewPage` enumeration the tab strip uses, so a
     /// provider hidden from the popover disappears from the editor too.
     static func editablePages(settings: AppSettings) -> [(page: PageLayoutPageID, title: String)] {
-        OverviewPage.visiblePages(settings: settings).compactMap { page in
+        // `remoteConfigured` cannot change this list: Remote machines has no
+        // `layoutPageID`, so the `compactMap` drops it either way. Passing
+        // false keeps the editor from depending on a service it never reads.
+        OverviewPage.visiblePages(settings: settings, remoteConfigured: false).compactMap { page in
             guard let id = page.layoutPageID else { return nil }
             return (id, page.label)
         }

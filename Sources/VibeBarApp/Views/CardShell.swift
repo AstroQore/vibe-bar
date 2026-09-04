@@ -51,14 +51,31 @@ struct CardShell<Content: View>: View {
 /// cannot invent a fourth.
 struct SettingsSectionCard<Content: View>: View {
     let title: String
+    /// Optional word beside the title, for a section whose stability differs
+    /// from the rest of Settings. Nil for every ordinary section, which is
+    /// why a badge reads as a claim rather than as decoration.
+    var badge: String?
     let density: Theme.Density
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(Color.orange.opacity(0.14))
+                        )
+                }
+            }
             // The surface is painted inside `CardShell`, so the width has to
             // be claimed by the content: a frame on the outside would only
             // stretch a transparent wrapper and let a narrow section (System,

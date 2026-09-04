@@ -3013,6 +3013,14 @@ extension L10n {
         public static var remoteDisconnectTitle: String {
             L10n.string("settings.remote.disconnectTitle")
         }
+        /// `settings.remote.experimentalBadge` — Experimental
+        public static var remoteExperimentalBadge: String {
+            L10n.string("settings.remote.experimentalBadge")
+        }
+        /// `settings.remote.experimentalNote` — Remote machines are experimental: the protocol and this pane can change between releases, and the popover tab stays hidden until a workspace is connected.
+        public static var remoteExperimentalNote: String {
+            L10n.string("settings.remote.experimentalNote")
+        }
         /// `settings.remote.exportIdentity` — Export Core Identity…
         public static var remoteExportIdentity: String {
             L10n.string("settings.remote.exportIdentity")
@@ -6474,6 +6482,8 @@ extension L10n {
         "settings.remote.disconnectDetail",
         "settings.remote.disconnectIntro",
         "settings.remote.disconnectTitle",
+        "settings.remote.experimentalBadge",
+        "settings.remote.experimentalNote",
         "settings.remote.exportIdentity",
         "settings.remote.importProvisioning",
         "settings.remote.join",
