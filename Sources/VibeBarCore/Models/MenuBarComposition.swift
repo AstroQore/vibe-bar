@@ -577,7 +577,14 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         // the seam in the middle of the *second* entry of three — an entry is
         // a name and a number, so six tokens bisected the pair — leaving one
         // field's label on the first row and its percentage on the second.
-        let starts = entryStartIndices(in: tokens)
+        // A strip the user built out of words and logos has no values, so
+        // nothing closes an entry and the whole thing reads as one. Splitting
+        // between blocks is the honest answer there: choosing Two rows has to
+        // produce two rows, and a control that quietly produces one is the
+        // defect this seam was written to fix.
+        let starts = entryStartIndices(in: tokens).count >= 2
+            ? entryStartIndices(in: tokens)
+            : blockStartIndices(in: tokens)
         guard starts.count >= 2 else { return nil }
         let start = starts[(starts.count + 1) / 2]
         // The spacing in front of the entry is the boundary the break takes
@@ -597,6 +604,16 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// A new one starts at the first naming block that follows a value, which
     /// finds the boundaries whether or not the strip has divider blocks
     /// between them (Compact and Two rows seed none).
+    /// Every drawn block, used when nothing in the strip closes an entry.
+    private static func blockStartIndices(in tokens: [MenuBarToken]) -> [Int] {
+        tokens.indices.filter { index in
+            switch tokens[index].kind {
+            case .space, .separator, .lineBreak: return false
+            default: return true
+            }
+        }
+    }
+
     private static func entryStartIndices(in tokens: [MenuBarToken]) -> [Int] {
         var starts: [Int] = []
         var sawValue = true

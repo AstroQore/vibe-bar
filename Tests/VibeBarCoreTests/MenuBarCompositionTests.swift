@@ -950,6 +950,32 @@ final class MenuBarCompositionTests: XCTestCase {
         }
     }
 
+    func testTwoRowsSplitsAStripThatHasNoFieldEntries() {
+        // The composer takes arbitrary blocks, so a strip can be words and
+        // logos with no value to close an entry. Choosing Two rows still has
+        // to produce two rows — a control that quietly produces one is the
+        // defect the seam exists to fix.
+        var composed = composition([
+            MenuBarToken(kind: .logo(.claude)),
+            MenuBarToken(kind: .text("A")),
+            MenuBarToken(kind: .text("B")),
+            MenuBarToken(kind: .appIcon)
+        ])
+        composed.isEnabled = true
+        composed.setTemplate(.twoColumn)
+        XCTAssertEqual(composed.lineBreakCount, 1, "Two rows must add a break")
+        XCTAssertEqual(rowCount(composed), 2)
+    }
+
+    func testASingleBlockStripStaysOnOneRow() {
+        // ...and the fallback must not invent a break where there is nothing
+        // to put on the second row.
+        var composed = composition([MenuBarToken(kind: .text("only"))])
+        composed.isEnabled = true
+        composed.setTemplate(.twoColumn)
+        XCTAssertEqual(composed.lineBreakCount, 0)
+    }
+
     func testATwoRowTitleLeadsTheFirstRow() {
         // A named exception, not a gap. The field renderer gives the title a
         // column of its own that spans both rows; a composition is a linear

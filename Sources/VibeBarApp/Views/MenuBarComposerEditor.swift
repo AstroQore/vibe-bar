@@ -240,6 +240,11 @@ struct MenuBarComposerEditor: View {
                     ForEach(composition.tokens) { token in
                         chip(token, availability: availability)
                             .onDrag {
+                                // A queued colour or threshold has to land
+                                // first: the drop writes this snapshot back
+                                // wholesale, so an edit missing from it would
+                                // be undone by the drag that followed it.
+                                pendingCommit.flush()
                                 dragEnteredTarget()
                                 draggedTokenId = token.id
                                 // Snapshot the committed order; every crossing
@@ -1060,13 +1065,39 @@ private struct MenuBarTokenInspector: View {
         case .always:
             EmptyView()
         case let .whenUsedAtLeast(fieldId, percent):
-            thresholdRow(fieldId: fieldId, percent: percent) { newId, newPercent in
-                update { $0.visibility = .whenUsedAtLeast(fieldId: newId, percent: newPercent) }
-            }
+            thresholdRow(
+                fieldId: fieldId,
+                percent: percent,
+                setField: { newId in
+                    update {
+                        guard case let .whenUsedAtLeast(_, current) = $0.visibility else { return }
+                        $0.visibility = .whenUsedAtLeast(fieldId: newId, percent: current)
+                    }
+                },
+                setPercent: { newPercent in
+                    update {
+                        guard case let .whenUsedAtLeast(id, _) = $0.visibility else { return }
+                        $0.visibility = .whenUsedAtLeast(fieldId: id, percent: newPercent)
+                    }
+                }
+            )
         case let .whenRemainingAtMost(fieldId, percent):
-            thresholdRow(fieldId: fieldId, percent: percent) { newId, newPercent in
-                update { $0.visibility = .whenRemainingAtMost(fieldId: newId, percent: newPercent) }
-            }
+            thresholdRow(
+                fieldId: fieldId,
+                percent: percent,
+                setField: { newId in
+                    update {
+                        guard case let .whenRemainingAtMost(_, current) = $0.visibility else { return }
+                        $0.visibility = .whenRemainingAtMost(fieldId: newId, percent: current)
+                    }
+                },
+                setPercent: { newPercent in
+                    update {
+                        guard case let .whenRemainingAtMost(id, _) = $0.visibility else { return }
+                        $0.visibility = .whenRemainingAtMost(fieldId: id, percent: newPercent)
+                    }
+                }
+            )
         case let .whenForecast(fieldId, verdicts):
             HStack(spacing: 8) {
                 Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
@@ -1110,19 +1141,28 @@ private struct MenuBarTokenInspector: View {
         verdict.label
     }
 
+    /// Two setters, not one taking both values.
+    ///
+    /// A combined setter has to capture the value it is not changing, and the
+    /// captured copy is stale the moment the parent flushes a queued edit —
+    /// so picking another quota within the debounce window wrote the
+    /// pre-flush threshold back over the one that had just landed. Each
+    /// control changes only what it owns, which is the same rule that made
+    /// whole-token replacement go away.
     private func thresholdRow(
         fieldId: String,
         percent: Double,
-        set: @escaping (String, Double) -> Void
+        setField: @escaping (String) -> Void,
+        setPercent: @escaping (Double) -> Void
     ) -> some View {
         HStack(spacing: 8) {
             Text(L10n.MenuBar.composerBlockQuota).frame(width: 62, alignment: .leading)
-            fieldPicker(selected: fieldId) { newId in set(newId, percent) }
+            fieldPicker(selected: fieldId) { setField($0) }
             DebouncedPercentStepper(
                 percent: percent,
                 pending: pending,
                 key: "threshold.\(token.id)"
-            ) { set(fieldId, $0) }
+            ) { setPercent($0) }
             Spacer(minLength: 0)
         }
     }
