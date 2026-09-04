@@ -524,7 +524,12 @@ struct SessionMetadataHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: max(7, density.cardSpacing)) {
             HStack(alignment: .center, spacing: 10) {
-                ToolBrandBadge(tool: summary.effectiveHarness.brandTool, iconSize: 20, containerSize: 26)
+                ToolBrandBadge(
+                    tool: summary.effectiveHarness.brandTool,
+                    iconSize: 20,
+                    containerSize: 26,
+                    brandColored: true
+                )
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.system(size: density.titleFontSize, weight: .semibold))

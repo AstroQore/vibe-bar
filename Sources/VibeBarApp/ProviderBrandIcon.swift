@@ -138,6 +138,115 @@ enum ProviderBrandIcon {
         renderCache[key] = image
     }
 
+    /// Brand accents made legible as glyph tints, one stable instance per tool.
+    ///
+    /// Two problems solved in one place.
+    ///
+    /// **Cache identity.** `Theme.providerAccent` builds a fresh `Color` on
+    /// every call, and `.grok`'s is *dynamic*, so its identity changes each
+    /// time. Handed straight to `RenderKey` it would miss `renderCache` on
+    /// every body evaluation and undo the memoization above. One instance per
+    /// tool keeps the key stable; the dynamic colour still resolves per
+    /// appearance at draw time, and the key already carries the appearance.
+    ///
+    /// **Contrast.** That palette was authored for fills and chart strokes,
+    /// which sit on tinted chips. As a glyph tint several of them fall under
+    /// the 3:1 that a meaningful non-text graphic needs — Codex's teal is
+    /// 2.06:1 on white and 2.54:1 on a selected row — and these lists are
+    /// exactly where the glyph is doing work. The hue is the brand's; only
+    /// its brightness moves, and only as far as the threshold, measured
+    /// against the row the mark is actually drawn on.
+    private static var accentCache: [ToolType: NSColor] = [:]
+
+    static func brandAccent(for tool: ToolType) -> NSColor {
+        if let cached = accentCache[tool] { return cached }
+        let base = NSColor(Theme.providerAccent(for: tool))
+        let light = legible(base, in: NSAppearance(named: .aqua))
+        let dark = legible(base, in: NSAppearance(named: .darkAqua))
+        let color = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        }
+        accentCache[tool] = color
+        return color
+    }
+
+    /// The contrast a non-text graphic needs to stay identifiable.
+    private static let minimumGlyphContrast = 3.0
+
+    /// How strongly a selected session row tints itself with its own accent.
+    /// `SessionListView.rowFill` — 0.16 at rest, 0.20 under the pointer.
+    private static let selectedRowAccentOpacity = 0.20
+
+    /// The ground one of these glyphs actually sits on, worst case.
+    ///
+    /// Not the window background: the Workbench paints
+    /// `WorkbenchPorcelain.windowFill`, and a *selected* row lays its own
+    /// provider accent over that — pulling the ground toward the very hue
+    /// being drawn on it, which is the least contrast the mark ever has.
+    /// Measuring against plain white instead overstated it by half a step:
+    /// Codex read 3.03:1 on paper and 2.54:1 on a selected row.
+    ///
+    /// The fill's own alpha is ignored. It sits on a window background of
+    /// nearly its own tone, so compositing it would move the answer less than
+    /// the rounding already does.
+    private static func rowSurfaceLuminance(accent: [Double], isDark: Bool) -> Double {
+        guard let fill = NSColor(WorkbenchPorcelain.windowFill(for: isDark ? .dark : .light))
+            .usingColorSpace(.sRGB)
+        else { return isDark ? 0.0143 : 1 }
+        let ground = [
+            Double(fill.redComponent), Double(fill.greenComponent), Double(fill.blueComponent)
+        ]
+        return luminance(zip(ground, accent).map {
+            $0 * (1 - selectedRowAccentOpacity) + $1 * selectedRowAccentOpacity
+        })
+    }
+
+    /// `base` resolved in `appearance` and then blended toward that
+    /// appearance's opposite extreme until it clears `minimumGlyphContrast`
+    /// against the row it will be drawn on, or left alone if it already does.
+    private static func legible(_ base: NSColor, in appearance: NSAppearance?) -> NSColor {
+        guard let appearance else { return base }
+        var resolved = base
+        appearance.performAsCurrentDrawingAppearance {
+            resolved = base.usingColorSpace(.sRGB) ?? base
+        }
+        guard let srgb = resolved.usingColorSpace(.sRGB) else { return resolved }
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        // Toward white on a dark ground, toward black on a light one.
+        let toward: Double = isDark ? 1 : 0
+        var components = [
+            Double(srgb.redComponent), Double(srgb.greenComponent), Double(srgb.blueComponent)
+        ]
+        let surface = rowSurfaceLuminance(accent: components, isDark: isDark)
+        // 50 steps of 2% is enough to reach either extreme, and stops at the
+        // first mix that clears the bar rather than washing the hue out.
+        for step in 0...50 {
+            let mix = Double(step) * 0.02
+            let mixed = components.map { $0 * (1 - mix) + toward * mix }
+            if contrast(luminance(mixed), surface) >= minimumGlyphContrast || step == 50 {
+                components = mixed
+                break
+            }
+        }
+        return NSColor(
+            srgbRed: CGFloat(components[0]),
+            green: CGFloat(components[1]),
+            blue: CGFloat(components[2]),
+            alpha: srgb.alphaComponent
+        )
+    }
+
+    private static func luminance(_ rgb: [Double]) -> Double {
+        let linear = rgb.map { channel -> Double in
+            channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    }
+
+    private static func contrast(_ a: Double, _ b: Double) -> Double {
+        (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+
     static func fallbackSystemImage(for kind: MenuBarItemKind) -> String {
         "chart.bar"
     }
@@ -390,13 +499,28 @@ struct ToolBrandIconView: View {
     @Environment(\.colorScheme) private var colorScheme
     let tool: ToolType
     var size: CGFloat = 16
+    /// Paint the mark in the brand's own colour rather than the label colour.
+    ///
+    /// Off by default and meant to stay that way for most surfaces: a mark
+    /// beside its own name does not need to shout, and a page full of brand
+    /// colours reads as noise. A list whose whole job is telling harnesses
+    /// apart at a glance is the exception — `Theme.providerAccent`.
+    ///
+    /// The tint is not the raw palette entry: `ProviderBrandIcon.brandAccent`
+    /// lifts it to 3:1 against the row it lands on, selection tint included.
+    /// Half the palette was authored for fills on tinted chips and does not
+    /// clear that on its own — Codex's teal is 2.06:1 on white, and Ollama's
+    /// near-black 1.22:1 on a dark list.
+    var brandColored: Bool = false
 
     var body: some View {
         Group {
             if let image = ProviderBrandIcon.image(
                 for: tool,
                 size: NSSize(width: size, height: size),
-                tint: NSColor.labelColor,
+                tint: brandColored
+                    ? ProviderBrandIcon.brandAccent(for: tool)
+                    : NSColor.labelColor,
                 appearance: nsAppearance(for: colorScheme)
             ) {
                 Image(nsImage: image)
@@ -409,7 +533,7 @@ struct ToolBrandIconView: View {
             }
         }
         .frame(width: size, height: size)
-        .foregroundStyle(.primary)
+        .foregroundStyle(brandColored ? Theme.providerAccent(for: tool) : .primary)
         .accessibilityHidden(true)
     }
 
@@ -426,6 +550,7 @@ struct ToolBrandBadge: View {
     let tool: ToolType
     var iconSize: CGFloat = 17
     var containerSize: CGFloat = 24
+    var brandColored: Bool = false
 
     var body: some View {
         // Render the brand glyph naked — AQ flagged that the
@@ -436,7 +561,7 @@ struct ToolBrandBadge: View {
         // `containerSize` frame is kept so call sites that align
         // multiple badges horizontally don't shift after the
         // chrome comes off.
-        ToolBrandIconView(tool: tool, size: effectiveIconSize)
+        ToolBrandIconView(tool: tool, size: effectiveIconSize, brandColored: brandColored)
             .frame(width: containerSize, height: containerSize, alignment: .center)
             .accessibilityHidden(true)
     }
