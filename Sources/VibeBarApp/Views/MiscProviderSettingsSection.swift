@@ -885,9 +885,21 @@ struct KiroStatusRow: View {
 /// queries fan out across every slot and the bucket percentages are
 /// averaged; see `MiscQuotaAggregator`.
 struct CookieSourceControls: View {
+    /// How much visual weight the import button carries.
+    ///
+    /// The misc-providers list packs a dozen providers into one scroll and
+    /// keeps every control small; a core-provider page puts this button
+    /// directly under full-size ones, where a small text-only button reads
+    /// as a lesser class of control rather than the same action.
+    enum Emphasis {
+        case compact
+        case standard
+    }
+
     let tool: ToolType
     let instanceID: String
     let manualPrompt: String
+    var emphasis: Emphasis = .compact
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
@@ -948,14 +960,17 @@ struct CookieSourceControls: View {
                     }
                 }
             }
-            HStack(alignment: .top, spacing: 6) {
-                Button(L10n.Onboarding.cookiesImportFromBrowser, action: importNow)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                Text(L10n.Settings.miscImportDetail)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+            switch emphasis {
+            case .compact:
+                HStack(alignment: .top, spacing: 6) {
+                    importButton
+                    importDetail
+                }
+            case .standard:
+                // Button on its own line, caption beneath — the rhythm the
+                // rest of a core-provider page already uses.
+                importButton
+                importDetail
             }
             HStack(spacing: 6) {
                 SecureField(manualPrompt, text: $manualDraft)
@@ -1094,6 +1109,27 @@ struct CookieSourceControls: View {
                 triggerRefresh()
             }
         }
+    }
+
+    @ViewBuilder
+    private var importButton: some View {
+        switch emphasis {
+        case .compact:
+            Button(L10n.Onboarding.cookiesImportFromBrowser, action: importNow)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        case .standard:
+            Button(action: importNow) {
+                Label(L10n.Onboarding.cookiesImportFromBrowser, systemImage: "safari")
+            }
+        }
+    }
+
+    private var importDetail: some View {
+        Text(L10n.Settings.miscImportDetail)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func deleteSlot(_ slot: MiscCookieSlot) {

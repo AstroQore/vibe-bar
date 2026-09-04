@@ -2483,6 +2483,9 @@
   "settings.planBadgeDetail": {
     "value": "留空则使用自动检测到的账号套餐。"
   },
+  "settings.planFollows": {
+    "value": "跟随 {provider}"
+  },
   "settings.popoverDensity.compact": {
     "value": "紧凑"
   },

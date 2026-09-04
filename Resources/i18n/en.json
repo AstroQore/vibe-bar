@@ -3653,6 +3653,10 @@
     "comment": "Caption under the plan badge field",
     "value": "Leave blank to use the detected account plan."
   },
+  "settings.planFollows": {
+    "comment": "Trailing note on a roster row for a SubProvider that has no plan of its own; {provider} is the account it rides on",
+    "value": "Follows {provider}"
+  },
   "settings.popoverDensity.compact": {
     "comment": "Popover density option",
     "value": "Compact"

@@ -2429,6 +2429,9 @@
 /* Caption under the plan badge field */
 "settings.planBadgeDetail" = "Leave blank to use the detected account plan.";
 
+/* Trailing note on a roster row for a SubProvider that has no plan of its own; {provider} is the account it rides on */
+"settings.planFollows" = "Follows %1$@";
+
 /* Popover density option */
 "settings.popoverDensity.compact" = "Compact";
 

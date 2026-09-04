@@ -2429,6 +2429,9 @@
 /* Caption under the plan badge field */
 "settings.planBadgeDetail" = "留空则使用自动检测到的账号套餐。";
 
+/* Trailing note on a roster row for a SubProvider that has no plan of its own; {provider} is the account it rides on */
+"settings.planFollows" = "跟随 %1$@";
+
 /* Popover density option */
 "settings.popoverDensity.compact" = "紧凑";
 

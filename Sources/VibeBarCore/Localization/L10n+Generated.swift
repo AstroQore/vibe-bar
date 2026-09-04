@@ -3348,6 +3348,10 @@ extension L10n {
         public static var planBadgeDetail: String {
             L10n.string("settings.planBadgeDetail")
         }
+        /// `settings.planFollows` — Follows {provider}
+        public static func planFollows(provider: String) -> String {
+            L10n.string("settings.planFollows", provider)
+        }
         /// `settings.popoverDensity.compact` — Compact
         public static var popoverDensityCompact: String {
             L10n.string("settings.popoverDensity.compact")
@@ -7128,6 +7132,7 @@ extension L10n {
         "settings.percentShows",
         "settings.planBadge",
         "settings.planBadgeDetail",
+        "settings.planFollows",
         "settings.popoverDensity.compact",
         "settings.popoverDensity.compactDetail",
         "settings.popoverDensity.regular",
