@@ -1788,6 +1788,13 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
             .map { $0.clamped(to: Self.fontScaleRange) }
         self.tokenSpacing = (try? c.decode(Double.self, forKey: .tokenSpacing))
             .map { $0.clamped(to: Self.tokenSpacingRange) }
+        // Settings are hand-editable and a decode is tolerant: one member's
+        // `groupID` can arrive missing or malformed while its siblings keep
+        // theirs, which leaves a group with a stranger through it. Nothing
+        // else would notice — `groupedRun` filters the row by id and does
+        // not check contiguity — so dragging one member would carry blocks
+        // across the one between them.
+        normalizeGroups()
     }
 
     public func encode(to encoder: Encoder) throws {

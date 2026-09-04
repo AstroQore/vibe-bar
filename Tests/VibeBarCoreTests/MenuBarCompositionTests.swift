@@ -3246,6 +3246,29 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(bound.count, 1)
     }
 
+    func testAGroupThatDecodesWithAGapIsNotAGroup() throws {
+        var (composition, tokens) = composedRun()
+        composition.group([tokens[0].id, tokens[1].id, tokens[2].id])
+        var object = try JSONSerialization.jsonObject(
+            with: try JSONEncoder().encode(composition)
+        ) as! [String: Any]
+        // What a hand-edited or partly written settings file looks like: the
+        // middle member loses its binding, the two around it keep theirs.
+        var segments = object["segments"] as! [[String: Any]]
+        var top = segments[0]["top"] as! [[String: Any]]
+        top[1].removeValue(forKey: "groupID")
+        segments[0]["top"] = top
+        object["segments"] = segments
+
+        let reloaded = try JSONDecoder().decode(
+            MenuBarComposition.self,
+            from: try JSONSerialization.data(withJSONObject: object)
+        )
+        XCTAssertFalse(reloaded.isGrouped(tokens[0].id),
+                       "a run with a stranger through it must not survive a reload")
+        XCTAssertEqual(reloaded.groupedRun(of: tokens[0].id), [tokens[0].id])
+    }
+
     func testUngroupingLeavesEveryBlockWhereItWas() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[1].id, tokens[2].id])
