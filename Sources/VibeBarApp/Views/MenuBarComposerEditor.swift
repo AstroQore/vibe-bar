@@ -285,7 +285,7 @@ struct MenuBarComposerEditor: View {
             // the drawn strip non-empty at once, so switching on that would
             // pull the target out from under the pointer before the drop
             // could land, and the 200 ms rollback would undo the insertion.
-            if self.composition.segments.isEmpty {
+            if self.composition.segments.isEmpty || composition.segments.isEmpty {
                 ZStack(alignment: .topLeading) {
                     Color.clear
                         .frame(maxWidth: .infinity, minHeight: 30)
@@ -415,12 +415,18 @@ struct MenuBarComposerEditor: View {
     ) -> some View {
         let address = MenuBarComposition.RowAddress(segment: segment.id, row: row)
         let tokens = segment[row]
-        // Keyed on the committed row, like the empty strip above and for the
-        // same reason: staging a block fills the drawn row at once, and
-        // switching on that would unmount this target mid-drag — releasing
-        // over the part of the placeholder the new chip does not cover would
-        // then roll the insertion back and add nothing.
-        if committedRowIsEmpty(address) {
+        // The full-row target is mounted whenever the row is empty in *either*
+        // arrangement, because a drag can empty one and fill the other.
+        //
+        // Committed-empty: staging a block fills the drawn row at once, so
+        // switching on the drawn one alone would unmount this target mid-drag
+        // — releasing over the part of the placeholder the new chip does not
+        // cover would then roll the insertion back and add nothing.
+        //
+        // Drawn-empty: dragging a row's only chip away leaves the committed
+        // row full and the drawn one empty, and without this the way back is
+        // the 16pt landing strip alone.
+        if tokens.isEmpty || committedRowIsEmpty(address) {
             ZStack(alignment: .topLeading) {
                 Color.clear
                     .frame(minWidth: 96, minHeight: 22)
