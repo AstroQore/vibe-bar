@@ -264,9 +264,16 @@ struct MenuBarComposerEditor: View {
         VStack(alignment: .leading, spacing: 6) {
             caption(L10n.MenuBar.composerBlocks)
             if composition.segments.isEmpty {
+                // A drop target as well as a message: with no chips and no
+                // landing strips left, this is the only place a palette drag
+                // can reach, and without it the strip could only be refilled
+                // by clicking.
                 Text(L10n.MenuBar.composerBlocksEmpty)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.menuBarBlock], delegate: chipDrop(.newStrip))
             } else {
                 // The groups themselves wrap, the same way the chips inside
                 // them do — a strip can hold more columns than one line of
@@ -390,7 +397,7 @@ struct MenuBarComposerEditor: View {
             .foregroundStyle(.tertiary)
             .frame(minWidth: 96, minHeight: 22, alignment: .leading)
             .contentShape(Rectangle())
-            .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
+            .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
         } else {
             MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
                 ForEach(tokens) { token in
@@ -407,18 +414,36 @@ struct MenuBarComposerEditor: View {
                             // Snapshot the committed order; every crossing
                             // reorders this copy, and only the drop writes.
                             dragComposition = self.composition
-                            return NSItemProvider(object: token.id.uuidString as NSString)
+                            return blockItemProvider(token)
                         }
-                        .onDrop(of: [.text], delegate: chipDrop(.before(token.id)))
+                        .onDrop(of: [.menuBarBlock], delegate: chipDrop(.before(token.id)))
                 }
                 // Trailing landing strip, so a block can be dragged to the end
                 // of this row without having to hit its last chip.
                 Color.clear
                     .frame(width: 16, height: 22)
                     .contentShape(Rectangle())
-                    .onDrop(of: [.text], delegate: chipDrop(.endOf(address)))
+                    .onDrop(of: [.menuBarBlock], delegate: chipDrop(.endOf(address)))
             }
         }
+    }
+
+    /// The dragged block's identity, under the composer's private type. The
+    /// delegates never read it back — they work from `draggedTokenId` and
+    /// `draggedNewToken` — but a payload has to exist for a drag to start.
+    private func blockItemProvider(_ token: MenuBarToken) -> NSItemProvider {
+        let provider = NSItemProvider()
+        let id = token.id.uuidString
+        // In-process only: this identity means nothing outside the composer,
+        // so it should not be draggable into another app.
+        provider.registerDataRepresentation(
+            for: .menuBarBlock,
+            visibility: .ownProcess
+        ) { completion in
+            completion(Data(id.utf8), nil)
+            return nil
+        }
+        return provider
     }
 
     private func chipDrop(_ target: MenuBarChipDropTarget) -> MenuBarChipDropDelegate {
@@ -456,7 +481,7 @@ struct MenuBarComposerEditor: View {
                 )
         )
         .onDrop(
-            of: [.text],
+            of: [.menuBarBlock],
             delegate: MenuBarChipRemoveDelegate(
                 dragged: $draggedTokenId,
                 isTargeted: $isOverRemoveTarget,
@@ -700,7 +725,7 @@ struct MenuBarComposerEditor: View {
                 draggedTokenId = nil
                 dragComposition = nil
                 draggedNewToken = token
-                return NSItemProvider(object: token.id.uuidString as NSString)
+                return blockItemProvider(token)
             }
     }
 
@@ -1677,9 +1702,25 @@ private struct DebouncedPercentStepper: View {
 /// group because a stacked column has two of them, and the empty space after
 /// the top row's last chip is not the same place as the empty space after the
 /// bottom row's.
+extension UTType {
+    /// The composer's own drag payload.
+    ///
+    /// These used to travel as `.text`, which meant every chip and landing
+    /// strip also accepted text dragged in from any other app — and a palette
+    /// token still waiting for a target would have been staged by one. A
+    /// private type makes the composer accept nothing but its own blocks.
+    static let menuBarBlock = UTType(
+        exportedAs: "com.astroqore.VibeBar.menu-bar-block",
+        conformingTo: .data
+    )
+}
+
 enum MenuBarChipDropTarget {
     case before(UUID)
     case endOf(MenuBarComposition.RowAddress)
+    /// The strip with no groups left in it. A block landing here opens the
+    /// first one — `append(_:to: nil)`.
+    case newStrip
 }
 
 /// Reorder onto a chip, or onto a row's trailing landing strip. The move
@@ -1723,6 +1764,8 @@ private struct MenuBarChipDropDelegate: DropDelegate {
                 order.move(new.id, before: id)
             case let .endOf(address):
                 order.append(new, to: address)
+            case .newStrip:
+                order.append(new, to: nil)
             }
             provisional = order
             dragged = new.id
@@ -1739,6 +1782,9 @@ private struct MenuBarChipDropDelegate: DropDelegate {
             provisional?.move(dragged, before: id)
         case let .endOf(address):
             provisional?.move(dragged, toEndOf: address)
+        // Unreachable: a strip holding the chip being dragged is not empty.
+        case .newStrip:
+            break
         }
     }
 
