@@ -195,10 +195,14 @@ private struct SessionRow: View {
                 if isDeleteMode {
                     checkbox
                 }
+                // Brand-coloured on purpose: this list is scanned for
+                // "which harness was that", and colour finds a row faster
+                // than a 15pt silhouette does.
                 ToolBrandBadge(
                     tool: summary.effectiveHarness.brandTool,
                     iconSize: 15,
-                    containerSize: 20
+                    containerSize: 20,
+                    brandColored: true
                 )
                 .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {

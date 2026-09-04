@@ -393,7 +393,7 @@ struct SessionFiltersBar: View {
                             count: model.harnessCounts[harness] ?? 0
                         ))
                     } icon: {
-                        ToolBrandIconView(tool: harness.brandTool, size: 12)
+                        ToolBrandIconView(tool: harness.brandTool, size: 12, brandColored: true)
                     }
                 }
             }

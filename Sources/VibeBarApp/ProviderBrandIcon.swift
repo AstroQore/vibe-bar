@@ -138,6 +138,23 @@ enum ProviderBrandIcon {
         renderCache[key] = image
     }
 
+    /// Decoded brand accents, one stable instance per tool.
+    ///
+    /// `Theme.providerAccent` builds a fresh `Color` on every call, and for
+    /// `.grok` that is a *dynamic* `NSColor` whose identity changes each time.
+    /// Handed straight to `RenderKey` it would miss `renderCache` on every
+    /// body evaluation and undo exactly the memoization above. One instance
+    /// per tool keeps the key stable; the dynamic colour still resolves per
+    /// appearance at draw time, and the key already carries the appearance.
+    private static var accentCache: [ToolType: NSColor] = [:]
+
+    static func brandAccent(for tool: ToolType) -> NSColor {
+        if let cached = accentCache[tool] { return cached }
+        let color = NSColor(Theme.providerAccent(for: tool))
+        accentCache[tool] = color
+        return color
+    }
+
     static func fallbackSystemImage(for kind: MenuBarItemKind) -> String {
         "chart.bar"
     }
@@ -390,13 +407,30 @@ struct ToolBrandIconView: View {
     @Environment(\.colorScheme) private var colorScheme
     let tool: ToolType
     var size: CGFloat = 16
+    /// Paint the mark in the brand's own colour rather than the label colour.
+    ///
+    /// Off by default and meant to stay that way for most surfaces: a mark
+    /// beside its own name does not need to shout, and a page full of brand
+    /// colours reads as noise. A list whose whole job is telling harnesses
+    /// apart at a glance is the exception — `Theme.providerAccent`.
+    ///
+    /// No legibility guard here on purpose. `Harness.brandTool` is a closed
+    /// set of six (codex, claude, gemini, antigravity, grok, cursor) and every
+    /// one of those accents clears 4:1 against both the light and the dark
+    /// window background; `.grok` is already adaptive because `Theme` made
+    /// that call by hand. Two accents elsewhere in the table *are* near-black
+    /// (Kimi's ink, Ollama's) and would vanish on a dark list — so check the
+    /// contrast before turning this on for a surface those can reach.
+    var brandColored: Bool = false
 
     var body: some View {
         Group {
             if let image = ProviderBrandIcon.image(
                 for: tool,
                 size: NSSize(width: size, height: size),
-                tint: NSColor.labelColor,
+                tint: brandColored
+                    ? ProviderBrandIcon.brandAccent(for: tool)
+                    : NSColor.labelColor,
                 appearance: nsAppearance(for: colorScheme)
             ) {
                 Image(nsImage: image)
@@ -409,7 +443,7 @@ struct ToolBrandIconView: View {
             }
         }
         .frame(width: size, height: size)
-        .foregroundStyle(.primary)
+        .foregroundStyle(brandColored ? Theme.providerAccent(for: tool) : .primary)
         .accessibilityHidden(true)
     }
 
@@ -426,6 +460,7 @@ struct ToolBrandBadge: View {
     let tool: ToolType
     var iconSize: CGFloat = 17
     var containerSize: CGFloat = 24
+    var brandColored: Bool = false
 
     var body: some View {
         // Render the brand glyph naked — AQ flagged that the
@@ -436,7 +471,7 @@ struct ToolBrandBadge: View {
         // `containerSize` frame is kept so call sites that align
         // multiple badges horizontally don't shift after the
         // chrome comes off.
-        ToolBrandIconView(tool: tool, size: effectiveIconSize)
+        ToolBrandIconView(tool: tool, size: effectiveIconSize, brandColored: brandColored)
             .frame(width: containerSize, height: containerSize, alignment: .center)
             .accessibilityHidden(true)
     }
