@@ -127,7 +127,7 @@ struct UsageFiltersBar: View {
             }
         } label: {
             HStack(spacing: 5) {
-                ToolBrandIconView(tool: harness.brandTool, size: density.segmentedFontSize + 1)
+                HarnessBrandIconView(harness: harness, size: density.segmentedFontSize + 1)
                 Text(harness.displayName)
                     .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
                     .lineLimit(1)

@@ -632,6 +632,18 @@ enum BrandMark: String, CaseIterable, Hashable {
         }
     }
 
+    /// Whose palette entry tints this mark when a surface asks for colour.
+    ///
+    /// The marks have no accents of their own — `Theme.providerAccent` is
+    /// keyed by `ToolType` — so each borrows the one its company already
+    /// owns. Grok Bot is xAI's app, so it takes xAI's.
+    var accentTool: ToolType {
+        switch self {
+        case .spaceXAI, .grokBot: return .grok
+        case .googleAI:           return .gemini
+        }
+    }
+
     var markSource: ProviderBrandIcon.MarkSource {
         ProviderBrandIcon.MarkSource(
             resourceName: providerIconResourceName,
@@ -646,13 +658,18 @@ struct BrandMarkIconView: View {
     @Environment(\.colorScheme) private var colorScheme
     let mark: BrandMark
     var size: CGFloat = 16
+    /// Paint the mark in its company's colour — same terms, and the same
+    /// 3:1 lift, as `ToolBrandIconView.brandColored`.
+    var brandColored: Bool = false
 
     var body: some View {
         Group {
             if let image = ProviderBrandIcon.image(
                 for: mark,
                 size: NSSize(width: size, height: size),
-                tint: NSColor.labelColor,
+                tint: brandColored
+                    ? ProviderBrandIcon.brandAccent(for: mark.accentTool)
+                    : NSColor.labelColor,
                 appearance: nsAppearance(for: colorScheme)
             ) {
                 Image(nsImage: image)
@@ -665,7 +682,7 @@ struct BrandMarkIconView: View {
             }
         }
         .frame(width: size, height: size)
-        .foregroundStyle(.primary)
+        .foregroundStyle(brandColored ? Theme.providerAccent(for: mark.accentTool) : .primary)
         .accessibilityHidden(true)
     }
 
@@ -720,6 +737,50 @@ struct QuotaBrandIconView: View {
         } else {
             ToolBrandIconView(tool: tool, size: size)
         }
+    }
+}
+
+/// The mark a **harness** wears — the CLI or app a session came from.
+///
+/// Almost every harness is drawn as its own tool: Cursor gets Cursor's mark
+/// rather than xAI's, AntiGravity its own rather than Gemini's, while the
+/// chip that *groups* them still says "SpaceXAI" / "Google AI". Grok Bot is
+/// the one harness with no tool of its own — its quota rides in on Cursor's
+/// `grok_bot_weekly` bucket — so it is resolved to its own `BrandMark`
+/// instead of borrowing the account holder's mark or Grok Build's.
+struct HarnessBrandIconView: View {
+    let harness: Harness
+    var size: CGFloat = 16
+    var brandColored: Bool = false
+
+    var body: some View {
+        if let mark = harness.brandMark {
+            BrandMarkIconView(mark: mark, size: size, brandColored: brandColored)
+        } else {
+            ToolBrandIconView(tool: harness.quotaTool, size: size, brandColored: brandColored)
+        }
+    }
+}
+
+/// `HarnessBrandIconView` in the badge frame the session lists align on.
+struct HarnessBrandBadge: View {
+    let harness: Harness
+    var iconSize: CGFloat = 17
+    var containerSize: CGFloat = 24
+    var brandColored: Bool = false
+
+    var body: some View {
+        HarnessBrandIconView(harness: harness, size: iconSize, brandColored: brandColored)
+            .frame(width: containerSize, height: containerSize, alignment: .center)
+            .accessibilityHidden(true)
+    }
+}
+
+extension Harness {
+    /// The mark this harness wears when its quota tool is the wrong answer.
+    /// `nil` — the usual case — means "draw `quotaTool`".
+    var brandMark: BrandMark? {
+        self == .grokBot ? .grokBot : nil
     }
 }
 
