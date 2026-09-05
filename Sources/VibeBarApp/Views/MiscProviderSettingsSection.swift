@@ -342,7 +342,7 @@ struct MiscProviderCredentialRows: View {
                 prompt: L10n.Settings.Misc.Prompt.warp,
                 helpText: "Open Warp → Settings → AI → API Keys to mint one. Stored in macOS Keychain. Env fallback: WARP_API_KEY, then WARP_TOKEN."
             )
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor:
             // Partial-primary and primary providers don't ship a misc-card
             // UI: `AppSettings` only builds instances for
             // `isMiscPageProvider` tools, and their credentials live in the
@@ -442,7 +442,7 @@ extension ToolType {
             return "The key comes from openrouter.ai → Keys and only needs to read credits. Set the API URL when you route OpenRouter through a proxy."
         case .warp:
             return "The key is minted inside Warp itself: Warp → Settings → AI → API Keys."
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor:
             return nil
         }
     }

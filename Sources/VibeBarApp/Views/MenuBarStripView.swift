@@ -126,6 +126,7 @@ enum MenuBarStripPalette {
         switch role {
         case let .quota(fieldId, basis):
             guard let quota = quotas.first(where: { $0.fieldId == fieldId }) else { return .primary }
+            if quota.quantity != nil { return .primary }
             return .quota(MenuBarPercentColor.resolve(
                 basis: basis,
                 verdict: basis == .forecast ? quota.forecast?.verdict : nil,
@@ -319,7 +320,8 @@ enum MenuBarStripResolver {
                 displayPercent: bucket.displayPercent(settings.displayMode, tool: field.tool),
                 resetAt: bucket.resetAt,
                 rawWindowSeconds: bucket.rawWindowSeconds,
-                forecast: forecast
+                forecast: forecast,
+                quantity: bucket.quantity
             ))
         }
         return out

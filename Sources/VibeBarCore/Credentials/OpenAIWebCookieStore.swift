@@ -16,6 +16,16 @@ public enum OpenAIWebCookieStore {
         "_cfuvid"
     ]
 
+    public static func cachedCookieHeader() -> String? {
+        // The most recent import/sign-in wins for Chat, without initiating a
+        // new Keychain read from its background refresh.
+        [SecureCookieHeaderStore.Source.browser, .webView]
+            .compactMap { SecureCookieHeaderStore.cachedEntry(provider: .openAI, source: $0) }
+            .sorted { $0.storedAt > $1.storedAt }
+            .compactMap { normalizedCookieHeader(from: $0.cookieHeader) }
+            .first
+    }
+
     public static func readCookieHeader() throws -> String {
         if let header = candidateCookieHeaders().first {
             return header

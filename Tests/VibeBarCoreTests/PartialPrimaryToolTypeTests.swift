@@ -19,13 +19,13 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     }
 
     func testPartialPrimaryProvidersIncludeCursor() {
-        XCTAssertEqual(ToolType.partialPrimaryProviders, [.gemini, .antigravity, .grok, .cursor])
+        XCTAssertEqual(ToolType.partialPrimaryProviders, [.chatgptChat, .gemini, .antigravity, .grok, .cursor])
     }
 
     func testDedicatedCardProvidersIncludePrimaryAndPartialPrimary() {
         XCTAssertEqual(
             ToolType.dedicatedCardProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
+            [.codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor]
         )
     }
 

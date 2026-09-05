@@ -522,6 +522,7 @@ func providerAccent(for tool: ToolType) -> Color {
 
 func providerTitle(for tool: ToolType) -> String {
     switch tool {
+    case .chatgptChat: return "ChatGPT Chat"
     case .codex:       return "CODEX"
     case .claude:      return "CLAUDE"
     case .alibaba:     return "QWEN"
@@ -896,7 +897,13 @@ private struct MiniBranchRingCell: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        content(now: now)
+        Group {
+            if cell.bucket.quantity != nil {
+                QuantityMiniCell(bucket: cell.bucket, title: cell.title, now: now, compact: false)
+            } else {
+                content(now: now)
+            }
+        }
             .frame(width: MiniRingMetrics.cellWidth)
             .surfaceItem(cell.field.id)
     }
@@ -1024,7 +1031,13 @@ private struct MiniRingCell: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        content(now: now)
+        Group {
+            if let bucket = cell.bucket, bucket.quantity != nil {
+                QuantityMiniCell(bucket: bucket, title: cell.resolvedLabel, now: now, compact: false)
+            } else {
+                content(now: now)
+            }
+        }
             .frame(width: MiniRingMetrics.cellWidth)
             .surfaceItem(cell.field.id)
     }
@@ -1395,7 +1408,13 @@ private struct MiniCompactBarCell: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        content(now: now)
+        Group {
+            if let bucket = data.bucket, bucket.quantity != nil {
+                QuantityMiniCell(bucket: bucket, title: data.title, now: now, compact: true)
+            } else {
+                content(now: now)
+            }
+        }
             .frame(width: MiniCompactMetrics.cellWidth)
             .surfaceItem(data.fieldID)
     }

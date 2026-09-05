@@ -346,7 +346,7 @@ struct QuotaGroupCard: View {
 
     @ViewBuilder
     private var groupHistoryChart: some View {
-        if let accountId = module.accountId, !module.rows.isEmpty {
+        if let accountId = module.accountId, !module.rows.isEmpty, module.rows.allSatisfy({ $0.bucket.supportsForecast }) {
             // `.equatable()` is load-bearing, not an optimisation: this card is
             // re-proposed every 30 seconds by the `TimelineView` the rows above
             // need for their countdowns, and the chart reads no clock of its
@@ -396,6 +396,15 @@ struct QuotaGroupCard: View {
 
     @ViewBuilder
     private func row(for item: QuotaGroupModule.Row) -> some View {
+        if item.bucket.quantity != nil {
+            QuantityQuotaRow(bucket: item.bucket, density: density, now: now)
+        } else {
+            percentageRow(for: item)
+        }
+    }
+
+    @ViewBuilder
+    private func percentageRow(for item: QuotaGroupModule.Row) -> some View {
         let bucket = item.bucket
         let pace = UsagePace.compute(bucket: bucket, now: now, allowsPostResetGrace: true)
         let forecast = paceForecast(for: item)

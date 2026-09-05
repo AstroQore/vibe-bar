@@ -115,7 +115,7 @@ public actor SubscriptionHistoryStore {
 
         var (storage, index) = loadIndexed()
         var dirty = false
-        for bucket in quota.buckets {
+        for bucket in quota.buckets where bucket.supportsForecast {
             guard let resetAt = bucket.resetAt, bucket.usedPercent.isFinite else { continue }
             let used = clamp(bucket.usedPercent)
             let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)

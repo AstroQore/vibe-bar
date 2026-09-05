@@ -44,7 +44,8 @@
     "volcengine": "#EB4D4D",
     "volcengineAgentPlan": "#F57338",
     "warp": "#948CB5",
-    "zai": "#42BD8C"
+    "zai": "#42BD8C",
+    "chatgptChat": "#4DC7BD"
   },
   "quotaBar": {
     "remaining": {

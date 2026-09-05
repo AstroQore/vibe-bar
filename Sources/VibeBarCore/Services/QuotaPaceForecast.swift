@@ -138,6 +138,7 @@ public struct QuotaPaceForecast: Sendable, Equatable {
         calendar: Calendar = .current,
         allowsPostResetGrace: Bool = false
     ) -> QuotaPaceForecast? {
+        guard bucket.supportsForecast else { return nil }
         guard let resetAt = bucket.resetAt,
               let rawWindowSeconds = bucket.rawWindowSeconds,
               rawWindowSeconds > 0

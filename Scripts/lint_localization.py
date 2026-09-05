@@ -62,6 +62,7 @@ GLOSSARY = (
 # `LocalizationLintTests` runs this over exactly this list on every
 # `swift test`.
 MIGRATED = [
+    "Sources/VibeBarApp/Views/ChatGPTChatViews.swift",
     "Sources/VibeBarCore/Models/QuotaError.swift",
     "Sources/VibeBarCore/Models/ServiceStatus.swift",
     "Sources/VibeBarCore/Models/ResetHistoryComparison.swift",

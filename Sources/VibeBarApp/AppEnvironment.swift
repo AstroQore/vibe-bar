@@ -93,6 +93,7 @@ final class AppEnvironment: ObservableObject {
             isEnabled: !isDemo
         )
         let accounts = AccountStore(
+            chatGPTChatEnabled: settings.settings.chatGPTChat.enabled,
             codexUsageMode: settings.codexUsageMode,
             claudeUsageMode: settings.claudeUsageMode,
             geminiUsageMode: settings.geminiUsageMode,
@@ -107,6 +108,9 @@ final class AppEnvironment: ObservableObject {
                 settings?.settings.costData.retentionDays ?? CostDataSettings.defaultRetentionDays
             },
             initialAccountIds: accounts.accounts.map(\.id),
+            chatGPTChatWebFallback: { account, settings, cookie in
+                try await ChatGPTChatWebFetcher.fetch(account: account, settings: settings, cookieHeader: cookie)
+            },
             geminiWebFallback: { account, cookieHeader in
                 try await GeminiWebQuotaCalibrator.shared.fetch(
                     account: account,
@@ -258,6 +262,7 @@ final class AppEnvironment: ObservableObject {
             .removeDuplicates {
                 $0.refreshIntervalSeconds == $1.refreshIntervalSeconds
                     && $0.mockEnabled == $1.mockEnabled
+                    && $0.chatGPTChat == $1.chatGPTChat
                     && $0.codexUsageMode == $1.codexUsageMode
                     && $0.claudeUsageMode == $1.claudeUsageMode
                     && $0.geminiUsageMode == $1.geminiUsageMode
@@ -271,6 +276,7 @@ final class AppEnvironment: ObservableObject {
                 // during willSet, so flush the emitted value, not the store's.
                 self?.settingsStore.flush(settings)
                 self?.accountStore.reload(
+                    chatGPTChatEnabled: settings.chatGPTChat.enabled,
                     codexUsageMode: settings.codexUsageMode,
                     claudeUsageMode: settings.claudeUsageMode,
                     geminiUsageMode: settings.geminiUsageMode,
@@ -567,6 +573,7 @@ final class AppEnvironment: ObservableObject {
         importGeminiBrowserCookiesAndRefreshIfNeeded()
         importGrokBrowserCookiesAndRefreshIfNeeded()
         accountStore.reload(
+            chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
             codexUsageMode: settingsStore.settings.codexUsageMode,
             claudeUsageMode: settingsStore.claudeUsageMode,
             geminiUsageMode: settingsStore.geminiUsageMode,
@@ -605,12 +612,14 @@ final class AppEnvironment: ObservableObject {
     }
 
     func refresh(_ tool: ToolType) {
+        guard !DemoMode.isEnabled else { return }
         refreshWebCookiePresence()
         recheckPrimaryRouteHealth(provider: tool)
         // User-initiated: let the cookie re-import run again even if a
         // scheduled refresh already found the browser signed out.
         MiscCookieAutoImporter.shared.resetCooldown(for: tool)
         accountStore.reload(
+            chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
             codexUsageMode: settingsStore.settings.codexUsageMode,
             claudeUsageMode: settingsStore.claudeUsageMode,
             geminiUsageMode: settingsStore.geminiUsageMode,
@@ -642,6 +651,7 @@ final class AppEnvironment: ObservableObject {
     /// is reached from every refresh, including the one a popover open triggers.
     /// The results land back in one published assignment.
     func recheckPrimaryRouteHealth(provider: ToolType? = nil) {
+        guard !DemoMode.isEnabled else { return }
         let routes = provider.map(PrimaryProviderRoute.routes(for:)) ?? PrimaryProviderRoute.allCases
         // Probes overlap: a slow all-route sweep can still be reading files
         // when a credential change fires a short provider-specific probe. The
@@ -913,6 +923,7 @@ final class AppEnvironment: ObservableObject {
                 self.grokBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
             self.accountStore.reload(
+                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
                 geminiUsageMode: self.settingsStore.geminiUsageMode,
@@ -961,6 +972,7 @@ final class AppEnvironment: ObservableObject {
                 self.geminiBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
             self.accountStore.reload(
+                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
                 geminiUsageMode: self.settingsStore.geminiUsageMode,
@@ -982,6 +994,7 @@ final class AppEnvironment: ObservableObject {
             self.recheckPrimaryRouteHealth(provider: .claude)
             guard didImport, !hadCookies else { return }
             self.accountStore.reload(
+                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
                 geminiUsageMode: self.settingsStore.geminiUsageMode,
@@ -1031,6 +1044,7 @@ final class AppEnvironment: ObservableObject {
                 self.claudeBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
             self.accountStore.reload(
+                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
                 geminiUsageMode: self.settingsStore.geminiUsageMode,
@@ -1053,6 +1067,7 @@ final class AppEnvironment: ObservableObject {
             self.recheckPrimaryRouteHealth(provider: .codex)
             guard didImport, !hadCookies else { return }
             self.accountStore.reload(
+                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
                 geminiUsageMode: self.settingsStore.geminiUsageMode,
@@ -1101,6 +1116,7 @@ final class AppEnvironment: ObservableObject {
                 self.openAIBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
             self.accountStore.reload(
+                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: self.settingsStore.settings.codexUsageMode,
                 claudeUsageMode: self.settingsStore.claudeUsageMode,
                 geminiUsageMode: self.settingsStore.geminiUsageMode,
@@ -1123,6 +1139,7 @@ final class AppEnvironment: ObservableObject {
                 quotaService.clear(accountId: account.id)
             }
             accountStore.reload(
+                chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: settingsStore.settings.codexUsageMode,
                 claudeUsageMode: settingsStore.claudeUsageMode,
                 geminiUsageMode: settingsStore.geminiUsageMode,
@@ -1150,6 +1167,7 @@ final class AppEnvironment: ObservableObject {
                 quotaService.clear(accountId: account.id)
             }
             accountStore.reload(
+                chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: settingsStore.settings.codexUsageMode,
                 claudeUsageMode: settingsStore.claudeUsageMode,
                 geminiUsageMode: settingsStore.geminiUsageMode,
@@ -1176,6 +1194,7 @@ final class AppEnvironment: ObservableObject {
                 quotaService.clear(accountId: account.id)
             }
             accountStore.reload(
+                chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: settingsStore.settings.codexUsageMode,
                 claudeUsageMode: settingsStore.claudeUsageMode,
                 geminiUsageMode: settingsStore.geminiUsageMode,
@@ -1202,6 +1221,7 @@ final class AppEnvironment: ObservableObject {
                 quotaService.clear(accountId: account.id)
             }
             accountStore.reload(
+                chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
                 codexUsageMode: settingsStore.settings.codexUsageMode,
                 claudeUsageMode: settingsStore.claudeUsageMode,
                 geminiUsageMode: settingsStore.geminiUsageMode,

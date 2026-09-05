@@ -173,7 +173,7 @@ public enum MockDataProvider {
                 extraUsageEnabled: true,
                 updatedAt: now
             )
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc / partial-primary providers don't carry credits or
             // overage extras in the mock. The Cursor card surfaces
             // on-demand budget through a different field on
@@ -188,6 +188,17 @@ public enum MockDataProvider {
 
         let buckets: [QuotaBucket]
         switch account.tool {
+        case .chatgptChat:
+            buckets = [
+                QuotaBucket(id: "image_gen", title: "Image Generation", shortLabel: "Image Generation", usedPercent: 0,
+                            resetAt: now.addingTimeInterval(36000), groupTitle: "Image Generation", quantity: .init(remaining: 998)),
+                QuotaBucket(id: "deep_research", title: "Deep Research", shortLabel: "Deep Research", usedPercent: 0,
+                            resetAt: now.addingTimeInterval(1209600), groupTitle: "Deep Research", quantity: .init(remaining: 247)),
+                QuotaBucket(id: "astra_weekly", title: "GPT-6 Pro", shortLabel: "GPT-6 Pro", usedPercent: 12,
+                            rawWindowSeconds: 604800, groupTitle: "GPT-6 Pro", quantity: .init(used: 24, remaining: 176, limit: 200, isEstimated: true)),
+                QuotaBucket(id: "sol_pro_daily", title: "GPT-5.6 Sol Pro", shortLabel: "GPT-5.6 Sol Pro", usedPercent: 10,
+                            rawWindowSeconds: 86400, groupTitle: "GPT-5.6 Sol Pro", quantity: .init(used: 17, remaining: 153, limit: 170, isEstimated: true))
+            ]
         case .codex:
             // Match the spec example: 56% used / 13% used.
             buckets = [

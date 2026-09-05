@@ -35,7 +35,7 @@ public enum MiscCookieSpecCatalog {
         // Not cookie-sourced. API key / device login / AK-SK / local
         // process probe providers, plus the primary and partial-primary
         // families, which carry their own dedicated credential paths.
-        case .codex, .claude, .gemini, .antigravity, .grok,
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok,
              .copilot, .zai, .minimax, .volcengineAgentPlan,
              .kilo, .kiro, .openRouter, .warp:
             return nil

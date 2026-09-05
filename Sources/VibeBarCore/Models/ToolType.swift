@@ -44,6 +44,7 @@ import Foundation
 /// code paths should switch to `isMiscPageProvider`.
 public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case codex
+    case chatgptChat
     case claude
     // Misc — usage-only, no cost / status integration.
     case alibaba
@@ -75,7 +76,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -88,7 +89,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Antigravity, Grok, Cursor) live here without dedicated menu-bar item kinds.
     public var supportsDedicatedCard: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor: return true
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
@@ -156,6 +157,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         switch self {
         case .codex, .claude, .gemini, .grok:
             return self
+        case .chatgptChat:
+            return .codex
         case .antigravity:
             return .gemini
         case .cursor:
@@ -171,7 +174,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// L2 members represented by one L1 company filter / aggregate row.
     public var coreProviderMembers: [ToolType] {
         switch coreProviderRepresentative ?? self {
-        case .codex: [.codex]
+        case .codex: [.codex, .chatgptChat]
         case .claude: [.claude]
         case .gemini: [.gemini, .antigravity]
         case .grok: [.grok, .cursor]
@@ -217,7 +220,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var supportsTokenCost: Bool {
         switch self {
         case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -232,7 +235,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var supportsStatusPage: Bool {
         switch self {
         case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -261,6 +264,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var hierarchy: ProviderHierarchy {
         switch self {
         case .codex:            return ProviderHierarchyCatalog.codex
+        case .chatgptChat:       return ProviderHierarchyCatalog.chatgptChat
         case .claude:           return ProviderHierarchyCatalog.claude
         case .gemini:           return ProviderHierarchyCatalog.gemini
         case .antigravity:      return ProviderHierarchyCatalog.antigravity
@@ -312,7 +316,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// "Alibaba Bailian Coding Plan" vs "Alibaba Bailian Token Plan".
     public var displayName: String {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor:
             return hierarchy.tool
         case .alibaba:          return "Alibaba Bailian Coding Plan"
         case .alibabaTokenPlan: return "Alibaba Bailian Token Plan"
@@ -345,7 +349,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Plan vs Token Plan).
     public var subtitle: String {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor:
             return hierarchy.tool
         case .alibaba:          return "Coding Plan"
         case .alibabaTokenPlan: return "Token Plan"
@@ -378,7 +382,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// "Hunyuan", which would clash with other Tencent surfaces).
     public var menuTitle: String {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor:
             return hierarchy.product
         case .alibaba, .alibabaTokenPlan: return "Bailian"
         case .copilot:          return "Copilot"
@@ -406,7 +410,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// for quota/cost and contributes a nested Cursor Status group.
     public var statusProviderName: String {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor:
             return hierarchy.vendor
         case .alibaba, .alibabaTokenPlan: return "Alibaba"
         case .copilot:          return "GitHub"
@@ -433,7 +437,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// scraped from HTML at this URL instead.
     public var statusPageURL: URL {
         switch self {
-        case .codex:       return URL(string: "https://status.openai.com/")!
+        case .codex, .chatgptChat: return URL(string: "https://status.openai.com/")!
         case .claude:      return URL(string: "https://status.claude.com/")!
         case .alibaba:     return URL(string: "https://bailian.console.aliyun.com/")!
         case .alibabaTokenPlan: return URL(string: "https://bailian.console.aliyun.com/cn-beijing?tab=plan#/efm/subscription/token-plan")!

@@ -8,6 +8,10 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
     public var resetAt: Date?
     public var rawWindowSeconds: Int?
     public var groupTitle: String?
+    public var quantity: QuotaQuantity?
+
+    public var hasPercentage: Bool { quantity.map { $0.usedPercent != nil } ?? true }
+    public var supportsForecast: Bool { quantity == nil }
 
     public init(
         id: String,
@@ -16,8 +20,10 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         usedPercent: Double,
         resetAt: Date? = nil,
         rawWindowSeconds: Int? = nil,
-        groupTitle: String? = nil
+        groupTitle: String? = nil,
+        quantity: QuotaQuantity? = nil
     ) {
+        self.quantity = quantity
         self.id = id
         self.title = VisibleSecretRedactor.redact(title) ?? ""
         self.shortLabel = Self.expandedWindowLabel(
@@ -29,7 +35,8 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         // value here would silently end up as 100% — a much louder
         // bug than treating it as zero (the parser shouldn't have
         // produced a non-finite percent in the first place).
-        self.usedPercent = usedPercent.isFinite ? max(0.0, min(100.0, usedPercent)) : 0
+        let resolvedPercent = quantity?.usedPercent ?? usedPercent
+        self.usedPercent = resolvedPercent.isFinite ? max(0.0, min(100.0, resolvedPercent)) : 0
         self.resetAt = resetAt
         self.rawWindowSeconds = rawWindowSeconds
         self.groupTitle = VisibleSecretRedactor.redact(groupTitle)
@@ -43,6 +50,7 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         case resetAt
         case rawWindowSeconds
         case groupTitle
+        case quantity
     }
 
     public init(from decoder: Decoder) throws {
@@ -54,7 +62,8 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
             usedPercent: try container.decode(Double.self, forKey: .usedPercent),
             resetAt: try container.decodeIfPresent(Date.self, forKey: .resetAt),
             rawWindowSeconds: try container.decodeIfPresent(Int.self, forKey: .rawWindowSeconds),
-            groupTitle: try container.decodeIfPresent(String.self, forKey: .groupTitle)
+            groupTitle: try container.decodeIfPresent(String.self, forKey: .groupTitle),
+            quantity: try container.decodeIfPresent(QuotaQuantity.self, forKey: .quantity)
         )
     }
 
@@ -67,6 +76,7 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         try container.encodeIfPresent(resetAt, forKey: .resetAt)
         try container.encodeIfPresent(rawWindowSeconds, forKey: .rawWindowSeconds)
         try container.encodeIfPresent(groupTitle, forKey: .groupTitle)
+        try container.encodeIfPresent(quantity, forKey: .quantity)
     }
 
     /// Quota-window names are ordinary UI copy, not telemetry codes. Keep

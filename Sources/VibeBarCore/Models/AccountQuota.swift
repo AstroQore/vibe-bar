@@ -12,6 +12,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
     /// Codex manual rate-limit reset credits (count + next expiry). Nil for
     /// non-Codex tools and when the account has no reset-credit data.
     public var resetCredits: CodexResetCredits?
+    public var chatGPTChat: ChatGPTChatSummary?
 
     public init(
         accountId: String,
@@ -22,7 +23,8 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         queriedAt: Date = Date(),
         error: QuotaError? = nil,
         providerExtras: ProviderExtras? = nil,
-        resetCredits: CodexResetCredits? = nil
+        resetCredits: CodexResetCredits? = nil,
+        chatGPTChat: ChatGPTChatSummary? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -33,6 +35,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         self.error = error
         self.providerExtras = providerExtras
         self.resetCredits = resetCredits
+        self.chatGPTChat = chatGPTChat
     }
 
     public func bucket(id: String) -> QuotaBucket? {
@@ -48,7 +51,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case accountId, tool, buckets, plan, email, queriedAt, error, providerExtras, resetCredits
+        case accountId, tool, buckets, plan, email, queriedAt, error, providerExtras, resetCredits, chatGPTChat
     }
 
     public init(from decoder: Decoder) throws {
@@ -61,6 +64,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         queriedAt = try c.decode(Date.self, forKey: .queriedAt)
         providerExtras = try c.decodeIfPresent(ProviderExtras.self, forKey: .providerExtras)
         resetCredits = try c.decodeIfPresent(CodexResetCredits.self, forKey: .resetCredits)
+        chatGPTChat = try c.decodeIfPresent(ChatGPTChatSummary.self, forKey: .chatGPTChat)
         error = nil
     }
 
@@ -74,5 +78,6 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         try c.encode(queriedAt, forKey: .queriedAt)
         try c.encodeIfPresent(providerExtras, forKey: .providerExtras)
         try c.encodeIfPresent(resetCredits, forKey: .resetCredits)
+        try c.encodeIfPresent(chatGPTChat, forKey: .chatGPTChat)
     }
 }

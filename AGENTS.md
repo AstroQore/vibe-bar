@@ -888,6 +888,7 @@ SubProvider → L3 quota / model group. Source of truth:
 | L1 company | L2 SubProvider        | L3 quota / model groups                  |
 | ---------- | --------------------- | ---------------------------------------- |
 | OpenAI     | ChatGPT Agentic       | All Models, Codex Spark …                 |
+| OpenAI     | ChatGPT Chat          | Image Generation, Deep Research, Chat models |
 | Anthropic  | Claude                | All Models, Sonnet, Opus, Fable …         |
 | Google AI  | Gemini Web            | 5 Hours, Weekly                           |
 | Google AI  | AntiGravity           | Gemini Models, Claude & GPT Models        |
@@ -983,6 +984,21 @@ user-visible model string through
 tooltip where the surface has one). The ledger and the pricing tables
 keep whatever the provider wrote, because rates are matched on those
 upstream labels — canonicalize the display, never the stored value.
+
+### ChatGPT Chat allowances
+
+`ToolType.chatgptChat` is an independent, quota-only member of OpenAI. It has
+no local token-cost harness. `ChatGPTChatClient` reads feature remainders and
+bounded, incremental saved Chat history through cookies or the app's own
+WebView login. Work origins (`tpp`, `flora`, `codex`) and Work models are excluded;
+the account's `/models` catalog supplies the explicit `is_work_mode_model` flag.
+`working_turn_id` and temporary `WEB:` identifiers do not classify a conversation.
+
+`QuotaBucket.quantity` carries absolute counts and coverage. A missing total is
+not a percentage; never feed absolute or estimated counts into the percentage
+forecast/reset-history stores. The menu-bar count metric is `displayCount`.
+Model quotas remain estimates with user-confirmed limits/reset anchors. See
+[docs/chatgpt-chat.md](docs/chatgpt-chat.md) for setup and review validation.
 
 ### 7.2 Localization
 

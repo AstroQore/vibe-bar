@@ -971,7 +971,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         for fieldId in itemSettings.selectedFieldIds {
             guard
                 let field = MenuBarFieldCatalog.field(id: fieldId, registry: registry),
-                let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId)
+                let bucket = environment.quota(for: field.tool)?.bucket(id: field.bucketId),
+                bucket.quantity == nil
             else { continue }
             fields.append(field)
             buckets.append(bucket)

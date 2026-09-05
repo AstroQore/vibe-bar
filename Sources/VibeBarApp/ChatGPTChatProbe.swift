@@ -1,0 +1,43 @@
+import AppKit
+import VibeBarCore
+
+/// Explicit, read-only diagnostic for an unmerged build. Starts no scheduler,
+/// menu item or MCP server and never prints credentials or conversation text.
+@MainActor
+enum ChatGPTChatProbe {
+    static func run() async -> Int32 {
+        var config = ChatGPTChatSettings()
+        config.enabled = true
+        config.includeHistory = CommandLine.arguments.contains("--history")
+        let settings = config
+        let fallback: ChatGPTChatQuotaAdapter.WebFallback?
+        if CommandLine.arguments.contains("--cookie-only") {
+            fallback = nil
+        } else {
+            fallback = { account, settings, cookie in
+                try await ChatGPTChatWebFetcher.fetch(account: account, settings: settings, cookieHeader: cookie)
+            }
+        }
+        let adapter = ChatGPTChatQuotaAdapter(webFallback: fallback, settings: { settings }, cookies: {
+            if CommandLine.arguments.contains("--webview-only") { throw QuotaError.noCredential }
+            return try OpenAIWebCookieStore.readCookieHeader()
+        })
+        do {
+            let result = try await adapter.fetch(for: AccountIdentity(id: "chat-probe", tool: .chatgptChat, source: .webCookie))
+            struct Output: Encodable {
+                let transport: String
+                let buckets: [MCPQuotaBucketDTO]
+                let historyComplete: Bool
+            }
+            let data = try JSONEncoder().encode(Output(transport: result.chatGPTChat?.transport ?? "unknown",
+                buckets: result.buckets.map { MCPQuotaBucketDTO(bucket: $0, forecast: nil) },
+                historyComplete: result.chatGPTChat?.historyComplete ?? false))
+            print(String(decoding: data, as: UTF8.self))
+            return 0
+        } catch {
+            let message = (error as? QuotaError)?.logSafeMessage ?? "ChatGPT Chat connection failed."
+            print(message)
+            return 1
+        }
+    }
+}

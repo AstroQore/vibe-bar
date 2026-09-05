@@ -261,6 +261,7 @@ systemd 的 Linux 机器上受支持的 CLI 日志，无需开放入站端口。
 | 页面 | 配额与状态 | 成本与活动 |
 | --- | --- | --- |
 | ChatGPT / Codex | Codex 订阅窗口、Spark、OpenAI 状态 | `~/.codex/sessions/**/*.jsonl` |
+| ChatGPT Chat | 绘图、Deep Research 剩余额度与 Chat 模型历史估算；[配置说明](docs/chatgpt-chat.md) | 已保存的云端 Chat 历史（排除 Work） |
 | Claude Code / Cowork | 5 Hours、Weekly、按模型的周窗口、Anthropic 状态 | `~/.claude/projects/**/*.jsonl`，以及 Claude.app 的 Cowork transcript |
 | Gemini + AntiGravity | Gemini Web 配额、本地 AntiGravity Language Server 配额 | 本地 Gemini / AntiGravity 用量记录 |
 | Grok + Cursor | Grok 配额、Cursor Models 与 Other Models、Grok Bot 周配额、SpaceXAI + Cursor 状态 | 本地 Grok 记录、Cursor 账户用量事件；Grok Bot 仅显示配额 |

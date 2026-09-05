@@ -129,11 +129,13 @@ public final class QuotaService: ObservableObject {
         mockProvider: @escaping () -> Bool,
         retentionProvider: @escaping () -> Int = { CostDataSettings.defaultRetentionDays },
         initialAccountIds: [String] = [],
+        chatGPTChatWebFallback: ChatGPTChatQuotaAdapter.WebFallback? = nil,
         geminiWebFallback: (@Sendable (AccountIdentity, String) async throws -> AccountQuota)? = nil
     ) -> QuotaService {
         QuotaService(
             adapters: [
                 .codex: CodexQuotaAdapter(),
+                .chatgptChat: ChatGPTChatQuotaAdapter(webFallback: chatGPTChatWebFallback),
                 .claude: ClaudeQuotaAdapter(),
                 .zai: ZaiQuotaAdapter(),
                 .copilot: CopilotQuotaAdapter(),

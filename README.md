@@ -295,6 +295,7 @@ model.
 | Surface | Quota and status | Cost and activity |
 | --- | --- | --- |
 | ChatGPT / Codex | Codex subscription windows, Spark, OpenAI status | `~/.codex/sessions/**/*.jsonl` |
+| ChatGPT Chat | Image Generation, Deep Research and estimated Chat-model counts; [setup](docs/chatgpt-chat.md) | Saved cloud Chat history (Work excluded) |
 | Claude Code / Cowork | 5 Hours, Weekly, per-model weekly, Anthropic status | `~/.claude/projects/**/*.jsonl`, Claude.app's Cowork transcripts |
 | Gemini + AntiGravity | Gemini Web quotas, local AntiGravity language-server quotas | Local Gemini / AntiGravity usage records |
 | Grok + Cursor | Grok quota, Cursor Models and Other Models, Grok Bot weekly, SpaceXAI + Cursor status | Local Grok records, Cursor account usage events; Grok Bot is quota-only |

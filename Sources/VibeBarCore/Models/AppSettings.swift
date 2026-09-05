@@ -23,6 +23,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var mockEnabled: Bool
     public var codexUsageMode: CodexUsageMode
     public var claudeUsageMode: ClaudeUsageMode
+    public var chatGPTChat: ChatGPTChatSettings = .init()
     public var geminiUsageMode: GeminiUsageMode
     public var antigravityUsageMode: AntigravityUsageMode
     public var menuBarItems: [MenuBarItemSettings]
@@ -453,6 +454,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case codexUsageMode
         case claudeUsageMode
         case geminiUsageMode
+        case chatGPTChat
         case antigravityUsageMode
         case menuBarItems
         case miniWindow
@@ -515,6 +517,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         // e.g. the v1 `.oauthThenWeb` / `.webThenOAuth` Gemini cases —
         // fall back to `.auto` instead of failing the whole AppSettings
         // decode. Same robustness for AntigravityUsageMode.
+        self.chatGPTChat = ((try? c.decodeIfPresent(ChatGPTChatSettings.self, forKey: .chatGPTChat)) ?? .init()).sanitized
         self.geminiUsageMode = (try? c.decodeIfPresent(GeminiUsageMode.self, forKey: .geminiUsageMode)) ?? Self.default.geminiUsageMode
         self.antigravityUsageMode = (try? c.decodeIfPresent(AntigravityUsageMode.self, forKey: .antigravityUsageMode)) ?? Self.default.antigravityUsageMode
 
@@ -714,6 +717,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(codexUsageMode, forKey: .codexUsageMode)
         try c.encode(claudeUsageMode, forKey: .claudeUsageMode)
         try c.encode(geminiUsageMode, forKey: .geminiUsageMode)
+        try c.encode(chatGPTChat.sanitized, forKey: .chatGPTChat)
         try c.encode(antigravityUsageMode, forKey: .antigravityUsageMode)
         try c.encode(menuBarItems, forKey: .menuBarItems)
         try c.encode(miniWindow, forKey: .miniWindow)

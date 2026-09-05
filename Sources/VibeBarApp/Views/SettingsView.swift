@@ -286,7 +286,7 @@ struct SettingsView: View {
                             representative: .codex,
                             healthProviders: [.codex]
                         )
-                        coreProviderPlanBadgeRows(for: [.codex])
+                        coreProviderPlanBadgeRows(for: settingsStore.settings.chatGPTChat.enabled ? ToolType.codex.coreProviderMembers : [.codex])
                         Divider()
                             .padding(.vertical, 2)
                         Picker(L10n.Settings.usageSource, selection: $settingsStore.settings.codexUsageMode) {
@@ -316,6 +316,7 @@ struct SettingsView: View {
                             }
                             .disabled(!environment.hasOpenAIWebCookies)
                         }
+                        .disabled(DemoMode.isEnabled)
                         if environment.hasOpenAIWebCookies {
                             Text(L10n.Onboarding.Cookies.saved)
                                 .font(.caption2).foregroundStyle(.green)
@@ -331,6 +332,8 @@ struct SettingsView: View {
                         }
                         Divider()
                             .padding(.vertical, 2)
+                        ChatGPTChatSettingsSection()
+                        Divider()
                         connectionHealthRows(provider: .codex)
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .codex)

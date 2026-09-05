@@ -53,6 +53,17 @@ public enum SecureCookieHeaderStore {
         "\(provider.rawValue).\(source.rawValue).cookie"
     }
 
+    /// Reuse a session already authorized by the app; never starts a Keychain
+    /// lookup from a background Chat quota refresh.
+    public static func cachedEntry(provider: Provider, source: Source, now: Date = Date()) -> Entry? {
+        let key = account(provider: provider, source: source)
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let until = unavailableUntilByAccount[key], until > now { return nil }
+        let entry = cache[key] ?? nil
+        return entry
+    }
+
     public static func load(provider: Provider, source: Source, now: Date = Date()) -> LoadResult {
         load(account: account(provider: provider, source: source), now: now)
     }

@@ -172,6 +172,10 @@
       "company": "Baidu",
       "subProvider": "Qianfan"
     },
+    "chatgptChat": {
+      "company": "OpenAI",
+      "subProvider": "ChatGPT Chat"
+    },
     "claude": {
       "company": "Anthropic",
       "subProvider": "Claude"

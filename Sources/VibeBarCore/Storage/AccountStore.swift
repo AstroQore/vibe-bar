@@ -18,6 +18,7 @@ public final class AccountStore: ObservableObject {
     @Published public private(set) var accounts: [AccountIdentity] = []
 
     public init(
+        chatGPTChatEnabled: Bool = false,
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
         geminiUsageMode: GeminiUsageMode = .webOnly,
@@ -25,6 +26,7 @@ public final class AccountStore: ObservableObject {
         miscProviderInstances: [MiscProviderInstance] = AppSettings.defaultMiscProviderInstances
     ) {
         reload(
+            chatGPTChatEnabled: chatGPTChatEnabled,
             codexUsageMode: codexUsageMode,
             claudeUsageMode: claudeUsageMode,
             geminiUsageMode: geminiUsageMode,
@@ -35,6 +37,7 @@ public final class AccountStore: ObservableObject {
 
     /// Re-scan CLI keychain/files for auto-detected provider identities.
     public func reload(
+        chatGPTChatEnabled: Bool = false,
         codexUsageMode: CodexUsageMode = .auto,
         claudeUsageMode: ClaudeUsageMode = .auto,
         geminiUsageMode: GeminiUsageMode = .webOnly,
@@ -52,6 +55,9 @@ public final class AccountStore: ObservableObject {
             return
         }
 
+        if chatGPTChatEnabled {
+            detected.append(AccountIdentity(id: "web-chatgpt-chat", tool: .chatgptChat, alias: "ChatGPT Chat", source: .webCookie))
+        }
         if let codex = autoDetectCodex(mode: codexUsageMode) {
             detected.append(codex)
         }

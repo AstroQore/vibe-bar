@@ -181,7 +181,7 @@ struct PopoverRoot: View {
         switch overviewPage {
         case .overview:
             return settingsStore.settings.visibleCoreProviderList
-        case .openAI: return [.codex]
+        case .openAI: return ToolType.codex.coreProviderMembers
         case .claude: return [.claude]
         case .googleAI: return ToolType.googleAIPair
         case .grok: return ToolType.grokFamily
@@ -633,7 +633,9 @@ private struct OverviewWaterfall: View {
                 tools: settingsStore.settings.visibleCoreProviderList
             )
         case let .overviewQuota(tool):
-            if tool == .gemini {
+            if tool == .codex && settingsStore.settings.chatGPTChat.enabled {
+                OpenAICombinedQuotaCard(density: density)
+            } else if tool == .gemini {
                 // Gemini Web and AntiGravity share one Google AI company card.
                 GeminiCombinedCard(density: density)
             } else if tool == .grok {
@@ -1611,7 +1613,7 @@ private struct OverviewCostCard: View {
         case .gemini: return L10n.Cost.Empty.gemini
         case .antigravity: return L10n.Cost.Empty.antigravity
         case .grok: return L10n.Cost.Empty.grok
-        case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
             // `tool.supportsTokenCost`), but render a graceful
@@ -2263,6 +2265,7 @@ struct ProviderQuotaCard: View {
 
     private var emptyMessage: String {
         switch tool {
+        case .chatgptChat: return L10n.Quota.Chat.connectionHelp
         case .codex:  return L10n.Quota.Login.codex
         case .claude: return L10n.Quota.Login.claude
         case .grok: return L10n.Quota.Login.grok
@@ -2359,7 +2362,11 @@ private struct ProviderBucketRow: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        content(now: now)
+        if bucket.quantity != nil {
+            QuantityQuotaRow(bucket: bucket, density: density, now: now)
+        } else {
+            content(now: now)
+        }
     }
 
     @ViewBuilder

@@ -86,7 +86,7 @@ public actor UsageFillTimelineStore {
 
         var dirty = false
         db.exec("BEGIN IMMEDIATE")
-        for bucket in quota.buckets {
+        for bucket in quota.buckets where bucket.supportsForecast {
             guard bucket.usedPercent.isFinite else { continue }
             let percent = min(100, max(0, bucket.usedPercent))
             let slotStart = Self.slotStart(for: now, windowSeconds: bucket.rawWindowSeconds)

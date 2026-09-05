@@ -3,7 +3,7 @@ import Foundation
 public enum ProviderPlanDisplay {
     public static func displayName(for tool: ToolType, rawPlan: String?) -> String? {
         switch tool {
-        case .codex:
+        case .codex, .chatgptChat:
             return prefixed(codexDisplayName(rawPlan), brand: "ChatGPT")
         case .claude:
             return prefixed(claudeDisplayName(rawPlan), brand: "Claude")
