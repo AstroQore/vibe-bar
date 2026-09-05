@@ -57,7 +57,13 @@ final class LayoutStudioWindowController: NSObject {
                 .environmentObject(environment.pageLayout)
                 .environmentObject(environment.workbenchServices)
         )
-        let initialSize = NSSize(width: 1240, height: 860)
+        // As tall as the screen allows, so a page fits without shrinking
+        // further than it has to; the width is the stage plus the inspector.
+        let visible = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
+        let initialSize = NSSize(
+            width: min(1240, max(880, visible.width - 80)),
+            height: min(1100, max(600, visible.height - 60))
+        )
         let win = NSWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
