@@ -223,7 +223,12 @@ struct MenuBarComposerEditor: View {
             }
         }
         .onChange(of: externalPendingBlock?.wrappedValue) { _, new in
-            if let new, new != draggedNewToken { draggedNewToken = new }
+            // Chaining flattens the binding's optional, so `nil` here can
+            // mean "no binding" or "the stage cleared it". Only the second
+            // is an update — and it must land, or the block the stage just
+            // placed would stay in flight here for its whole deadline.
+            guard externalPendingBlock != nil, new != draggedNewToken else { return }
+            draggedNewToken = new
         }
         .onAppear {
             if let external = externalSelection?.wrappedValue { selection = external }
