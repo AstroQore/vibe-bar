@@ -1000,7 +1000,12 @@ struct LayoutStudioView: View {
                     }
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
-                densityPill
+                // Only where it changes the surface on the stage: a mini
+                // window has a strip density of its own and never reads the
+                // popover's.
+                if case .popoverPage = model.subject {
+                    densityPill
+                }
                 zoomPill
                 glassIconButton(
                     systemImage: model.isInspectorShown ? "sidebar.trailing" : "sidebar.leading",
