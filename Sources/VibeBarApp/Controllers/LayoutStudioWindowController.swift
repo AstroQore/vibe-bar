@@ -209,7 +209,10 @@ final class LayoutStudioModel: ObservableObject {
     }
 
     @Published var subject: LayoutStudioWindowController.Subject = .popoverPage(.overview)
-    @Published var zoom: Zoom = .fit
+    /// Actual size to begin with: the surface on the stage is the real one,
+    /// and it should look like it. A page taller than the window scrolls;
+    /// Fit (⌘0) is a step away for the overview of it.
+    @Published var zoom: Zoom = .scale(1)
     @Published var isInspectorShown = false
     /// What the last edits replaced, newest last. Per studio session: closing
     /// the window forgets it, which is also what makes each entry cheap.

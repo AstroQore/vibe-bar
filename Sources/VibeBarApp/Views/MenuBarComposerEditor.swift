@@ -22,6 +22,10 @@ struct MenuBarComposerEditor: View {
     /// way round. Kept in step with the editor's own selection rather than
     /// replacing it, so the editor in Settings needs no owner.
     var externalSelection: Binding<Set<UUID>>? = nil
+    /// The block in flight from the palette, when this editor is the
+    /// Studio's inspector: the stage beside it is a drop target too, and it
+    /// needs to know what is being carried. Kept in step the same way.
+    var externalPendingBlock: Binding<PendingPaletteBlock?>? = nil
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -212,6 +216,19 @@ struct MenuBarComposerEditor: View {
         }
         .onChange(of: externalSelection?.wrappedValue) { _, new in
             if let new, new != selection { selection = new }
+        }
+        .onChange(of: draggedNewToken) { _, new in
+            if let external = externalPendingBlock, external.wrappedValue != new {
+                external.wrappedValue = new
+            }
+        }
+        .onChange(of: externalPendingBlock?.wrappedValue) { _, new in
+            // Chaining flattens the binding's optional, so `nil` here can
+            // mean "no binding" or "the stage cleared it". Only the second
+            // is an update — and it must land, or the block the stage just
+            // placed would stay in flight here for its whole deadline.
+            guard externalPendingBlock != nil, new != draggedNewToken else { return }
+            draggedNewToken = new
         }
         .onAppear {
             if let external = externalSelection?.wrappedValue { selection = external }
@@ -1918,7 +1935,7 @@ private struct DebouncedPercentStepper: View {
 ///
 /// See `MenuBarComposerEditor.draggedNewToken` for why the deadline is here
 /// rather than a payload type.
-struct PendingPaletteBlock {
+struct PendingPaletteBlock: Equatable {
     let token: MenuBarToken
     var startedAt: Date = .now
 

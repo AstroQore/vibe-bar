@@ -6,6 +6,7 @@ import VibeBarCore
 struct PopoverRoot: View {
     let width: CGFloat
     let onContentHeightChange: (CGFloat) -> Void
+    @Environment(\.surfaceItemFrames) private var surfaceItemFrames
     let onToggleMiniWindow: () -> Void
     /// The tab the popover opens on. Production always starts on Overview;
     /// demo mode builds one popover per captured page.
@@ -43,18 +44,29 @@ struct PopoverRoot: View {
             Divider()
                 .opacity(0.3)
                 .padding(.bottom, shellDensity.interSectionSpacing)
-            ScrollView(.vertical, showsIndicators: false) {
+            if isOnStage {
+                // On the Studio's stage the page is a surface to be arranged,
+                // not a popover to be scrolled: it cannot be scrolled there
+                // (the stage owns the pointer), so a page taller than the
+                // popover's ceiling was simply cut off, cards and all. Drawn
+                // whole instead; the Studio's Fit and zoom do the rest.
                 content(density: contentDensity)
-                    // A vertical ScrollView does not always pass a finite
-                    // horizontal proposal through to intrinsically wide
-                    // HStacks. Provider detail pages then grow to the sum of
-                    // both columns' ideal widths and their right edge escapes
-                    // the shared popover shell. Give every tab the exact same
-                    // viewport width so only its height remains scrollable.
                     .frame(width: shellContentWidth, alignment: .topLeading)
                     .padding(.bottom, 4)
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    content(density: contentDensity)
+                        // A vertical ScrollView does not always pass a finite
+                        // horizontal proposal through to intrinsically wide
+                        // HStacks. Provider detail pages then grow to the sum of
+                        // both columns' ideal widths and their right edge escapes
+                        // the shared popover shell. Give every tab the exact same
+                        // viewport width so only its height remains scrollable.
+                        .frame(width: shellContentWidth, alignment: .topLeading)
+                        .padding(.bottom, 4)
+                }
+                .frame(maxHeight: maxScrollHeight)
             }
-            .frame(maxHeight: maxScrollHeight)
         }
         // Provider pages have a narrower intrinsic HStack than Overview and
         // Misc. Pin the shared shell's inner width before adding padding so
@@ -116,6 +128,10 @@ struct PopoverRoot: View {
         let visible = NSScreen.vibeBarPresentationScreen?.visibleFrame.height ?? 900
         return max(360, visible - 150)
     }
+
+    /// Whether this page is the Studio's surface: the Studio hands every
+    /// surface it arranges the frames it reports into, and nothing else does.
+    private var isOnStage: Bool { surfaceItemFrames != nil }
 
     @ViewBuilder
     private func content(density: Theme.Density) -> some View {
