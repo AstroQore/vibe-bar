@@ -51,6 +51,11 @@ struct LayoutStudioView: View {
     /// An undo writes the saved state too; that write is not a new step.
     @State private var isUndoing = false
     @State private var isHintShown = false
+    /// The menu bar subject's selection — shared with the composer in the
+    /// inspector, so the block picked on the stage is the block it edits.
+    @State private var stripSelection: Set<UUID> = []
+    /// The menu bar the strip is previewed on; the window's own until picked.
+    @State private var stripScheme: ColorScheme?
     @State private var hintGeneration = 0
     /// The merged field catalog, rebuilt when the registry changes rather
     /// than per render — the same reason Settings caches it.
@@ -186,6 +191,27 @@ struct LayoutStudioView: View {
                     .frame(width: size?.width, height: size?.height)
             }
             .id(id)
+        case let .menuBar(kind):
+            // Not through `surfaceShell`: the strip is not a picture scaled
+            // from outside but a live surface that draws itself at the
+            // stage's zoom and owns its own gesture — see `MenuBarStageView`.
+            if settingsStore.settings.menuBarItem(kind).usesComposedStrip {
+                MenuBarStageView(
+                    kind: kind,
+                    selection: $stripSelection,
+                    scheme: stripScheme ?? scheme,
+                    scale: scale,
+                    onNaturalSize: { naturalSize = $0 }
+                )
+                .id(kind)
+            } else {
+                Text(L10n.Platform.Macos.MenuBar.composerStudioDefault)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+                    .padding(24)
+            }
         }
     }
 
@@ -363,7 +389,8 @@ struct LayoutStudioView: View {
             .map(LayoutStudioWindowController.Subject.popoverPage)
         let windows = settingsStore.settings.miniWindow.windows
             .map { LayoutStudioWindowController.Subject.miniWindow($0.id) }
-        return pages + windows
+        let strips = MenuBarItemKind.allCases.map(LayoutStudioWindowController.Subject.menuBar)
+        return pages + windows + strips
     }
 
     private func stepSubject(by offset: Int) {
@@ -381,6 +408,8 @@ struct LayoutStudioView: View {
                 ?? L10n.Popover.Tab.overview
         case let .miniWindow(id):
             return settingsStore.settings.miniWindow.config(id: id)?.name ?? L10n.Popover.Header.mini
+        case .menuBar:
+            return L10n.Settings.Section.menuBar
         }
     }
 
@@ -388,6 +417,7 @@ struct LayoutStudioView: View {
         switch subject {
         case .popoverPage: return "rectangle.portrait.on.rectangle.portrait"
         case .miniWindow:  return "macwindow"
+        case .menuBar:     return "menubar.rectangle"
         }
     }
 
@@ -642,6 +672,9 @@ struct LayoutStudioView: View {
             started.baseOrder = config.fieldIds
             started.axis = config.displayMode.stageAxis
             return started
+        case .menuBar:
+            // The strip owns its own gesture — see `MenuBarStageView`.
+            return nil
         }
     }
 
@@ -734,6 +767,8 @@ struct LayoutStudioView: View {
             } else {
                 drag = current
             }
+        case .menuBar:
+            drag = current
         }
 
         autoscroll(for: location)
@@ -789,6 +824,8 @@ struct LayoutStudioView: View {
                 commitMini(current, id: id, order: order)
             }
             settle(current, to: target)
+        case .menuBar:
+            withAnimation(Self.reflow) { drag = nil }
         }
     }
 
@@ -852,6 +889,11 @@ struct LayoutStudioView: View {
                 subject: model.subject,
                 state: .miniWindow(id, miniConfig(id))
             )
+        case let .menuBar(kind):
+            return SavedState(
+                subject: model.subject,
+                state: .menuBar(kind, settingsStore.settings.menuBarItem(kind))
+            )
         }
     }
 
@@ -895,6 +937,8 @@ struct LayoutStudioView: View {
         case let .miniWindow(id):
             guard let config = miniConfig(id) else { return }
             updateMini(id) { $0.fieldIds.removeAll { $0 == current.item } }
+        case .menuBar:
+            break
         }
     }
 
@@ -917,6 +961,8 @@ struct LayoutStudioView: View {
                     settings.miniWindow.windows.removeAll { $0.id == id }
                 }
                 settingsStore.settings = settings
+            case let .menuBar(_, item):
+                settingsStore.settings.setMenuBarItem(item)
             }
         }
     }
@@ -925,7 +971,7 @@ struct LayoutStudioView: View {
 
     /// The pills whose selection slides as one shape.
     private enum PillGroup: Hashable {
-        case mode, ratio, style
+        case mode, ratio, style, appearance
     }
 
     private struct TrayItem: Identifiable {
@@ -948,13 +994,16 @@ struct LayoutStudioView: View {
             return notShownFields(config).map {
                 TrayItem(id: $0.id, label: $0.displayTitle, accent: Theme.providerAccent(for: $0.tool))
             }
+        case .menuBar:
+            // The palette in the inspector is the strip's tray.
+            return []
         }
     }
 
     private var trayCaption: String {
         switch model.subject {
         case .popoverPage: return L10n.Settings.Layout.studioTrayHidden
-        case .miniWindow:  return L10n.Settings.Layout.studioTrayNotShown
+        case .miniWindow, .menuBar: return L10n.Settings.Layout.studioTrayNotShown
         }
     }
 
@@ -968,6 +1017,8 @@ struct LayoutStudioView: View {
                 updateMini(id) { config in
                     if !config.fieldIds.contains(item.id) { config.fieldIds.append(item.id) }
                 }
+            case .menuBar:
+                break
             }
         }
     }
@@ -1017,6 +1068,15 @@ struct LayoutStudioView: View {
             }
             Section(L10n.Settings.Section.miniWindows) {
                 ForEach(subjects.filter { if case .miniWindow = $0 { return true } else { return false } }, id: \.self) { subject in
+                    Button {
+                        withAnimation(.smooth(duration: 0.28)) { model.subject = subject }
+                    } label: {
+                        Label(title(for: subject), systemImage: icon(for: subject))
+                    }
+                }
+            }
+            Section(L10n.Settings.Section.menuBar) {
+                ForEach(subjects.filter { if case .menuBar = $0 { return true } else { return false } }, id: \.self) { subject in
                     Button {
                         withAnimation(.smooth(duration: 0.28)) { model.subject = subject }
                     } label: {
@@ -1121,6 +1181,29 @@ struct LayoutStudioView: View {
                 .padding(3)
                 .glassEffect(.regular, in: .capsule)
             }
+        case .menuBar:
+            // The one thing a strip has to be checked against that a page
+            // does not: both menu bars. A fixed colour can read on one and
+            // vanish on the other.
+            let current = stripScheme ?? scheme
+            HStack(spacing: 2) {
+                ForEach([ColorScheme.light, ColorScheme.dark], id: \.self) { candidate in
+                    let label = candidate == .dark
+                        ? L10n.MenuBar.Composer.Canvas.dark
+                        : L10n.MenuBar.Composer.Canvas.light
+                    pillButton(
+                        isSelected: candidate == current,
+                        systemImage: candidate == .dark ? "moon" : "sun.max",
+                        title: candidate == current ? label : nil,
+                        group: .appearance,
+                        help: label
+                    ) {
+                        withAnimation(.smooth(duration: 0.22)) { stripScheme = candidate }
+                    }
+                }
+            }
+            .padding(3)
+            .glassEffect(.regular, in: .capsule)
         }
     }
 
@@ -1289,7 +1372,7 @@ struct LayoutStudioView: View {
     private var trayHelp: String {
         switch model.subject {
         case .popoverPage: return L10n.Settings.Layout.studioTrayShowHelp
-        case .miniWindow:  return L10n.Settings.Layout.studioTrayAddHelp
+        case .miniWindow, .menuBar: return L10n.Settings.Layout.studioTrayAddHelp
         }
     }
 
@@ -1325,6 +1408,9 @@ struct LayoutStudioView: View {
             return config.displayMode.supportsStageArranging
                 ? L10n.Settings.Layout.studioHintMini
                 : L10n.Settings.Layout.studioHintFixedStyle
+        case let .menuBar(kind):
+            guard settingsStore.settings.menuBarItem(kind).usesComposedStrip else { return nil }
+            return L10n.Platform.Macos.MenuBar.composerCanvasHint
         }
     }
 
@@ -1421,6 +1507,9 @@ struct LayoutStudioView: View {
                 case let .miniWindow(id):
                     MiniWindowsSettingsSection(initialWindowID: id)
                         .id(id)
+                case let .menuBar(kind):
+                    menuBarInspector(kind)
+                        .id(kind)
                 }
             }
             .padding(16)
@@ -1434,12 +1523,52 @@ struct LayoutStudioView: View {
         }
     }
 
+    /// The composer, as Settings shows it, editing the block picked on the
+    /// stage; above it the switch that makes the strip a composed one at all.
+    private func menuBarInspector(_ kind: MenuBarItemKind) -> some View {
+        let item = settingsStore.settings.menuBarItem(kind)
+        return VStack(alignment: .leading, spacing: 12) {
+            Picker(
+                L10n.MenuBar.Composer.Mode.label,
+                selection: Binding(
+                    get: { item.usesComposedStrip },
+                    set: { enabled in
+                        var updated = settingsStore.settings.menuBarItem(kind)
+                        updated.setComposedStripEnabled(
+                            enabled,
+                            template: .matching(updated.layout),
+                            registry: quotaService.fieldRegistry,
+                            groupCatalogLabel: MiniWindowGroupLabelCatalog.defaultLabel(for:)
+                        )
+                        settingsStore.settings.setMenuBarItem(updated)
+                    }
+                )
+            ) {
+                Text(L10n.MenuBar.Composer.Mode.default).tag(false)
+                Text(L10n.MenuBar.Composer.Mode.custom).tag(true)
+            }
+            .pickerStyle(.segmented)
+            if item.usesComposedStrip {
+                MenuBarComposerEditor(kind: kind, density: density, externalSelection: $stripSelection)
+            } else {
+                Text(L10n.MenuBar.Composer.Mode.defaultCaption)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     // MARK: - Keys
 
     private func installKeys() {
         model.keyHandler = { key in
             switch key {
             case .escape:
+                // The strip answers Escape itself — a drag to cancel, a
+                // selection to clear — through the key press the window
+                // passes on when this returns false.
+                if case .menuBar = model.subject { return false }
                 if drag != nil {
                     cancelDrag()
                 } else {

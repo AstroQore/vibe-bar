@@ -496,8 +496,36 @@ struct MenuBarStripView: View {
     /// that the preview and the bar agree at a glance.
     private static let spacingToPoints: CGFloat = 0.28
 
-    @ViewBuilder
     private func tokenView(_ token: MenuBarRenderedToken) -> some View {
+        MenuBarStripTokenView(
+            token: token,
+            baseFontSize: baseFontSize,
+            rowCount: drawnRowCount,
+            quotas: quotas,
+            displayMode: displayMode
+        )
+        .padding(.horizontal, highlighted == token.id ? 2 : 0)
+        .background {
+            if highlighted == token.id {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.28))
+            }
+        }
+    }
+}
+
+/// One rendered block, drawn the way the strip draws it: the composer's live
+/// canvas lays these out itself, so it needs the block on its own.
+struct MenuBarStripTokenView: View {
+    let token: MenuBarRenderedToken
+    /// The face the strip is being drawn at.
+    let baseFontSize: CGFloat
+    /// Rows the strip draws — the glyph box depends on it.
+    let rowCount: Int
+    let quotas: [MenuBarQuotaSnapshot]
+    let displayMode: DisplayMode
+
+    var body: some View {
         let size = max(4, baseFontSize * token.fontScale)
         let paint = MenuBarStripPalette.paint(
             for: token.color,
@@ -512,27 +540,20 @@ struct MenuBarStripView: View {
                     // preview-only cap.
                     side: MenuBarStripMetrics.glyphSide(
                         fontSize: size,
-                        rowCount: drawnRowCount
+                        rowCount: rowCount
                     ),
                     paint: paint
                 )
             } else if let text = token.text {
                 Text(text)
-                    .font(font(for: token, size: size))
+                    .font(font(size: size))
                     .foregroundStyle(MenuBarStripPalette.color(paint))
                     .fixedSize()
             }
         }
-        .padding(.horizontal, highlighted == token.id ? 2 : 0)
-        .background {
-            if highlighted == token.id {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.28))
-            }
-        }
     }
 
-    private func font(for token: MenuBarRenderedToken, size: CGFloat) -> Font {
+    private func font(size: CGFloat) -> Font {
         let weight: Font.Weight
         switch token.weight {
         case .regular: weight = .regular

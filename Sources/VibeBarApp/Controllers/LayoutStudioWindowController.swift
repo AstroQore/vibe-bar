@@ -23,6 +23,8 @@ final class LayoutStudioWindowController: NSObject {
     enum Subject: Hashable {
         case popoverPage(PageLayoutPageID)
         case miniWindow(UUID)
+        /// The composed menu bar strip of one status item.
+        case menuBar(MenuBarItemKind)
     }
 
     private var window: NSWindow?
@@ -245,11 +247,13 @@ final class StudioPointer: ObservableObject {
 enum StudioUndo: Equatable {
     case page(PageLayoutPageID, StoredPageLayout?)
     case miniWindow(UUID, MiniWindowConfig?)
+    case menuBar(MenuBarItemKind, MenuBarItemSettings)
 
     var subject: LayoutStudioWindowController.Subject {
         switch self {
         case let .page(page, _): return .popoverPage(page)
         case let .miniWindow(id, _): return .miniWindow(id)
+        case let .menuBar(kind, _): return .menuBar(kind)
         }
     }
 }
