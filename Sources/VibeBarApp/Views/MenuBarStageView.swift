@@ -17,6 +17,9 @@ import VibeBarCore
 struct MenuBarStageView: View {
     let kind: MenuBarItemKind
     @Binding var selection: Set<UUID>
+    /// The block the inspector's palette has in flight, if any: the stage
+    /// stages it where the pointer is and commits it on the drop.
+    @Binding var pendingBlock: PendingPaletteBlock?
     /// The menu bar the strip is previewed on.
     let scheme: ColorScheme
     /// The Studio's scale. The strip is drawn at `baseZoom` times it, so
@@ -55,6 +58,13 @@ struct MenuBarStageView: View {
     /// not settings: writing every crossing through `settingsStore` would
     /// re-render the menu bar mid-gesture.
     @State private var dragComposition: MenuBarComposition?
+    /// A palette block is staged in `dragComposition`: it is drawn there
+    /// until the drop lands or the pointer stays away long enough.
+    @State private var isPaletteDragActive = false
+    /// Fires shortly after a palette drag leaves the stage. There is no
+    /// "drag cancelled" callback, so a release elsewhere is inferred from
+    /// the pointer leaving and not coming back.
+    @State private var paletteCancelTask: Task<Void, Never>?
     /// The stage's frame in the shared space, to place the picture carried
     /// under the pointer.
     @State private var stageFrame: CGRect = .zero
@@ -88,8 +98,19 @@ struct MenuBarStageView: View {
     /// What the stage draws: the provisional order while a drag is in
     /// flight, the committed one otherwise.
     private var displayedComposition: MenuBarComposition {
-        guard drag?.engaged == true, let dragComposition else { return composition }
+        guard drag?.engaged == true || isPaletteDragActive, let dragComposition else { return composition }
         return dragComposition
+    }
+
+    /// What the snapshots are resolved from: the committed order, plus the
+    /// block still in flight from the palette — its quota needs a snapshot
+    /// before it has a place, or it draws nothing the moment it lands.
+    private var resolvableComposition: MenuBarComposition {
+        var order = composition
+        if let pending = pendingBlock, order.location(of: pending.token.id) == nil {
+            order.append(pending.token, to: nil)
+        }
+        return order
     }
 
     /// Everything the cached snapshots are derived from — see the composer's
@@ -144,6 +165,7 @@ struct MenuBarStageView: View {
         .fixedSize(horizontal: true, vertical: false)
         .coordinateSpace(.named(MenuBarStageSpace.name))
         .onChange(of: drag?.engaged == true) { _, isDragging in onDragChange?(isDragging) }
+        .onChange(of: pendingBlock) { _, _ in rebuild() }
         .onAppear {
             inputs.start(environment: environment)
             rebuild()
@@ -172,7 +194,7 @@ struct MenuBarStageView: View {
         let merged = MenuBarFieldCatalog.mergedFields(registry: quotaService.fieldRegistry)
         optionsById = Dictionary(merged.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         snapshots = MenuBarStripResolver.snapshots(
-            for: composition,
+            for: resolvableComposition,
             itemSettings: item,
             settings: settingsStore.settings,
             environment: environment
@@ -230,6 +252,15 @@ struct MenuBarStageView: View {
         }
         .contentShape(Rectangle())
         .gesture(dragGesture)
+        .onDrop(
+            of: [.text],
+            delegate: MenuBarStageDropDelegate(
+                stage: { stagePalette(at: $0) },
+                entered: { paletteEntered() },
+                exited: { paletteExited() },
+                commit: { commitPalette() }
+            )
+        )
         .overlay(alignment: .topLeading) {
             if let drag, drag.engaged, !drag.run.isEmpty {
                 ghost(drag, composition: composition, plan: plan)
@@ -471,6 +502,81 @@ struct MenuBarStageView: View {
         default:
             return .ignored
         }
+    }
+
+    // MARK: - Palette drops
+
+    /// A block from the palette, staged where the pointer is. Nothing is
+    /// inserted until the drag reaches the stage, and a drag that leaves it
+    /// long enough rolls back, so a release over nothing adds nothing.
+    private func stagePalette(at local: CGPoint) {
+        guard drag == nil, let pending = pendingBlock, pending.isLive else { return }
+        let new = pending.token
+        let point = CGPoint(x: local.x + stageFrame.minX, y: local.y + stageFrame.minY)
+        let target = frames.target(
+            at: point,
+            in: displayedComposition,
+            moving: [new.id],
+            reach: Self.reach
+        )
+        var next = composition
+        switch target {
+        case let .before(id)?:
+            guard let at = next.location(of: id) else { return }
+            // Into the target's own row first, so the move that follows is
+            // a same-row reorder and cannot leave an empty segment behind
+            // the way appending to a new one would.
+            next.append(new, to: MenuBarComposition.RowAddress(
+                segment: next.segments[at.segment].id,
+                row: at.row
+            ))
+            next.move(new.id, before: id)
+        case let .endOf(address)?:
+            next.append(new, to: address)
+        case .removed?, nil:
+            // Over the ground rather than a row: the end of the strip, in
+            // the order it is read — not a segment of its own, which the
+            // pointer wandering over the margin would keep opening.
+            next.append(new)
+        }
+        isPaletteDragActive = true
+        if next != dragComposition {
+            withAnimation(Self.reflow) { dragComposition = next }
+        }
+    }
+
+    private func paletteEntered() {
+        paletteCancelTask?.cancel()
+        paletteCancelTask = nil
+    }
+
+    private func paletteExited() {
+        paletteCancelTask?.cancel()
+        paletteCancelTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            withAnimation(Self.reflow) {
+                isPaletteDragActive = false
+                dragComposition = nil
+            }
+            paletteCancelTask = nil
+        }
+    }
+
+    /// The one settings write a palette drop performs; the new block is the
+    /// selection afterwards, so the inspector opens on it.
+    private func commitPalette() {
+        paletteCancelTask?.cancel()
+        paletteCancelTask = nil
+        let staged = isPaletteDragActive ? dragComposition : nil
+        let newID = pendingBlock?.token.id
+        isPaletteDragActive = false
+        dragComposition = nil
+        pendingBlock = nil
+        guard let staged, staged != composition else { return }
+        let segments = staged.segments
+        mutate { $0.segments = segments }
+        if let newID { selection = [newID] }
     }
 
     // MARK: - Edits

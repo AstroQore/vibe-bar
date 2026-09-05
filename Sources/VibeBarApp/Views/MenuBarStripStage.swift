@@ -498,3 +498,33 @@ struct MenuBarStageRunGhost: View {
         .allowsHitTesting(false)
     }
 }
+
+// MARK: - Palette drops
+
+/// A block dragged out of the inspector's palette, landing wherever the
+/// pointer is over the stage. `stage` is asked on every movement with the
+/// pointer in the stage's coordinates and decides what, if anything,
+/// changes; the delegate decides nothing about *where*.
+struct MenuBarStageDropDelegate: DropDelegate {
+    let stage: (CGPoint) -> Void
+    let entered: () -> Void
+    let exited: () -> Void
+    let commit: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        entered()
+        stage(info.location)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        stage(info.location)
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) { exited() }
+
+    func performDrop(info: DropInfo) -> Bool {
+        commit()
+        return true
+    }
+}
