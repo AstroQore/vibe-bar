@@ -43,6 +43,8 @@ public final class QuotaService: ObservableObject {
     /// kept in sync as each `refresh` succeeds; views read this
     /// dictionary directly via the `@Published` projection.
     @Published public private(set) var historyByAccountBucket: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
+    @Published public private(set) var resetRedemptions: [QuotaResetRedemption] = []
+    @Published public private(set) var featureResetHistory: [SubscriptionWindowSample] = []
     /// Adaptive point samples for every independently resettable quota. These
     /// power personal pace forecasts; completed-cycle summaries remain in
     /// `historyByAccountBucket` for Fill History and reset outcomes.
@@ -122,6 +124,8 @@ public final class QuotaService: ObservableObject {
             )
             let samples = await SubscriptionHistoryStore.shared.allSamples()
             self?.applyInitialSubscriptionHistory(samples)
+            self?.resetRedemptions = await SubscriptionHistoryStore.shared.allRedemptions()
+            self?.featureResetHistory = await SubscriptionHistoryStore.shared.allFeatureResets()
         }
     }
 
@@ -623,6 +627,8 @@ public final class QuotaService: ObservableObject {
         let bucketIds = Set(quota.buckets.map(\.id))
         guard !bucketIds.isEmpty else { return }
         let all = await SubscriptionHistoryStore.shared.allSamples()
+        resetRedemptions = await SubscriptionHistoryStore.shared.allRedemptions()
+        featureResetHistory = await SubscriptionHistoryStore.shared.allFeatureResets()
         var grouped: [String: [SubscriptionWindowSample]] = [:]
         for sample in all
         where sample.accountId == quota.accountId && bucketIds.contains(sample.bucketId) {

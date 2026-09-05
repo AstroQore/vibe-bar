@@ -888,7 +888,7 @@ SubProvider → L3 quota / model group. Source of truth:
 | L1 company | L2 SubProvider        | L3 quota / model groups                  |
 | ---------- | --------------------- | ---------------------------------------- |
 | OpenAI     | ChatGPT Agentic       | All Models, Codex Spark …                 |
-| OpenAI     | ChatGPT Chat          | Image Generation, Deep Research, Chat models |
+| OpenAI     | ChatGPT Chat          | Image Generation, Deep Research |
 | Anthropic  | Claude                | All Models, Sonnet, Opus, Fable …         |
 | Google AI  | Gemini Web            | 5 Hours, Weekly                           |
 | Google AI  | AntiGravity           | Gemini Models, Claude & GPT Models        |
@@ -987,18 +987,27 @@ upstream labels — canonicalize the display, never the stored value.
 
 ### ChatGPT Chat allowances
 
-`ToolType.chatgptChat` is an independent, quota-only member of OpenAI. It has
-no local token-cost harness. `ChatGPTChatClient` reads feature remainders and
-bounded, incremental saved Chat history through cookies or the app's own
-WebView login. Work origins (`tpp`, `flora`, `codex`) and Work models are excluded;
-the account's `/models` catalog supplies the explicit `is_work_mode_model` flag.
-`working_turn_id` and temporary `WEB:` identifiers do not classify a conversation.
+`ToolType.chatgptChat` is an independent, quota-only member of OpenAI, shown
+before ChatGPT Agentic. It reads Image Generation and Deep Research remainders
+through the existing Cookie/WebView login. It does not read conversation history
+or count model messages. Plan identity comes from the same `/wham/usage`
+`plan_type` parser used by Agentic, through the Chat account's own transport.
 
-`QuotaBucket.quantity` carries absolute counts and coverage. A missing total is
-not a percentage; never feed absolute or estimated counts into the percentage
-forecast/reset-history stores. The menu-bar count metric is `displayCount`.
-Model quotas remain estimates with user-confirmed limits/reset anchors. See
-[docs/chatgpt-chat.md](docs/chatgpt-chat.md) for setup and review validation.
+`ChatGPTChatAllowanceStore` learns a total only after three consistent observed
+reset boundaries. Initial reads, mismatches, missed boundaries, and account/plan
+changes withhold percentages; unknown totals use an indeterminate bar. No plan
+has a hardcoded feature total. The learned total and its samples live separately
+under `~/.vibebar/chatgpt_chat_learning.json`.
+
+`QuotaBucket.quantity` carries the count and learned total. Once the total and
+window are learned, the bucket enters the same percentage forecast, pace and
+history pipeline as other primary providers. Learning is a state of the standard
+quota row, not a separate Chat card implementation. Completed reset
+cycles retain `resetDetails` in `SubscriptionHistoryStore`, and verified Codex
+redemption receipts are retained separately in the same history file. A reduced
+available-credit count is not proof of redemption. The shared reset journal is
+reachable from the strip and comparison card in both popover and Workbench.
+See [docs/chatgpt-chat.md](docs/chatgpt-chat.md) for setup and review validation.
 
 ### 7.2 Localization
 

@@ -88,7 +88,7 @@ final class MenuBarFieldCatalogTests: XCTestCase {
             MenuBarFieldCatalog.migratedFieldIds(["cursor.grok_bot_weekly"]),
             ["cursor.grok_bot_weekly"]
         )
-        let sliced = MenuBarFieldCatalog.codexFields + MenuBarFieldCatalog.chatGPTChatFields + MenuBarFieldCatalog.claudeFields
+        let sliced = MenuBarFieldCatalog.chatGPTChatFields + MenuBarFieldCatalog.codexFields + MenuBarFieldCatalog.claudeFields
             + MenuBarFieldCatalog.geminiFields + MenuBarFieldCatalog.antigravityFields
             + MenuBarFieldCatalog.grokFields + MenuBarFieldCatalog.cursorFields
             + MenuBarFieldCatalog.grokBotFields
@@ -113,7 +113,7 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         XCTAssertEqual(
             groups.map { $0.subProviders.map(\.name) },
             [
-                ["ChatGPT Agentic", "ChatGPT Chat"],
+                ["ChatGPT Chat", "ChatGPT Agentic"],
                 ["Claude"],
                 ["Gemini Web", "AntiGravity"],
                 ["Grok", "Cursor", "Grok Bot"]

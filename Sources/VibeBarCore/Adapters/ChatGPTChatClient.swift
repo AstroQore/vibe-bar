@@ -12,10 +12,7 @@ public enum ChatGPTChatRequestPolicy {
               let parts = URLComponents(string: path), parts.host == nil, parts.scheme == nil else { return false }
         if method == "POST" { return path == "/backend-api/conversation/init" }
         guard method == "GET" else { return false }
-        if path == "/api/auth/session" || parts.path == "/backend-api/conversations" || parts.path == "/backend-api/models" { return true }
-        let prefix = "/backend-api/conversation/"
-        return parts.path.hasPrefix(prefix) && parts.query == nil
-            && UUID(uuidString: String(parts.path.dropFirst(prefix.count))) != nil
+        return path == "/api/auth/session" || path == "/backend-api/wham/usage"
     }
 }
 
@@ -86,28 +83,10 @@ public final class ChatGPTChatCookieTransport: NSObject, ChatGPTChatTransport, U
     }
 }
 
-public actor ChatGPTChatHistoryStore {
-    public static let shared = ChatGPTChatHistoryStore()
-    public struct Cache: Codable, Sendable {
-        public var conversations: [String: ChatGPTChatParser.Conversation] = [:]
-        public init() {}
-    }
-    private let url: URL
-    public init(url: URL = VibeBarLocalStore.chatGPTChatHistoryURL) { self.url = url }
-    public func load(identity: String) -> Cache {
-        (try? VibeBarLocalStore.readJSON([String: Cache].self, from: url))?[identity] ?? Cache()
-    }
-    public func save(_ value: Cache, identity: String) {
-        var all = (try? VibeBarLocalStore.readJSON([String: Cache].self, from: url)) ?? [:]
-        all[identity] = value
-        try? VibeBarLocalStore.writeJSON(all, to: url)
-    }
-}
-
 public struct ChatGPTChatClient: Sendable {
     private let transport: any ChatGPTChatTransport
-    private let store: ChatGPTChatHistoryStore
-    public init(transport: any ChatGPTChatTransport, store: ChatGPTChatHistoryStore = .shared) {
+    private let store: ChatGPTChatAllowanceStore
+    public init(transport: any ChatGPTChatTransport, store: ChatGPTChatAllowanceStore = .shared) {
         self.transport = transport
         self.store = store
     }
@@ -119,97 +98,30 @@ public struct ChatGPTChatClient: Sendable {
               let user = session["user"] as? [String: Any], let userID = user["id"] as? String else {
             throw QuotaError.needsLogin
         }
+        // Reuse Agentic's existing account-plan endpoint and parser, through
+        // this Chat account's transport so a different CLI account cannot leak in.
+        let planData = try? await transport.request(path: "/backend-api/wham/usage", method: "GET", bearer: token, body: nil)
+        let plan = planData.flatMap { CodexResponseParser.planType(data: $0) }
         let body = try JSONSerialization.data(withJSONObject: [
             "conversation_id": NSNull(), "gizmo_id": NSNull(), "requested_default_model": NSNull(),
-            "system_hints": [], "timezone_offset_min": -TimeZone.current.secondsFromGMT() / 60
+            "system_hints": [], "timezone": TimeZone.current.identifier,
+            "timezone_offset_min": -TimeZone.current.secondsFromGMT() / 60
         ])
-        let featureData = try await transport.request(path: "/backend-api/conversation/init", method: "POST", bearer: token, body: body)
-        var buckets = try ChatGPTChatParser.features(featureData)
-        guard !buckets.isEmpty else { throw QuotaError.parseFailure("ChatGPT Chat returned no supported feature allowances.") }
-        let modelData = try? await transport.request(path: "/backend-api/models?iim=false&include_icons=false", method: "GET", bearer: token, body: nil)
-        let catalog = modelData.flatMap { try? ChatGPTChatModelCatalog.parse($0) } ?? .empty
+        let data = try await transport.request(path: "/backend-api/conversation/init", method: "POST", bearer: token, body: body)
+        let samples = try ChatGPTChatParser.samples(data, now: now)
+        guard !samples.isEmpty else { throw QuotaError.parseFailure("ChatGPT Chat returned no supported feature allowances.") }
         try Task.checkCancellation()
-        var summary = ChatGPTChatSummary(transport: transport.name)
-        if settings.includeHistory {
-            let scope = ChatGPTChatParser.identity(userID + ":" + (account.accountId ?? "personal"))
-            let history = await history(bearer: token, identity: scope, now: now, catalog: catalog)
-            try Task.checkCancellation()
-            summary = history.summary
-            buckets += ChatGPTChatParser.modelBuckets(turns: history.turns, settings: settings.sanitized,
-                                                      complete: summary.historyComplete, now: now, catalog: catalog)
+        let identity = ChatGPTChatParser.identity(userID + ":" + (account.accountId ?? "personal"))
+        let quantities = try await store.observe(localAccount: account.id, identity: identity,
+                                                plan: plan?.lowercased(), samples: samples)
+        let buckets = samples.map { sample in
+            let title = sample.id == "image_gen" ? "Image Generation" : "Deep Research"
+            return QuotaBucket(id: sample.id, title: title, shortLabel: title, usedPercent: 0,
+                               resetAt: sample.resetAt, rawWindowSeconds: quantities[sample.id]?.windowSeconds,
+                               quantity: quantities[sample.id]?.quantity)
         }
         return AccountQuota(accountId: account.id, tool: .chatgptChat, buckets: buckets,
-                            plan: account.plan, email: user["email"] as? String,
-                            queriedAt: now, chatGPTChat: summary)
-    }
-
-    private func history(bearer: String, identity: String, now: Date, catalog: ChatGPTChatModelCatalog) async -> (turns: [ChatGPTChatTurn], summary: ChatGPTChatSummary) {
-        let cutoff = now.addingTimeInterval(-604_800)
-        var cache = await store.load(identity: identity)
-        cache.conversations = cache.conversations.filter { $0.value.updatedAt >= now.addingTimeInterval(-1_209_600) }
-        var seen: Set<String> = []
-        var offset = 0
-        var completedStreams = 0
-        var failures = 0
-        var work = 0
-        var unknown = 0
-        var fetched = 0
-        var turns: [ChatGPTChatTurn] = []
-        let deadline = Date().addingTimeInterval(20)
-        do {
-            for archived in [false, true] {
-            offset = 0
-            var reachedEnd = false
-            for _ in 0..<10 {
-                try Task.checkCancellation()
-                guard Date() < deadline else { break }
-                let path = "/backend-api/conversations?offset=\(offset)&limit=50&order=updated&is_archived=\(archived)&is_starred=false"
-                let data = try await transport.request(path: path, method: "GET", bearer: bearer, body: nil)
-                let root = try ChatGPTChatParser.object(data)
-                guard let items = root["items"] as? [[String: Any]] else { throw QuotaError.parseFailure("Missing ChatGPT Chat history items.") }
-                let previousCount = seen.count
-                for item in items {
-                    guard let id = item["id"] as? String, !id.isEmpty else { failures += 1; continue }
-                    guard seen.insert(id).inserted else { continue }
-                    let updated = ChatGPTChatParser.date(item["update_time"])
-                    if let updated, updated < cutoff { reachedEnd = true; continue }
-                    // A positively identified Work row needs no Chat transcript
-                    // lookup, even while it still carries a provisional WEB id.
-                    if ChatGPTChatParser.isWork(origin: item["conversation_origin"] as? String, model: nil) { work += 1; continue }
-                    guard UUID(uuidString: id) != nil, let updatedAt = updated else { failures += 1; continue }
-                    let key = ChatGPTChatParser.identity(id)
-                    var parsed = cache.conversations[key]
-                    if parsed?.updatedAt != updatedAt || (parsed?.unclassifiedTurns ?? 0) > 0 {
-                        if fetched < 24, Date() < deadline {
-                            do {
-                                fetched += 1
-                                let detail = try await transport.request(path: "/backend-api/conversation/" + id,
-                                                                         method: "GET", bearer: bearer, body: nil)
-                                parsed = try ChatGPTChatParser.conversation(detail, id: id, updatedAt: updatedAt, since: cutoff, workModels: catalog.workModels)
-                                cache.conversations[key] = parsed
-                            } catch { failures += 1 }
-                        } else { failures += 1 }
-                    }
-                    if let parsed {
-                        work += parsed.isWork ? 1 : 0
-                        unknown += parsed.unclassifiedTurns
-                        turns += parsed.turns.filter { !catalog.workModels.contains($0.model) }
-                    }
-                }
-                offset += items.count
-                if items.isEmpty { reachedEnd = true }
-                if let total = ChatGPTChatParser.integer(root["total"]), offset >= total { reachedEnd = true }
-                if reachedEnd { break }
-                if seen.count == previousCount { failures += 1; break }
-            }
-            if reachedEnd { completedStreams += 1 }
-            }
-        } catch { failures += 1 }
-        if !Task.isCancelled { await store.save(cache, identity: identity) }
-        let recent = turns.filter { $0.createdAt >= cutoff && $0.createdAt <= now }
-        let summary = ChatGPTChatSummary(historyQueriedAt: now, historyComplete: completedStreams == 2 && failures == 0 && unknown == 0 && !Task.isCancelled,
-                                        excludedWorkConversations: work, unclassifiedTurns: unknown,
-                                        failedConversations: failures, observedFrom: cutoff, transport: transport.name)
-        return (recent, summary)
+                            plan: plan, email: user["email"] as? String, queriedAt: now,
+                            chatGPTChat: ChatGPTChatSummary(transport: transport.name, planVerified: plan != nil, accountIdentity: identity))
     }
 }

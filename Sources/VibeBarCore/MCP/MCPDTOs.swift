@@ -119,7 +119,7 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
     public let lastAttempted: Date?
     public let inFlight: Bool
     public let error: String?
-    public let chatHistory: MCPChatHistoryDTO?
+    public let chatAllowance: MCPChatAllowanceDTO?
 
     public init(
         accountId: String,
@@ -134,7 +134,7 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
         lastAttempted: Date?,
         inFlight: Bool,
         error: String?,
-        chatHistory: MCPChatHistoryDTO? = nil
+        chatAllowance: MCPChatAllowanceDTO? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -148,7 +148,7 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
         self.lastAttempted = lastAttempted
         self.inFlight = inFlight
         self.error = error
-        self.chatHistory = chatHistory
+        self.chatAllowance = chatAllowance
     }
 }
 
@@ -220,7 +220,7 @@ extension MCPQuotaAccountDTO {
             lastAttempted: lastAttempted,
             inFlight: inFlight,
             error: error?.agentFacingMessage,
-            chatHistory: quota.chatGPTChat.map(MCPChatHistoryDTO.init)
+            chatAllowance: quota.chatGPTChat.map(MCPChatAllowanceDTO.init)
         )
     }
 }
@@ -898,18 +898,10 @@ public struct MCPQuotaQuantityDTO: Codable, Equatable, Sendable {
     }
 }
 
-public struct MCPChatHistoryDTO: Codable, Equatable, Sendable {
-    public let queriedAt: Date?
-    public let complete: Bool
-    public let excludedWorkConversations: Int
-    public let unclassifiedTurns: Int
-    public let failedConversations: Int
-    public let observedFrom: Date?
+public struct MCPChatAllowanceDTO: Codable, Equatable, Sendable {
     public let transport: String
+    public let planVerified: Bool?
     public init(_ value: ChatGPTChatSummary) {
-        queriedAt = value.historyQueriedAt; complete = value.historyComplete
-        excludedWorkConversations = value.excludedWorkConversations
-        unclassifiedTurns = value.unclassifiedTurns; failedConversations = value.failedConversations
-        observedFrom = value.observedFrom; transport = value.transport
+        transport = value.transport; planVerified = value.planVerified
     }
 }

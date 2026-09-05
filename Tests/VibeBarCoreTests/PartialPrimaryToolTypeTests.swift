@@ -25,7 +25,7 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     func testDedicatedCardProvidersIncludePrimaryAndPartialPrimary() {
         XCTAssertEqual(
             ToolType.dedicatedCardProviders,
-            [.codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor]
+            [.chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor]
         )
     }
 

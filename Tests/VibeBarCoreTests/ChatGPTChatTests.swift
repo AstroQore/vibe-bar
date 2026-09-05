@@ -2,246 +2,142 @@ import XCTest
 @testable import VibeBarCore
 
 final class ChatGPTChatTests: XCTestCase {
-    private let id = "00000000-0000-4000-8000-000000000001"
-    private let now = Date(timeIntervalSince1970: 1_800_000_000)
-
-    private func json(_ value: Any) throws -> Data { try JSONSerialization.data(withJSONObject: value) }
-
-    private func conversation(origin: String? = nil, model: String = "gpt-6-pro", defaultModel: String? = nil,
-                              duplicate: Bool = false, unfinished: Bool = false) throws -> Data {
-        let user: [String: Any] = ["id": "synthetic-message", "author": ["role": "user"],
-                                  "create_time": now.timeIntervalSince1970 - 60,
-                                  "metadata": ["working_turn_id": "synthetic-turn"], "content": ["content_type": "text", "parts": ["PRIVATE TEXT MUST NOT PERSIST"]]]
-        let reply: [String: Any] = ["id": "synthetic-response", "author": ["role": "assistant"],
-                                   "create_time": now.timeIntervalSince1970 - 30, "recipient": "all", "channel": "final",
-                                   "status": unfinished ? "in_progress" : "finished_successfully",
-                                   "metadata": ["model_slug": model, "thinking_effort": "max"],
-                                   "content": ["content_type": "text", "parts": ["PRIVATE RESPONSE"]]]
-        var mapping: [String: Any] = ["u": ["message": user, "parent": NSNull()], "a": ["message": reply, "parent": "u"]]
-        if duplicate { mapping["another-a"] = ["message": reply, "parent": "u"] }
-        return try json(["conversation_id": id, "conversation_origin": origin as Any? ?? NSNull(),
-                         "default_model_slug": defaultModel ?? model, "mapping": mapping])
+    private let base = Date(timeIntervalSince1970: 1_800_000_000)
+    private func sample(_ remaining: Int, at: TimeInterval, reset: TimeInterval?) -> ChatGPTChatAllowanceSample {
+        .init(id: "image_gen", remaining: remaining, resetAt: reset.map { base.addingTimeInterval($0) }, observedAt: base.addingTimeInterval(at))
+    }
+    private func cycle(_ number: Int, total: Int, learning: inout ChatGPTChatAllowanceLearning) -> QuotaQuantity {
+        let boundary = Double(number) * 86_400
+        _ = learning.observe(sample(2, at: boundary - 60, reset: boundary))
+        return learning.observe(sample(total, at: boundary + 10, reset: boundary + 86_400))
     }
 
-    func testReportedRemaindersDoNotInventTotalsOrPercentages() throws {
-        let data = try json(["model_limits": [], "limits_progress": [
-            ["feature_name": "image_gen", "remaining": 998, "reset_after": "2027-01-16T08:00:00Z"],
-            ["feature_name": "deep_research", "remaining": 250],
-            ["feature_name": "file_upload", "remaining": 50],
-            ["feature_name": "image_gen", "remaining": -1]
-        ]])
-        let buckets = try ChatGPTChatParser.features(data)
-        XCTAssertEqual(buckets.map(\.id), ["image_gen", "deep_research"])
-        XCTAssertEqual(buckets.first?.quantity?.remaining, 998)
-        XCTAssertFalse(buckets[0].hasPercentage)
-        XCTAssertNil(buckets[0].quantity?.limit)
-        XCTAssertNil(UsagePace.compute(bucket: buckets[0], now: now))
-        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(MCPQuotaBucketDTO(bucket: buckets[0], forecast: nil))) as! [String: Any]
-        XCTAssertNil(encoded["remainingPercent"])
-        XCTAssertNotNil(encoded["quantity"])
+    func testRequiresThreeIndependentConsistentResetsAndNeverCountsInitialValue() {
+        var learning = ChatGPTChatAllowanceLearning()
+        XCTAssertNil(learning.observe(sample(1000, at: 0, reset: 86_400)).limit)
+        XCTAssertNil(cycle(1, total: 1000, learning: &learning).usedPercent)
+        XCTAssertNil(cycle(2, total: 1000, learning: &learning).usedPercent)
+        XCTAssertEqual(cycle(3, total: 1000, learning: &learning).limit, 1000)
+        let used = learning.observe(sample(998, at: 259_230, reset: 345_600))
+        XCTAssertEqual(used.used, 2)
+        XCTAssertEqual(used.usedPercent!, 0.2, accuracy: 0.0001)
+        XCTAssertEqual(learning.matchingResets, 3)
+        XCTAssertEqual(learning.learnedWindowSeconds, 86_400)
+        let bucket = QuotaBucket(id: "image_gen", title: "Image Generation", shortLabel: "Image Generation", usedPercent: 0,
+            resetAt: base.addingTimeInterval(345_600), rawWindowSeconds: learning.learnedWindowSeconds, quantity: used)
+        XCTAssertTrue(bucket.supportsForecast)
+        XCTAssertNotNil(UsagePace.compute(bucket: bucket, now: base.addingTimeInterval(259_230)))
+        let forecast = QuotaPaceForecast.compute(bucket: bucket, observations: [], cycles: [], now: base.addingTimeInterval(259_230))
+        XCTAssertNotNil(forecast)
+        XCTAssertNotNil(MCPQuotaBucketDTO(bucket: bucket, forecast: forecast).forecast)
     }
 
-    func testAllObservedWorkVariantsAreExcluded() throws {
-        for origin in ["tpp", "flora", "codex"] {
-            let value = try ChatGPTChatParser.conversation(conversation(origin: origin), id: id, updatedAt: now)
-            XCTAssertTrue(value.isWork)
-            XCTAssertTrue(value.turns.isEmpty)
+    func testDifferentTotalsRestartConfidenceWithoutAveraging() {
+        var learning = ChatGPTChatAllowanceLearning()
+        _ = cycle(1, total: 1000, learning: &learning)
+        XCTAssertNil(cycle(2, total: 900, learning: &learning).limit)
+        XCTAssertEqual(learning.matchingResets, 1)
+        XCTAssertNil(cycle(3, total: 900, learning: &learning).limit)
+        XCTAssertEqual(cycle(4, total: 900, learning: &learning).limit, 900)
+        XCTAssertNil(cycle(5, total: 800, learning: &learning).limit)
+    }
+
+    func testMovingUnusedResetAndRepeatedReadsNeverCreateConfidence() {
+        var learning = ChatGPTChatAllowanceLearning()
+        for n in 0..<200 {
+            let now = Double(n) * 60
+            XCTAssertNil(learning.observe(sample(1000, at: now, reset: now + 86_400)).limit)
         }
-        for model in ["gpt-5.6-sol-wm", "gpt-6-astra-wm", "gpt-5.5-wm"] {
-            let value = try ChatGPTChatParser.conversation(conversation(model: model), id: id, updatedAt: now)
-            XCTAssertTrue(value.isWork)
-            XCTAssertTrue(value.turns.isEmpty)
+        XCTAssertEqual(learning.matchingResets, 0)
+    }
+
+    func testMissedBoundaryAndUnexpectedIncreaseInvalidateLearnedTotal() {
+        var learning = ChatGPTChatAllowanceLearning()
+        for n in 1...3 { _ = cycle(n, total: 1000, learning: &learning) }
+        XCTAssertNil(learning.observe(sample(1200, at: 259_230, reset: 345_600)).limit)
+        for n in 4...6 { _ = cycle(n, total: 1200, learning: &learning) }
+        XCTAssertNil(learning.observe(sample(1190, at: 604_801, reset: 691_200)).limit)
+    }
+
+    func testOnlyTwoFeaturesAreParsedAndMalformedCountsDoNotBecomeZero() throws {
+        let data = Data(#"{"limits_progress":[{"feature_name":"image_gen","remaining":998},{"feature_name":"deep_research","remaining":250},{"feature_name":"gpt-6-pro","remaining":100},{"feature_name":"file_upload","remaining":5}]}"#.utf8)
+        let values = try ChatGPTChatParser.samples(data, now: base)
+        XCTAssertEqual(values.map(\.id), ["image_gen", "deep_research"])
+        for invalid in ["true", "-1", "0.5", "\"100\""] {
+            let data = Data("{\"limits_progress\":[{\"feature_name\":\"image_gen\",\"remaining\":\(invalid)}]}".utf8)
+            XCTAssertTrue(try ChatGPTChatParser.samples(data, now: base).isEmpty)
         }
     }
 
-    func testWorkingTurnIDIsNotAWorkFlagAndAssistantNodesAreNotMessages() throws {
-        let value = try ChatGPTChatParser.conversation(conversation(duplicate: true), id: id, updatedAt: now)
-        XCTAssertFalse(value.isWork)
-        XCTAssertEqual(value.turns.count, 1)
-        XCTAssertEqual(value.turns[0].model, "gpt-6-pro")
-        XCTAssertFalse(String(data: try JSONEncoder().encode(value), encoding: .utf8)!.contains("PRIVATE"))
-        XCTAssertFalse(String(data: try JSONEncoder().encode(value), encoding: .utf8)!.contains("synthetic-message"))
-    }
-
-    func testActualReplyModelWinsOverCurrentConversationSelection() throws {
-        let value = try ChatGPTChatParser.conversation(conversation(model: "gpt-5-4-thinking", defaultModel: "gpt-6-pro"), id: id, updatedAt: now)
-        XCTAssertEqual(value.turns.first?.model, "gpt-5-4-thinking")
-        let buckets = ChatGPTChatParser.modelBuckets(turns: value.turns, settings: .init(), complete: true, now: now)
-        XCTAssertEqual(buckets.first?.quantity?.used, 0)
-        XCTAssertEqual(buckets.last?.quantity?.used, 1)
-    }
-
-    func testUnknownSourcesAndUnfinishedTurnsDoNotBecomeConfirmedUsage() throws {
-        for data in [try conversation(origin: "new-source"), try conversation(unfinished: true)] {
-            let value = try ChatGPTChatParser.conversation(data, id: id, updatedAt: now)
-            XCTAssertTrue(value.turns.isEmpty)
-            XCTAssertEqual(value.unclassifiedTurns, 1)
+    func testPlanAndAccountChangesDiscardLearningIncludingWhenSwitchingBack() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ChatGPTChatAllowanceStore(url: directory.appendingPathComponent("learning.json"))
+        let identity = ChatGPTChatParser.identity("synthetic-user")
+        for n in 1...3 {
+            let boundary = Double(n) * 86_400
+            _ = try await store.observe(localAccount: "local", identity: identity, plan: "pro", samples: [sample(5, at: boundary-60, reset: boundary)])
+            let values = try await store.observe(localAccount: "local", identity: identity, plan: "pro", samples: [sample(1000, at: boundary+10, reset: boundary+86_400)])
+            XCTAssertEqual(values["image_gen"]?.quantity.limit, n == 3 ? 1000 : nil)
         }
-        XCTAssertThrowsError(try ChatGPTChatParser.conversation(conversation(), id: "different", updatedAt: now))
+        for (i, plan) in ["prolite", "pro"].enumerated() {
+            let result = try await store.observe(localAccount: "local", identity: identity, plan: plan, samples: [sample(500, at: 259_230 + Double(i), reset: 345_600)])
+            XCTAssertNil(result["image_gen"]?.quantity.limit)
+        }
+        let text = try String(contentsOf: directory.appendingPathComponent("learning.json"), encoding: .utf8)
+        XCTAssertFalse(text.contains("synthetic-user"))
+        let reloaded = ChatGPTChatAllowanceStore(url: directory.appendingPathComponent("learning.json"))
+        let result = try await reloaded.observe(localAccount: "local", identity: ChatGPTChatParser.identity("another-user"), plan: "pro", samples: [sample(500, at: 259_240, reset: 345_600)])
+        XCTAssertNil(result["image_gen"]?.quantity.limit)
     }
 
-    func testIncompleteCoverageWithholdsRemaindersEvenWithManualLimits() throws {
-        var settings = ChatGPTChatSettings(); settings.astraWeeklyLimit = 200
-        let turns = try ChatGPTChatParser.conversation(conversation(), id: id, updatedAt: now).turns
-        let partial = ChatGPTChatParser.modelBuckets(turns: turns + turns, settings: settings, complete: false, now: now)[0]
-        XCTAssertEqual(partial.quantity?.used, 1)
-        XCTAssertNil(partial.quantity?.remaining)
-        XCTAssertFalse(partial.hasPercentage)
-        let complete = ChatGPTChatParser.modelBuckets(turns: turns, settings: settings, complete: true, now: now)[0]
-        XCTAssertEqual(complete.quantity?.remaining, 199)
-        XCTAssertNil(complete.resetAt)
-        XCTAssertFalse(complete.supportsForecast)
-    }
-
-    func testSolThinkingMaxIsNotSilentlyChargedToSolPro() throws {
-        let turns = try ChatGPTChatParser.conversation(conversation(model: "gpt-5-6-thinking"), id: id, updatedAt: now).turns
-        var settings = ChatGPTChatSettings(); settings.solDailyLimit = 170
-        let buckets = ChatGPTChatParser.modelBuckets(turns: turns, settings: settings, complete: true, now: now)
-        XCTAssertFalse(buckets.contains { $0.id == "sol_pro_daily" })
-        XCTAssertEqual(buckets.first(where: { $0.id == "model_gpt-5-6-thinking" })?.quantity?.used, 1)
-    }
-
-    func testAccountModelCatalogDistinguishesProThinkingAndWork() throws {
-        let catalog = try ChatGPTChatModelCatalog.parse(json(["models": [
-            ["slug": "gpt-5-6-pro", "title": "GPT-5.6 Pro", "reasoning_type": "pro", "is_work_mode_model": false],
-            ["slug": "gpt-5-6-thinking", "title": "GPT-5.6 Sol", "reasoning_type": "reasoning", "is_work_mode_model": false],
-            ["slug": "future-work-model", "title": "Future Work", "is_work_mode_model": true]
-        ]]))
-        XCTAssertEqual(catalog.models["gpt-5-6-pro"]?.isPro, true)
-        XCTAssertEqual(catalog.models["gpt-5-6-thinking"]?.isPro, false)
-        XCTAssertEqual(catalog.models["gpt-5-6-thinking"]?.displayTitle, "GPT-5.6 Sol · Thinking")
-        let work = try ChatGPTChatParser.conversation(conversation(model: "future-work-model"), id: id, updatedAt: now, workModels: catalog.workModels)
-        XCTAssertTrue(work.isWork)
-        let buckets = ChatGPTChatParser.modelBuckets(turns: [], settings: .init(), complete: true, now: now, catalog: catalog)
-        XCTAssertTrue(buckets.contains { $0.id == "sol_pro_daily" })
-        XCTAssertNil(buckets.first(where: { $0.id == "sol_pro_daily" })?.quantity?.remaining)
-    }
-
-    func testOldTurnsDoNotBlockRecentCoverage() throws {
-        let value = try ChatGPTChatParser.conversation(conversation(unfinished: true), id: id, updatedAt: now,
-                                                       since: now.addingTimeInterval(-10))
-        XCTAssertTrue(value.turns.isEmpty)
-        XCTAssertEqual(value.unclassifiedTurns, 0)
-    }
-
-    func testProviderTaxonomyIsIndependentOfAgenticAndTokenCosts() {
-        XCTAssertEqual(ToolType.chatgptChat.vendorName, "OpenAI")
-        XCTAssertEqual(ToolType.chatgptChat.productName, "ChatGPT Chat")
-        XCTAssertEqual(ToolType.chatgptChat.coreProviderRepresentative, .codex)
-        XCTAssertFalse(ToolType.chatgptChat.supportsTokenCost)
-        XCTAssertNil(Harness.defaultHarness(for: .chatgptChat))
-        XCTAssertTrue(ToolType.codex.coreProviderMembers.contains(.chatgptChat))
-        XCTAssertEqual(MenuBarToken.newQuota(fieldId: "chatgptChat.image_gen").kind, .quota(fieldId: "chatgptChat.image_gen", metric: .displayCount))
-    }
-
-    func testTransportAllowlistCannotSendPromptsOrFollowArbitraryURLs() {
-        XCTAssertTrue(ChatGPTChatRequestPolicy.allows(path: "/backend-api/conversation/init", method: "POST"))
-        XCTAssertTrue(ChatGPTChatRequestPolicy.allows(path: "/backend-api/conversation/" + id, method: "GET"))
-        for path in ["https://example.com", "//example.com", "/backend-api/f/conversation", "/backend-api/conversation/WEB:bad", "/backend-api/conversation/../me"] {
-            XCTAssertFalse(ChatGPTChatRequestPolicy.allows(path: path, method: "POST"))
+    func testClientReusesPlanEndpointAndDoesNotReadModelsOrConversations() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let transport = ChatFixtureTransport()
+        let client = ChatGPTChatClient(transport: transport, store: ChatGPTChatAllowanceStore(url: directory.appendingPathComponent("learning.json")))
+        let quota = try await client.fetch(account: AccountIdentity(id: "local", tool: .chatgptChat, source: .webCookie), settings: .init(), now: base)
+        XCTAssertEqual(quota.plan, "prolite")
+        XCTAssertEqual(quota.buckets.map(\.id), ["image_gen", "deep_research"])
+        XCTAssertTrue(quota.buckets.allSatisfy { !$0.hasPercentage })
+        let calls = await transport.calls
+        XCTAssertEqual(calls, ["/api/auth/session", "/backend-api/wham/usage", "/backend-api/conversation/init"])
+        for path in ["/backend-api/conversations", "/backend-api/models", "/backend-api/conversation/00000000-0000-4000-8000-000000000000"] {
             XCTAssertFalse(ChatGPTChatRequestPolicy.allows(path: path, method: "GET"))
         }
     }
 
-    func testCookieTransportRefusesOversizedResponsesBeforeParsing() async throws {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [OversizedChatReply.self]
-        let transport = ChatGPTChatCookieTransport(cookieHeader: "synthetic=fixture", configuration: configuration)
-        defer { transport.close() }
-        do {
-            _ = try await transport.request(path: "/api/auth/session")
-            XCTFail("An oversized response must be refused")
-        } catch let error as QuotaError {
-            guard case .parseFailure = error else { return XCTFail("Unexpected error: \(error)") }
-        }
+    func testMenuBarDefaultSwitchesFromEstimatedCountToPercentage() {
+        var value = MenuBarQuotaSnapshot(fieldId: "chatgptChat.image_gen", tool: .chatgptChat,
+            label: "Image Generation", usedPercent: 0, displayPercent: 100,
+            quantity: .init(remaining: 998, isEstimated: true))
+        XCTAssertEqual(MenuBarToken.newQuota(fieldId: value.fieldId).kind, .quota(fieldId: value.fieldId, metric: .displayPercent))
+        XCTAssertEqual(MenuBarComposition.value(of: .displayPercent, in: value, displayMode: .remaining, resetFormat: .default, now: base), "≈998")
+        value.quantity = .init(used: 260, remaining: 740, limit: 1000, isEstimated: true)
+        value.usedPercent = 26; value.displayPercent = 74
+        XCTAssertEqual(MenuBarComposition.value(of: .displayPercent, in: value, displayMode: .remaining, resetFormat: .default, now: base), "74%")
     }
 
-    func testAdditiveSettingsAndQuantityRoundTrip() throws {
-        let settings = try JSONDecoder().decode(ChatGPTChatSettings.self, from: Data(#"{"enabled":true,"astraWeeklyLimit":200}"#.utf8))
+    func testLegacySettingsDecodeWithoutRestoringModelTracking() throws {
+        let settings = try JSONDecoder().decode(ChatGPTChatSettings.self, from: Data(#"{"enabled":true,"includeHistory":true,"astraWeeklyLimit":200}"#.utf8))
         XCTAssertTrue(settings.enabled)
-        XCTAssertEqual(settings.astraWeeklyLimit, 200)
-        XCTAssertEqual(settings.solDailyLimit, 0)
-        var app = AppSettings.default; app.chatGPTChat = settings
-        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(app)).chatGPTChat, settings)
-        let bucket = QuotaBucket(id: "image_gen", title: "Image Generation", shortLabel: "Image Generation", usedPercent: 0, quantity: .init(remaining: 998))
-        XCTAssertEqual(try JSONDecoder().decode(QuotaBucket.self, from: JSONEncoder().encode(bucket)), bucket)
-    }
-
-    func testClientPaginatesShortPagesIncludesArchivesAndCachesOnlyMetadata() async throws {
-        let second = "WEB:00000000-0000-4000-8000-000000000002"
-        let archived = "00000000-0000-4000-8000-000000000003"
-        let date = ISO8601DateFormatter().string(from: now)
-        let feature = try json(["limits_progress": [["feature_name": "image_gen", "remaining": 998]]])
-        let active1 = try json(["items": [["id": id, "update_time": date]], "total": 2])
-        let active2 = try json(["items": [["id": second, "update_time": date, "conversation_origin": "flora"]], "total": 2])
-        let archives = try json(["items": [["id": archived, "update_time": date]], "total": 1])
-        let archivedData = try json(["conversation_id": archived, "default_model_slug": "gpt-5.5-wm", "mapping": [:]])
-        let transport = FixtureTransport(responses: [
-            "/api/auth/session": try json(["accessToken": "synthetic-token", "user": ["id": "synthetic-account"]]),
-            "/backend-api/conversation/init": feature,
-            "/backend-api/conversations?offset=0&limit=50&order=updated&is_archived=false&is_starred=false": active1,
-            "/backend-api/conversations?offset=1&limit=50&order=updated&is_archived=false&is_starred=false": active2,
-            "/backend-api/conversations?offset=0&limit=50&order=updated&is_archived=true&is_starred=false": archives,
-            "/backend-api/conversation/" + id: try conversation(),
-            "/backend-api/conversation/" + archived: archivedData
-        ])
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let url = directory.appendingPathComponent("history.json")
-        let client = ChatGPTChatClient(transport: transport, store: ChatGPTChatHistoryStore(url: url))
-        var settings = ChatGPTChatSettings(); settings.enabled = true; settings.astraWeeklyLimit = 200
-        let account = AccountIdentity(id: "local-chat-account", tool: .chatgptChat, source: .webCookie)
-        let result = try await client.fetch(account: account, settings: settings, now: now)
-        XCTAssertEqual(result.chatGPTChat?.historyComplete, true)
-        XCTAssertEqual(result.chatGPTChat?.excludedWorkConversations, 2)
-        XCTAssertEqual(result.bucket(id: "astra_weekly")?.quantity?.remaining, 199)
-        _ = try await client.fetch(account: account, settings: settings, now: now)
-        let calls = await transport.calls
-        XCTAssertEqual(calls.filter { $0 == "/backend-api/conversation/" + id }.count, 1)
-        XCTAssertFalse(calls.contains("/backend-api/conversation/" + second))
-        let persisted = try String(contentsOf: url, encoding: .utf8)
-        for forbidden in ["PRIVATE", "synthetic-token", "synthetic-account", "synthetic-message", id] {
-            XCTAssertFalse(persisted.contains(forbidden))
-        }
-    }
-
-    func testClientKeepsFeatureRemaindersWhenHistoryFails() async throws {
-        let transport = FixtureTransport(responses: [
-            "/api/auth/session": try json(["accessToken": "synthetic-token", "user": ["id": "synthetic-account"]]),
-            "/backend-api/conversation/init": try json(["limits_progress": [["feature_name": "deep_research", "remaining": 250]]])
-        ])
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let client = ChatGPTChatClient(transport: transport, store: ChatGPTChatHistoryStore(url: directory.appendingPathComponent("history.json")))
-        var settings = ChatGPTChatSettings(); settings.enabled = true; settings.astraWeeklyLimit = 200
-        let result = try await client.fetch(account: AccountIdentity(id: "local-chat-account", tool: .chatgptChat, source: .webCookie), settings: settings, now: now)
-        XCTAssertEqual(result.bucket(id: "deep_research")?.quantity?.remaining, 250)
-        XCTAssertEqual(result.chatGPTChat?.historyComplete, false)
-        XCTAssertNil(result.bucket(id: "astra_weekly")?.quantity?.remaining)
+        let data = try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as! [String: Any]
+        XCTAssertEqual(Set(data.keys), ["enabled"])
+        XCTAssertEqual(MenuBarFieldCatalog.chatGPTChatFields.count, 2)
+        XCTAssertEqual(ToolType.codex.coreProviderMembers.first, .chatgptChat)
     }
 }
 
-private final class OversizedChatReply: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func startLoading() {
-        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
-                                       headerFields: ["Content-Length": "9000000", "Content-Type": "application/json"])!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data("{}".utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-    override func stopLoading() {}
-}
-
-private actor FixtureTransport: ChatGPTChatTransport {
+private actor ChatFixtureTransport: ChatGPTChatTransport {
     nonisolated let name = "fixture"
-    let responses: [String: Data]
     private(set) var calls: [String] = []
-    init(responses: [String: Data]) { self.responses = responses }
     func request(path: String, method: String, bearer: String?, body: Data?) async throws -> Data {
         calls.append(path)
-        guard let response = responses[path] else { throw QuotaError.network("fixture failure") }
-        return response
+        switch path {
+        case "/api/auth/session": return Data(#"{"accessToken":"synthetic-token","user":{"id":"synthetic-user"}}"#.utf8)
+        case "/backend-api/wham/usage": return Data(#"{"plan_type":"prolite"}"#.utf8)
+        case "/backend-api/conversation/init": return Data(#"{"limits_progress":[{"feature_name":"image_gen","remaining":998},{"feature_name":"deep_research","remaining":250}]}"#.utf8)
+        default: throw QuotaError.parseFailure("Unexpected endpoint")
+        }
     }
 }

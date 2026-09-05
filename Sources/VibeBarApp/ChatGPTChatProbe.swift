@@ -8,7 +8,6 @@ enum ChatGPTChatProbe {
     static func run() async -> Int32 {
         var config = ChatGPTChatSettings()
         config.enabled = true
-        config.includeHistory = CommandLine.arguments.contains("--history")
         let settings = config
         let fallback: ChatGPTChatQuotaAdapter.WebFallback?
         if CommandLine.arguments.contains("--cookie-only") {
@@ -27,11 +26,11 @@ enum ChatGPTChatProbe {
             struct Output: Encodable {
                 let transport: String
                 let buckets: [MCPQuotaBucketDTO]
-                let historyComplete: Bool
+                let plan: String?
             }
             let data = try JSONEncoder().encode(Output(transport: result.chatGPTChat?.transport ?? "unknown",
                 buckets: result.buckets.map { MCPQuotaBucketDTO(bucket: $0, forecast: nil) },
-                historyComplete: result.chatGPTChat?.historyComplete ?? false))
+                plan: result.plan))
             print(String(decoding: data, as: UTF8.self))
             return 0
         } catch {

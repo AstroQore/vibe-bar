@@ -126,7 +126,7 @@ enum MenuBarStripPalette {
         switch role {
         case let .quota(fieldId, basis):
             guard let quota = quotas.first(where: { $0.fieldId == fieldId }) else { return .primary }
-            if quota.quantity != nil { return .primary }
+            if !quota.hasPercentage { return .secondary }
             return .quota(MenuBarPercentColor.resolve(
                 basis: basis,
                 verdict: basis == .forecast ? quota.forecast?.verdict : nil,

@@ -37,7 +37,7 @@ let package = Package(
         // `Package.resolved` is not committed, so the exact pin is what makes
         // two machines build the same strings.
         // Unmerged review dependency; replace with a catalog release tag before merging.
-        .package(url: "https://github.com/AstroQore/vibe-bar-i18n.git", revision: "f3105cdd43f54cec14ada37828b02d80dac59649"),
+        .package(url: "https://github.com/AstroQore/vibe-bar-i18n.git", revision: "a4e47109a126a575c7467c47646a2b8324ce85c0"),
         // Sparkle is the standard update framework for independently
         // distributed macOS applications. Pin the exact reviewed release:
         // update verification and installation are security-sensitive.

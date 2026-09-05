@@ -68,7 +68,7 @@ enum UpcomingResets {
                 guard let quota = environment.quotaService.cachedQuota(for: account.id) else { continue }
                 let accountLabel = accounts.count > 1 ? account.displayLabel : nil
                 for bucket in quota.buckets {
-                    guard let resetAt = bucket.resetAt,
+                    guard bucket.hasPercentage, let resetAt = bucket.resetAt,
                           resetAt > now, resetAt <= horizon,
                           bucket.usedPercent >= 1
                     else { continue }

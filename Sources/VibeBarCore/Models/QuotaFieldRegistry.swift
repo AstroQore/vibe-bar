@@ -257,7 +257,7 @@ public extension MenuBarFieldCatalog {
                 groups.append(
                     MenuBarCompanyFieldGroup(
                         company: field.tool.vendorName,
-                        accentTool: field.tool,
+                        accentTool: field.tool == .chatgptChat ? .codex : field.tool,
                         subProviders: [subProvider]
                     )
                 )

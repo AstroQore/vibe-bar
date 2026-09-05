@@ -52,6 +52,9 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
     /// `rawWindowSeconds`, this is what shows a bucket keeping a schedule
     /// other than the one it advertises.
     public var intervalSeconds: TimeInterval?
+    /// Original evidence retained when this cycle closes; older cycles may
+    /// lack it and must not invent their former deadlines or their reset source.
+    public var resetDetails: QuotaResetDetails?
 
     public var isCompleted: Bool { completedAt != nil }
 
@@ -81,7 +84,8 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
         completedAt: Date? = nil,
         completionReason: CompletionReason? = nil,
         resetKind: ResetKind? = nil,
-        intervalSeconds: TimeInterval? = nil
+        intervalSeconds: TimeInterval? = nil,
+        resetDetails: QuotaResetDetails? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -98,11 +102,46 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
         self.completionReason = completionReason
         self.resetKind = resetKind
         self.intervalSeconds = intervalSeconds
+        self.resetDetails = resetDetails
     }
 
     private static func clamp(_ value: Double) -> Double {
         guard value.isFinite else { return 0 }
         return min(100, max(0, value))
+    }
+}
+
+public struct QuotaResetDetails: Codable, Hashable, Sendable {
+    public var previousResetAt: Date?
+    public var nextResetAt: Date?
+    public var previousUsedPercent: Double
+    public var nextUsedPercent: Double
+    public var observedAfter: Date
+    public var observedBefore: Date
+    /// Confirmed redemption near this transition, not a falling grant count.
+    public var creditRedeemedAt: Date?
+    public var plan: String?
+    public var previousRemaining: Int?
+    public var nextRemaining: Int?
+
+    public init(previousResetAt: Date?, nextResetAt: Date?, previousUsedPercent: Double,
+                nextUsedPercent: Double, observedAfter: Date, observedBefore: Date,
+                creditRedeemedAt: Date? = nil, plan: String? = nil,
+                previousRemaining: Int? = nil, nextRemaining: Int? = nil) {
+        self.previousResetAt = previousResetAt; self.nextResetAt = nextResetAt
+        self.previousUsedPercent = previousUsedPercent; self.nextUsedPercent = nextUsedPercent
+        self.observedAfter = observedAfter; self.observedBefore = observedBefore
+        self.creditRedeemedAt = creditRedeemedAt; self.plan = plan
+        self.previousRemaining = previousRemaining; self.nextRemaining = nextRemaining
+    }
+}
+
+public struct QuotaResetRedemption: Codable, Hashable, Sendable, Identifiable {
+    public var accountId: String
+    public var credit: CodexResetCreditRedemption
+    public var id: String { accountId + ":" + credit.id }
+    public init(accountId: String, credit: CodexResetCreditRedemption) {
+        self.accountId = accountId; self.credit = credit
     }
 }
 

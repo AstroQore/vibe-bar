@@ -11,7 +11,7 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
     public var quantity: QuotaQuantity?
 
     public var hasPercentage: Bool { quantity.map { $0.usedPercent != nil } ?? true }
-    public var supportsForecast: Bool { quantity == nil }
+    public var supportsForecast: Bool { hasPercentage }
 
     public init(
         id: String,

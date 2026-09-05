@@ -122,7 +122,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// are compile-time switches over a fixed enum, so the answer cannot
     /// change at runtime.
     public static let dedicatedCardProviders: [ToolType] =
-        allCases.filter { $0.supportsDedicatedCard }
+        [.chatgptChat] + allCases.filter { $0.supportsDedicatedCard && $0 != .chatgptChat }
 
     public static let partialPrimaryProviders: [ToolType] =
         allCases.filter { $0.isPartialPrimary }
@@ -174,7 +174,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// L2 members represented by one L1 company filter / aggregate row.
     public var coreProviderMembers: [ToolType] {
         switch coreProviderRepresentative ?? self {
-        case .codex: [.codex, .chatgptChat]
+        case .codex: [.chatgptChat, .codex]
         case .claude: [.claude]
         case .gemini: [.gemini, .antigravity]
         case .grok: [.grok, .cursor]

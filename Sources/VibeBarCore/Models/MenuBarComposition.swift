@@ -461,7 +461,7 @@ public struct MenuBarToken: Identifiable, Codable, Hashable, Sendable {
     }
 
     public static func newQuota(fieldId: String) -> MenuBarToken {
-        MenuBarToken(kind: .quota(fieldId: fieldId, metric: fieldId.hasPrefix("chatgptChat.") ? .displayCount : .displayPercent), style: .percent)
+        MenuBarToken(kind: .quota(fieldId: fieldId, metric: .displayPercent), style: .percent)
     }
 
     public static func newSpace() -> MenuBarToken {
@@ -2585,10 +2585,12 @@ public extension MenuBarComposition {
             guard quota.hasPercentage else { return nil }
             return percent(quota.remainingPercent)
         case .displayPercent:
-            guard quota.hasPercentage else { return nil }
+            guard quota.hasPercentage else {
+                return quota.quantity?.remaining.map { "≈" + AppLocale.number($0) }
+            }
             return percent(quota.displayPercent)
         case .pace:
-            guard quota.quantity == nil else { return nil }
+            guard quota.hasPercentage else { return nil }
             // Computed here, not in the snapshot: the linear expectation pace
             // is measured against advances every minute, so a value frozen at
             // resolve time would drift until the next refresh.
@@ -2644,6 +2646,9 @@ public extension MenuBarComposition {
         case .remainingPercent:
             return L10n.MenuBar.Spoken.remaining(label: quota.label, value: value)
         case .displayPercent, .displayCount:
+            if !quota.hasPercentage, let remaining = quota.quantity?.remaining {
+                return L10n.Quota.Chat.learningRemaining(count: remaining)
+            }
             return displayMode == .used
                 ? L10n.MenuBar.Spoken.used(label: quota.label, value: value)
                 : L10n.MenuBar.Spoken.remaining(label: quota.label, value: value)
@@ -2671,9 +2676,11 @@ public extension MenuBarComposition {
         switch token.style.color {
         case .automatic:
             guard let own else { return .primary }
+            guard own.hasPercentage else { return .secondary }
             return .quota(fieldId: own.fieldId, basis: colorBasis)
         case .forecast:
             guard let own else { return .primary }
+            guard own.hasPercentage else { return .secondary }
             return .quota(fieldId: own.fieldId, basis: .forecast)
         case let .followsQuota(fieldId, basis):
             // Falls back rather than disappearing: a word coloured by a quota

@@ -7,6 +7,7 @@ public enum QuotaCacheStore {
         var plan: String?
         var queriedAt: Date
         var chatGPTChat: ChatGPTChatSummary?
+        var resetCredits: CodexResetCredits?
 
         init(_ quota: AccountQuota) {
             self.tool = quota.tool
@@ -14,6 +15,7 @@ public enum QuotaCacheStore {
             self.plan = quota.plan
             self.queriedAt = quota.queriedAt
             self.chatGPTChat = quota.chatGPTChat
+            self.resetCredits = quota.resetCredits
         }
 
         func quota(accountId: String) -> AccountQuota {
@@ -26,6 +28,7 @@ public enum QuotaCacheStore {
                 queriedAt: queriedAt,
                 error: nil,
                 providerExtras: nil,
+                resetCredits: resetCredits,
                 chatGPTChat: chatGPTChat
             )
         }

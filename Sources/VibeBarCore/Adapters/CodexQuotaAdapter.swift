@@ -116,7 +116,6 @@ public struct CodexQuotaAdapter: QuotaAdapter {
         guard let inlineCount = CodexResponseParser.parseResetCreditsAvailableCount(data: usageData) else {
             return nil
         }
-        guard inlineCount > 0 else { return CodexResetCredits(availableCount: 0) }
         if let enriched = await CodexResetCreditsFetcher.fetch(
             accessToken: accessToken,
             accountId: accountId,
@@ -170,10 +169,9 @@ public struct CodexQuotaAdapter: QuotaAdapter {
             throw QuotaError.parseFailure(String(describing: error))
         }
 
-        // Web-cookie path has no Bearer token for the dedicated reset-credits
-        // endpoint, so surface just the inline count when the usage payload
-        // carries it.
-        let resetCredits = CodexResponseParser.parseResetCreditsAvailableCount(data: data)
+        let detailedCredits = await CodexResetCreditsFetcher.fetch(
+            cookieHeader: cookieHeader, accountId: account.accountId, session: session)
+        let resetCredits = detailedCredits ?? CodexResponseParser.parseResetCreditsAvailableCount(data: data)
             .map { CodexResetCredits(availableCount: $0) }
 
         return AccountQuota(

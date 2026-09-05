@@ -94,7 +94,9 @@ enum QuotaGroupModuleBuilder {
         let additional = additionalQuotaSeries.map {
             RawBucket(id: $0.id, tool: $0.tool, accountId: $0.accountId, bucket: $0.bucket)
         }
-        let raw = primary + additional
+        let raw = pageTool == .codex
+            ? additional.filter { $0.tool == .chatgptChat } + primary + additional.filter { $0.tool != .chatgptChat }
+            : primary + additional
         guard !raw.isEmpty else { return [] }
 
         // Groups are runs of adjacent rows sharing a chart key — the same
@@ -231,6 +233,11 @@ struct QuotaGroupCard: View {
                     self.row(for: row)
                 }
                 groupHistoryChart
+                if module.tool == .codex, module.linkedSectionTitle != nil,
+                   let credits = environment.quota(for: .codex)?.resetCredits, credits.hasAvailable {
+                    Divider()
+                    ResetCreditsRow(credits: credits, density: density)
+                }
             }
         }
         .padding(density.cardPadding)
@@ -346,7 +353,7 @@ struct QuotaGroupCard: View {
 
     @ViewBuilder
     private var groupHistoryChart: some View {
-        if let accountId = module.accountId, !module.rows.isEmpty, module.rows.allSatisfy({ $0.bucket.supportsForecast }) {
+        if let accountId = module.accountId, !module.rows.isEmpty, module.rows.contains(where: { $0.bucket.supportsForecast }) {
             // `.equatable()` is load-bearing, not an optimisation: this card is
             // re-proposed every 30 seconds by the `TimelineView` the rows above
             // need for their countdowns, and the chart reads no clock of its
@@ -358,11 +365,11 @@ struct QuotaGroupCard: View {
                 group: QuotaBucketGroup(
                     id: module.chartKey,
                     title: module.title,
-                    buckets: module.groupBuckets
+                    buckets: module.groupBuckets.filter(\.supportsForecast)
                 ),
                 fillPointsByBucket: fillPointsByBucket(
                     accountId: accountId,
-                    buckets: module.groupBuckets
+                    buckets: module.groupBuckets.filter(\.supportsForecast)
                 ),
                 density: density,
                 isEmbedded: true
@@ -396,11 +403,7 @@ struct QuotaGroupCard: View {
 
     @ViewBuilder
     private func row(for item: QuotaGroupModule.Row) -> some View {
-        if item.bucket.quantity != nil {
-            QuantityQuotaRow(bucket: item.bucket, density: density, now: now)
-        } else {
-            percentageRow(for: item)
-        }
+        percentageRow(for: item)
     }
 
     @ViewBuilder
@@ -427,7 +430,7 @@ struct QuotaGroupCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(QuotaGroupLabelLocalizer.displayComposed(bucket.title))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                    .lineLimit(1)
+                    .lineLimit(1).layoutPriority(2)
                 if let resetStatus {
                     // One size and one scale floor for every provider — the
                     // per-tool bump and the 0.80 shrink made visually
@@ -438,16 +441,20 @@ struct QuotaGroupCard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.9)
                         .layoutPriority(1)
+                        .help(resetStatus.label)
                 }
                 Spacer(minLength: 6)
+                if bucket.hasPercentage {
                 Text(percentLabel(used: used))
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(isExpired ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
+                }
             }
-            quotaReferenceBar(used: used, pace: pace, forecast: forecast)
+            quotaReferenceBar(used: used, pace: pace, forecast: forecast, learning: !bucket.hasPercentage)
                 .opacity(isExpired ? 0.45 : 1)
+            if bucket.hasPercentage {
             percentageAxis
             referenceLegend(
                 timeExpected: timeExpected,
@@ -494,6 +501,9 @@ struct QuotaGroupCard: View {
             if let forecast {
                 forecastExplanation(itemID: item.id, forecast: forecast, pace: pace)
             }
+            } else {
+                QuotaLearningStatus(bucket: bucket, fontSize: density.subtitleFontSize)
+            }
         }
     }
 
@@ -501,10 +511,13 @@ struct QuotaGroupCard: View {
     private func quotaReferenceBar(
         used: Double,
         pace: UsagePace?,
-        forecast: QuotaPaceForecast?
+        forecast: QuotaPaceForecast?,
+        learning: Bool = false
     ) -> some View {
         let barHeight = max(10, density.bucketBarHeight)
-        if let forecast {
+        if learning {
+            QuotaBarShape(percent: 0, mode: mode, height: barHeight, indeterminate: true)
+        } else if let forecast {
             ForecastQuotaBar(
                 percent: displayedPercent(fromUsed: used),
                 mode: mode,

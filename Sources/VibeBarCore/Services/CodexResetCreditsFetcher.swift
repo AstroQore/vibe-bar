@@ -49,6 +49,21 @@ public enum CodexResetCreditsFetcher {
         }
     }
 
+    public static func fetch(cookieHeader: String, accountId: String?, session: URLSession = .shared) async -> CodexResetCredits? {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://chatgpt.com/codex/settings/usage", forHTTPHeaderField: "Referer")
+        if let accountId { request.setValue(accountId, forHTTPHeaderField: "ChatGPT-Account-Id") }
+        request.timeoutInterval = 12
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return parse(data: data)
+        } catch { return nil }
+    }
+
     /// Internal entry point usable from tests with raw payload bytes. `now` is
     /// injectable so the "skip stale available expiry" filter is deterministic.
     public static func parse(data: Data, now: Date = Date()) -> CodexResetCredits? {
@@ -58,13 +73,21 @@ public enum CodexResetCreditsFetcher {
         guard let count = anyInt(root["available_count"]), count >= 0 else { return nil }
 
         let credits = (root["credits"] as? [[String: Any]]) ?? []
-        let nextExpiry = credits
+        let expirations = credits
             .filter { isAvailable($0["status"]) }
             .compactMap { parseDate($0["expires_at"]) }
             .filter { $0 > now }
-            .min()
+            .sorted()
 
-        return CodexResetCredits(availableCount: count, nextExpiresAt: nextExpiry)
+        let redemptions = credits.compactMap { row -> CodexResetCreditRedemption? in
+            guard (row["status"] as? String)?.lowercased() == "redeemed",
+                  let id = row["id"] as? String, !id.isEmpty,
+                  let date = parseDate(row["redeemed_at"]), date <= now else { return nil }
+            return CodexResetCreditRedemption(
+                id: PrivacyPreservingHash.fileComponent(prefix: "reset-credit", rawValue: id), redeemedAt: date)
+        }
+        return CodexResetCredits(availableCount: count, nextExpiresAt: expirations.first,
+                                 availableExpirations: Array(expirations.prefix(count)), redemptions: redemptions)
     }
 
     private static func isAvailable(_ raw: Any?) -> Bool {

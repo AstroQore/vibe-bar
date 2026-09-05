@@ -1572,7 +1572,6 @@ private struct OverviewCostCard: View {
                             toolNameOverride: toolName,
                             heatmapTitleOverride: heatmapTitleOverride
                         )
-                            .frame(width: max(660, density.popoverWidth * 0.70), height: 660)
                             .vibeBarNoInitialFocus()
                     }
                 }
@@ -1638,36 +1637,20 @@ private struct CostDetailPopoverContent: View {
 
     var body: some View {
         let snapshot = snapshotOverride ?? environment.costService.snapshot(for: tool)
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-                HStack(alignment: .center) {
-                    ProviderSectionTitle(
-                        tool: tool,
-                        title: titleOverride ?? L10n.Cost.providerFullCharts(provider: tool.vendorName),
-                        titleFontSize: density.titleFontSize,
-                        subtitleFontSize: density.subtitleFontSize,
-                        iconSize: 15,
-                        badgeSize: 22
-                    )
-                    Spacer()
-                    if let updated = snapshot?.updatedAt {
-                        Text(updated, style: .relative)
-                            .font(.system(size: density.subtitleFontSize))
-                            .foregroundStyle(.secondary)
+        DetailPopoverShell(title: titleOverride ?? L10n.Cost.providerFullCharts(provider: tool.vendorName),
+                           density: density, tool: tool, updatedAt: snapshot?.updatedAt) {
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: density.interSectionSpacing) {
+                    if let snap = snapshot {
+                        YearlyContributionHeatmapView(
+                            history: snap.dailyHistory, density: density, toolName: toolNameOverride ?? tool.menuTitle)
+                        UsageActivityView(heatmap: snap.heatmap, density: density, titleOverride: heatmapTitleOverride)
                     }
                 }
-                if let snap = snapshot {
-                    YearlyContributionHeatmapView(
-                        history: snap.dailyHistory,
-                        density: density,
-                        toolName: toolNameOverride ?? tool.menuTitle
-                    )
-                    UsageActivityView(heatmap: snap.heatmap, density: density, titleOverride: heatmapTitleOverride)
-                }
             }
-            .padding(density.cardPadding)
         }
     }
+
 }
 
 // MARK: - Single-provider detail (two-column waterfall)
@@ -2311,7 +2294,7 @@ struct ProviderQuotaCard: View {
 /// Codex "Limit reset credits" — manual rate-limit resets the user can spend,
 /// with the next expiry when the dedicated endpoint surfaced it. Only rendered
 /// when at least one reset is available.
-private struct ResetCreditsRow: View {
+struct ResetCreditsRow: View {
     let credits: CodexResetCredits
     let density: Theme.Density
 
@@ -2328,25 +2311,32 @@ private struct ResetCreditsRow: View {
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.green)
             }
-            Text(subtitle)
+            let dates = credits.availableExpirations ?? credits.nextExpiresAt.map { [$0] } ?? []
+            ForEach(Array(dates.enumerated()), id: \.offset) { index, expiry in
+                HStack(alignment: .firstTextBaseline) {
+                    Text(L10n.Quota.ResetCredits.item(number: index + 1))
+                    Spacer(minLength: 6)
+                    Text(L10n.Quota.ResetCredits.expiresAt(when: expiryText(expiry)))
+                        .monospacedDigit()
+                }
                 .font(.system(size: density.resetCountdownFontSize))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+            }
+            if dates.count < credits.availableCount {
+                Text(L10n.Quota.ResetCredits.missingExpiries(count: credits.availableCount - dates.count))
+                    .font(.system(size: density.resetCountdownFontSize)).foregroundStyle(.tertiary)
+            }
         }
     }
 
-    private var subtitle: String {
-        let available = L10n.Quota.ResetCredits.available(count: credits.availableCount)
-        if let expiry = credits.nextExpiresAt,
-           let countdown = ResetCountdownFormatter.string(from: expiry, now: Date()) {
-            return L10n.Quota.ResetCredits.availableWithExpiry(
-                available: available, countdown: countdown
-            )
-        }
-        return available
+    private func expiryText(_ date: Date) -> String {
+        return AppLocale.dateFormatter(template: "MMMdEEEHHmmz", timeZone: .current).string(from: date)
     }
+
 }
 
-private struct ProviderBucketRow: View {
+struct ProviderBucketRow: View {
     let tool: ToolType
     let accountId: String?
     let bucket: QuotaBucket
@@ -2362,11 +2352,7 @@ private struct ProviderBucketRow: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
-        if bucket.quantity != nil {
-            QuantityQuotaRow(bucket: bucket, density: density, now: now)
-        } else {
-            content(now: now)
-        }
+        content(now: now)
     }
 
     @ViewBuilder
@@ -2384,6 +2370,7 @@ private struct ProviderBucketRow: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(QuotaGroupLabelLocalizer.displayComposed(bucket.title))
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                    .lineLimit(1).layoutPriority(2)
                 if let resetStatus {
                     // Same size and scale floor as the primary bucket rows —
                     // see QuotaGroupCard: mismatched caption sizes read as a
@@ -2394,8 +2381,10 @@ private struct ProviderBucketRow: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.9)
                         .layoutPriority(1)
+                        .help(resetStatus.label)
                 }
                 Spacer(minLength: 6)
+                if bucket.hasPercentage {
                 Text(L10n.Common.percent(value: Int(percent.rounded())))
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(
@@ -2404,6 +2393,7 @@ private struct ProviderBucketRow: View {
                             : AnyShapeStyle(Theme.barColor(percent: percent, mode: mode))
                     )
                     .fixedSize(horizontal: true, vertical: false)
+                }
             }
             bucketBar(
                 percent: percent,
@@ -2411,7 +2401,9 @@ private struct ProviderBucketRow: View {
                 timePaceDisplayed: timePaceDisplayed
             )
             .opacity(isExpired ? 0.45 : 1)
-            if let forecast {
+            if !bucket.hasPercentage {
+                QuotaLearningStatus(bucket: bucket, fontSize: density.resetCountdownFontSize)
+            } else if let forecast {
                 QuotaForecastRow(
                     forecast: forecast,
                     now: now,
@@ -2431,7 +2423,9 @@ private struct ProviderBucketRow: View {
         timePaceDisplayed: Double?
     ) -> some View {
         Group {
-            if let forecast {
+            if !bucket.hasPercentage {
+                QuotaBarShape(percent: 0, mode: mode, height: density.bucketBarHeight, indeterminate: true)
+            } else if let forecast {
                 ForecastQuotaBar(
                     percent: percent,
                     mode: mode,

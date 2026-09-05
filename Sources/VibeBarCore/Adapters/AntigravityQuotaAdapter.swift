@@ -544,11 +544,8 @@ private struct AntigravityUserStatus: Decodable {
 private struct AntigravityUserTier: Decodable {
     let id: String?
     let name: String?
-
     var preferredName: String? {
-        guard let value = name?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
-        return value
+        ProviderPlanDisplay.googleAIPlanName(tierId: id, reportedName: name)
     }
 }
 

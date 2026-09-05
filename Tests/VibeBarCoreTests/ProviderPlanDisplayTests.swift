@@ -3,8 +3,8 @@ import XCTest
 
 final class ProviderPlanDisplayTests: XCTestCase {
     func testCodexPlanDisplayHumanizesKnownMachineValues() {
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro"), "ChatGPT Pro")
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "prolite"), "ChatGPT Pro Lite")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro"), "ChatGPT Pro 20x")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "prolite"), "ChatGPT Pro 5x")
         XCTAssertEqual(
             ProviderPlanDisplay.displayName(for: .codex, rawPlan: "enterprise_cbp_usage_based"),
             "ChatGPT Enterprise CBP Usage Based"
@@ -12,7 +12,7 @@ final class ProviderPlanDisplayTests: XCTestCase {
     }
 
     func testClaudePlanDisplayRecognizesRateLimitTiers() {
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "default_claude_max_20x"), "Claude Max")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "default_claude_max_20x"), "Claude Max 20x")
         XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "claude_pro"), "Claude Pro")
         XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "Claude Enterprise Account"), "Claude Enterprise")
         XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "Experimental"), "Claude Experimental")
@@ -59,7 +59,7 @@ final class ProviderPlanDisplayTests: XCTestCase {
         let credential = try ClaudeCredentialReader.decode(jsonString: json, source: .cliDetected)
 
         XCTAssertEqual(credential.rateLimitTier, "default_claude_max_20x")
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: credential.rateLimitTier), "Claude Max")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: credential.rateLimitTier), "Claude Max 20x")
     }
 
     func testMiscProviderDisplayNamesUseNormalizedPlanNames() {
@@ -122,6 +122,29 @@ final class ProviderPlanDisplayTests: XCTestCase {
             ToolType.cursor.quotaSubProviderName(bucketID: "grok_bot_weekly"),
             "Grok Bot"
         )
+    }
+
+    func testTierNamesStayWithinTheirOwningProvider() {
+        for (raw, expected) in [("go", "Go"), ("plus", "Plus"), ("prolite", "Pro 5x"), ("pro_lite", "Pro 5x"), ("pro", "Pro 20x")] {
+            XCTAssertEqual(ProviderPlanDisplay.displayName(for: .chatgptChat, rawPlan: raw), "ChatGPT " + expected)
+        }
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .gemini, rawPlan: "pro"), "Google AI Pro")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .cursor, rawPlan: "pro"), "Pro")
+        XCTAssertEqual(ProviderPlanDisplay.claudeDisplayName(rateLimitTier: "default_claude_max_5x"), "Max 5x")
+        XCTAssertEqual(ProviderPlanDisplay.claudeDisplayName(rateLimitTier: "default_claude_max_20x"), "Max 20x")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "Max"), "Claude Max")
+        for name in ["supergrok", "supergrok_plus", "supergrok_pro", "supergrok_heavy"] {
+            XCTAssertNotNil(ProviderPlanDisplay.displayName(for: .grok, rawPlan: name))
+        }
+    }
+
+    func testGoogleTierIDDoesNotCollapseUltraLiteOrGuessUnknownTiers() {
+        XCTAssertEqual(ProviderPlanDisplay.googleAIPlanName(tierId: "g1-ultra-lite-tier", reportedName: "Google AI Ultra"), "Google AI Ultra Lite")
+        XCTAssertEqual(ProviderPlanDisplay.googleAIPlanName(tierId: "g1-ultra-tier", reportedName: "Pro"), "Google AI Ultra")
+        XCTAssertEqual(ProviderPlanDisplay.googleAIPlanName(tierId: "g1-pro-tier", reportedName: nil), "Google AI Pro")
+        XCTAssertEqual(ProviderPlanDisplay.googleAIPlanName(tierId: "future-tier", reportedName: "Google AI Plus"), "Google AI Plus")
+        XCTAssertNil(ProviderPlanDisplay.googleAIPlanName(tierId: "future-tier", reportedName: nil))
+        XCTAssertEqual(ProviderPlanDisplay.googleAIPlanName(tierId: "g1-ultra-tier", reportedName: "Google AI Ultra 20x"), "Google AI Ultra 20x")
     }
 
     private func makeJWT(payload: [String: Any]) throws -> String {

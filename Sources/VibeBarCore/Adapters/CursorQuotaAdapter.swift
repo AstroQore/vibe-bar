@@ -381,7 +381,12 @@ enum CursorResponseParser {
             switch raw.lowercased() {
             case "free":            return "Free"
             case "free_trial":      return "Free Trial"
-            case "pro":             return "Pro"
+            case "pro", "pro_student": return "Pro"
+            case "pro_plus":        return "Pro+"
+            case "ultra":           return "Ultra"
+            case "hobby":           return "Hobby"
+            case "express":         return "Start"
+            case "team":            return "Team"
             case "business":        return "Business"
             case "enterprise":      return "Enterprise"
             default:                return raw.capitalized

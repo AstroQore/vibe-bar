@@ -4,7 +4,7 @@ public enum ProviderPlanDisplay {
     public static func displayName(for tool: ToolType, rawPlan: String?) -> String? {
         switch tool {
         case .codex, .chatgptChat:
-            return prefixed(codexDisplayName(rawPlan), brand: "ChatGPT")
+            return prefixed(openAIPlanName(rawPlan), brand: "ChatGPT")
         case .claude:
             return prefixed(claudeDisplayName(rawPlan), brand: "Claude")
         case .gemini, .antigravity:
@@ -28,6 +28,31 @@ public enum ProviderPlanDisplay {
         }
     }
 
+    /// OpenAI's API distinguishes the $200 plan as pro and $100 as prolite.
+    /// Keep that mapping local to OpenAI; other providers also use "pro".
+    public static func openAIPlanName(_ rawPlan: String?) -> String? {
+        guard let raw = trimmed(rawPlan) else { return nil }
+        switch raw.lowercased().filter({ $0.isLetter || $0.isNumber }) {
+        case "pro", "pro20x": return "Pro 20x"
+        case "prolite", "pro5x": return "Pro 5x"
+        default: return codexDisplayName(raw)
+        }
+    }
+
+    /// Google Code Assist tier ids are more specific than the generic name
+    /// returned by some clients. Keep Ultra Lite distinct; no multiplier guessed.
+    public static func googleAIPlanName(tierId: String?, reportedName: String?) -> String? {
+        let name = trimmed(reportedName)
+        if let name, name.contains("5x") || name.contains("20x") { return name }
+        switch trimmed(tierId)?.lowercased() {
+        case "free-tier": return "Free"
+        case "g1-pro-tier": return "Google AI Pro"
+        case "g1-ultra-tier": return "Google AI Ultra"
+        case "g1-ultra-lite-tier": return "Google AI Ultra Lite"
+        default: return name
+        }
+    }
+
     public static func codexDisplayName(_ rawPlan: String?) -> String? {
         guard let raw = trimmed(rawPlan) else { return nil }
         let lower = raw.lowercased()
@@ -48,6 +73,7 @@ public enum ProviderPlanDisplay {
 
     public static func claudeDisplayName(_ rawPlan: String?) -> String? {
         guard let raw = trimmed(rawPlan) else { return nil }
+        if let multiplier = claudeMaxMultiplier(raw) { return "Max " + multiplier }
         if let plan = ClaudePlan.fromCompatibilityLoginMethod(raw) {
             return plan.compactLoginMethod
         }
@@ -55,7 +81,8 @@ public enum ProviderPlanDisplay {
     }
 
     public static func claudeDisplayName(rateLimitTier: String?, billingType: String? = nil) -> String? {
-        ClaudePlan.webPlan(rateLimitTier: rateLimitTier, billingType: billingType)?.compactLoginMethod
+        if let multiplier = claudeMaxMultiplier(rateLimitTier) { return "Max " + multiplier }
+        return ClaudePlan.webPlan(rateLimitTier: rateLimitTier, billingType: billingType)?.compactLoginMethod
     }
 
     public static func grokDisplayName(_ rawPlan: String?) -> String? {
@@ -63,10 +90,20 @@ public enum ProviderPlanDisplay {
         let compact = display.replacingOccurrences(of: " ", with: "").lowercased()
         switch compact {
         case "supergrokheavy": return "SuperGrok Heavy"
+        case "supergrokplus": return "SuperGrok Plus"
+        case "supergrokpro": return "SuperGrok Pro"
         case "supergrok": return "SuperGrok"
         case "supergroklite": return "SuperGrok Lite"
         default: return display
         }
+    }
+
+    private static func claudeMaxMultiplier(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let token = raw.lowercased().filter { $0.isLetter || $0.isNumber }
+        if token.hasSuffix("max20x") { return "20x" }
+        if token.hasSuffix("max5x") { return "5x" }
+        return nil
     }
 
     private static func prefixed(_ plan: String?, brand: String) -> String? {

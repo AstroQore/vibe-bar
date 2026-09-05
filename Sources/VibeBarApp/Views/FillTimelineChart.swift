@@ -52,7 +52,7 @@ struct FillTimelineChart: View {
     /// Bar width the count is derived from. `cycleStrip` never draws narrower
     /// than the geometry allows, so deriving from a slightly generous figure is
     /// what keeps a little air between bars at the wide end.
-    private static let preferredBarWidth: CGFloat = 6
+    private static let preferredBarWidth: CGFloat = 14
 
     /// Until the strip has been measured. Small enough to look deliberate for
     /// the one frame before the real width arrives.
@@ -70,7 +70,7 @@ struct FillTimelineChart: View {
 
     /// Band above the bars holding the early-refill dots. Always reserved, so
     /// the strip does not change height when a cycle refills early.
-    private var markerBand: CGFloat { 5 }
+    private var markerBand: CGFloat { 12 }
 
     private var barSpacing: CGFloat {
         switch density.profile {
@@ -96,9 +96,8 @@ struct FillTimelineChart: View {
                     .font(.system(size: max(9, density.subtitleFontSize - 2), weight: .medium))
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
-                Text(L10n.ResetHistory.barIsOneCycle)
-                    .font(.system(size: max(7.5, density.subtitleFontSize - 4)))
-                    .foregroundStyle(.quaternary)
+                ResetJournalButton(tools: [series.tool], accountId: series.accountId, bucketId: series.bucket.id)
+                    .font(.system(size: max(9, density.subtitleFontSize - 2)))
             }
             cycleStrip(cycles, tool: series.tool, targetPercent: targetPercent)
             Text(caption(cycles))
@@ -198,19 +197,11 @@ struct FillTimelineChart: View {
                     // its quota fills its track to the top, where a marker
                     // would be the same colour as the fill under it. Shrinks
                     // with the bar so it never overlaps its neighbour.
-                    if cycle.refilledEarly {
-                        let diameter = min(3, barWidth)
-                        context.fill(
-                            Path(
-                                ellipseIn: CGRect(
-                                    x: rect.midX - diameter / 2,
-                                    y: max(0, top - diameter) / 2,
-                                    width: diameter,
-                                    height: diameter
-                                )
-                            ),
-                            with: .color(accent.opacity(0.8))
-                        )
+                    if cycle.isCompleted && (cycle.refilledEarly || cycle.resetDetails?.creditRedeemedAt != nil) {
+                        let kind = ResetJournalKind(cycle)
+                        let diameter = min(12, barWidth)
+                        let bounds = CGRect(x: rect.midX - diameter / 2, y: 0, width: diameter, height: diameter)
+                        kind.drawMarker(&context, in: bounds)
                     }
                 }
                 if let targetPercent, targetPercent > 3, targetPercent < 97 {
@@ -275,7 +266,8 @@ struct FillTimelineChart: View {
     /// What the provider did to the clock, when it did anything unusual. The
     /// two early shapes mean opposite things, so the caption says which.
     private func resetDescription(_ cycle: SubscriptionWindowSample) -> String? {
-        switch cycle.resetKind {
+        if cycle.resetDetails?.creditRedeemedAt != nil { return L10n.ResetJournal.credit }
+        return switch cycle.resetKind {
         case .earlyClockRestarted: L10n.ResetHistory.Reset.earlyClockRestarted
         case .earlyClockUnchanged: L10n.ResetHistory.Reset.earlyClockUnchanged
         case .earlyUnclear: L10n.ResetHistory.Reset.earlyUnclear

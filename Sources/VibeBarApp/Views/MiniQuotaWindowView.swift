@@ -898,8 +898,8 @@ private struct MiniBranchRingCell: View {
 
     var body: some View {
         Group {
-            if cell.bucket.quantity != nil {
-                QuantityMiniCell(bucket: cell.bucket, title: cell.title, now: now, compact: false)
+            if !cell.bucket.hasPercentage {
+                LearningQuotaMiniCell(bucket: cell.bucket, title: cell.title, now: now, compact: false)
             } else {
                 content(now: now)
             }
@@ -1032,8 +1032,8 @@ private struct MiniRingCell: View {
 
     var body: some View {
         Group {
-            if let bucket = cell.bucket, bucket.quantity != nil {
-                QuantityMiniCell(bucket: bucket, title: cell.resolvedLabel, now: now, compact: false)
+            if let bucket = cell.bucket, !bucket.hasPercentage {
+                LearningQuotaMiniCell(bucket: bucket, title: cell.resolvedLabel, now: now, compact: false)
             } else {
                 content(now: now)
             }
@@ -1409,8 +1409,8 @@ private struct MiniCompactBarCell: View {
 
     var body: some View {
         Group {
-            if let bucket = data.bucket, bucket.quantity != nil {
-                QuantityMiniCell(bucket: bucket, title: data.title, now: now, compact: true)
+            if let bucket = data.bucket, !bucket.hasPercentage {
+                LearningQuotaMiniCell(bucket: bucket, title: data.title, now: now, compact: true)
             } else {
                 content(now: now)
             }
