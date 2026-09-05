@@ -874,13 +874,6 @@ struct SettingsView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            Picker(L10n.Platform.Macos.MenuBar.displayDensity, selection: popoverDensityBinding()) {
-                ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            Text(settingsStore.settings.popoverDensity.detail)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
             Picker(L10n.Platform.Macos.MenuBar.percentColor, selection: menuBarColorBasisBinding()) {
                 ForEach(MenuBarColorBasis.allCases) { Text($0.label).tag($0) }
             }
@@ -1073,13 +1066,6 @@ struct SettingsView: View {
         Binding(
             get: { settingsStore.settings.menuBarColorBasis },
             set: { settingsStore.settings.menuBarColorBasis = $0 }
-        )
-    }
-
-    private func popoverDensityBinding() -> Binding<PopoverDensity> {
-        Binding(
-            get: { settingsStore.settings.popoverDensity },
-            set: { settingsStore.settings.popoverDensity = $0 }
         )
     }
 

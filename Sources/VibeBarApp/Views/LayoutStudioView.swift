@@ -60,6 +60,9 @@ struct LayoutStudioView: View {
     /// Every frame the studio reasons in: the root of this view.
     static let space = "vibebar.studio"
     private static let stagePadding: CGFloat = 44
+    /// What the top and bottom bars float over: a fitted surface should sit
+    /// between them, not under them.
+    private static let fitBarReserve: CGFloat = 72
     private static let dragThreshold: CGFloat = 4
     private static let zoomSteps: [CGFloat] = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2]
     private static let inspectorWidth: CGFloat = 520
@@ -315,9 +318,19 @@ struct LayoutStudioView: View {
     private var scale: CGFloat {
         switch model.zoom {
         case .fit:
-            guard naturalSize.width > 0, stageFrame.width > 0 else { return 1 }
-            let room = stageFrame.width - Self.stagePadding * 2
-            return min(1, max(0.35, room / naturalSize.width))
+            // Both axes: a page is far taller than it is wide, and fitting
+            // the width alone left the bottom half of it to be scrolled to —
+            // which read as cut off, not as "there is more". Whole page in
+            // view first; zoom in to work on a part of it.
+            guard naturalSize.width > 0, naturalSize.height > 0,
+                  stageFrame.width > 0, stageFrame.height > 0
+            else { return 1 }
+            let room = CGSize(
+                width: stageFrame.width - Self.stagePadding * 2,
+                height: stageFrame.height - Self.stagePadding * 2 - Self.fitBarReserve
+            )
+            let fit = min(room.width / naturalSize.width, room.height / naturalSize.height)
+            return min(1, max(0.35, fit))
         case let .scale(value):
             return value
         }
@@ -987,6 +1000,12 @@ struct LayoutStudioView: View {
                     }
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
+                // Only where it changes the surface on the stage: a mini
+                // window has a strip density of its own and never reads the
+                // popover's.
+                if case .popoverPage = model.subject {
+                    densityPill
+                }
                 zoomPill
                 glassIconButton(
                     systemImage: model.isInspectorShown ? "sidebar.trailing" : "sidebar.leading",
@@ -1122,6 +1141,46 @@ struct LayoutStudioView: View {
                 .glassEffect(.regular, in: .capsule)
             }
         }
+    }
+
+    /// The popover's density, changeable from the stage: the surface being
+    /// arranged re-lays itself out at the new spacing as soon as it is picked.
+    private var densityPill: some View {
+        Menu {
+            ForEach(PopoverDensity.allCases) { candidate in
+                Button {
+                    guard candidate != settingsStore.settings.popoverDensity else { return }
+                    withAnimation(Self.reflow) { settingsStore.settings.popoverDensity = candidate }
+                } label: {
+                    if candidate == settingsStore.settings.popoverDensity {
+                        Label(candidate.label, systemImage: "checkmark")
+                    } else {
+                        Text(candidate.label)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "textformat.size")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(settingsStore.settings.popoverDensity.label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 22)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(.primary)
+        .padding(3)
+        .glassEffect(.regular, in: .capsule)
+        .help(L10n.Platform.Macos.MenuBar.displayDensity)
     }
 
     private var zoomPill: some View {
