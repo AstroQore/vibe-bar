@@ -185,9 +185,11 @@ struct MenuBarStripStage<TokenMenu: View, SegmentMenu: View>: View {
     @ViewBuilder let tokenMenu: (MenuBarToken) -> TokenMenu
     @ViewBuilder let segmentMenu: (MenuBarSegment, Int) -> SegmentMenu
 
-    /// Rows the bar draws for this template, which sets its face and its
-    /// glyph box — the same count the preview and the status item use.
-    private var rowCount: Int { plan.isTwoRow || template == .twoColumn ? 2 : 1 }
+    /// Rows the bar draws for this plan — the same count the status item
+    /// picks its face and glyph box by. From the plan, not the template: a
+    /// two-row template whose segments have all lost their second row is
+    /// drawn as one row, and the stage must not preview a smaller one.
+    private var rowCount: Int { plan.isTwoRow ? 2 : 1 }
 
     /// The face the bar would draw this strip at, times the zoom.
     private var base: CGFloat {
@@ -448,7 +450,7 @@ struct MenuBarStageRunGhost: View {
     let zoom: CGFloat
     let naming: MenuBarTokenNaming
 
-    private var rowCount: Int { plan.isTwoRow || template == .twoColumn ? 2 : 1 }
+    private var rowCount: Int { plan.isTwoRow ? 2 : 1 }
 
     private var base: CGFloat {
         let face = MenuBarStripMetrics.baseFontSize(template: template, rowCount: rowCount)
@@ -494,35 +496,5 @@ struct MenuBarStageRunGhost: View {
         .shadow(color: .black.opacity(0.32), radius: 12, y: 6)
         .environment(\.colorScheme, scheme)
         .allowsHitTesting(false)
-    }
-}
-
-// MARK: - Palette drops
-
-/// A block dragged out of the palette, landing wherever the pointer is over
-/// the canvas. `stage` is asked on every movement with the pointer in canvas
-/// coordinates and decides what, if anything, changes; the delegate decides
-/// nothing about *where*.
-struct MenuBarStageDropDelegate: DropDelegate {
-    let stage: (CGPoint) -> Void
-    let entered: () -> Void
-    let exited: () -> Void
-    let commit: () -> Void
-
-    func dropEntered(info: DropInfo) {
-        entered()
-        stage(info.location)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        stage(info.location)
-        return DropProposal(operation: .move)
-    }
-
-    func dropExited(info: DropInfo) { exited() }
-
-    func performDrop(info: DropInfo) -> Bool {
-        commit()
-        return true
     }
 }
