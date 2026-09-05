@@ -168,6 +168,25 @@ final class DemoPresenter {
             let resolved = step.isEmpty ? .welcome : OnboardingStep(rawValue: step)
             guard let resolved else { return warnUnknown(surface) }
             environment.showOnboarding(step: resolved)
+        case let .studio(subject):
+            guard let resolved = studioSubject(for: subject) else { return warnUnknown(surface) }
+            LayoutStudioWindowController.shared.open(subject: resolved, environment: environment)
+        }
+    }
+
+    /// Empty or a popover tab's raw value names a page; `mini` the first
+    /// mini window; `menuBar` the composed strip.
+    private func studioSubject(for identifier: String) -> LayoutStudioWindowController.Subject? {
+        switch identifier {
+        case "":
+            return .popoverPage(.overview)
+        case "mini":
+            return environment.settingsStore.settings.miniWindow.windows.first.map { .miniWindow($0.id) }
+        case "menuBar":
+            return .menuBar(.compact)
+        default:
+            guard let tab = OverviewPage(rawValue: identifier), let page = tab.layoutPageID else { return nil }
+            return .popoverPage(page)
         }
     }
 

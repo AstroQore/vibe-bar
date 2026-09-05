@@ -205,14 +205,20 @@ final class SessionManagerModel: ObservableObject {
             refreshRows()
         }
     }
+    // The label scan runs under the same date window and order as the
+    // list, so both changes rerun the search as well as reloading the page.
     @Published var dateRange: DateRange = .all {
         didSet {
             reloadSummaryPage(reset: true)
+            rerunSearch()
             refreshRows()
         }
     }
     @Published var sortOrder: SortOrder = .recentFirst {
-        didSet { reloadSummaryPage(reset: true) }
+        didSet {
+            reloadSummaryPage(reset: true)
+            rerunSearch()
+        }
     }
     @Published var groupByProject = false {
         didSet { refreshRows() }
@@ -565,14 +571,16 @@ final class SessionManagerModel: ObservableObject {
     private func scheduleSearch() {
         searchTask?.cancel()
         let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Every change is a new generation, clearing included: a search
+        // still in flight when the field empties must not publish afterwards.
+        searchGeneration &+= 1
+        let generation = searchGeneration
         guard !needle.isEmpty else {
             relatedHitByParent = [:]
             hits = []
             labelHits = []
             return
         }
-        searchGeneration &+= 1
-        let generation = searchGeneration
         searchTask = Task { [weak self] in
             try? await Task.sleep(for: Self.searchDebounce)
             guard !Task.isCancelled else { return }
@@ -619,7 +627,7 @@ final class SessionManagerModel: ObservableObject {
         )
         let found = (try? await fullText) ?? []
         let labelled = await labels
-        guard generation == searchGeneration else { return }
+        guard !Task.isCancelled, generation == searchGeneration else { return }
         labelHits = labelled
 
         // Resolve every Auto Review child to its parent in one hop.
@@ -646,7 +654,7 @@ final class SessionManagerModel: ObservableObject {
         }
         if !wanted.isEmpty {
             let fetched = await Self.resolveParentSummaries(service: service, sessionIDs: wanted)
-            guard generation == searchGeneration else { return }
+            guard !Task.isCancelled, generation == searchGeneration else { return }
             parentSummaryCache.merge(fetched) { _, new in new }
         }
 
@@ -669,7 +677,7 @@ final class SessionManagerModel: ObservableObject {
                 resolved.append(hit)
             }
         }
-        guard generation == searchGeneration else { return }
+        guard !Task.isCancelled, generation == searchGeneration else { return }
         relatedHitByParent = relatedHits
         hits = resolved
     }
@@ -684,9 +692,12 @@ final class SessionManagerModel: ObservableObject {
 
     /// Walks the index's summaries, under the same filters and order as the
     /// list, and keeps the ones `matches` finds — so a session older than the
-    /// loaded page is still found by its folder or harness. Detached, because
-    /// a needle that matches nothing reads every summary there is; the pages
-    /// are large so that is a dozen round trips, not fifty.
+    /// loaded page is still found by its folder or harness. A needle that
+    /// matches nothing reads every summary there is, so the pages are large
+    /// — a dozen round trips, not fifty — and the walk is a structured child
+    /// of the search (`async let`), so cancelling the search stops it at the
+    /// next page instead of leaving it to contend with the search that
+    /// replaced it. Nonisolated, so the matching never runs on the main actor.
     private nonisolated static func scanLabels(
         service: SessionIndexService,
         needle: String,
@@ -696,29 +707,27 @@ final class SessionManagerModel: ObservableObject {
         projectExcludes: [String],
         order: SessionSummaryOrder
     ) async -> [SessionSummary] {
-        await Task.detached(priority: .userInitiated) {
-            var out: [SessionSummary] = []
-            var offset = 0
-            while out.count < labelHitLimit, !Task.isCancelled {
-                guard let page = try? await service.summaryPage(
-                    harnesses: harnesses,
-                    since: since,
-                    projectIncludes: projectIncludes,
-                    projectExcludes: projectExcludes,
-                    excludingProviderVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix,
-                    order: order,
-                    offset: offset,
-                    limit: labelScanPageSize
-                ) else { break }
-                for summary in page.summaries where matches(summary, needle: needle) {
-                    out.append(summary)
-                    if out.count >= labelHitLimit { break }
-                }
-                offset += page.summaries.count
-                if page.summaries.isEmpty || offset >= page.totalCount { break }
+        var out: [SessionSummary] = []
+        var offset = 0
+        while out.count < labelHitLimit, !Task.isCancelled {
+            guard let page = try? await service.summaryPage(
+                harnesses: harnesses,
+                since: since,
+                projectIncludes: projectIncludes,
+                projectExcludes: projectExcludes,
+                excludingProviderVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix,
+                order: order,
+                offset: offset,
+                limit: labelScanPageSize
+            ) else { break }
+            for summary in page.summaries where matches(summary, needle: needle) {
+                out.append(summary)
+                if out.count >= labelHitLimit { break }
             }
-            return out
-        }.value
+            offset += page.summaries.count
+            if page.summaries.isEmpty || offset >= page.totalCount { break }
+        }
+        return out
     }
 
     /// One detached pass over the deduped parent ids. Cancellation is checked

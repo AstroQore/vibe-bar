@@ -657,6 +657,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menu.addItem(actionMenuItem("Refresh", action: #selector(refreshFromContextMenu(_:)), keyEquivalent: "r"))
         addMiniWindowMenuItems(to: menu)
         menu.addItem(actionMenuItem("Open Workbench", action: #selector(openWorkbenchFromContextMenu(_:))))
+        menu.addItem(densityMenuItem())
         menu.addItem(actionMenuItem("Open Settings", action: #selector(openSettingsFromContextMenu(_:)), keyEquivalent: ","))
         let updateItem = actionMenuItem(
             "Check for Updates…",
@@ -738,6 +739,32 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
+    }
+
+    /// The popover's density, from the bar itself: the one layout choice a
+    /// user makes often enough — a big display at the desk, the laptop's own
+    /// on the train — to deserve a place that is not two windows away.
+    private func densityMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: L10n.Platform.Macos.MenuBar.displayDensity, action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: L10n.Platform.Macos.MenuBar.displayDensity)
+        submenu.autoenablesItems = false
+        let current = environment.settingsStore.settings.popoverDensity
+        for density in PopoverDensity.allCases {
+            let choice = actionMenuItem(density.label, action: #selector(setDensityFromContextMenu(_:)))
+            choice.representedObject = density.rawValue
+            choice.state = density == current ? .on : .off
+            submenu.addItem(choice)
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func setDensityFromContextMenu(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let density = PopoverDensity(rawValue: raw),
+              density != environment.settingsStore.settings.popoverDensity
+        else { return }
+        environment.settingsStore.settings.popoverDensity = density
     }
 
     private func actionMenuItem(_ title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {

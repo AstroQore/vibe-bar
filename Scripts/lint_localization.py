@@ -149,6 +149,8 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/CodexBarProviderBridgeCard.swift",
     "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/MenuBarComposerEditor.swift",
+    "Sources/VibeBarApp/Views/MenuBarStripStage.swift",
+    "Sources/VibeBarApp/Views/MenuBarStageView.swift",
     "Sources/VibeBarApp/Views/MenuBarStripView.swift",
 ]
 

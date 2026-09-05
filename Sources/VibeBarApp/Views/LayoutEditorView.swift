@@ -123,6 +123,7 @@ struct LayoutEditorView: View {
         )
 
         VStack(alignment: .leading, spacing: 12) {
+            densityRow
             pagePicker(pages: pages, selected: page)
             modeRow(page: page, mode: mode, arrangement: arrangement, descriptors: descriptors)
             controlRow(page: page, config: config, descriptors: descriptors)
@@ -184,6 +185,30 @@ struct LayoutEditorView: View {
         guard let initialPage, !hasAppliedInitialPage else { return }
         hasAppliedInitialPage = true
         selectedPage = initialPage
+    }
+
+    // MARK: - Density
+
+    /// How much room every popover page gives its cards. It lives with the
+    /// layout rather than with the menu bar because it is a property of the
+    /// surfaces being arranged here — the Studio's inspector is this same
+    /// view, so the control is in both places without being two controls.
+    private var densityRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker(
+                L10n.Platform.Macos.MenuBar.displayDensity,
+                selection: Binding(
+                    get: { settingsStore.settings.popoverDensity },
+                    set: { settingsStore.settings.popoverDensity = $0 }
+                )
+            ) {
+                ForEach(PopoverDensity.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Text(settingsStore.settings.popoverDensity.detail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
     }
 
     // MARK: - Page picker

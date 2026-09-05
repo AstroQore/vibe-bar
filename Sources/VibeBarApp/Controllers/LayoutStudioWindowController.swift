@@ -23,6 +23,8 @@ final class LayoutStudioWindowController: NSObject {
     enum Subject: Hashable {
         case popoverPage(PageLayoutPageID)
         case miniWindow(UUID)
+        /// The composed menu bar strip of one status item.
+        case menuBar(MenuBarItemKind)
     }
 
     private var window: NSWindow?
@@ -55,7 +57,17 @@ final class LayoutStudioWindowController: NSObject {
                 .environmentObject(environment.pageLayout)
                 .environmentObject(environment.workbenchServices)
         )
-        let initialSize = NSSize(width: 1240, height: 860)
+        // As tall as the screen allows, so a page fits without shrinking
+        // further than it has to; the width is the stage plus the inspector.
+        // In demo mode that is the capture display, where the window is
+        // also placed — a capture clamps to that display, and a window on
+        // another one would be an empty picture.
+        let demoScreen = DemoMode.isEnabled ? DemoPresenter.targetScreen : nil
+        let visible = (demoScreen ?? NSScreen.main)?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
+        let initialSize = NSSize(
+            width: min(1240, max(880, visible.width - 80)),
+            height: min(1100, max(600, visible.height - 60))
+        )
         let win = NSWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -90,7 +102,16 @@ final class LayoutStudioWindowController: NSObject {
         shell.addChild(hosting)
         win.contentViewController = shell
         win.setContentSize(initialSize)
-        win.center()
+        if let demoScreen {
+            let frame = demoScreen.visibleFrame
+            let size = win.frame.size
+            win.setFrameOrigin(NSPoint(
+                x: frame.midX - size.width / 2,
+                y: frame.midY - size.height / 2
+            ))
+        } else {
+            win.center()
+        }
         win.minSize = NSSize(width: 880, height: 600)
         if !DemoMode.isEnabled {
             win.setFrameAutosaveName(Self.frameAutosaveName)
@@ -188,7 +209,10 @@ final class LayoutStudioModel: ObservableObject {
     }
 
     @Published var subject: LayoutStudioWindowController.Subject = .popoverPage(.overview)
-    @Published var zoom: Zoom = .fit
+    /// Actual size to begin with: the surface on the stage is the real one,
+    /// and it should look like it. A page taller than the window scrolls;
+    /// Fit (⌘0) is a step away for the overview of it.
+    @Published var zoom: Zoom = .scale(1)
     @Published var isInspectorShown = false
     /// What the last edits replaced, newest last. Per studio session: closing
     /// the window forgets it, which is also what makes each entry cheap.
@@ -245,11 +269,13 @@ final class StudioPointer: ObservableObject {
 enum StudioUndo: Equatable {
     case page(PageLayoutPageID, StoredPageLayout?)
     case miniWindow(UUID, MiniWindowConfig?)
+    case menuBar(MenuBarItemKind, MenuBarItemSettings)
 
     var subject: LayoutStudioWindowController.Subject {
         switch self {
         case let .page(page, _): return .popoverPage(page)
         case let .miniWindow(id, _): return .miniWindow(id)
+        case let .menuBar(kind, _): return .menuBar(kind)
         }
     }
 }

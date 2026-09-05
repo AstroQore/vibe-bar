@@ -43,6 +43,10 @@ public enum DemoMode {
         case settings(section: String)
         /// The first-run setup assistant, opened on the named step.
         case onboarding(step: String)
+        /// The Layout Studio, opened on a popover page (`overview`, `openAI`,
+        /// …), the first mini window (`mini`) or the menu bar strip
+        /// (`menuBar`).
+        case studio(subject: String)
 
         /// `kind:identifier`. An unknown kind is `nil`; an empty identifier
         /// is allowed and means "the surface's default".
@@ -55,6 +59,7 @@ public enum DemoMode {
                 case "workbench": self = .workbench(page: "")
                 case "settings": self = .settings(section: "")
                 case "onboarding": self = .onboarding(step: "")
+                case "studio": self = .studio(subject: "")
                 default: return nil
                 }
                 return
@@ -67,6 +72,7 @@ public enum DemoMode {
             case "workbench": self = .workbench(page: identifier)
             case "settings": self = .settings(section: identifier)
             case "onboarding": self = .onboarding(step: identifier)
+            case "studio": self = .studio(subject: identifier)
             default: return nil
             }
         }
