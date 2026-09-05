@@ -59,6 +59,9 @@ struct LayoutStudioView: View {
     /// Whether the strip has a block in hand — what decides who answers
     /// Escape.
     @State private var stripIsDragging = false
+    /// The block the inspector's palette has in flight, shared with the
+    /// stage so it can be dropped there.
+    @State private var stripPendingBlock: PendingPaletteBlock?
     @State private var hintGeneration = 0
     /// The merged field catalog, rebuilt when the registry changes rather
     /// than per render — the same reason Settings caches it.
@@ -205,6 +208,7 @@ struct LayoutStudioView: View {
                 MenuBarStageView(
                     kind: kind,
                     selection: $stripSelection,
+                    pendingBlock: $stripPendingBlock,
                     scheme: stripScheme ?? scheme,
                     scale: scale,
                     onNaturalSize: { naturalSize = $0 },
@@ -1612,7 +1616,12 @@ struct LayoutStudioView: View {
             }
             .pickerStyle(.segmented)
             if item.usesComposedStrip {
-                MenuBarComposerEditor(kind: kind, density: density, externalSelection: $stripSelection)
+                MenuBarComposerEditor(
+                    kind: kind,
+                    density: density,
+                    externalSelection: $stripSelection,
+                    externalPendingBlock: $stripPendingBlock
+                )
             } else {
                 Text(L10n.MenuBar.Composer.Mode.defaultCaption)
                     .font(.caption2)
