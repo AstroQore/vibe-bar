@@ -139,6 +139,8 @@ final class DemoModeTests: XCTestCase {
         XCTAssertEqual(DemoMode.Surface(parsing: "settings:layout"), .settings(section: "layout"))
         XCTAssertEqual(DemoMode.Surface(parsing: "onboarding"), .onboarding(step: ""))
         XCTAssertEqual(DemoMode.Surface(parsing: "onboarding:subscriptions"), .onboarding(step: "subscriptions"))
+        XCTAssertEqual(DemoMode.Surface(parsing: "studio"), .studio(subject: ""))
+        XCTAssertEqual(DemoMode.Surface(parsing: "studio:menuBar"), .studio(subject: "menuBar"))
         XCTAssertNil(DemoMode.Surface(parsing: "window:main"))
         XCTAssertNil(DemoMode.Surface(parsing: ""))
     }

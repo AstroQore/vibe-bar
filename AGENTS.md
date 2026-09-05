@@ -739,7 +739,7 @@ gate reads. With it on:
 - `KeychainStore` reports every item missing and swallows writes at its
   three primitives, so no surface can raise the login-keychain prompt.
 - `DemoPresenter` (`Sources/VibeBarApp/Controllers/`) opens one surface
-  (`VIBEBAR_DEMO_SURFACE=popover:<page>|mini:<mode>|workbench:<page>|settings:<section>|onboarding:<step>`)
+  (`VIBEBAR_DEMO_SURFACE=popover:<page>|mini:<mode>|workbench:<page>|settings:<section>|onboarding:<step>|studio:<page|mini|menuBar>`)
   on the sharpest display, behind it a flat full-screen backdrop, pinned to
   `VIBEBAR_DEMO_APPEARANCE=light|dark`, and prints the window frames on
   stdout for the capture script. The popover is anchored to the backdrop

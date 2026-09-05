@@ -17,6 +17,11 @@ import VibeBarCore
 struct MenuBarComposerEditor: View {
     let kind: MenuBarItemKind
     let density: Theme.Density
+    /// The Studio's selection, when this editor is its inspector: a block
+    /// picked on the stage is the block the inspector edits, and the other
+    /// way round. Kept in step with the editor's own selection rather than
+    /// replacing it, so the editor in Settings needs no owner.
+    var externalSelection: Binding<Set<UUID>>? = nil
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -199,7 +204,18 @@ struct MenuBarComposerEditor: View {
         // Selecting another block retires the inspector that queued the write,
         // so spend it first. Deterministic, unlike waiting for that view's
         // teardown to be delivered.
-        .onChange(of: selection) { _, _ in pendingCommit.flush() }
+        .onChange(of: selection) { _, new in
+            pendingCommit.flush()
+            if let external = externalSelection, external.wrappedValue != new {
+                external.wrappedValue = new
+            }
+        }
+        .onChange(of: externalSelection?.wrappedValue) { _, new in
+            if let new, new != selection { selection = new }
+        }
+        .onAppear {
+            if let external = externalSelection?.wrappedValue { selection = external }
+        }
         .onDisappear { pendingCommit.flush() }
         // A forecast percentage, a verdict rule, or a forecast colour goes
         // stale on `QuotaService`'s five-minute grid, and none of the input
@@ -678,64 +694,17 @@ struct MenuBarComposerEditor: View {
     }
 
     private func symbol(for kind: MenuBarToken.Kind) -> String {
-        switch kind {
-        case .logo, .brandLogo: return "app.badge"
-        case .text: return "textformat"
-        case .quota: return "percent"
-        case .space: return "space"
-        case .separator: return "line.diagonal"
-        case .appIcon: return "menubar.rectangle"
-        case .unsupported: return "questionmark.square.dashed"
-        }
+        MenuBarTokenNaming.symbol(for: kind)
     }
 
     private func chipTitle(_ token: MenuBarToken) -> String {
-        switch token.kind {
-        case let .logo(tool):
-            return tool.menuTitle
-        case let .brandLogo(logo):
-            return logo.name
-        case let .text(text):
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? L10n.MenuBar.Composer.Block.emptyText : MenuBarToken.truncated(trimmed)
-        case let .quota(fieldId, metric):
-            // SubProvider first: a strip holding three "Weekly" blocks has to
-            // say which is Codex's, which Claude's, which Grok Bot's. The
-            // metric is spelled only when it is not the plain percentage,
-            // which is what the "Shows" control says and what nearly every
-            // block shows.
-            let name = optionsById[fieldId].map(Self.fieldTitle) ?? fieldId
-            return metric == .displayPercent ? name : "\(name) · \(metric.title)"
-        case let .space(width):
-            let width = MenuBarToken.clampedSpaceWidth(width)
-            return width == MenuBarToken.defaultSpaceWidth
-                ? L10n.MenuBar.Composer.Block.space
-                : L10n.MenuBar.Composer.Space.widthValue(count: width)
-        case let .separator(separator):
-            let trimmed = separator.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? L10n.MenuBar.Composer.Block.gap : trimmed
-        case .appIcon:
-            return L10n.MenuBar.Composer.Block.appIcon
-        case .unsupported:
-            return L10n.MenuBar.Composer.Block.unsupported
-        }
+        MenuBarTokenNaming(optionsById: optionsById).title(token)
     }
 
-    /// "Grok Bot · Weekly", "ChatGPT · GPT-5.3 Codex Spark · 5 Hours": the L2
-    /// SubProvider the bucket bills against, then the field's own title.
-    /// Every list of fields in this editor spells them this way, because a
-    /// bare "Weekly" is exactly the ambiguity the naming axis exists to end.
+    /// "Grok Bot · Weekly", "ChatGPT · GPT-5.3 Codex Spark · 5 Hours" — see
+    /// `MenuBarTokenNaming.fieldTitle`.
     static func fieldTitle(_ option: MenuBarFieldOption) -> String {
-        let subProvider = option.tool.quotaSubProviderName(bucketID: option.bucketId)
-        let title = option.displayTitle
-        // A legacy catalog title can already lead with the SubProvider
-        // ("Grok Bot · Weekly"); saying it twice would be worse than the
-        // ambiguity this fixes.
-        let prefix = "\(subProvider) · "
-        if title.lowercased().hasPrefix(prefix.lowercased()) {
-            return "\(subProvider) · \(title.dropFirst(prefix.count))"
-        }
-        return "\(subProvider) · \(title)"
+        MenuBarTokenNaming.fieldTitle(option)
     }
 
     private func chipHelp(_ token: MenuBarToken, isSilent: Bool, isDegraded: Bool) -> String {
