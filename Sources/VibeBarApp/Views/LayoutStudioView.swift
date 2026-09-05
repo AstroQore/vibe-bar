@@ -108,6 +108,10 @@ struct LayoutStudioView: View {
             hovered = nil
             drag = nil
             settling = nil
+            // A page is drawn whole now, so the stage may be scrolled deep
+            // into one when the subject changes; the next surface starts
+            // at its top, not partway down where the last one was left.
+            scrollPosition.scrollTo(x: 0, y: 0)
             showHint()
         }
         // Every write to the subject's saved state — a drop on the stage, a
