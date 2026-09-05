@@ -25,6 +25,9 @@ struct MenuBarStageView: View {
     /// The stage's size at the Studio's 100 %, whenever it changes — what
     /// Fit measures against.
     var onNaturalSize: ((CGSize) -> Void)? = nil
+    /// Whether a block is being carried, whenever that changes — so the
+    /// Studio can tell an Escape the strip will answer from one it should.
+    var onDragChange: ((Bool) -> Void)? = nil
 
     /// How much larger than the bar the strip is at the Studio's 100 %.
     static let baseZoom: CGFloat = 2.5
@@ -140,6 +143,7 @@ struct MenuBarStageView: View {
         }
         .fixedSize(horizontal: true, vertical: false)
         .coordinateSpace(.named(MenuBarStageSpace.name))
+        .onChange(of: drag?.engaged == true) { _, isDragging in onDragChange?(isDragging) }
         .onAppear {
             inputs.start(environment: environment)
             rebuild()

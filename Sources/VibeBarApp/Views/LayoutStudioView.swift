@@ -56,6 +56,9 @@ struct LayoutStudioView: View {
     @State private var stripSelection: Set<UUID> = []
     /// The menu bar the strip is previewed on; the window's own until picked.
     @State private var stripScheme: ColorScheme?
+    /// Whether the strip has a block in hand — what decides who answers
+    /// Escape.
+    @State private var stripIsDragging = false
     @State private var hintGeneration = 0
     /// The merged field catalog, rebuilt when the registry changes rather
     /// than per render — the same reason Settings caches it.
@@ -204,7 +207,8 @@ struct LayoutStudioView: View {
                     selection: $stripSelection,
                     scheme: stripScheme ?? scheme,
                     scale: scale,
-                    onNaturalSize: { naturalSize = $0 }
+                    onNaturalSize: { naturalSize = $0 },
+                    onDragChange: { stripIsDragging = $0 }
                 )
                 .id(kind)
             } else {
@@ -1626,8 +1630,11 @@ struct LayoutStudioView: View {
             case .escape:
                 // The strip answers Escape itself — a drag to cancel, a
                 // selection to clear — through the key press the window
-                // passes on when this returns false.
-                if case .menuBar = model.subject { return false }
+                // passes on when this returns false. With neither, Escape
+                // closes the Studio as it does for every other subject.
+                if case .menuBar = model.subject, stripIsDragging || !stripSelection.isEmpty {
+                    return false
+                }
                 if drag != nil {
                     cancelDrag()
                 } else {
