@@ -73,16 +73,28 @@ public final class BrowserDetection: Sendable {
     /// Stricter than `isAppInstalled` — for Chromium browsers we
     /// require an actual cookie store on disk so we don't pop a
     /// Safe-Storage Keychain prompt for an installed-but-unused app.
+    ///
+    /// And stricter than the data alone: the app has to be installed.
+    /// Uninstalling a browser leaves its profile behind, cookie store
+    /// and all, but takes its Safe Storage key with it — so a leftover
+    /// profile reads as "Keychain denied" and parks the browser in a
+    /// cooldown every other provider then gets blamed on. Nothing on
+    /// this Mac can sign in to a browser that is not here.
     public func isCookieSourceAvailable(_ browser: Browser) -> Bool {
         if browser == .safari { return true }
+        guard isAppInstalled(browser) else { return false }
         if requiresProfileValidation(browser) {
             return hasUsableCookieStore(browser)
         }
         return hasUsableProfileData(browser)
     }
 
+    /// Profile data on disk for an installed browser. Same installed
+    /// requirement as `isCookieSourceAvailable`: a localStorage read of
+    /// an uninstalled browser's leftovers is not a session either.
     public func hasUsableProfileData(_ browser: Browser) -> Bool {
-        cachedBool(browser: browser, kind: .usableProfileData) {
+        guard browser == .safari || isAppInstalled(browser) else { return false }
+        return cachedBool(browser: browser, kind: .usableProfileData) {
             self.detectUsableProfileData(for: browser)
         }
     }
