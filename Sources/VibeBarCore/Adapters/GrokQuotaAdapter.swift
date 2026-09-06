@@ -39,11 +39,22 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             creds.isExpired ? nil : creds
         }
 
+        let header = try? GrokWebCookieStore.readCookieHeader()
+
         if let credentials {
-            return try await fetchWithBearer(credentials: credentials, account: account)
+            do {
+                return try await fetchWithBearer(credentials: credentials, account: account)
+            } catch let error as QuotaError where error == .needsLogin || error == .noCredential {
+                // The bearer was refused. A web session, when there is
+                // one, reads the same billing — the fallback AccountStore
+                // promises for this account — so it is tried before the
+                // refusal is reported.
+                guard let header else { throw error }
+                return try await fetchWithCookies(header: header, account: account)
+            }
         }
 
-        if let header = try? GrokWebCookieStore.readCookieHeader() {
+        if let header {
             return try await fetchWithCookies(header: header, account: account)
         }
 
