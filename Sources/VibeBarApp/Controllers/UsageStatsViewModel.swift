@@ -138,6 +138,21 @@ final class UsageStatsViewModel: ObservableObject {
             reload(cascadeModels: false)
         }
     }
+    /// The width the trend chart has, which decides the automatic bucket —
+    /// a wide window earns a finer one. Set by the chart as it lays out;
+    /// only a width change that changes the bucket re-queries.
+    var trendChartWidth: CGFloat = 0 {
+        didSet {
+            guard trendGranularity == nil,
+                  automaticTrendBucket(width: oldValue) != automaticTrendBucket(width: trendChartWidth)
+            else { return }
+            reload(cascadeModels: false)
+        }
+    }
+
+    private func automaticTrendBucket(width: CGFloat) -> UsageTrendBucket {
+        UsageTrendBucket.recommended(for: range, chartWidth: Double(width))
+    }
     /// Set while `fallBackToAutomaticGranularity` writes `trendGranularity`,
     /// so the reload it triggers is issued explicitly with the original
     /// caller's cascade intent instead of the `didSet`'s hardcoded `false`.
@@ -251,12 +266,8 @@ final class UsageStatsViewModel: ObservableObject {
     /// allocating tens of thousands of points before drawing even begins.
     func isTrendGranularityAvailable(_ granularity: UsageTrendBucket?) -> Bool {
         guard let granularity else { return true }
-        if granularity == .hour, !isHourlyTrendAvailable { return false }
-        let seconds: TimeInterval = switch granularity {
-        case .hour: 3_600
-        case .day: 86_400
-        case .week: 7 * 86_400
-        }
+        if granularity == .hour || granularity == .sixHours, !isHourlyTrendAvailable { return false }
+        let seconds = granularity.nominalSeconds
         return Int(ceil(range.duration / seconds)) + 1 <= Self.maximumInteractiveTrendBuckets
     }
 
@@ -760,7 +771,9 @@ final class UsageStatsViewModel: ObservableObject {
                 self.fallBackToAutomaticGranularity(cascadeModels: cascadeModels)
                 return
             }
-            let granularity = self.trendGranularity
+            // Automatic resolves here, by the chart's width, rather than in
+            // the ledger's width-blind rule.
+            let granularity = self.trendGranularity ?? self.automaticTrendBucket(width: self.trendChartWidth)
             let snapshot = await Self.load(
                 ledger: ledger,
                 filter: resolved,
