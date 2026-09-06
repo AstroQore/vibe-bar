@@ -47,4 +47,13 @@ final class UsageModelNamingTests: XCTestCase {
         // Surrounding whitespace is the one thing it does normalize.
         XCTAssertEqual(UsageModelNaming.canonicalDisplayName(" gemini-2.5-pro "), "gemini-2.5-pro")
     }
+
+    func testUnlearnedAntiGravityEnumsAreNotNames() {
+        XCTAssertTrue(UsageModelNaming.isUnlabelledModelEnum("MODEL_PLACEHOLDER_M318"))
+        XCTAssertTrue(UsageModelNaming.isUnlabelledModelEnum(" MODEL_GEMINI_2_5_PRO "))
+        XCTAssertFalse(UsageModelNaming.isUnlabelledModelEnum("gemini-default"))
+        XCTAssertFalse(UsageModelNaming.isUnlabelledModelEnum("MODEL_"))
+        XCTAssertFalse(UsageModelNaming.isUnlabelledModelEnum("model_placeholder"))
+        XCTAssertEqual(UsageModelNaming.canonicalDisplayName("MODEL_PLACEHOLDER_M318"), "Unlabelled model")
+    }
 }
