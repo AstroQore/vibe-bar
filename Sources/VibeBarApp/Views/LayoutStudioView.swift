@@ -1053,8 +1053,11 @@ struct LayoutStudioView: View {
     private var topBar: some View {
         HStack(spacing: 10) {
             subjectMenu
-            Spacer(minLength: 8)
-            centreControls
+            // Beside the subject, not centred: on a notched Mac a notch
+            // companion keeps an invisible window over the top centre of the
+            // screen, and a pill under it never sees the click. The corners
+            // are the one part of the top edge nothing else claims.
+            subjectControls
             Spacer(minLength: 8)
             HStack(spacing: 8) {
                 if !model.undoStack.isEmpty {
@@ -1138,7 +1141,7 @@ struct LayoutStudioView: View {
     }
 
     @ViewBuilder
-    private var centreControls: some View {
+    private var subjectControls: some View {
         switch model.subject {
         case let .popoverPage(page):
             let context = pageContext(page)
