@@ -131,6 +131,25 @@ final class UsageFillTimelineStoreTests: XCTestCase {
         XCTAssertTrue(points.isEmpty)
     }
 
+    /// Membership is the capability axis, not a list kept here: every
+    /// provider with a dedicated card is recorded, no Misc provider is.
+    func testEveryDedicatedCardProviderIsRecordedAndNoMiscProviderIs() async {
+        let store = UsageFillTimelineStore(fileURL: tempURL)
+        let now = Date(timeIntervalSince1970: 1_780_000_123)
+        for tool in ToolType.dedicatedCardProviders {
+            let account = "card-" + tool.rawValue
+            await store.observe(quota(tool: tool, accountId: account, buckets: [bucket(id: "weekly", used: 50)]), now: now)
+            let points = await store.points(accountId: account, bucketId: "weekly")
+            XCTAssertEqual(points.count, 1, "\(tool) has a dedicated card, so its buckets belong in the timeline")
+        }
+        for tool in ToolType.miscPageProviders {
+            let account = "misc-" + tool.rawValue
+            await store.observe(quota(tool: tool, accountId: account, buckets: [bucket(id: "weekly", used: 50)]), now: now)
+            let points = await store.points(accountId: account, bucketId: "weekly")
+            XCTAssertTrue(points.isEmpty, "\(tool) is a Misc provider and stays out")
+        }
+    }
+
     func testChatBucketsJoinTheTimelineOnceTheyHaveAPercentage() async {
         let store = UsageFillTimelineStore(fileURL: tempURL)
         let now = Date(timeIntervalSince1970: 1_780_000_123)
