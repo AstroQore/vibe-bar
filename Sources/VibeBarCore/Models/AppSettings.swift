@@ -32,6 +32,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var popoverDensity: PopoverDensity
     /// Optional user-visible plan badge overrides. Empty means "Auto".
     public var providerPlanLabels: [ToolType: String]
+    public var subscriptionNameFormat: SubscriptionNameFormat
     /// L1 providers shown on the Overview surface. Hiding one keeps its
     /// credentials, refresh schedule, and history intact; it only removes the
     /// provider's Overview card, totals contribution, status tile, and tab.
@@ -340,6 +341,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         miniWindow: MiniWindowSettings = AppSettings.defaultMiniWindow,
         popoverDensity: PopoverDensity = .regular,
         providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels,
+        subscriptionNameFormat: SubscriptionNameFormat = .full,
         visibleCoreProviders: Set<ToolType> = AppSettings.defaultVisibleCoreProviders,
         coreProviderOrder: [ToolType] = AppSettings.defaultCoreProviderOrder,
         miscProviders: [ToolType: MiscProviderSettings] = AppSettings.defaultMiscProviders,
@@ -383,6 +385,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.miniWindow = miniWindow
         self.popoverDensity = popoverDensity
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
+        self.subscriptionNameFormat = subscriptionNameFormat
         self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
         self.coreProviderOrder = Self.normalizedCoreProviderOrder(coreProviderOrder)
         let normalizedLegacyProviders = Self.normalizedMiscProviders(miscProviders)
@@ -461,6 +464,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case popoverDensities
         case popoverDensity   // legacy single-value form
         case providerPlanLabels
+        case subscriptionNameFormat
         case visibleCoreProviders
         case coreProviderOrder
         case miscProviders
@@ -540,6 +544,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         } else {
             self.popoverDensity = .regular
         }
+
+        subscriptionNameFormat = (try? c.decodeIfPresent(SubscriptionNameFormat.self, forKey: .subscriptionNameFormat)) ?? .full
 
         if let labels = try c.decodeIfPresent([String: String].self, forKey: .providerPlanLabels) {
             var map: [ToolType: String] = [:]
@@ -724,6 +730,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(popoverDensity, forKey: .popoverDensity)
         let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
         try c.encode(planLabels, forKey: .providerPlanLabels)
+        try c.encode(subscriptionNameFormat, forKey: .subscriptionNameFormat)
         let normalizedVisibleCore = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
         let visibleCoreRaw = ToolType.coreProviderRepresentatives
             .filter { normalizedVisibleCore.contains($0) }
@@ -783,10 +790,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let override = Self.normalizedProviderPlanLabels(providerPlanLabels)[tool] {
             return override
         }
-        if let label = ProviderPlanDisplay.displayName(for: tool, rawPlan: quotaPlan) {
+        if let label = ProviderPlanDisplay.displayName(for: tool, rawPlan: quotaPlan, format: subscriptionNameFormat) {
             return label
         }
-        return ProviderPlanDisplay.displayName(for: tool, rawPlan: accountPlan)
+        return ProviderPlanDisplay.displayName(for: tool, rawPlan: accountPlan, format: subscriptionNameFormat)
     }
 
     public mutating func setProviderPlanLabel(_ label: String?, for tool: ToolType) {

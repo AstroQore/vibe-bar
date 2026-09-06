@@ -205,6 +205,18 @@ struct SettingsView: View {
                     }
                     .id(SettingsSectionID.system.rawValue)
 
+                    settingsSection(L10n.Settings.subscriptionNameFormat) {
+                        Picker(L10n.Settings.subscriptionNameFormat, selection: $settingsStore.settings.subscriptionNameFormat) {
+                            ForEach(SubscriptionNameFormat.allCases) { format in
+                                Text(format.example).tag(format)
+                            }
+                        }
+                        .labelsHidden()
+                        Text(L10n.Settings.subscriptionNameFormatDetail)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
                     settingsSection(L10n.Settings.Section.refreshing) {
                         Picker(L10n.Settings.percentShows, selection: $settingsStore.settings.displayMode) {
                             ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }

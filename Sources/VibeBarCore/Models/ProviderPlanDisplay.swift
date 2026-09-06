@@ -1,6 +1,63 @@
 import Foundation
 
+/// Presentation only; the account's raw plan remains the identity used by quota learning.
+public enum SubscriptionNameFormat: String, Codable, CaseIterable, Identifiable, Sendable {
+    case full
+    case name
+    case tier
+    case tierWithMultiplier
+    case multiplier
+
+    public var id: String { rawValue }
+
+    public var example: String {
+        ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro", format: self)!
+    }
+}
+
 public enum ProviderPlanDisplay {
+    /// Render a canonical provider plan in the user's chosen label format.
+    /// Only explicit numeric multiplier suffixes are removed; "Ultra Lite",
+    /// "Pro+", and unfamiliar tier names keep their meaning.
+    public static func displayName(
+        for tool: ToolType, rawPlan: String?, format: SubscriptionNameFormat
+    ) -> String? {
+        guard let canonical = displayName(for: tool, rawPlan: rawPlan) else { return nil }
+        let brand: String
+        switch tool {
+        case .codex, .chatgptChat: brand = "ChatGPT"
+        case .claude: brand = "Claude"
+        case .gemini, .antigravity: brand = "Google AI"
+        case .grok: brand = canonical.lowercased().hasPrefix("supergrok") ? "SuperGrok" : "Grok"
+        default: brand = tool.productName
+        }
+        var tier = canonical
+        if tier.lowercased().hasPrefix(brand.lowercased() + " ") {
+            tier = String(tier.dropFirst(brand.count + 1))
+        }
+        var multiplier: String?
+        let range = NSRange(tier.startIndex..., in: tier)
+        if let match = multiplierSuffix.firstMatch(in: tier, range: range),
+           let numberRange = Range(match.range(at: 1), in: tier),
+           let suffixRange = Range(match.range, in: tier) {
+            multiplier = String(tier[numberRange]) + "x"
+            tier.removeSubrange(suffixRange)
+            tier = tier.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // A response containing only a multiplier still has a useful label.
+        if tier.isEmpty { return multiplier ?? canonical }
+        let tierWithMultiplier = [tier, multiplier].compactMap { $0 }.joined(separator: " ")
+        switch format {
+        case .full: return prefixed(tierWithMultiplier, brand: brand)
+        case .name: return prefixed(tier, brand: brand)
+        case .tier: return tier
+        case .tierWithMultiplier: return tierWithMultiplier
+        case .multiplier: return multiplier ?? tier
+        }
+    }
+
+    private static let multiplierSuffix = try! NSRegularExpression(pattern: #"(?:^|\s)(\d+(?:\.\d+)?)\s*[xX×]$"#)
+
     public static func displayName(for tool: ToolType, rawPlan: String?) -> String? {
         switch tool {
         case .codex, .chatgptChat:

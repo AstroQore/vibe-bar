@@ -1,4 +1,4 @@
-# ChatGPT Chat review build
+# ChatGPT Chat allowances
 
 ChatGPT Chat appears above ChatGPT Agentic under OpenAI. It tracks Image
 Generation and Deep Research only. Enable it in OpenAI settings and use the
@@ -21,6 +21,15 @@ remaining count. Once the total and window are learned, the source returns a nor
 bucket. The existing primary-provider quota row, forecast bar, pace, history,
 menu bar, and mini-window paths handle it without a separate Chat presentation.
 Learning state uses the same bar height and track, with indeterminate fill.
+
+## Subscription labels
+
+Settings > System > Subscription name format controls plan labels across
+providers. The five formats show the product and tier with or without the
+multiplier, the tier alone, or the multiplier alone. For example: ChatGPT Pro
+20x, ChatGPT Pro, Pro, Pro 20x, and 20x. A plan without a multiplier keeps its
+tier name in the last format; custom labels take precedence. This is a display
+choice and never changes the account or plan used by quota learning.
 
 ## Reset records
 

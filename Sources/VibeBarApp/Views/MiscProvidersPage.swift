@@ -52,6 +52,7 @@ private struct MiscProviderCard: View {
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var quotaService: QuotaService
+    @EnvironmentObject var settingsStore: SettingsStore
 
     private var tool: ToolType { instance.tool }
     private var accountID: String { AccountStore.miscAccountId(forInstanceID: instance.id) }
@@ -103,13 +104,16 @@ private struct MiscProviderCard: View {
     }
 
     private var headerSubtitle: (text: String, isPrimary: Bool)? {
+        let plan = settingsStore.settings.planBadgeLabel(
+            for: tool, quotaPlan: environment.quota(for: instance)?.plan
+        )
         if let displayName = instance.displayName {
-            if let plan = environment.quota(for: instance)?.plan, !plan.isEmpty {
+            if let plan {
                 return ("\(displayName) · \(plan)", true)
             }
             return (displayName, true)
         }
-        if let plan = environment.quota(for: instance)?.plan, !plan.isEmpty {
+        if let plan {
             return (plan, true)
         }
         return (tool.subtitle, false)

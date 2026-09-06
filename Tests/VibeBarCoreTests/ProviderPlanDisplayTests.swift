@@ -2,6 +2,31 @@ import XCTest
 @testable import VibeBarCore
 
 final class ProviderPlanDisplayTests: XCTestCase {
+    func testSubscriptionFormatsShareProviderAwareTierAndMultiplier() {
+        let examples: [(ToolType, String, [String])] = [
+            (.codex, "pro", ["ChatGPT Pro 20x", "ChatGPT Pro", "Pro", "Pro 20x", "20x"]),
+            (.chatgptChat, "pro_lite", ["ChatGPT Pro 5x", "ChatGPT Pro", "Pro", "Pro 5x", "5x"]),
+            (.claude, "default_claude_max_20x", ["Claude Max 20x", "Claude Max", "Max", "Max 20x", "20x"]),
+            (.gemini, "Google AI Ultra 5X", ["Google AI Ultra 5x", "Google AI Ultra", "Ultra", "Ultra 5x", "5x"]),
+            (.antigravity, "Google AI Ultra Lite", ["Google AI Ultra Lite", "Google AI Ultra Lite", "Ultra Lite", "Ultra Lite", "Ultra Lite"]),
+            (.grok, "supergrok_heavy", ["SuperGrok Heavy", "SuperGrok Heavy", "Heavy", "Heavy", "Heavy"]),
+            (.cursor, "Pro+", ["Cursor Pro+", "Cursor Pro+", "Pro+", "Pro+", "Pro+"]),
+            (.codex, "plus", ["ChatGPT Plus", "ChatGPT Plus", "Plus", "Plus", "Plus"])
+        ]
+        for (tool, rawPlan, expected) in examples {
+            for (format, name) in zip(SubscriptionNameFormat.allCases, expected) {
+                XCTAssertEqual(ProviderPlanDisplay.displayName(for: tool, rawPlan: rawPlan, format: format), name,
+                               "\(tool) / \(format)")
+            }
+        }
+        for format in SubscriptionNameFormat.allCases {
+            XCTAssertNil(ProviderPlanDisplay.displayName(for: .codex, rawPlan: " ", format: format))
+            XCTAssertEqual(ProviderPlanDisplay.displayName(for: .grok, rawPlan: "SuperGrok", format: format), "SuperGrok")
+            XCTAssertEqual(ProviderPlanDisplay.displayName(for: .claude, rawPlan: "Experimental", format: format),
+                           [.full, .name].contains(format) ? "Claude Experimental" : "Experimental")
+        }
+    }
+
     func testCodexPlanDisplayHumanizesKnownMachineValues() {
         XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro"), "ChatGPT Pro 20x")
         XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "prolite"), "ChatGPT Pro 5x")

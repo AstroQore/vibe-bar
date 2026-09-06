@@ -190,7 +190,7 @@ struct QuotaResetJournalView: View {
                         } else if sample.refilledEarly {
                             Text(L10n.ResetJournal.sourceUnknown).font(.caption).foregroundStyle(.secondary)
                         }
-                        if let plan = ProviderPlanDisplay.displayName(for: sample.tool, rawPlan: details.plan) {
+                        if let plan = ProviderPlanDisplay.displayName(for: sample.tool, rawPlan: details.plan, format: settingsStore.settings.subscriptionNameFormat) {
                             Text(plan).font(.caption).foregroundStyle(.tertiary)
                         }
                     } else {

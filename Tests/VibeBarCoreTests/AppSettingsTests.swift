@@ -1053,6 +1053,29 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.planBadgeLabel(for: .claude, accountPlan: "Claude Pro Account"), "Claude Pro")
     }
 
+    func testSubscriptionNameFormatPersistsAndToleratesOlderSettings() throws {
+        for json in [#"{}"#, #"{"subscriptionNameFormat":"future-style"}"#] {
+            let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+            XCTAssertEqual(legacy.subscriptionNameFormat, .full)
+        }
+        for format in SubscriptionNameFormat.allCases {
+            var settings = AppSettings.default
+            settings.subscriptionNameFormat = format
+            let restored = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+            XCTAssertEqual(restored.subscriptionNameFormat, format)
+            XCTAssertEqual(restored.planBadgeLabel(for: .codex, quotaPlan: "pro"), format.example)
+        }
+    }
+
+    func testSubscriptionFormatKeepsCustomLabelAndQuotaPlanPrecedence() {
+        var settings = AppSettings.default
+        settings.subscriptionNameFormat = .multiplier
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite", accountPlan: "pro"), "5x")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: " ", accountPlan: "pro"), "20x")
+        settings.setProviderPlanLabel("My subscription", for: .codex)
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "pro"), "My subscription")
+    }
+
     func testProviderPlanLabelOverrideWinsAndRoundTrips() throws {
         var settings = AppSettings.default
         settings.setProviderPlanLabel("Founder", for: .codex)

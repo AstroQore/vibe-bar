@@ -207,7 +207,7 @@ struct ResetsPage: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
-                if let plan = ProviderPlanDisplay.displayName(for: cycle.tool, rawPlan: cycle.plan) {
+                if let plan = settingsStore.settings.planBadgeLabel(for: cycle.tool, quotaPlan: cycle.plan) {
                     Text(plan)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.tertiary)
