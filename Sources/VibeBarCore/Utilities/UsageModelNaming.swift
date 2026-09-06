@@ -5,9 +5,20 @@ import Foundation
 /// thinking level separately; AntiGravity labels that level in parentheses,
 /// so Vibe Bar appends it as a stable local variant suffix.
 public enum UsageModelNaming {
+    /// AntiGravity records some turns under an internal model enum —
+    /// `MODEL_PLACEHOLDER_M318` and the like — for which no human label has
+    /// been learned. It is an identifier for the pricing side to key on,
+    /// not a name anyone should read.
+    public static func isUnlabelledModelEnum(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("MODEL_"), trimmed.count > 6 else { return false }
+        return trimmed.allSatisfy { $0.isUppercase || $0.isNumber || $0 == "_" }
+    }
+
     public static func canonicalDisplayName(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "Unknown model" }
+        if isUnlabelledModelEnum(trimmed) { return "Unlabelled model" }
         guard trimmed.lowercased().hasPrefix("gemini ") else {
             return trimmed
         }

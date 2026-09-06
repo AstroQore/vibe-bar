@@ -113,8 +113,23 @@ public struct UsageQuerySignature: Sendable, Equatable {
 
 public enum UsageTrendBucket: String, Sendable, Equatable, CaseIterable, Codable {
     case hour
+    /// Four bars a day, aligned to local midnight. Fine enough for a week
+    /// or a month to have a shape at a wide window, coarse enough to stay
+    /// legible; needs the same hourly detail `hour` does.
+    case sixHours
     case day
     case week
+
+    /// The bucket's nominal length. Calendar days and weeks vary; this is
+    /// for counting bars, not for placing them.
+    public var nominalSeconds: TimeInterval {
+        switch self {
+        case .hour: 3_600
+        case .sixHours: 6 * 3_600
+        case .day: 86_400
+        case .week: 7 * 86_400
+        }
+    }
 
     /// A day of history or less is drawn per hour; anything wider is drawn
     /// per local calendar day. Wider windows collapse to local calendar
@@ -123,6 +138,24 @@ public enum UsageTrendBucket: String, Sendable, Equatable, CaseIterable, Codable
     public static func recommended(for range: DateInterval) -> UsageTrendBucket {
         if range.duration <= 24 * 60 * 60 { return .hour }
         if range.duration <= 45 * 24 * 60 * 60 { return .day }
+        return .week
+    }
+
+    /// The finest bucket whose bars still fit the chart: a week drawn in
+    /// seven bars across a wide window is seven bare posts, while the same
+    /// week has a shape at an hour a bar. `pointsPerBar` is the narrowest a
+    /// bar and its gap may get before the chart stops reading as one.
+    /// Falls back to the width-blind rule when no width is known yet.
+    public static func recommended(
+        for range: DateInterval,
+        chartWidth: Double,
+        pointsPerBar: Double = 7
+    ) -> UsageTrendBucket {
+        guard chartWidth > 0 else { return recommended(for: range) }
+        let bars = max(24, Int(chartWidth / pointsPerBar))
+        for bucket in allCases where Int((range.duration / bucket.nominalSeconds).rounded(.up)) <= bars {
+            return bucket
+        }
         return .week
     }
 }

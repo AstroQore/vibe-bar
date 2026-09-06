@@ -899,6 +899,9 @@ final class SessionManagerModel: ObservableObject {
         if summary.provider == .codex, isGeneratedProjectlessPath(summary.projectDir) {
             return .projectless
         }
+        if isClaudeScratchWorkspacePath(summary.projectDir) {
+            return .projectless
+        }
         return projectBucket(summary.projectDir)
     }
 
@@ -919,6 +922,22 @@ final class SessionManagerModel: ObservableObject {
         let date = components[codex + 1].split(separator: "-", omittingEmptySubsequences: false)
         return date.count == 3 && date[0].count == 4 && date[1].count == 2 && date[2].count == 2
             && date.allSatisfy { Int($0) != nil }
+    }
+
+    /// Claude Desktop and Cowork open a projectless task in a scratch
+    /// workspace under the app's own support directory —
+    /// `Claude/scratch-workspaces/<workspace>/<task>/scratch-<date>-<id>` —
+    /// the same idea as Codex's dated scratch cwd. The path is what the
+    /// session records as its cwd, and it is nobody's project.
+    nonisolated static func isClaudeScratchWorkspacePath(_ path: String?) -> Bool {
+        guard let path else { return false }
+        let components = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
+        guard let support = components.firstIndex(of: "Application Support"),
+              components.count > support + 2,
+              components[support + 1] == "Claude",
+              components[support + 2] == "scratch-workspaces"
+        else { return false }
+        return true
     }
 
     /// The loaded page filtered in memory — instant, on every keystroke —
