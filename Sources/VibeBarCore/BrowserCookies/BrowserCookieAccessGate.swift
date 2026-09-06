@@ -34,8 +34,12 @@ public enum BrowserCookieAccessGate {
     ///   `KeychainAccessGate.isDisabled` and this browser needs
     ///   Keychain to decrypt cookies, or
     /// - the cooldown window from a prior denial is still active, or
-    /// - a non-interactive Keychain preflight reports
-    ///   `interactionRequired` (we'd prompt if we tried for real).
+    /// - a non-interactive Keychain preflight of *this browser's* Safe
+    ///   Storage item reports `interactionRequired` (we'd prompt if we
+    ///   tried for real), or
+    /// - that item does not exist at all — there is no key to decrypt
+    ///   with, so the read could only fail, and a failure that is not a
+    ///   refusal must not park the browser in a denial cooldown.
     public static func shouldAttempt(_ browser: Browser, now: Date = Date()) -> Bool {
         guard browser.usesKeychainForCookieDecryption else { return true }
         guard !KeychainAccessGate.isDisabled else { return false }
@@ -53,17 +57,57 @@ public enum BrowserCookieAccessGate {
         }
         guard shouldCheckKeychain else { return false }
 
-        let requiresInteraction = chromiumKeychainRequiresInteraction()
-        return lock.withLock { state in
-            loadIfNeeded(&state)
-            if requiresInteraction {
+        switch keychainPreflight(for: browser) {
+        case .allowed:
+            return true
+        case .absent:
+            return false
+        case .interactionRequired:
+            return lock.withLock { state in
+                loadIfNeeded(&state)
                 state.deniedUntilByBrowser[browser.rawValue] = now.addingTimeInterval(cooldownInterval)
                 persist(state)
                 SafeLog.info("Browser cookie access for \(browser.displayName) requires Keychain interaction; suppressing for \(Int(cooldownInterval / 60))m")
                 return false
             }
-            return true
         }
+    }
+
+    /// What a silent read of `browser`'s Safe Storage item would meet.
+    enum Preflight: Equatable {
+        /// The item is readable now, without a prompt.
+        case allowed
+        /// The item exists but reading it would prompt.
+        case interactionRequired
+        /// No item under any of the browser's labels: nothing to decrypt with.
+        case absent
+    }
+
+    /// The Keychain lookup the preflight runs. A seam for tests, which
+    /// cannot put items in the login keychain.
+    nonisolated(unsafe) static var preflight: @Sendable (_ service: String, _ account: String?) -> KeychainAccessPreflight.Outcome = {
+        KeychainAccessPreflight.checkGenericPassword(service: $0, account: $1)
+    }
+
+    /// Preflights the browser's own labels — Chrome's item being readable
+    /// says nothing about Atlas's — falling back to every catalogued label
+    /// for a channel the catalogue lists none for, the way SweetCookieKit
+    /// itself resolves the key.
+    static func keychainPreflight(for browser: Browser) -> Preflight {
+        let own = browser.safeStorageLabels
+        let labels = own.isEmpty ? Browser.safeStorageLabels : own
+        var interaction = false
+        for label in labels {
+            switch preflight(label.service, label.account) {
+            case .allowed:
+                return .allowed
+            case .interactionRequired:
+                interaction = true
+            case .notFound, .failure:
+                continue
+            }
+        }
+        return interaction ? .interactionRequired : .absent
     }
 
     /// Record an explicit denial coming back from SweetCookieKit's
@@ -122,13 +166,18 @@ public enum BrowserCookieAccessGate {
     /// touching Keychain, so the importer honestly finds nothing and used
     /// to tell the user to go sign in again — advice that could not
     /// possibly help.
-    public static func activeCooldowns(now: Date = Date()) -> [Cooldown] {
+    ///
+    /// A cooldown on a browser that is no longer installed is left out:
+    /// nothing will read that browser again, so a card saying it "declined"
+    /// would only send the user looking for a browser that is not there.
+    public static func activeCooldowns(now: Date = Date(), detection: BrowserDetection = BrowserDetection()) -> [Cooldown] {
         let raw: [String: Date] = lock.withLock { state in
             loadIfNeeded(&state)
             return state.deniedUntilByBrowser
         }
         return raw
             .filter { $0.value > now }
+            .filter { key, _ in Browser(rawValue: key).map(detection.isAppInstalled) ?? true }
             .map { key, value in
                 Cooldown(
                     browserName: Browser(rawValue: key)?.displayName ?? key,
@@ -147,22 +196,6 @@ public enum BrowserCookieAccessGate {
             UserDefaults.standard.removeObject(forKey: defaultsKey)
         }
     }
-
-    private static func chromiumKeychainRequiresInteraction() -> Bool {
-        for label in safeStorageLabels {
-            switch KeychainAccessPreflight.checkGenericPassword(service: label.service, account: label.account) {
-            case .allowed:
-                return false
-            case .interactionRequired:
-                return true
-            case .notFound, .failure:
-                continue
-            }
-        }
-        return false
-    }
-
-    private static let safeStorageLabels: [(service: String, account: String)] = Browser.safeStorageLabels
 
     private static func loadIfNeeded(_ state: inout State) {
         guard !state.loaded else { return }
