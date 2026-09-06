@@ -1272,10 +1272,10 @@ struct LayoutStudioView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .help(L10n.Platform.Macos.MenuBar.displayDensity)
         .foregroundStyle(.primary)
         .padding(3)
         .glassEffect(.regular, in: .capsule)
-        .help(L10n.Platform.Macos.MenuBar.displayDensity)
     }
 
     private var zoomPill: some View {
@@ -1308,17 +1308,22 @@ struct LayoutStudioView: View {
         .glassEffect(.regular, in: .capsule)
     }
 
+    /// The glass is on a container around the button, as the zoom pill does
+    /// it — applied to the button itself it sat above the button in hit
+    /// testing, and the undo and inspector controls stopped taking clicks.
     private func glassIconButton(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 30, height: 30)
-                .contentShape(Circle())
+        HStack(spacing: 0) {
+            Button(action: action) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 30, height: 30)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.vibeBar(cornerRadius: 15))
+            .help(help)
         }
-        .buttonStyle(.vibeBar(cornerRadius: 15))
         .foregroundStyle(.primary)
         .glassEffect(.regular, in: .circle)
-        .help(help)
     }
 
     /// One choice in a glass pill. The selection is a single shape that
