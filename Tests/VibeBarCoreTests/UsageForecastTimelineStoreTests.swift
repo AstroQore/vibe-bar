@@ -110,6 +110,15 @@ final class UsageForecastTimelineStoreTests: XCTestCase {
         XCTAssertTrue(points.isEmpty)
     }
 
+    func testChatForecastsAreRecordedLikeTheCoreProviders() async {
+        let store = UsageForecastTimelineStore(fileURL: tempURL)
+        await store.observe([observation(bucketId: "deep_research", projected: 40, windowSeconds: 30 * 86_400)],
+                            accountId: "acct-1", tool: .chatgptChat)
+        let points = await store.points(accountId: "acct-1", bucketId: "deep_research")
+        XCTAssertEqual(points.count, 1)
+        XCTAssertEqual(points.first?.projectedUsedPercent, 40)
+    }
+
     func testNonFiniteProjectionsAreDropped() async {
         let store = UsageForecastTimelineStore(fileURL: tempURL)
         await store.observe(

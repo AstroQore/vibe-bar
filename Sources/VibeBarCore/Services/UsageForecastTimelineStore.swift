@@ -50,7 +50,11 @@ public actor UsageForecastTimelineStore {
     /// Defensive cap on the legacy import: a JSON file past this size is
     /// corrupt, not legitimate history.
     private static let maxLegacyFileBytes = 24 * 1024 * 1024
-    private static let supportedTools: Set<ToolType> = [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
+    /// The providers with a dedicated card, ChatGPT Chat included. The list
+    /// used to be written out by hand and missed a provider twice: Cursor
+    /// when it was promoted, and Chat from the day it was added, whose
+    /// learned and counted buckets never reached the Workbench timelines.
+    private static let supportedTools = Set(ToolType.dedicatedCardProviders)
 
     public init(fileURL: URL = UsageForecastTimelineStore.defaultFileURL(), legacyJSONURL: URL? = nil) {
         self.fileURL = fileURL

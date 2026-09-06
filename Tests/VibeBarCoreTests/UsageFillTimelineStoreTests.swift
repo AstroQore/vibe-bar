@@ -131,6 +131,28 @@ final class UsageFillTimelineStoreTests: XCTestCase {
         XCTAssertTrue(points.isEmpty)
     }
 
+    func testChatBucketsJoinTheTimelineOnceTheyHaveAPercentage() async {
+        let store = UsageFillTimelineStore(fileURL: tempURL)
+        let now = Date(timeIntervalSince1970: 1_780_000_123)
+        // A counted Pro allowance has a percentage but no reset the service
+        // ever stated; a feature still learning its total has neither.
+        let counted = QuotaBucket(id: "gpt6_pro_weekly", title: "GPT-6 Pro · Weekly", shortLabel: "GPT-6 Pro",
+                                  usedPercent: 0, rawWindowSeconds: 604_800,
+                                  quantity: .init(used: 6, remaining: 194, limit: 200, isEstimated: true))
+        let learning = QuotaBucket(id: "image_gen", title: "Image Generation", shortLabel: "Image Generation",
+                                   usedPercent: 0, resetAt: now.addingTimeInterval(3_600),
+                                   quantity: .init(remaining: 998, isEstimated: true))
+        await store.observe(quota(tool: .chatgptChat, buckets: [counted, learning]), now: now)
+
+        let pro = await store.points(accountId: "acct-1", bucketId: "gpt6_pro_weekly")
+        XCTAssertEqual(pro.count, 1)
+        XCTAssertEqual(pro.first?.usedPercent, 3)
+        XCTAssertNil(pro.first?.resetAt)
+        XCTAssertEqual(pro.first?.rawWindowSeconds, 604_800)
+        let image = await store.points(accountId: "acct-1", bucketId: "image_gen")
+        XCTAssertTrue(image.isEmpty, "a bucket without a percentage is not stored as zero")
+    }
+
     func testPruneRespectsHorizon() async {
         let store = UsageFillTimelineStore(fileURL: tempURL)
         let old = Date(timeIntervalSince1970: 1_780_000_000)
