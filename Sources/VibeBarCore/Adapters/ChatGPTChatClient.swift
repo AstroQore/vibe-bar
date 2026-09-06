@@ -2,7 +2,64 @@ import Foundation
 
 public protocol ChatGPTChatTransport: Sendable {
     var name: String { get }
+    /// Whether the transport authenticates every request itself, so the
+    /// client neither fetches a web session token nor passes one. The
+    /// OAuth transport does; the cookie and WebView ones need the token
+    /// the chatgpt.com session hands out.
+    var ownsBearer: Bool { get }
     func request(path: String, method: String, bearer: String?, body: Data?) async throws -> Data
+}
+
+public extension ChatGPTChatTransport {
+    var ownsBearer: Bool { false }
+}
+
+/// The Codex CLI's OAuth bearer, sent the way the Codex quota adapter sends
+/// it. chatgpt.com's backend accepts it for the same read-only endpoints the
+/// web session token reaches — the plan, and the feature allowances — so a
+/// Codex login is a Chat login too, with no web cookie or WebView needed.
+public final class ChatGPTChatOAuthTransport: NSObject, ChatGPTChatTransport, URLSessionTaskDelegate, @unchecked Sendable {
+    public let name = "oauth"
+    public var ownsBearer: Bool { true }
+    private let credential: CodexCredential
+    private var session: URLSession!
+
+    public init(credential: CodexCredential, configuration: URLSessionConfiguration = .ephemeral) {
+        self.credential = credential
+        super.init()
+        configuration.httpCookieStorage = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+    }
+
+    public func close() { session.invalidateAndCancel() }
+
+    public func request(path: String, method: String = "GET", bearer: String? = nil, body: Data? = nil) async throws -> Data {
+        guard ChatGPTChatRequestPolicy.allows(path: path, method: method),
+              path != "/api/auth/session",
+              let url = URL(string: "https://chatgpt.com" + path) else { throw QuotaError.parseFailure("Invalid ChatGPT Chat request.") }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.timeoutInterval = 15
+        request.setValue("Bearer " + credential.accessToken, forHTTPHeaderField: "Authorization")
+        request.setValue("codex-cli", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let id = credential.accountId, !id.isEmpty {
+            request.setValue(id, forHTTPHeaderField: "ChatGPT-Account-Id")
+        }
+        if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        let (data, response) = try await session.data(for: request)
+        try ChatGPTChatCookieTransport.validate(status: (response as? HTTPURLResponse)?.statusCode ?? 0, size: data.count)
+        return data
+    }
+
+    public func urlSession(_ session: URLSession, task: URLSessionTask,
+                           willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                           completionHandler: @escaping (URLRequest?) -> Void) {
+        // The bearer must never leave its origin.
+        completionHandler(nil)
+    }
 }
 
 /// Only first-party, read-like Chat endpoints are reachable through either transport.
@@ -92,16 +149,37 @@ public struct ChatGPTChatClient: Sendable {
     }
 
     public func fetch(account: AccountIdentity, settings: ChatGPTChatSettings, now: Date = Date()) async throws -> AccountQuota {
-        let sessionData = try await transport.request(path: "/api/auth/session", method: "GET", bearer: nil, body: nil)
-        let session = try ChatGPTChatParser.object(sessionData)
-        guard let token = session["accessToken"] as? String, !token.isEmpty,
-              let user = session["user"] as? [String: Any], let userID = user["id"] as? String else {
-            throw QuotaError.needsLogin
+        let token: String?
+        let userID: String
+        let email: String?
+        let plan: String?
+        if transport.ownsBearer {
+            // No web session to ask: the account and its plan come from
+            // the usage endpoint every ChatGPT bearer can read.
+            let usageData = try await transport.request(path: "/backend-api/wham/usage", method: "GET", bearer: nil, body: nil)
+            let usage = try ChatGPTChatParser.object(usageData)
+            guard let id = (usage["user_id"] as? String) ?? (usage["account_id"] as? String), !id.isEmpty else {
+                throw QuotaError.needsLogin
+            }
+            token = nil
+            userID = id
+            email = usage["email"] as? String
+            plan = CodexResponseParser.planType(data: usageData)
+        } else {
+            let sessionData = try await transport.request(path: "/api/auth/session", method: "GET", bearer: nil, body: nil)
+            let session = try ChatGPTChatParser.object(sessionData)
+            guard let webToken = session["accessToken"] as? String, !webToken.isEmpty,
+                  let user = session["user"] as? [String: Any], let id = user["id"] as? String else {
+                throw QuotaError.needsLogin
+            }
+            token = webToken
+            userID = id
+            email = user["email"] as? String
+            // Reuse Agentic's existing account-plan endpoint and parser, through
+            // this Chat account's transport so a different CLI account cannot leak in.
+            let planData = try? await transport.request(path: "/backend-api/wham/usage", method: "GET", bearer: webToken, body: nil)
+            plan = planData.flatMap { CodexResponseParser.planType(data: $0) }
         }
-        // Reuse Agentic's existing account-plan endpoint and parser, through
-        // this Chat account's transport so a different CLI account cannot leak in.
-        let planData = try? await transport.request(path: "/backend-api/wham/usage", method: "GET", bearer: token, body: nil)
-        let plan = planData.flatMap { CodexResponseParser.planType(data: $0) }
         let body = try JSONSerialization.data(withJSONObject: [
             "conversation_id": NSNull(), "gizmo_id": NSNull(), "requested_default_model": NSNull(),
             "system_hints": [], "timezone": TimeZone.current.identifier,
@@ -121,7 +199,7 @@ public struct ChatGPTChatClient: Sendable {
                                quantity: quantities[sample.id]?.quantity)
         }
         return AccountQuota(accountId: account.id, tool: .chatgptChat, buckets: buckets,
-                            plan: plan, email: user["email"] as? String, queriedAt: now,
+                            plan: plan, email: email, queriedAt: now,
                             chatGPTChat: ChatGPTChatSummary(transport: transport.name, planVerified: plan != nil, accountIdentity: identity))
     }
 }
