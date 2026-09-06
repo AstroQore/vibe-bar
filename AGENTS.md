@@ -888,7 +888,7 @@ SubProvider → L3 quota / model group. Source of truth:
 | L1 company | L2 SubProvider        | L3 quota / model groups                  |
 | ---------- | --------------------- | ---------------------------------------- |
 | OpenAI     | ChatGPT Agentic       | All Models, Codex Spark …                 |
-| OpenAI     | ChatGPT Chat          | Image Generation, Deep Research |
+| OpenAI     | ChatGPT Chat          | Image Generation, Deep Research, GPT-6 Pro · Weekly, GPT-5.6 Sol Pro · Daily, Pro Models · Daily/Weekly |
 | Anthropic  | Claude                | All Models, Sonnet, Opus, Fable …         |
 | Google AI  | Gemini Web            | 5 Hours, Weekly                           |
 | Google AI  | AntiGravity           | Gemini Models, Claude & GPT Models        |
@@ -994,9 +994,30 @@ same `~/.codex/auth.json` / Keychain credential and headers the Codex quota
 uses — chatgpt.com accepts it for `/backend-api/conversation/init`, verified
 live 2026-09-06), then the existing Cookie/WebView login. A Codex login is
 therefore a Chat login; the web session is only needed when there is no Codex
-credential. It does not read conversation history or count model messages.
-Plan identity comes from the same `/wham/usage` `plan_type` parser used by
-Agentic, through the Chat account's own transport.
+credential. Plan identity comes from the same `/wham/usage` `plan_type` parser
+used by Agentic, through the Chat account's own transport. Every transport
+sends a browser user agent (`ChatGPTChatRequestPolicy.userAgent`): chatgpt.com's
+edge serves the saved-history endpoints only to one, and accepts it everywhere
+else (verified live 2026-09-07).
+
+The GPT-6 Pro and GPT-5.6 Sol Pro allowances have no service count.
+`conversation/init` names a model in `model_limits` only once it is exhausted
+(`model_slug`, `resets_after`, `using_default_model_slug` — the ChatGPT
+client's own schema), and `/backend-api/models` carries no allowance field.
+With `ChatGPTChatSettings.trackProModels` on (off by default), the client
+counts the account's saved conversations instead: `ChatGPTChatHistoryReader`
+walks `/backend-api/conversations` newest first inside a one-week window,
+skips Work rows and temporary chats, fetches only changed revisions (24 per
+refresh, 25 s), and `ChatGPTChatParser.conversation` charges each user turn
+to the model of its final answer, once. `ChatGPTChatProAllowances` holds the
+published totals per `plan_type` (`pro`: 200/week GPT-6 Pro, 170/day Sol Pro,
+200/day both; `prolite`: 50/week shared — help article 20001354, read
+2026-09-07); other plans get no Pro buckets. Counts are trailing-window
+estimates with no claimed reset; a throttled model overrides its bucket with
+the service's exhausted state and reset. Partial coverage shows the count
+without a percentage. Only hashed ids, times and model slugs are cached, in
+`~/.vibebar/chatgpt_chat_history.json`. `ChatGPTChatRequestPolicy` admits the
+list with paging fields only and single conversations by UUID; nothing else.
 
 `ChatGPTChatAllowanceStore` learns a total only after three consistent observed
 reset boundaries. Initial reads, mismatches, missed boundaries, and account/plan

@@ -40,6 +40,7 @@ public enum VibeBarLocalStore {
     }
 
     public static var chatGPTChatLearningURL: URL { baseDirectory.appendingPathComponent("chatgpt_chat_learning.json") }
+    public static var chatGPTChatHistoryURL: URL { baseDirectory.appendingPathComponent("chatgpt_chat_history.json") }
 
     public static var openAIWebViewCookieURL: URL {
         baseDirectory

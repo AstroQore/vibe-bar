@@ -6,9 +6,17 @@ struct QuotaLearningStatus: View {
     let bucket: QuotaBucket
     let fontSize: CGFloat
     var body: some View {
-        Text(bucket.quantity?.remaining.map { L10n.Quota.Chat.learningRemaining(count: $0) }
-             ?? L10n.Quota.Forecast.Confidence.learning)
-            .font(.system(size: fontSize, weight: .semibold)).foregroundStyle(.secondary)
+        Text(label).font(.system(size: fontSize, weight: .semibold)).foregroundStyle(.secondary)
+    }
+    private var label: String {
+        // A counted allowance whose history was not fully read is a partial
+        // count, not a total still being learned; say which.
+        if let quantity = bucket.quantity, !quantity.coverageComplete {
+            guard let used = quantity.used else { return L10n.Quota.Chat.partial }
+            return [L10n.Quota.Chat.used(count: used), L10n.Quota.Chat.partial].joined(separator: " · ")
+        }
+        return bucket.quantity?.remaining.map { L10n.Quota.Chat.learningRemaining(count: $0) }
+            ?? L10n.Quota.Forecast.Confidence.learning
     }
 }
 
@@ -43,6 +51,17 @@ struct ChatGPTChatSettingsSection: View {
             Text(L10n.Quota.Chat.featuresHelp).font(.caption).foregroundStyle(.secondary)
             if settingsStore.settings.chatGPTChat.enabled {
                 Text(L10n.Quota.Chat.allowanceLearningHelp).font(.caption).foregroundStyle(.secondary)
+                Toggle(L10n.Quota.Chat.historyToggle, isOn: $settingsStore.settings.chatGPTChat.trackProModels)
+                Text(L10n.Quota.Chat.privacy).font(.caption).foregroundStyle(.secondary)
+                if settingsStore.settings.chatGPTChat.trackProModels {
+                    Text(L10n.Quota.Chat.rolling).font(.caption).foregroundStyle(.secondary)
+                    if let history = environment.quota(for: .chatgptChat)?.chatGPTChat?.history {
+                        Text(history.complete ? L10n.Quota.Chat.complete : L10n.Quota.Chat.partial)
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(L10n.Quota.Chat.excluded(work: history.excludedWorkConversations, unknown: history.unclassifiedTurns))
+                            .font(.caption).foregroundStyle(.tertiary)
+                    }
+                }
                 Button(L10n.Quota.Chat.refresh) { environment.refresh(.chatgptChat) }
             }
         }

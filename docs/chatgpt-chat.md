@@ -1,8 +1,10 @@
 # ChatGPT Chat allowances
 
 ChatGPT Chat appears above ChatGPT Agentic under OpenAI. It tracks Image
-Generation and Deep Research only. Enable it in OpenAI settings and use the
-existing browser import or built-in login. No browser extension is required.
+Generation and Deep Research, and — when asked to — the GPT-6 Pro and
+GPT-5.6 Sol Pro message allowances. Enable it in OpenAI settings; a Codex
+login is enough, and the existing browser import or built-in login works
+too. No browser extension is required.
 
 ## Learning totals
 
@@ -24,6 +26,42 @@ remaining count. Once the total and window are learned, the source returns a nor
 bucket. The existing primary-provider quota row, forecast bar, pace, history,
 menu bar, and mini-window paths handle it without a separate Chat presentation.
 Learning state uses the same bar height and track, with indeterminate fill.
+
+## Pro model messages
+
+The service reports no count for GPT-6 Pro or GPT-5.6 Sol Pro. Its
+`conversation/init` reply names a model only once it is exhausted
+(`model_limits`: `model_slug`, `resets_after`, `using_default_model_slug`),
+and `/backend-api/models` carries no allowance fields. What OpenAI publishes
+is the total per plan, in "GPT-5.6 and GPT-6 Pro in ChatGPT" (help article
+20001354, read 2026-09-07):
+
+| Plan | GPT-6 Pro | GPT-5.6 Sol Pro |
+| --- | --- | --- |
+| Pro $200 (`pro`) | 200 messages per week | 170 per day; both models together 200 per day |
+| Pro $100 (`prolite`) | one shared allowance of 50 messages per week | |
+
+"Sync saved Chat history across devices" in OpenAI settings turns the count
+on. It is off by default. The reader lists the account's saved conversations
+newest first, stops at the first one not updated inside the last week, skips
+Work rows (`conversation_origin` `tpp` or `flora`) and temporary chats, and
+fetches only conversations whose revision changed, at most 24 per refresh
+and within 25 seconds. Each user turn is charged to the model of its final
+answer, once, however often it was regenerated. Only hashed ids, times and
+model slugs are cached, under `~/.vibebar/chatgpt_chat_history.json`.
+
+The service states no window start, so each bucket is the count inside a
+trailing window ending now, against the published total, marked estimated.
+While part of the window is unread — the budget ran out, a fetch failed, or
+the list was cut short — the row shows the count and "history sync is
+incomplete" instead of a percentage. A throttled model overrides the count
+with the service's own exhausted state and reset time; a shared allowance
+is treated as exhausted only when every model it covers is.
+
+Plans other than `pro` and `prolite` get no Pro buckets, because the table
+above does not cover them. Temporary chats, deleted conversations and turns
+whose answer never finished are not counted; the settings pane reports the
+excluded Work conversations and unclassified turns.
 
 ## Subscription labels
 
@@ -61,5 +99,5 @@ The review app has a separate identity, `com.astroqore.VibeBar.ChatReview`, and
 uses synthetic data with provider polling disabled. It coexists with the
 installed app. No merge or release is implied by building this demo.
 
-The app pins localization catalog 0.6.0, including the allowance, reset-record,
-and subscription-format strings.
+The localization catalog carries the allowance, reset-record, history,
+and subscription-format strings; see `Package.swift` for the pinned version.

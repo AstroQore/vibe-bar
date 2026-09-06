@@ -901,7 +901,16 @@ public struct MCPQuotaQuantityDTO: Codable, Equatable, Sendable {
 public struct MCPChatAllowanceDTO: Codable, Equatable, Sendable {
     public let transport: String
     public let planVerified: Bool?
+    /// Present when Pro model messages are counted from the saved history.
+    public let historyComplete: Bool?
+    public let historyObservedFrom: Date?
+    public let excludedWorkConversations: Int?
+    public let unclassifiedTurns: Int?
+    public let failedConversations: Int?
     public init(_ value: ChatGPTChatSummary) {
         transport = value.transport; planVerified = value.planVerified
+        historyComplete = value.history?.complete; historyObservedFrom = value.history?.observedFrom
+        excludedWorkConversations = value.history?.excludedWorkConversations
+        unclassifiedTurns = value.history?.unclassifiedTurns; failedConversations = value.history?.failedConversations
     }
 }
