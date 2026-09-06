@@ -110,6 +110,31 @@ final class UsageForecastTimelineStoreTests: XCTestCase {
         XCTAssertTrue(points.isEmpty)
     }
 
+    func testEveryDedicatedCardProviderIsRecordedAndNoMiscProviderIs() async {
+        let store = UsageForecastTimelineStore(fileURL: tempURL)
+        for tool in ToolType.dedicatedCardProviders {
+            let account = "card-" + tool.rawValue
+            await store.observe([observation(bucketId: "weekly", projected: 60)], accountId: account, tool: tool)
+            let points = await store.points(accountId: account, bucketId: "weekly")
+            XCTAssertEqual(points.count, 1, "\(tool) has a dedicated card, so its forecasts belong in the timeline")
+        }
+        for tool in ToolType.miscPageProviders {
+            let account = "misc-" + tool.rawValue
+            await store.observe([observation(bucketId: "weekly", projected: 60)], accountId: account, tool: tool)
+            let points = await store.points(accountId: account, bucketId: "weekly")
+            XCTAssertTrue(points.isEmpty, "\(tool) is a Misc provider and stays out")
+        }
+    }
+
+    func testChatForecastsAreRecordedLikeTheCoreProviders() async {
+        let store = UsageForecastTimelineStore(fileURL: tempURL)
+        await store.observe([observation(bucketId: "deep_research", projected: 40, windowSeconds: 30 * 86_400)],
+                            accountId: "acct-1", tool: .chatgptChat)
+        let points = await store.points(accountId: "acct-1", bucketId: "deep_research")
+        XCTAssertEqual(points.count, 1)
+        XCTAssertEqual(points.first?.projectedUsedPercent, 40)
+    }
+
     func testNonFiniteProjectionsAreDropped() async {
         let store = UsageForecastTimelineStore(fileURL: tempURL)
         await store.observe(

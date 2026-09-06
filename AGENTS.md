@@ -1027,7 +1027,10 @@ under `~/.vibebar/chatgpt_chat_learning.json`.
 
 `QuotaBucket.quantity` carries the count and learned total. Once the total and
 window are learned, the bucket enters the same percentage forecast, pace and
-history pipeline as other primary providers. Learning is a state of the standard
+history pipeline as other primary providers, including the Workbench fill and
+forecast timelines (`UsageFillTimelineStore` / `UsageForecastTimelineStore`
+take every `dedicatedCardProviders` member; buckets without a percentage are
+never stored as zero). Learning is a state of the standard
 quota row, not a separate Chat card implementation. Completed reset
 cycles retain `resetDetails` in `SubscriptionHistoryStore`, and verified Codex
 redemption receipts are retained separately in the same history file. A reduced
