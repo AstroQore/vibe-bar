@@ -526,6 +526,10 @@ struct MenuBarStripTokenView: View {
     let rowCount: Int
     let quotas: [MenuBarQuotaSnapshot]
     let displayMode: DisplayMode
+    /// How much larger than the bar this is drawn. The glyph box is capped
+    /// at the bar's own ceiling, so the cap has to scale with the drawing
+    /// or a strip drawn large keeps menu-bar-sized marks beside big text.
+    var zoom: CGFloat = 1
 
     var body: some View {
         let size = max(4, baseFontSize * token.fontScale)
@@ -539,11 +543,11 @@ struct MenuBarStripTokenView: View {
                 MenuBarStripGlyph(
                     glyph: glyph,
                     // Whatever the bar will use for this many rows, not a
-                    // preview-only cap.
+                    // preview-only cap — at the bar's size, then scaled.
                     side: MenuBarStripMetrics.glyphSide(
-                        fontSize: size,
+                        fontSize: size / max(1, zoom),
                         rowCount: rowCount
-                    ),
+                    ) * max(1, zoom),
                     paint: paint
                 )
             } else if let text = token.text {

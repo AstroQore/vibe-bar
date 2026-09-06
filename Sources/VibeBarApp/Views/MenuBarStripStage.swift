@@ -64,20 +64,55 @@ extension MenuBarStageFrames {
     /// front of the first block whose middle the pointer has not passed, else
     /// at the end of the row. `moving` are the blocks being carried, which
     /// cannot be their own target.
+    ///
+    /// `tokenFrames` are the frames to judge by — the live ones by default.
+    /// A drag passes the frames of the strip *without* the carried run
+    /// instead: the live ones move every time the placeholder is re-slotted,
+    /// so judging by them made the slot flip back and forth under a pointer
+    /// that had not moved.
     func target(
         at point: CGPoint,
         in composition: MenuBarComposition,
         moving: Set<UUID>,
-        reach: CGFloat
+        reach: CGFloat,
+        tokenFrames: [UUID: CGRect]? = nil
     ) -> MenuBarStageTarget? {
         guard let address = row(near: point, reach: reach),
               let segment = composition.segmentIndex(of: address.segment)
         else { return nil }
+        let judged = tokenFrames ?? tokens
         for token in composition.segments[segment][address.row] where !moving.contains(token.id) {
-            guard let frame = tokens[token.id] else { continue }
+            guard let frame = judged[token.id] else { continue }
             if point.x < frame.midX { return .before(token.id) }
         }
         return .endOf(address)
+    }
+
+    /// The strip's frames as they would be with `run` lifted out of its row:
+    /// everything after it in that row slides left by the room it took.
+    /// Rows the run is not in are untouched. Judged against these, a slot
+    /// depends only on where the pointer is.
+    func framesCollapsing(_ run: [UUID], in composition: MenuBarComposition) -> [UUID: CGRect] {
+        var collapsed = tokens
+        guard let first = run.first, let at = composition.location(of: first),
+              let box = run.compactMap({ tokens[$0] }).reduce(nil, { (acc: CGRect?, frame) in
+                  acc.map { $0.union(frame) } ?? frame
+              })
+        else { return collapsed }
+        let row = composition.segments[at.segment][at.row]
+        let moving = Set(run)
+        // The gap the run took with it: from its box to the next block.
+        var vacated = box.width
+        if let next = row.first(where: { !moving.contains($0.id) && (tokens[$0.id]?.minX ?? -1) > box.maxX }),
+           let nextFrame = tokens[next.id] {
+            vacated += max(0, nextFrame.minX - box.maxX)
+        }
+        for token in row where !moving.contains(token.id) {
+            guard var frame = collapsed[token.id], frame.minX > box.maxX else { continue }
+            frame.origin.x -= vacated
+            collapsed[token.id] = frame
+        }
+        return collapsed
     }
 }
 
@@ -356,7 +391,8 @@ struct MenuBarStripStage<TokenMenu: View, SegmentMenu: View>: View {
                     baseFontSize: base,
                     rowCount: rowCount,
                     quotas: quotas,
-                    displayMode: displayMode
+                    displayMode: displayMode,
+                    zoom: zoom
                 )
                 // A space draws nothing, and nothing cannot be picked up:
                 // the canvas shows it as the width it takes.
@@ -470,7 +506,8 @@ struct MenuBarStageRunGhost: View {
                             baseFontSize: base,
                             rowCount: rowCount,
                             quotas: quotas,
-                            displayMode: displayMode
+                            displayMode: displayMode,
+                            zoom: zoom
                         )
                     } else {
                         Text(naming.title(token))

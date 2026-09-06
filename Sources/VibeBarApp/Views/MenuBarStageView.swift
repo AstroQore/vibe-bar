@@ -51,6 +51,10 @@ struct MenuBarStageView: View {
 
     @State private var frames = MenuBarStageFrames()
     @State private var drag: StageDrag?
+    /// The pointer while a drag is in flight. Its own object so the picture
+    /// under the pointer is the only view that redraws per mouse move — the
+    /// strip itself redraws only when the slot changes.
+    @StateObject private var pointer = MenuBarStagePointer()
     /// Set by Escape mid-drag: the gesture keeps reporting until the button
     /// is released, and every report after the cancel must be ignored.
     @State private var isDragCancelled = false
@@ -88,6 +92,9 @@ struct MenuBarStageView: View {
         /// does not jump to centre itself on the cursor.
         var grabOffset: CGSize = .zero
         var target: MenuBarStageTarget?
+        /// The strip's frames with the run lifted out, taken once when the
+        /// drag engaged — what every slot decision is judged against.
+        var collapsedFrames: [UUID: CGRect] = [:]
     }
 
     private var zoom: CGFloat { Self.baseZoom * scale }
@@ -251,7 +258,9 @@ struct MenuBarStageView: View {
             onNaturalSize?(CGSize(width: frame.width / scale, height: frame.height / scale))
         }
         .contentShape(Rectangle())
-        .gesture(dragGesture)
+        // High priority: the stage sits in the Studio's scrolling stage, and
+        // a drag along the strip must not be read as a pan.
+        .highPriorityGesture(dragGesture)
         .onDrop(
             of: [.text],
             delegate: MenuBarStageDropDelegate(
@@ -263,7 +272,12 @@ struct MenuBarStageView: View {
         )
         .overlay(alignment: .topLeading) {
             if let drag, drag.engaged, !drag.run.isEmpty {
-                ghost(drag, composition: composition, plan: plan)
+                MenuBarStageGhostLayer(
+                    pointer: pointer,
+                    grabOffset: drag.grabOffset,
+                    stageOrigin: stageFrame.origin,
+                    ghost: ghost(drag, composition: composition, plan: plan)
+                )
             }
         }
         .focusable()
@@ -279,7 +293,7 @@ struct MenuBarStageView: View {
         _ drag: StageDrag,
         composition: MenuBarComposition,
         plan: MenuBarRenderPlan
-    ) -> some View {
+    ) -> MenuBarStageRunGhost {
         let tokens = drag.run.compactMap { composition.token($0) }
         var rendered: [UUID: MenuBarRenderedToken] = [:]
         for column in plan.columns {
@@ -296,11 +310,6 @@ struct MenuBarStageView: View {
             scheme: scheme,
             zoom: zoom,
             naming: naming
-        )
-        .scaleEffect(1.04)
-        .offset(
-            x: drag.location.x - drag.grabOffset.width - stageFrame.minX,
-            y: drag.location.y - drag.grabOffset.height - stageFrame.minY
         )
     }
 
@@ -369,31 +378,27 @@ struct MenuBarStageView: View {
 
     private func advance(to location: CGPoint) {
         guard var current = drag else { return }
-        current.location = location
+        pointer.location = location
         if !current.engaged {
             let fromStart = hypot(location.x - current.start.x, location.y - current.start.y)
-            guard let anchor = current.anchor, fromStart >= Self.dragThreshold else {
-                drag = current
-                return
-            }
-            _ = anchor
+            guard current.anchor != nil, fromStart >= Self.dragThreshold else { return }
             current.engaged = true
+            current.location = location
             let box = current.run
                 .compactMap { frames.tokens[$0] }
                 .reduce(CGRect.null) { $0.union($1) }
             if !box.isNull {
                 current.grabOffset = CGSize(width: current.start.x - box.minX, height: current.start.y - box.minY)
             }
+            current.collapsedFrames = frames.framesCollapsing(current.run, in: composition)
             isFocused = true
             // Snapshot the committed order; every crossing rearranges this
             // copy, and only the drop writes.
             dragComposition = composition
             NSCursor.closedHand.set()
-        }
-        guard let anchor = current.anchor else {
             drag = current
-            return
         }
+        guard let anchor = current.anchor else { return }
         let target: MenuBarStageTarget?
         if frames.well.contains(location) {
             target = .removed
@@ -402,26 +407,29 @@ struct MenuBarStageView: View {
                 at: location,
                 in: dragComposition ?? composition,
                 moving: Set(current.run),
-                reach: Self.reach
+                reach: Self.reach,
+                tokenFrames: current.collapsedFrames
             ) ?? current.target
         }
-        if let target, target != current.target {
-            current.target = target
-            // From the committed order every time, so a drag that crosses
-            // the strip twice ends where the pointer is, not where the
-            // crossings accumulated to.
-            var next = composition
-            switch target {
-            case let .before(id):
-                next.move(anchor, before: id)
-            case let .endOf(address):
-                next.move(anchor, toEndOf: address)
-            case .removed:
-                for id in current.run { next.remove(id) }
-            }
-            if next != dragComposition {
-                withAnimation(Self.reflow) { dragComposition = next }
-            }
+        // The strip is touched only when the slot changes: the pointer's
+        // every move goes to the picture alone.
+        guard let target, target != current.target else { return }
+        current.target = target
+        current.location = location
+        // From the committed order every time, so a drag that crosses the
+        // strip twice ends where the pointer is, not where the crossings
+        // accumulated to.
+        var next = composition
+        switch target {
+        case let .before(id):
+            next.move(anchor, before: id)
+        case let .endOf(address):
+            next.move(anchor, toEndOf: address)
+        case .removed:
+            for id in current.run { next.remove(id) }
+        }
+        if next != dragComposition {
+            withAnimation(Self.reflow) { dragComposition = next }
         }
         drag = current
     }
@@ -694,5 +702,29 @@ struct MenuBarStageView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+    }
+}
+
+/// The pointer, published on its own — see `MenuBarStageView.pointer`.
+@MainActor
+final class MenuBarStagePointer: ObservableObject {
+    @Published var location: CGPoint = .zero
+}
+
+/// The picture under the pointer, placed by the pointer alone: this is the
+/// one view that redraws per mouse move.
+private struct MenuBarStageGhostLayer: View {
+    @ObservedObject var pointer: MenuBarStagePointer
+    let grabOffset: CGSize
+    let stageOrigin: CGPoint
+    let ghost: MenuBarStageRunGhost
+
+    var body: some View {
+        ghost
+            .scaleEffect(1.04)
+            .offset(
+                x: pointer.location.x - grabOffset.width - stageOrigin.x,
+                y: pointer.location.y - grabOffset.height - stageOrigin.y
+            )
     }
 }
