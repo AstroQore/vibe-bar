@@ -24,6 +24,10 @@ struct MiscProviderLandingView: View {
 
             Divider()
 
+            BrowserSelectionView()
+
+            Divider()
+
             Text("Browser Cookies")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
