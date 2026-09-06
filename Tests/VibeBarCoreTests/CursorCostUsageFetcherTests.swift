@@ -32,7 +32,7 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         return prepared.snapshot
     }
 
-    func testBuildsSnapshotFromCursorEventsAndExcludesGrokBotRows() async throws {
+    func testBuildsSnapshotFromCursorEventsAndAttributesGrokBotRows() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CursorCostStubURLProtocol.self]
         let session = URLSession(configuration: configuration)
@@ -118,14 +118,14 @@ final class CursorCostUsageFetcherTests: XCTestCase {
             sourceID: "fixture-account"
         )
 
+        // The grok-bot row counts too — as Grok Bot's, not the editor's.
         XCTAssertEqual(snapshot.tool, .cursor)
-        XCTAssertEqual(snapshot.allTimeRequests, 2)
-        XCTAssertEqual(snapshot.allTimeTokens, 180)
-        XCTAssertEqual(snapshot.allTimeCostUSD, 1.50, accuracy: 0.000_001)
+        XCTAssertEqual(snapshot.allTimeRequests, 3)
+        XCTAssertEqual(snapshot.allTimeTokens, 2_178)
+        XCTAssertEqual(snapshot.allTimeCostUSD, 11.49, accuracy: 0.000_001)
         XCTAssertEqual(Set(snapshot.modelBreakdowns.map(\.modelName)), [
-            "cursor-grok-4.6-high-fast", "composer-2.5"
+            "cursor-grok-4.6-high-fast", "composer-2.5", "cloud-model"
         ])
-        XCTAssertFalse(snapshot.modelBreakdowns.contains { $0.modelName == "cloud-model" })
 
         let filter = UsageQueryFilter(range: DateInterval(
             start: now.addingTimeInterval(-300),
@@ -134,13 +134,16 @@ final class CursorCostUsageFetcherTests: XCTestCase {
         let ledgerSummary = try await ledger.summary(filter)
         XCTAssertEqual(ledgerSummary.requests, snapshot.allTimeRequests)
         XCTAssertEqual(ledgerSummary.realTotalTokens, Int64(snapshot.allTimeTokens))
-        XCTAssertEqual(ledgerSummary.costMicros, 1_500_000)
-        XCTAssertEqual(ledgerSummary.freshInput, 110)
-        XCTAssertEqual(ledgerSummary.output, 55)
+        XCTAssertEqual(ledgerSummary.costMicros, 11_490_000)
+        XCTAssertEqual(ledgerSummary.freshInput, 1_109)
+        XCTAssertEqual(ledgerSummary.output, 1_054)
         XCTAssertEqual(ledgerSummary.cacheCreation, 5)
         XCTAssertEqual(ledgerSummary.cacheRead, 10)
         let ledgerTools = try await ledger.providerStats(filter).map(\.tool)
         XCTAssertEqual(ledgerTools, [.cursor])
+        let harnesses = try await ledger.harnessStats(filter)
+        XCTAssertEqual(Set(harnesses.map(\.harness)), [.cursor, .grokBot])
+        XCTAssertEqual(harnesses.first { $0.harness == .grokBot }?.requests, 1)
         _ = try await ledger.prepareForPricingRevision("cursor-authoritative-v1")
         let repricedSummary = try await ledger.summary(filter)
         XCTAssertEqual(repricedSummary.costMicros, ledgerSummary.costMicros)
@@ -173,12 +176,12 @@ final class CursorCostUsageFetcherTests: XCTestCase {
             sourceID: "fixture-account"
         )
         let correctedLedgerSummary = try await ledger.summary(filter)
-        XCTAssertEqual(correctedSnapshot.allTimeRequests, 2)
-        XCTAssertEqual(correctedSnapshot.allTimeTokens, 200)
-        XCTAssertEqual(correctedSnapshot.allTimeCostUSD, 1.75, accuracy: 0.000_001)
-        XCTAssertEqual(correctedLedgerSummary.requests, 2)
-        XCTAssertEqual(correctedLedgerSummary.realTotalTokens, 200)
-        XCTAssertEqual(correctedLedgerSummary.costMicros, 1_750_000)
+        XCTAssertEqual(correctedSnapshot.allTimeRequests, 3)
+        XCTAssertEqual(correctedSnapshot.allTimeTokens, 2_198)
+        XCTAssertEqual(correctedSnapshot.allTimeCostUSD, 11.74, accuracy: 0.000_001)
+        XCTAssertEqual(correctedLedgerSummary.requests, 3)
+        XCTAssertEqual(correctedLedgerSummary.realTotalTokens, 2_198)
+        XCTAssertEqual(correctedLedgerSummary.costMicros, 11_740_000)
     }
 
     func testRejectedCursorAppSessionFallsBackWithoutDoubleCounting() async throws {
@@ -457,4 +460,13 @@ private final class CursorCostStubURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    func testGrokBotRequestsAreGrokBotsByClientTypeOrModel() {
+        XCTAssertTrue(CursorCostUsageFetcher.isGrokBot(clientType: "grok-bot", model: "gpt-5.6-luna-high"))
+        XCTAssertTrue(CursorCostUsageFetcher.isGrokBot(clientType: "Grok-Bot", model: "anything"))
+        XCTAssertTrue(CursorCostUsageFetcher.isGrokBot(clientType: nil, model: "grok-bot-default"))
+        XCTAssertTrue(CursorCostUsageFetcher.isGrokBot(clientType: "cursor", model: "Grok-Bot-cua"))
+        XCTAssertFalse(CursorCostUsageFetcher.isGrokBot(clientType: "cursor", model: "cursor-grok-4.6-xhigh-fast"))
+        XCTAssertFalse(CursorCostUsageFetcher.isGrokBot(clientType: nil, model: "gpt-5.6-luna-high"))
+    }
 }

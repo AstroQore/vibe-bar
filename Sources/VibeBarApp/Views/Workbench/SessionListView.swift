@@ -293,7 +293,9 @@ private struct SessionRow: View {
             Text(summary.effectiveHarness.displayName)
                 .fontWeight(.medium)
                 .lineLimit(1)
-            if let model = summary.model, !model.isEmpty {
+            // An unlearned AntiGravity model enum says nothing a reader can
+            // use; the row is better off without the chip.
+            if let model = summary.model, !model.isEmpty, !UsageModelNaming.isUnlabelledModelEnum(model) {
                 Text(UsageModelNaming.canonicalDisplayName(model))
                     .lineLimit(1)
                     .padding(.horizontal, 5)

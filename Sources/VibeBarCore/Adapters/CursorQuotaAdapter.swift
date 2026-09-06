@@ -329,7 +329,6 @@ enum CursorResponseParser {
         if let bot = grokBotUsage,
            let percent = bot.usagePercent,
            bot.hasNonZeroIncludedLimit != false {
-            let periodStart = parseBillingCycleEnd(bot.currentPeriodStart)
             let resetAt = parseBillingCycleEnd(bot.nextResetTimestampUtc)
             buckets.append(QuotaBucket(
                 id: "grok_bot_weekly",
@@ -337,7 +336,12 @@ enum CursorResponseParser {
                 shortLabel: "Grok Bot",
                 usedPercent: clampPercent(percent),
                 resetAt: resetAt,
-                rawWindowSeconds: windowSeconds(start: periodStart, end: resetAt),
+                // A week, by definition of the bucket. `currentPeriodStart`
+                // is not the window's start — it moved with the last refresh,
+                // so the span to the reset came out as three or four days,
+                // and a lane shorter than a week is exactly what the reset
+                // history leaves out. Grok Bot vanished from it as a result.
+                rawWindowSeconds: 604_800,
                 groupTitle: "Grok Bot"
             ))
         }
