@@ -989,9 +989,14 @@ upstream labels — canonicalize the display, never the stored value.
 
 `ToolType.chatgptChat` is an independent, quota-only member of OpenAI, shown
 before ChatGPT Agentic. It reads Image Generation and Deep Research remainders
-through the existing Cookie/WebView login. It does not read conversation history
-or count model messages. Plan identity comes from the same `/wham/usage`
-`plan_type` parser used by Agentic, through the Chat account's own transport.
+through the Codex CLI's OAuth bearer first (`ChatGPTChatOAuthTransport`: the
+same `~/.codex/auth.json` / Keychain credential and headers the Codex quota
+uses — chatgpt.com accepts it for `/backend-api/conversation/init`, verified
+live 2026-09-06), then the existing Cookie/WebView login. A Codex login is
+therefore a Chat login; the web session is only needed when there is no Codex
+credential. It does not read conversation history or count model messages.
+Plan identity comes from the same `/wham/usage` `plan_type` parser used by
+Agentic, through the Chat account's own transport.
 
 `ChatGPTChatAllowanceStore` learns a total only after three consistent observed
 reset boundaries. Initial reads, mismatches, missed boundaries, and account/plan

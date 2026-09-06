@@ -115,6 +115,13 @@ struct CursorCostUsageFetcher: Sendable {
         ))
     }
 
+    /// Whether a Cursor ledger event is Grok Bot's: by the client type the
+    /// bot reports, or by the model it is named for.
+    static func isGrokBot(clientType: String?, model: String) -> Bool {
+        if clientType?.lowercased() == "grok-bot" { return true }
+        return model.lowercased().hasPrefix("grok-bot")
+    }
+
     func prepareSnapshot(
         cookieHeader: String,
         since: Date?,
@@ -136,11 +143,17 @@ struct CursorCostUsageFetcher: Sendable {
         var latestEventDate: Date?
         for event in events {
             guard let date = event.date,
-                  event.clientType?.lowercased() != "grok-bot",
                   let usage = event.tokenUsage,
                   usage.totalTokens > 0
             else { continue }
             let model = event.model.flatMap { $0.isEmpty ? nil : $0 } ?? "cursor-unknown"
+            // Cursor's account ledger carries Grok Bot's requests too: the
+            // bot reports as its own client type, and its models are named
+            // after it. Those are Grok Bot's usage, not the editor's — the
+            // same split the quota side makes with the Grok Bot bucket.
+            let harness: Harness = Self.isGrokBot(clientType: event.clientType, model: model)
+                ? .grokBot
+                : .cursor
             let costUSD = max(0, (usage.totalCents ?? 0) / 100)
             accumulator.add(
                 at: date,
@@ -167,7 +180,7 @@ struct CursorCostUsageFetcher: Sendable {
                         cache: usage.cacheWriteTokens + usage.cacheReadTokens,
                         cacheCreation: usage.cacheWriteTokens,
                         sourceKey: sourceKey,
-                        harness: .cursor
+                        harness: harness
                     ),
                     costUSD: costUSD
                 ))
