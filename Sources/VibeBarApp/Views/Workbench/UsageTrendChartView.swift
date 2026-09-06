@@ -305,6 +305,7 @@ struct UsageTrendChartView: View {
     private var bucketSubtitle: String {
         switch series.bucket {
         case .hour: L10n.Usage.Trend.bucketHour
+        case .sixHours: L10n.Usage.Trend.bucketSixHours
         case .day: L10n.Usage.Trend.bucketDay
         case .week: L10n.Usage.Trend.bucketWeek
         }
@@ -767,6 +768,7 @@ struct UsageTrendChartView: View {
     private var minimumChartSpan: TimeInterval {
         switch series.bucket {
         case .hour: 2 * 3_600
+        case .sixHours: 2 * 6 * 3_600
         case .day: 2 * 86_400
         case .week: 2 * 7 * 86_400
         }
@@ -778,6 +780,9 @@ struct UsageTrendChartView: View {
         case .hour:
             return calendar.date(byAdding: .hour, value: 1, to: start)
                 ?? start.addingTimeInterval(3_600)
+        case .sixHours:
+            return calendar.date(byAdding: .hour, value: 6, to: start)
+                ?? start.addingTimeInterval(6 * 3_600)
         case .day:
             return calendar.date(byAdding: .day, value: 1, to: start)
                 ?? start.addingTimeInterval(86_400)
@@ -855,6 +860,7 @@ struct UsageTrendChartView: View {
         switch value {
         case .none: L10n.Common.auto
         case .hour: L10n.Usage.Trend.granularityHourly
+        case .sixHours: L10n.Usage.Trend.granularitySixHourly
         case .day: L10n.Usage.Trend.granularityDaily
         case .week: L10n.Usage.Trend.granularityWeekly
         }
@@ -866,13 +872,14 @@ struct UsageTrendChartView: View {
     private var axisFormat: Date.FormatStyle {
         switch series.bucket {
         case .hour: .dateTime.hour().locale(AppLocale.current)
+        case .sixHours: .dateTime.month(.abbreviated).day().hour().locale(AppLocale.current)
         case .day: .dateTime.month(.abbreviated).day().locale(AppLocale.current)
         case .week: .dateTime.month(.abbreviated).day().locale(AppLocale.current)
         }
     }
 
     private func tooltipDate(_ date: Date) -> String {
-        let formatter = series.bucket == .hour ? Self.hourFormatter : Self.dayFormatter
+        let formatter = series.bucket == .hour || series.bucket == .sixHours ? Self.hourFormatter : Self.dayFormatter
         return formatter.string(from: date)
     }
 

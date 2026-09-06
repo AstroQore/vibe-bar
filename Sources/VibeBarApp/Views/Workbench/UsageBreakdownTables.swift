@@ -138,7 +138,9 @@ struct UsageBreakdownTables: View {
         switch rows {
         case .periods(let points):
             switch model.trend.bucket {
-            case .hour: return L10n.Usage.Table.activeHours(count: points.count)
+            // Six-hour blocks are counted as the periods they are; the
+            // "hours" wording is the nearest the table has.
+            case .hour, .sixHours: return L10n.Usage.Table.activeHours(count: points.count)
             case .day: return L10n.Usage.Table.activeDays(count: points.count)
             case .week: return L10n.Usage.Table.activeWeeks(count: points.count)
             }
@@ -637,7 +639,7 @@ struct UsageBreakdownTables: View {
     private func period(_ date: Date) -> String {
         let formatter: DateFormatter
         switch model.trend.bucket {
-        case .hour: formatter = Self.periodHourFormatter
+        case .hour, .sixHours: formatter = Self.periodHourFormatter
         case .day: formatter = Self.periodDayFormatter
         case .week: formatter = Self.periodWeekFormatter
         }
@@ -646,7 +648,7 @@ struct UsageBreakdownTables: View {
 
     private var periodColumnTitle: String {
         switch model.trend.bucket {
-        case .hour: L10n.Usage.Table.Column.hour
+        case .hour, .sixHours: L10n.Usage.Table.Column.hour
         case .day: L10n.Usage.Table.Column.day
         case .week: L10n.Usage.Table.Column.weekOf
         }
