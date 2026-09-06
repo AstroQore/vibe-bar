@@ -33,6 +33,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Optional user-visible plan badge overrides. Empty means "Auto".
     public var providerPlanLabels: [ToolType: String]
     public var subscriptionNameFormat: SubscriptionNameFormat
+    /// The browsers cookie imports may read, as SweetCookieKit `Browser`
+    /// raw values in preference order. `nil` — the default — is every
+    /// installed browser. Mirrored into `BrowserCookieImportPreference`.
+    public var cookieImportBrowsers: [String]?
     /// L1 providers shown on the Overview surface. Hiding one keeps its
     /// credentials, refresh schedule, and history intact; it only removes the
     /// provider's Overview card, totals contribution, status tile, and tab.
@@ -342,6 +346,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         popoverDensity: PopoverDensity = .regular,
         providerPlanLabels: [ToolType: String] = AppSettings.defaultProviderPlanLabels,
         subscriptionNameFormat: SubscriptionNameFormat = .full,
+        cookieImportBrowsers: [String]? = nil,
         visibleCoreProviders: Set<ToolType> = AppSettings.defaultVisibleCoreProviders,
         coreProviderOrder: [ToolType] = AppSettings.defaultCoreProviderOrder,
         miscProviders: [ToolType: MiscProviderSettings] = AppSettings.defaultMiscProviders,
@@ -386,6 +391,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.popoverDensity = popoverDensity
         self.providerPlanLabels = Self.normalizedProviderPlanLabels(providerPlanLabels)
         self.subscriptionNameFormat = subscriptionNameFormat
+        self.cookieImportBrowsers = Self.normalizedCookieImportBrowsers(cookieImportBrowsers)
         self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
         self.coreProviderOrder = Self.normalizedCoreProviderOrder(coreProviderOrder)
         let normalizedLegacyProviders = Self.normalizedMiscProviders(miscProviders)
@@ -424,6 +430,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Drops unnamed presets, collapses names that differ only by case (the
     /// first wins, which is what "save over the one already in the menu"
     /// produces), and caps each page's list.
+    /// Duplicates dropped, order kept; an empty choice is no choice.
+    static func normalizedCookieImportBrowsers(_ raw: [String]?) -> [String]? {
+        guard let raw else { return nil }
+        var seen: Set<String> = []
+        let kept = raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        return kept.isEmpty ? nil : kept
+    }
+
     static func normalizedPageLayoutPresets(
         _ presets: [PageLayoutPageID: [StoredPageLayoutPreset]]
     ) -> [PageLayoutPageID: [StoredPageLayoutPreset]] {
@@ -465,6 +480,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case popoverDensity   // legacy single-value form
         case providerPlanLabels
         case subscriptionNameFormat
+        case cookieImportBrowsers
         case visibleCoreProviders
         case coreProviderOrder
         case miscProviders
@@ -546,6 +562,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
 
         subscriptionNameFormat = (try? c.decodeIfPresent(SubscriptionNameFormat.self, forKey: .subscriptionNameFormat)) ?? .full
+        cookieImportBrowsers = Self.normalizedCookieImportBrowsers(
+            try? c.decodeIfPresent([String].self, forKey: .cookieImportBrowsers)
+        )
 
         if let labels = try c.decodeIfPresent([String: String].self, forKey: .providerPlanLabels) {
             var map: [ToolType: String] = [:]
@@ -731,6 +750,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
         try c.encode(planLabels, forKey: .providerPlanLabels)
         try c.encode(subscriptionNameFormat, forKey: .subscriptionNameFormat)
+        try c.encodeIfPresent(cookieImportBrowsers, forKey: .cookieImportBrowsers)
         let normalizedVisibleCore = Self.normalizedVisibleCoreProviders(visibleCoreProviders)
         let visibleCoreRaw = ToolType.coreProviderRepresentatives
             .filter { normalizedVisibleCore.contains($0) }

@@ -65,6 +65,7 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/DetailPopoverShell.swift",
     "Sources/VibeBarApp/Views/QuotaResetJournalView.swift",
     "Sources/VibeBarApp/Views/ChatGPTChatViews.swift",
+    "Sources/VibeBarApp/Views/BrowserSelectionView.swift",
     "Sources/VibeBarCore/Models/QuotaError.swift",
     "Sources/VibeBarCore/Models/ServiceStatus.swift",
     "Sources/VibeBarCore/Models/ResetHistoryComparison.swift",

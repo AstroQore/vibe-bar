@@ -21,7 +21,7 @@ public enum GrokBrowserCookieImporter {
 
     public static func importAndStoreFromBrowsers(
         allowKeychainPrompt: Bool = false,
-        importOrder: BrowserCookieImportOrder = BrowserCookieDefaults.importOrder,
+        importOrder: BrowserCookieImportOrder = BrowserCookieImportPreference.order,
         detection: BrowserDetection = BrowserDetection(),
         client: BrowserCookieClient = BrowserCookieClient(),
         logger: ((String) -> Void)? = nil
@@ -41,7 +41,7 @@ public enum GrokBrowserCookieImporter {
 
     public static func importFromBrowsers(
         allowKeychainPrompt: Bool = false,
-        importOrder: BrowserCookieImportOrder = BrowserCookieDefaults.importOrder,
+        importOrder: BrowserCookieImportOrder = BrowserCookieImportPreference.order,
         detection: BrowserDetection = BrowserDetection(),
         client: BrowserCookieClient = BrowserCookieClient(),
         logger: ((String) -> Void)? = nil

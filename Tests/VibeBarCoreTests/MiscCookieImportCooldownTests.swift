@@ -63,6 +63,24 @@ final class MiscCookieImportCooldownTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // MARK: - The chosen browsers are the ones read
+
+    /// The provider's order narrowed to the browsers chosen for every
+    /// import, so an unticked browser is never read for a misc provider
+    /// either — and a provider's own preferred browser still wins.
+    func testTheMiscImportWalksOnlyTheChosenBrowsers() {
+        defer { BrowserCookieImportPreference.apply(nil) }
+        BrowserCookieImportPreference.apply(["edge"])
+        let spec = MiscCookieResolver.Spec(tool: .zai, domains: ["example.test"], requiredNames: [], importOrder: [.safari, .chrome, .edge])
+        let restricted = BrowserCookieImportPreference.restrict(spec.importOrder)
+        XCTAssertEqual(restricted, [.edge])
+        XCTAssertEqual(restricted.cookieImportCandidates(using: fakeDetection(), allowKeychainPrompt: true), [.edge])
+        var settings = MiscProviderSettings()
+        settings.preferredBrowser = .chrome
+        XCTAssertEqual(settings.preferredBrowser?.sweetCookieKitBrowsers.first, .chrome,
+                       "a browser picked for one provider is that provider's own answer")
+    }
+
     // MARK: - The cooldown is honoured, not bypassed
 
     func testAPromptingImportSkipsABrowserInsideItsCooldown() {

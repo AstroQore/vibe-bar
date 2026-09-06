@@ -289,6 +289,16 @@ final class AppEnvironment: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // The browsers cookie imports may read follow the setting from the
+        // first load on; the importers read the mirror, not the store.
+        BrowserCookieImportPreference.apply(settings.settings.cookieImportBrowsers)
+        settings.$settings
+            .map(\.cookieImportBrowsers)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { BrowserCookieImportPreference.apply($0) }
+            .store(in: &cancellables)
+
         // Cost re-scan is the expensive path (full filesystem walk + JSONL
         // parse). Outside its own slow loop, only run it when the *data
         // source* actually changes — mock mode or claude usage mode. The

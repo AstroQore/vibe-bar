@@ -297,6 +297,8 @@ struct OnboardingBrowserCookiesStep: View {
             Text(L10n.Onboarding.Cookies.intro)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
+            BrowserSelectionView()
+            Divider()
             Button {
                 environment.importOpenAIBrowserCookies()
                 environment.importClaudeBrowserCookies()

@@ -647,11 +647,14 @@ public enum MiscCookieResolver {
         attempt: BrowserImportAttempt = BrowserImportAttempt(),
         now: Date = Date()
     ) -> [BrowserImportResult] {
+        // A browser picked for this one provider is that provider's own
+        // answer; otherwise the provider's order, narrowed to the browsers
+        // chosen for every import.
         let preferred: [Browser]
         if let kind = settings.preferredBrowser {
             preferred = kind.sweetCookieKitBrowsers
         } else {
-            preferred = spec.importOrder
+            preferred = BrowserCookieImportPreference.restrict(spec.importOrder)
         }
 
         switch spec.browserCredentialSource {
