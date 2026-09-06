@@ -1616,7 +1616,9 @@ public actor UsageEventLedger: CostUsageEventSink {
         }
 
         switch resolved {
-        case .hour:
+        case .hour, .sixHours:
+            // Both need the per-event detail: a six-hour block is four hours
+            // of it, keyed to the block the event's hour falls in.
             let detail = detailPredicate(filter)
             let statement = try prepare(
                 """
@@ -1629,7 +1631,7 @@ public actor UsageEventLedger: CostUsageEventSink {
             bindAll(detail.bindings, to: statement)
             while sqlite3_step(statement) == SQLITE_ROW {
                 let date = Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 0)))
-                guard let key = calendar.dateInterval(of: .hour, for: date)?.start,
+                guard let key = bucketStart(for: date, bucket: resolved),
                       let rawTool = columnText(statement, 1),
                       let tool = ToolType(rawValue: rawTool)
                 else { continue }
@@ -1723,7 +1725,7 @@ public actor UsageEventLedger: CostUsageEventSink {
         for filter: UsageQueryFilter,
         requested: UsageTrendBucket
     ) throws -> UsageTrendBucket {
-        guard requested == .hour else { return requested }
+        guard requested == .hour || requested == .sixHours else { return requested }
 
         let selected = Self.floorCheckTools(
             tools: filter.tools, harnesses: filter.harnesses
@@ -2333,6 +2335,18 @@ public actor UsageEventLedger: CostUsageEventSink {
         case .hour:
             component = .hour
             cursor = calendar.dateInterval(of: .hour, for: range.start)?.start ?? range.start
+        case .sixHours:
+            // Walk in six-hour steps from the aligned start below, so the
+            // bars sit at 0, 6, 12 and 18 o'clock local.
+            component = .hour
+            cursor = bucketStart(for: range.start, bucket: .sixHours) ?? range.start
+            var out: [Date] = []
+            while cursor < range.end, out.count < Self.maximumTrendBuckets {
+                out.append(cursor)
+                guard let next = calendar.date(byAdding: .hour, value: 6, to: cursor), next > cursor else { break }
+                cursor = next
+            }
+            return out
         case .day:
             component = .day
             cursor = calendar.startOfDay(for: range.start)
@@ -2356,6 +2370,12 @@ public actor UsageEventLedger: CostUsageEventSink {
         switch bucket {
         case .hour:
             calendar.dateInterval(of: .hour, for: date)?.start
+        case .sixHours:
+            // The six-hour block of the local day the date falls in.
+            calendar.dateInterval(of: .hour, for: date).flatMap { hour in
+                let sinceMidnight = calendar.dateComponents([.hour], from: calendar.startOfDay(for: date), to: hour.start).hour ?? 0
+                return calendar.date(byAdding: .hour, value: -(sinceMidnight % 6), to: hour.start)
+            }
         case .day:
             calendar.startOfDay(for: date)
         case .week:
