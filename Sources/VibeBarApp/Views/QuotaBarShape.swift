@@ -5,9 +5,10 @@ struct QuotaBarShape: View {
     let percent: Double          // 0...100, value to render
     let mode: DisplayMode
     var height: CGFloat = 11
+    /// A bar with no percentage to show. It stays still: a track that keeps
+    /// moving asks for the eye and, over the popover's blur, for a frame
+    /// every tick.
     var indeterminate = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var sweeping = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -17,16 +18,8 @@ struct QuotaBarShape: View {
                 Capsule(style: .continuous)
                     .fill(Theme.barTrack)
                 if indeterminate {
-                    if reduceMotion {
-                        Capsule(style: .continuous)
-                            .strokeBorder(.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    } else {
-                        Capsule(style: .continuous)
-                            .fill(.secondary.opacity(0.45))
-                            .frame(width: max(height, width * 0.3))
-                            .offset(x: sweeping ? width : -width * 0.3)
-                            .animation(.linear(duration: 1.6).repeatForever(autoreverses: false), value: sweeping)
-                    }
+                    Capsule(style: .continuous)
+                        .strokeBorder(.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 } else {
                     Capsule(style: .continuous)
                         .fill(Theme.barColor(percent: percent, mode: mode))
@@ -36,8 +29,6 @@ struct QuotaBarShape: View {
             .clipShape(Capsule(style: .continuous))
         }
         .frame(height: height)
-        .onAppear { sweeping = indeterminate }
-        .onDisappear { sweeping = false }
     }
 }
 

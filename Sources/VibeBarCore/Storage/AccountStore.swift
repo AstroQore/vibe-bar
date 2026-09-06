@@ -55,7 +55,10 @@ public final class AccountStore: ObservableObject {
             return
         }
 
-        if chatGPTChatEnabled {
+        // Chat reads the Codex OAuth login or a chatgpt.com web session;
+        // with neither on this Mac the account could only ever say "needs
+        // login", so it waits for one rather than nagging the OpenAI card.
+        if chatGPTChatEnabled, Self.hasChatGPTChatCredential() {
             detected.append(AccountIdentity(id: "web-chatgpt-chat", tool: .chatgptChat, alias: "ChatGPT Chat", source: .webCookie))
         }
         if let codex = autoDetectCodex(mode: codexUsageMode) {
@@ -126,6 +129,12 @@ public final class AccountStore: ObservableObject {
     }
 
     // MARK: - CLI auto detection
+
+    static func hasChatGPTChatCredential() -> Bool {
+        (try? CodexCredentialReader.loadFromOAuth()) != nil
+            || (try? CodexCredentialReader.loadFromCLI()) != nil
+            || OpenAIWebCookieStore.cachedCookieHeader() != nil
+    }
 
     private func autoDetectCodex(mode: CodexUsageMode) -> AccountIdentity? {
         let order = CodexSourcePlanner.resolve(mode: mode)

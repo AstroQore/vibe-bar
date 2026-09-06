@@ -9,12 +9,17 @@ import Foundation
 /// and Codex have their own rules and are never charged here.
 public struct ChatGPTChatProAllowance: Hashable, Sendable {
     public let id: String
+    /// The L3 group the bucket files under — the model, as the picker names
+    /// it — so the card draws it the way it draws Codex's Spark lanes: the
+    /// model as a header, the window as the row.
+    public let group: String
+    /// The window, as the row's title: "Weekly" or "Daily".
     public let title: String
     public let models: Set<String>
     public let limit: Int
     public let windowSeconds: Int
-    public init(id: String, title: String, models: Set<String>, limit: Int, windowSeconds: Int) {
-        self.id = id; self.title = title; self.models = models; self.limit = limit; self.windowSeconds = windowSeconds
+    public init(id: String, group: String, title: String, models: Set<String>, limit: Int, windowSeconds: Int) {
+        self.id = id; self.group = group; self.title = title; self.models = models; self.limit = limit; self.windowSeconds = windowSeconds
     }
 }
 
@@ -24,6 +29,11 @@ public enum ChatGPTChatProAllowances {
     public static let solPro = "gpt-5-6-pro"
     public static let week = 7 * 86_400
     public static let day = 86_400
+    /// The names the help article and the picker use. GPT-6 Pro is
+    /// "powered by GPT-6 Astra"; the shared lane covers both Pro models.
+    public static let gpt6ProName = "GPT-6 Astra Pro"
+    public static let solProName = "GPT-5.6 Sol Pro"
+    public static let proModelsName = "Pro Models"
 
     /// `plan_type` as `/backend-api/wham/usage` reports it: `pro` is the
     /// $200 plan and `prolite` the $100 one. Plans without Pro models get
@@ -32,12 +42,12 @@ public enum ChatGPTChatProAllowances {
         switch plan?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "pro":
             return [
-                ChatGPTChatProAllowance(id: "gpt6_pro_weekly", title: "GPT-6 Pro · Weekly", models: [gpt6Pro], limit: 200, windowSeconds: week),
-                ChatGPTChatProAllowance(id: "sol_pro_daily", title: "GPT-5.6 Sol Pro · Daily", models: [solPro], limit: 170, windowSeconds: day),
-                ChatGPTChatProAllowance(id: "pro_daily", title: "Pro Models · Daily", models: [gpt6Pro, solPro], limit: 200, windowSeconds: day)
+                ChatGPTChatProAllowance(id: "gpt6_pro_weekly", group: gpt6ProName, title: "Weekly", models: [gpt6Pro], limit: 200, windowSeconds: week),
+                ChatGPTChatProAllowance(id: "sol_pro_daily", group: solProName, title: "Daily", models: [solPro], limit: 170, windowSeconds: day),
+                ChatGPTChatProAllowance(id: "pro_daily", group: proModelsName, title: "Daily", models: [gpt6Pro, solPro], limit: 200, windowSeconds: day)
             ]
         case "prolite":
-            return [ChatGPTChatProAllowance(id: "pro_weekly", title: "Pro Models · Weekly", models: [gpt6Pro, solPro], limit: 50, windowSeconds: week)]
+            return [ChatGPTChatProAllowance(id: "pro_weekly", group: proModelsName, title: "Weekly", models: [gpt6Pro, solPro], limit: 50, windowSeconds: week)]
         default:
             return []
         }
@@ -198,7 +208,7 @@ extension ChatGPTChatParser {
             }
             return QuotaBucket(id: allowance.id, title: allowance.title, shortLabel: allowance.title,
                                usedPercent: quantity.usedPercent ?? 0, resetAt: resetAt,
-                               rawWindowSeconds: allowance.windowSeconds, quantity: quantity)
+                               rawWindowSeconds: allowance.windowSeconds, groupTitle: allowance.group, quantity: quantity)
         }
     }
 

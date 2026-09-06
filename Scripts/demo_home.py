@@ -71,6 +71,7 @@ FIXED_PRIMARY_IDS = {
     "oauth-grok": ("grok", "Grok OAuth", "oauthCLI"),
     "web-grok": ("grok", "Grok Web", "webCookie"),
     "misc-cursor": ("cursor", "Cursor", "cliDetected"),
+    "web-chatgpt-chat": ("chatgptChat", "ChatGPT Chat", "webCookie"),
 }
 CODEX_SOURCES = {"oauth-codex": "oauthCLI", "web-codex": "webCookie", "cli-codex": "cliDetected"}
 
