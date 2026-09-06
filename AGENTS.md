@@ -875,6 +875,37 @@ capture against § 8 before committing it — a screenshot is source content.
   `CostUsageScanner.forEachJSONLLine`, which forwards to the package's
   `JSONLLineScanner.forEachLine`: a moving cursor, not `removeSubrange`.
 
+### 7.0 Browser cookie imports
+
+Three rules keep the browser-cookie importers (the four core providers'
+`*BrowserCookieImporter`s and `MiscCookieResolver`) honest:
+
+- **A browser is a source only when it is installed.**
+  `BrowserDetection.isCookieSourceAvailable` and `hasUsableProfileData`
+  require the app bundle (`/Applications` or `~/Applications`) as well
+  as data on disk; Safari is exempt. An uninstalled browser leaves its
+  profile and cookie store behind but takes its Safe Storage key with
+  it, and a read of that leftover fails as if Keychain had refused —
+  which used to park the browser in a six-hour cooldown that every
+  other provider's empty import then got blamed on.
+- **The silent gate asks each browser about its own key.**
+  `BrowserCookieAccessGate.shouldAttempt` preflights the browser's own
+  `safeStorageLabels` (the whole catalogue only for a channel that lists
+  none, as SweetCookieKit does): readable → read; would prompt → cooldown;
+  absent → skip with no cooldown, because a missing key is not a refusal.
+  `activeCooldowns` leaves uninstalled browsers out.
+- **The user's browser choice is one setting, read everywhere.**
+  `AppSettings.cookieImportBrowsers` (SweetCookieKit `Browser` raw values
+  in preference order; nil = every installed browser) is mirrored into
+  `BrowserCookieImportPreference` by `AppEnvironment`. The core importers
+  take `BrowserCookieImportPreference.order` as their default order and
+  the misc resolver narrows each provider's order with `restrict(_:)`; a
+  provider's own `preferredBrowser` still wins for that provider.
+  `BrowserSelectionView` is the picker, shown in Settings › Misc
+  Providers and in the setup assistant's browser-cookies step; it lists
+  `BrowserCookieImportPreference.available()` — installed browsers with a
+  cookie store — and ticking every browser back on clears the choice.
+
 ### 7.1 Provider and harness naming
 
 Vibe Bar names a provider along **two orthogonal axes**. A surface picks
