@@ -58,5 +58,5 @@ The review app has a separate identity, `com.astroqore.VibeBar.ChatReview`, and
 uses synthetic data with provider polling disabled. It coexists with the
 installed app. No merge or release is implied by building this demo.
 
-The review branch uses an unmerged immutable localization revision; replace it
-with an approved catalog release before merging or publishing.
+The app pins localization catalog 0.6.0, including the allowance, reset-record,
+and subscription-format strings.

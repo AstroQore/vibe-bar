@@ -36,8 +36,7 @@ let package = Package(
         // `bump-vibe-bar-i18n.yml` opens the pull request that moves the pin.
         // `Package.resolved` is not committed, so the exact pin is what makes
         // two machines build the same strings.
-        // Unmerged review dependency; replace with a catalog release tag before merging.
-        .package(url: "https://github.com/AstroQore/vibe-bar-i18n.git", revision: "576f1843bd07c5b5e20e49cfd9afa09488cb9323"),
+        .package(url: "https://github.com/AstroQore/vibe-bar-i18n.git", exact: "0.6.0"),
         // Sparkle is the standard update framework for independently
         // distributed macOS applications. Pin the exact reviewed release:
         // update verification and installation are security-sensitive.
