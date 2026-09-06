@@ -3,6 +3,14 @@ import XCTest
 import SweetCookieKit
 
 final class BrowserCookieGateTests: XCTestCase {
+    /// Every browser present, so the list under test is the gate's own and
+    /// not this Mac's set of installed apps.
+    private let allInstalled = BrowserDetection(
+        homeDirectory: "/Users/example",
+        fileExists: { _ in true },
+        directoryContents: { _ in ["Default"] }
+    )
+
     override func setUp() {
         super.setUp()
         BrowserCookieAccessGate.reset()
@@ -79,7 +87,7 @@ final class BrowserCookieGateTests: XCTestCase {
         let blockedUntil = BrowserCookieAccessGate.blockedUntil(.chrome, now: now)
         XCTAssertEqual(blockedUntil, now.addingTimeInterval(60 * 60 * 6))
 
-        let cooldowns = BrowserCookieAccessGate.activeCooldowns(now: now)
+        let cooldowns = BrowserCookieAccessGate.activeCooldowns(now: now, detection: allInstalled)
         XCTAssertEqual(cooldowns.count, 1)
         XCTAssertEqual(cooldowns.first?.browserName, Browser.chrome.displayName)
         XCTAssertEqual(cooldowns.first?.until, now.addingTimeInterval(60 * 60 * 6))
@@ -90,19 +98,19 @@ final class BrowserCookieGateTests: XCTestCase {
         BrowserCookieAccessGate.recordDenied(for: .brave, now: now.addingTimeInterval(60))
         BrowserCookieAccessGate.recordDenied(for: .chrome, now: now)
 
-        let names = BrowserCookieAccessGate.activeCooldowns(now: now).map(\.browserName)
+        let names = BrowserCookieAccessGate.activeCooldowns(now: now, detection: allInstalled).map(\.browserName)
         XCTAssertEqual(names, [Browser.chrome.displayName, Browser.brave.displayName])
 
         let afterEverything = now.addingTimeInterval(60 * 60 * 7)
-        XCTAssertTrue(BrowserCookieAccessGate.activeCooldowns(now: afterEverything).isEmpty)
+        XCTAssertTrue(BrowserCookieAccessGate.activeCooldowns(now: afterEverything, detection: allInstalled).isEmpty)
         XCTAssertNil(BrowserCookieAccessGate.blockedUntil(.chrome, now: afterEverything))
     }
 
     func testResetClearsTheReportedCooldowns() {
         BrowserCookieAccessGate.recordDenied(for: .chrome)
-        XCTAssertFalse(BrowserCookieAccessGate.activeCooldowns().isEmpty)
+        XCTAssertFalse(BrowserCookieAccessGate.activeCooldowns(detection: allInstalled).isEmpty)
         BrowserCookieAccessGate.reset()
-        XCTAssertTrue(BrowserCookieAccessGate.activeCooldowns().isEmpty)
+        XCTAssertTrue(BrowserCookieAccessGate.activeCooldowns(detection: allInstalled).isEmpty)
     }
 }
 
