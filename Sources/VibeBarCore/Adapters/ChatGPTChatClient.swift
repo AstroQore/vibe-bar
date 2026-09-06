@@ -14,10 +14,11 @@ public extension ChatGPTChatTransport {
     var ownsBearer: Bool { false }
 }
 
-/// The Codex CLI's OAuth bearer, sent the way the Codex quota adapter sends
-/// it. chatgpt.com's backend accepts it for the same read-only endpoints the
-/// web session token reaches — the plan, and the feature allowances — so a
-/// Codex login is a Chat login too, with no web cookie or WebView needed.
+/// The Codex CLI's OAuth bearer, sent with the `ChatGPT-Account-Id` the
+/// Codex quota adapter sends. chatgpt.com's backend accepts it for the same
+/// read-only endpoints the web session token reaches — the plan, the feature
+/// allowances, and the saved history — so a Codex login is a Chat login too,
+/// with no web cookie or WebView needed.
 public final class ChatGPTChatOAuthTransport: NSObject, ChatGPTChatTransport, URLSessionTaskDelegate, @unchecked Sendable {
     public let name = "oauth"
     public var ownsBearer: Bool { true }
@@ -43,7 +44,7 @@ public final class ChatGPTChatOAuthTransport: NSObject, ChatGPTChatTransport, UR
         request.httpBody = body
         request.timeoutInterval = 15
         request.setValue("Bearer " + credential.accessToken, forHTTPHeaderField: "Authorization")
-        request.setValue("codex-cli", forHTTPHeaderField: "User-Agent")
+        request.setValue(ChatGPTChatRequestPolicy.userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let id = credential.accountId, !id.isEmpty {
             request.setValue(id, forHTTPHeaderField: "ChatGPT-Account-Id")
@@ -62,14 +63,29 @@ public final class ChatGPTChatOAuthTransport: NSObject, ChatGPTChatTransport, UR
     }
 }
 
-/// Only first-party, read-like Chat endpoints are reachable through either transport.
+/// Only first-party, read-like Chat endpoints are reachable through any
+/// transport: the session, the plan, the allowances, and — for counting Pro
+/// model messages — the saved-conversation list and single conversations.
 public enum ChatGPTChatRequestPolicy {
+    /// chatgpt.com's edge answers the history endpoints only to a browser
+    /// user agent (a CLI or app string gets its challenge page instead);
+    /// the same string is accepted by every other Chat endpoint, so all
+    /// transports send it.
+    public static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+    private static let listFields: Set<String> = ["offset", "limit", "order", "is_archived"]
+
     public static func allows(path: String, method: String) -> Bool {
         guard path.hasPrefix("/"), !path.hasPrefix("//"), !path.contains("#"), !path.contains("\\"),
               let parts = URLComponents(string: path), parts.host == nil, parts.scheme == nil else { return false }
         if method == "POST" { return path == "/backend-api/conversation/init" }
         guard method == "GET" else { return false }
-        return path == "/api/auth/session" || path == "/backend-api/wham/usage"
+        if path == "/api/auth/session" || path == "/backend-api/wham/usage" { return true }
+        if parts.path == "/backend-api/conversations" {
+            return (parts.queryItems ?? []).allSatisfy { listFields.contains($0.name) }
+        }
+        let prefix = "/backend-api/conversation/"
+        return parts.path.hasPrefix(prefix) && parts.query == nil
+            && UUID(uuidString: String(parts.path.dropFirst(prefix.count))) != nil
     }
 }
 
@@ -98,6 +114,7 @@ public final class ChatGPTChatCookieTransport: NSObject, ChatGPTChatTransport, U
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("https://chatgpt.com/", forHTTPHeaderField: "Referer")
+        request.setValue(ChatGPTChatRequestPolicy.userAgent, forHTTPHeaderField: "User-Agent")
         if let bearer { request.setValue("Bearer " + bearer, forHTTPHeaderField: "Authorization") }
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         let (bytes, response) = try await session.bytes(for: request)
@@ -143,9 +160,12 @@ public final class ChatGPTChatCookieTransport: NSObject, ChatGPTChatTransport, U
 public struct ChatGPTChatClient: Sendable {
     private let transport: any ChatGPTChatTransport
     private let store: ChatGPTChatAllowanceStore
-    public init(transport: any ChatGPTChatTransport, store: ChatGPTChatAllowanceStore = .shared) {
+    private let historyStore: ChatGPTChatHistoryStore
+    public init(transport: any ChatGPTChatTransport, store: ChatGPTChatAllowanceStore = .shared,
+                historyStore: ChatGPTChatHistoryStore = .shared) {
         self.transport = transport
         self.store = store
+        self.historyStore = historyStore
     }
 
     public func fetch(account: AccountIdentity, settings: ChatGPTChatSettings, now: Date = Date()) async throws -> AccountQuota {
@@ -192,14 +212,28 @@ public struct ChatGPTChatClient: Sendable {
         let identity = ChatGPTChatParser.identity(userID + ":" + (account.accountId ?? "personal"))
         let quantities = try await store.observe(localAccount: account.id, identity: identity,
                                                 plan: plan?.lowercased(), samples: samples)
-        let buckets = samples.map { sample in
+        var buckets = samples.map { sample in
             let title = sample.id == "image_gen" ? "Image Generation" : "Deep Research"
             return QuotaBucket(id: sample.id, title: title, shortLabel: title, usedPercent: 0,
                                resetAt: sample.resetAt, rawWindowSeconds: quantities[sample.id]?.windowSeconds,
                                quantity: quantities[sample.id]?.quantity)
         }
+        var summary = ChatGPTChatSummary(transport: transport.name, planVerified: plan != nil, accountIdentity: identity)
+        // The Pro models have no service count: their buckets are the saved
+        // history's turns against the plan's published allowance, and only
+        // when the plan is one that has Pro models. The same `init` reply
+        // names any model that is exhausted right now.
+        let allowances = ChatGPTChatProAllowances.allowances(plan: plan)
+        if settings.trackProModels, !allowances.isEmpty {
+            let history = await ChatGPTChatHistoryReader(transport: transport, store: historyStore)
+                .read(bearer: token, identity: identity, now: now)
+            try Task.checkCancellation()
+            summary.history = history.summary
+            buckets += ChatGPTChatParser.proBuckets(allowances: allowances, turns: history.turns,
+                                                   limits: ChatGPTChatParser.modelLimits(data, now: now),
+                                                   complete: history.summary.complete, now: now)
+        }
         return AccountQuota(accountId: account.id, tool: .chatgptChat, buckets: buckets,
-                            plan: plan, email: email, queriedAt: now,
-                            chatGPTChat: ChatGPTChatSummary(transport: transport.name, planVerified: plan != nil, accountIdentity: identity))
+                            plan: plan, email: email, queriedAt: now, chatGPTChat: summary)
     }
 }

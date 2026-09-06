@@ -467,7 +467,11 @@ public enum MenuBarFieldCatalog {
 
     public static let chatGPTChatFields: [MenuBarFieldOption] = [
         option(.chatgptChat, "image_gen", "Image Generation", "Image Generation"),
-        option(.chatgptChat, "deep_research", "Deep Research", "Deep Research")
+        option(.chatgptChat, "deep_research", "Deep Research", "Deep Research"),
+        option(.chatgptChat, "gpt6_pro_weekly", "GPT-6 Pro · Weekly", "GPT-6 Pro"),
+        option(.chatgptChat, "sol_pro_daily", "GPT-5.6 Sol Pro · Daily", "Sol Pro"),
+        option(.chatgptChat, "pro_daily", "Pro Models · Daily", "Pro Daily"),
+        option(.chatgptChat, "pro_weekly", "Pro Models · Weekly", "Pro Weekly")
     ]
 
     public static let claudeFields: [MenuBarFieldOption] = [
