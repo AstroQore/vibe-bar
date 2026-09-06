@@ -6,9 +6,12 @@ existing browser import or built-in login. No browser extension is required.
 
 ## Learning totals
 
-The adapter reads the service remainder and reset time. It reuses Agentic's
-`/wham/usage` plan parser through the same authenticated Chat transport. There
-are no fixed feature totals and no cloud-history or model-message collector.
+The adapter reads the service remainder and reset time. It tries the Codex
+CLI's OAuth bearer first — the credential the Codex quota already reads — and
+only then the web cookie and the WebView session, so a Codex login needs no
+separate web login for Chat. It reuses Agentic's `/wham/usage` plan parser
+through whichever Chat transport answered. There are no fixed feature totals
+and no cloud-history or model-message collector.
 
 A first observation is not a reset. Three independent reset observations with
 the same remainder establish a learned total. Reads must bracket the reported
