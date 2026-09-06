@@ -191,9 +191,7 @@ struct ResetsPage: View {
     }
 
     private func cycleCard(_ cycle: SubProviderCycle, now: Date) -> some View {
-        let remaining = max(0, 100 - cycle.headline.usedPercent)
-        let color = Theme.barColor(percent: remaining, mode: .remaining)
-        return box {
+        box {
             HStack(spacing: 6) {
                 Circle()
                     .fill(Theme.providerAccent(for: cycle.tool))
@@ -209,41 +207,23 @@ struct ResetsPage: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
-                if let plan = cycle.plan {
+                if let plan = settingsStore.settings.planBadgeLabel(for: cycle.tool, quotaPlan: cycle.plan) {
                     Text(plan)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(L10n.Common.percent(value: Int(remaining.rounded())))
-                    .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(color)
-                Text(L10n.Workbench.Resets.Cycle.headline(
-                    bucket: QuotaGroupLabelLocalizer.display(cycle.headline.title),
-                    countdown: ResetCountdownFormatter.string(
-                        from: cycle.headline.resetAt, now: now
-                    ) ?? "—"
-                ))
-                    .font(.system(size: 10, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(2, proxy.size.width * remaining / 100))
-                }
-            }
-            .frame(height: 5)
-            bucketLines(cycle, now: now)
-            if let forecast = cycle.forecast {
-                Text(miniForecastLine(forecast, now: now))
-                    .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(miniForecastColor(forecast))
+            ForEach(cycle.buckets) { bucket in
+                ProviderBucketRow(tool: cycle.tool, accountId: cycle.accountId, bucket: bucket,
+                                  mode: settingsStore.displayMode, density: density, now: now)
             }
             fillCurve(cycle)
+            ResetJournalButton(tools: [cycle.tool], accountId: cycle.accountId).font(.caption)
+            if cycle.tool == .codex, cycle.groupTitle == nil,
+               let credits = quotaService.cachedQuota(for: cycle.accountId)?.resetCredits, credits.hasAvailable {
+                Divider()
+                ResetCreditsRow(credits: credits, density: density)
+            }
         }
     }
 
@@ -341,7 +321,7 @@ struct ResetsPage: View {
         let tool: ToolType
         let label: String
         let shortLabel: String
-        let gainPercent: Double
+        let gainPercent: Double?
         let at: Date
         let isPast: Bool
     }
@@ -474,13 +454,13 @@ struct ResetsPage: View {
                     out.append(CalendarEntry(
                         id: "next.\(account.id).\(bucket.id)",
                         tool: tool,
-                        label: L10n.Workbench.Resets.Calendar.futureEntry(
+                        label: bucket.hasPercentage ? L10n.Workbench.Resets.Calendar.futureEntry(
                             lane: "\(sub) · \(QuotaGroupLabelLocalizer.display(bucket.title))",
                             time: Self.entryTimeFormatter.string(from: resetAt),
                             percent: Int(bucket.usedPercent.rounded())
-                        ),
+                        ) : sub + " · " + L10n.Quota.Reset.in(when: Self.entryTimeFormatter.string(from: resetAt)),
                         shortLabel: sub,
-                        gainPercent: bucket.usedPercent,
+                        gainPercent: bucket.hasPercentage ? bucket.usedPercent : nil,
                         at: resetAt,
                         isPast: false
                     ))
@@ -561,10 +541,9 @@ struct ResetsPage: View {
                     Circle()
                         .fill(Theme.providerAccent(for: entry.tool))
                         .frame(width: 4.5, height: 4.5)
-                    Text(L10n.Workbench.Resets.Calendar.dayEntry(
-                        lane: QuotaGroupLabelLocalizer.display(entry.shortLabel),
-                        percent: Int(entry.gainPercent.rounded())
-                    ))
+                    Text(entry.gainPercent.map { L10n.Workbench.Resets.Calendar.dayEntry(
+                        lane: QuotaGroupLabelLocalizer.display(entry.shortLabel), percent: Int($0.rounded())
+                    ) } ?? QuotaGroupLabelLocalizer.display(entry.shortLabel))
                         .font(.system(size: 9, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(entry.isPast ? .tertiary : .secondary)
                         .lineLimit(1)

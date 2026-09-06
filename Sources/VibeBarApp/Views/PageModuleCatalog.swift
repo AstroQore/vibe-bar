@@ -502,6 +502,13 @@ enum PageModuleCatalog {
                 additional = (environment.quotaService.cachedQuota(for: antigravity.id)?.buckets ?? [])
                     .map { FillTimelineSeries(tool: .antigravity, accountId: antigravity.id, bucket: $0) }
             }
+        } else if tool == .codex {
+            accountId = environment.account(for: .codex)?.id
+            buckets = environment.quota(for: .codex)?.buckets ?? []
+            if let chat = environment.account(for: .chatgptChat) {
+                additional = (environment.quotaService.cachedQuota(for: chat.id)?.buckets ?? [])
+                    .map { FillTimelineSeries(tool: .chatgptChat, accountId: chat.id, bucket: $0) }
+            }
         } else if tool == .grok {
             accountId = environment.account(for: .grok)?.id
             buckets = environment.quota(for: .grok)?.buckets ?? []
@@ -526,6 +533,7 @@ enum PageModuleCatalog {
     /// Tools whose refresh button the provider-header quota card pumps.
     static func quotaRefreshTools(for tool: ToolType) -> [ToolType] {
         switch tool {
+        case .codex: ToolType.codex.coreProviderMembers
         case .gemini: ToolType.googleAIPair
         case .grok: ToolType.grokFamily
         default: [tool]

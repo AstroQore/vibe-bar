@@ -2,6 +2,15 @@ import XCTest
 @testable import VibeBarCore
 
 final class CursorParserEdgeCasesTests: XCTestCase {
+    func testKnownMembershipWireNamesPreserveTheirTier() throws {
+        for (raw, expected) in [("hobby", "Hobby"), ("pro", "Pro"), ("pro_plus", "Pro+"), ("ultra", "Ultra"), ("express", "Start"), ("team", "Team")] {
+            let data = try JSONSerialization.data(withJSONObject: ["membershipType": raw])
+            let summary = try CursorResponseParser.decodeUsageSummary(data: data)
+            let result = CursorResponseParser.parseSummary(summary: summary, userInfo: nil, requestUsage: nil, now: Date())
+            XCTAssertEqual(result.planName, expected)
+        }
+    }
+
     private let now = Date(timeIntervalSince1970: 1_715_000_000)
 
     /// Pro fractional percent. Cursor's percent fields are already

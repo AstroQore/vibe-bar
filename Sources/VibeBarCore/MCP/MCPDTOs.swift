@@ -71,22 +71,24 @@ public struct MCPQuotaBucketDTO: Codable, Equatable, Sendable {
     public let title: String
     public let shortLabel: String
     public let groupTitle: String?
-    public let usedPercent: Double
-    public let remainingPercent: Double
+    public let usedPercent: Double?
+    public let remainingPercent: Double?
     public let resetAt: Date?
     public let windowSeconds: Int?
     public let forecast: MCPQuotaForecastDTO?
+    public let quantity: MCPQuotaQuantityDTO?
 
     public init(
         id: String,
         title: String,
         shortLabel: String,
         groupTitle: String?,
-        usedPercent: Double,
-        remainingPercent: Double,
+        usedPercent: Double?,
+        remainingPercent: Double?,
         resetAt: Date?,
         windowSeconds: Int?,
-        forecast: MCPQuotaForecastDTO?
+        forecast: MCPQuotaForecastDTO?,
+        quantity: MCPQuotaQuantityDTO? = nil
     ) {
         self.id = id
         self.title = title
@@ -97,6 +99,7 @@ public struct MCPQuotaBucketDTO: Codable, Equatable, Sendable {
         self.resetAt = resetAt
         self.windowSeconds = windowSeconds
         self.forecast = forecast
+        self.quantity = quantity
     }
 }
 
@@ -116,6 +119,7 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
     public let lastAttempted: Date?
     public let inFlight: Bool
     public let error: String?
+    public let chatAllowance: MCPChatAllowanceDTO?
 
     public init(
         accountId: String,
@@ -129,7 +133,8 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
         lastUpdated: Date?,
         lastAttempted: Date?,
         inFlight: Bool,
-        error: String?
+        error: String?,
+        chatAllowance: MCPChatAllowanceDTO? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -143,6 +148,7 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
         self.lastAttempted = lastAttempted
         self.inFlight = inFlight
         self.error = error
+        self.chatAllowance = chatAllowance
     }
 }
 
@@ -177,11 +183,12 @@ extension MCPQuotaBucketDTO {
             title: bucket.title,
             shortLabel: bucket.shortLabel,
             groupTitle: bucket.groupTitle,
-            usedPercent: bucket.usedPercent,
-            remainingPercent: bucket.remainingPercent,
+            usedPercent: bucket.hasPercentage ? bucket.usedPercent : nil,
+            remainingPercent: bucket.hasPercentage ? bucket.remainingPercent : nil,
             resetAt: bucket.resetAt,
             windowSeconds: bucket.rawWindowSeconds,
-            forecast: forecast.map(MCPQuotaForecastDTO.init(forecast:))
+            forecast: bucket.supportsForecast ? forecast.map(MCPQuotaForecastDTO.init(forecast:)) : nil,
+            quantity: bucket.quantity.map(MCPQuotaQuantityDTO.init)
         )
     }
 }
@@ -212,7 +219,8 @@ extension MCPQuotaAccountDTO {
             lastUpdated: lastUpdated,
             lastAttempted: lastAttempted,
             inFlight: inFlight,
-            error: error?.agentFacingMessage
+            error: error?.agentFacingMessage,
+            chatAllowance: quota.chatGPTChat.map(MCPChatAllowanceDTO.init)
         )
     }
 }
@@ -875,5 +883,25 @@ public struct MCPServerInfo: Codable, Equatable, Sendable {
     public init(name: String, version: String) {
         self.name = name
         self.version = version
+    }
+}
+
+public struct MCPQuotaQuantityDTO: Codable, Equatable, Sendable {
+    public let used: Int?
+    public let remaining: Int?
+    public let limit: Int?
+    public let isEstimated: Bool
+    public let coverageComplete: Bool
+    public init(_ value: QuotaQuantity) {
+        used = value.used; remaining = value.remaining; limit = value.limit
+        isEstimated = value.isEstimated; coverageComplete = value.coverageComplete
+    }
+}
+
+public struct MCPChatAllowanceDTO: Codable, Equatable, Sendable {
+    public let transport: String
+    public let planVerified: Bool?
+    public init(_ value: ChatGPTChatSummary) {
+        transport = value.transport; planVerified = value.planVerified
     }
 }

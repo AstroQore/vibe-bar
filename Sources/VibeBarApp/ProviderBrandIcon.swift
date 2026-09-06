@@ -253,7 +253,7 @@ enum ProviderBrandIcon {
 
     static func fallbackSystemImage(for tool: ToolType) -> String {
         switch tool {
-        case .codex:  return "sparkle.magnifyingglass"
+        case .codex, .chatgptChat:  return "sparkle.magnifyingglass"
         case .claude: return "sparkles"
         case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return tool.miscFallbackSymbol
@@ -841,7 +841,7 @@ extension Harness {
 extension ToolType {
     var providerIconResourceName: String {
         switch self {
-        case .codex:       return "ProviderIcon-codex"
+        case .codex, .chatgptChat:       return "ProviderIcon-codex"
         case .claude:      return "ProviderIcon-claude"
         case .alibaba:     return "ProviderIcon-alibaba"
         case .alibabaTokenPlan: return "ProviderIcon-alibaba"
@@ -880,7 +880,7 @@ extension ToolType {
     /// Two brands never got a file: their paths live in `ProviderBrandIcon`.
     var inlineProviderIconSVG: String? {
         switch self {
-        case .codex:  return ProviderBrandIcon.openAISVG
+        case .codex, .chatgptChat:  return ProviderBrandIcon.openAISVG
         case .claude: return ProviderBrandIcon.claudeSVG
         default:      return nil
         }
@@ -895,7 +895,7 @@ extension ToolType {
         // the 1.25 brands (gemini/grok) overshot the canvas and got
         // clipped to crisp edges. Same scale → same edge treatment →
         // no halo on either pair.
-        case .codex, .claude, .gemini, .antigravity, .grok, .copilot, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .copilot, .cursor:
             return 1.25
         case .alibaba, .alibabaTokenPlan, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 1.36
@@ -910,7 +910,7 @@ extension ToolType {
     /// assets on disk.
     var miscFallbackSymbol: String {
         switch self {
-        case .codex, .claude:
+        case .codex, .chatgptChat, .claude:
             return "sparkles"
         case .alibaba:     return "cube.transparent"
         case .alibabaTokenPlan: return "creditcard"

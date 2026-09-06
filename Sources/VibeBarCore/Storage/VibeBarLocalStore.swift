@@ -39,6 +39,8 @@ public enum VibeBarLocalStore {
             .appendingPathComponent("claude-browser.txt")
     }
 
+    public static var chatGPTChatLearningURL: URL { baseDirectory.appendingPathComponent("chatgpt_chat_learning.json") }
+
     public static var openAIWebViewCookieURL: URL {
         baseDirectory
             .appendingPathComponent("cookies", isDirectory: true)

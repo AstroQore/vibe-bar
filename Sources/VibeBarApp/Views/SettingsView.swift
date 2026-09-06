@@ -205,6 +205,18 @@ struct SettingsView: View {
                     }
                     .id(SettingsSectionID.system.rawValue)
 
+                    settingsSection(L10n.Settings.subscriptionNameFormat) {
+                        Picker(L10n.Settings.subscriptionNameFormat, selection: $settingsStore.settings.subscriptionNameFormat) {
+                            ForEach(SubscriptionNameFormat.allCases) { format in
+                                Text(format.example).tag(format)
+                            }
+                        }
+                        .labelsHidden()
+                        Text(L10n.Settings.subscriptionNameFormatDetail)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
                     settingsSection(L10n.Settings.Section.refreshing) {
                         Picker(L10n.Settings.percentShows, selection: $settingsStore.settings.displayMode) {
                             ForEach(DisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -286,7 +298,7 @@ struct SettingsView: View {
                             representative: .codex,
                             healthProviders: [.codex]
                         )
-                        coreProviderPlanBadgeRows(for: [.codex])
+                        coreProviderPlanBadgeRows(for: settingsStore.settings.chatGPTChat.enabled ? ToolType.codex.coreProviderMembers : [.codex])
                         Divider()
                             .padding(.vertical, 2)
                         Picker(L10n.Settings.usageSource, selection: $settingsStore.settings.codexUsageMode) {
@@ -316,6 +328,7 @@ struct SettingsView: View {
                             }
                             .disabled(!environment.hasOpenAIWebCookies)
                         }
+                        .disabled(DemoMode.isEnabled)
                         if environment.hasOpenAIWebCookies {
                             Text(L10n.Onboarding.Cookies.saved)
                                 .font(.caption2).foregroundStyle(.green)
@@ -331,6 +344,8 @@ struct SettingsView: View {
                         }
                         Divider()
                             .padding(.vertical, 2)
+                        ChatGPTChatSettingsSection()
+                        Divider()
                         connectionHealthRows(provider: .codex)
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .codex)

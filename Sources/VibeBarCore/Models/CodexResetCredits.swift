@@ -12,13 +12,27 @@ import Foundation
 public struct CodexResetCredits: Codable, Hashable, Sendable {
     public var availableCount: Int
     public var nextExpiresAt: Date?
+    /// One entry per available credit, sorted by expiry. Nil means only the
+    /// inline count was available; duplicate dates can belong to different grants.
+    public var availableExpirations: [Date]?
+    public var redemptions: [CodexResetCreditRedemption]?
 
-    public init(availableCount: Int, nextExpiresAt: Date? = nil) {
+    public init(availableCount: Int, nextExpiresAt: Date? = nil, availableExpirations: [Date]? = nil,
+                redemptions: [CodexResetCreditRedemption]? = nil) {
         self.availableCount = availableCount
-        self.nextExpiresAt = nextExpiresAt
+        self.availableExpirations = availableExpirations?.sorted()
+        self.nextExpiresAt = nextExpiresAt ?? availableExpirations?.min()
+        self.redemptions = redemptions
     }
 
     /// Whether there is at least one reset to spend (the gate the UI uses to
     /// decide whether to render the row at all).
     public var hasAvailable: Bool { availableCount > 0 }
+}
+
+public struct CodexResetCreditRedemption: Codable, Hashable, Sendable {
+    /// Hash of the provider's grant id. No redeemable identifier is persisted.
+    public var id: String
+    public var redeemedAt: Date
+    public init(id: String, redeemedAt: Date) { self.id = id; self.redeemedAt = redeemedAt }
 }

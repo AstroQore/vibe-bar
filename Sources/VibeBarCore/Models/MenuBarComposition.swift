@@ -36,6 +36,7 @@ public enum MenuBarQuotaMetric: String, Codable, CaseIterable, Sendable {
     case usedPercent
     case remainingPercent
     case displayPercent
+    case displayCount
     case pace
     case forecastPercent
     case resetsIn
@@ -48,6 +49,7 @@ public enum MenuBarQuotaMetric: String, Codable, CaseIterable, Sendable {
         switch self {
         case .usedPercent: return L10n.MenuBar.Composer.Metric.usedPercent
         case .remainingPercent: return L10n.MenuBar.Composer.Metric.remainingPercent
+        case .displayCount: return L10n.Quota.Chat.countMetric
         case .displayPercent: return L10n.MenuBar.Composer.Metric.displayPercent
         case .pace: return L10n.MenuBar.Composer.Metric.pace
         case .forecastPercent: return L10n.Quota.Forecast.Metric.forecastAtReset
@@ -1767,7 +1769,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
                 tokens.append(MenuBarToken(kind: .separator("/"), style: .divider))
             }
             tokens.append(MenuBarToken(
-                kind: .quota(fieldId: field.id, metric: .displayPercent),
+                kind: .quota(fieldId: field.id, metric: field.tool == .chatgptChat ? .displayCount : .displayPercent),
                 style: .percent
             ))
         }
@@ -2073,6 +2075,8 @@ public struct MenuBarQuotaSnapshot: Equatable, Sendable {
     /// than frozen into the snapshot.
     public var rawWindowSeconds: Int?
     public var forecast: Forecast?
+    public var quantity: QuotaQuantity?
+    public var hasPercentage: Bool { quantity.map { $0.usedPercent != nil } ?? true }
 
     public init(
         fieldId: String,
@@ -2082,7 +2086,8 @@ public struct MenuBarQuotaSnapshot: Equatable, Sendable {
         displayPercent: Double,
         resetAt: Date? = nil,
         rawWindowSeconds: Int? = nil,
-        forecast: Forecast? = nil
+        forecast: Forecast? = nil,
+        quantity: QuotaQuantity? = nil
     ) {
         self.fieldId = fieldId
         self.tool = tool
@@ -2092,6 +2097,7 @@ public struct MenuBarQuotaSnapshot: Equatable, Sendable {
         self.resetAt = resetAt
         self.rawWindowSeconds = rawWindowSeconds
         self.forecast = forecast
+        self.quantity = quantity
     }
 
     public var remainingPercent: Double { max(0, min(100, 100 - usedPercent)) }
@@ -2472,9 +2478,11 @@ public extension MenuBarComposition {
             return true
         case let .whenUsedAtLeast(fieldId, percent):
             guard let quota = quotas.first(where: { $0.fieldId == fieldId }) else { return true }
+            guard quota.hasPercentage else { return true }
             return quota.usedPercent >= percent
         case let .whenRemainingAtMost(fieldId, percent):
             guard let quota = quotas.first(where: { $0.fieldId == fieldId }) else { return true }
+            guard quota.hasPercentage else { return true }
             return quota.remainingPercent <= percent
         case let .whenForecast(fieldId, verdicts):
             guard let quota = quotas.first(where: { $0.fieldId == fieldId }) else { return true }
@@ -2567,13 +2575,22 @@ public extension MenuBarComposition {
         now: Date
     ) -> String? {
         switch metric {
+        case .displayCount:
+            guard let quantity = quota.quantity, let value = quantity.value(displayMode) else { return nil }
+            return (quantity.isEstimated ? "≈" : "") + AppLocale.number(value)
         case .usedPercent:
+            guard quota.hasPercentage else { return nil }
             return percent(quota.usedPercent)
         case .remainingPercent:
+            guard quota.hasPercentage else { return nil }
             return percent(quota.remainingPercent)
         case .displayPercent:
+            guard quota.hasPercentage else {
+                return quota.quantity?.remaining.map { "≈" + AppLocale.number($0) }
+            }
             return percent(quota.displayPercent)
         case .pace:
+            guard quota.hasPercentage else { return nil }
             // Computed here, not in the snapshot: the linear expectation pace
             // is measured against advances every minute, so a value frozen at
             // resolve time would drift until the next refresh.
@@ -2628,7 +2645,10 @@ public extension MenuBarComposition {
             return L10n.MenuBar.Spoken.used(label: quota.label, value: value)
         case .remainingPercent:
             return L10n.MenuBar.Spoken.remaining(label: quota.label, value: value)
-        case .displayPercent:
+        case .displayPercent, .displayCount:
+            if !quota.hasPercentage, let remaining = quota.quantity?.remaining {
+                return L10n.Quota.Chat.learningRemaining(count: remaining)
+            }
             return displayMode == .used
                 ? L10n.MenuBar.Spoken.used(label: quota.label, value: value)
                 : L10n.MenuBar.Spoken.remaining(label: quota.label, value: value)
@@ -2656,9 +2676,11 @@ public extension MenuBarComposition {
         switch token.style.color {
         case .automatic:
             guard let own else { return .primary }
+            guard own.hasPercentage else { return .secondary }
             return .quota(fieldId: own.fieldId, basis: colorBasis)
         case .forecast:
             guard let own else { return .primary }
+            guard own.hasPercentage else { return .secondary }
             return .quota(fieldId: own.fieldId, basis: .forecast)
         case let .followsQuota(fieldId, basis):
             // Falls back rather than disappearing: a word coloured by a quota

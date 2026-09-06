@@ -181,7 +181,7 @@ final class AntigravityParserTests: XCTestCase {
         XCTAssertEqual(bodies, [#"{"forceRefresh":true}"#, "{}"])
         XCTAssertEqual(snapshot.buckets.count, 4)
         XCTAssertEqual(snapshot.email, "user@example.com")
-        XCTAssertEqual(snapshot.planName, "Ultra Lite")
+        XCTAssertEqual(snapshot.planName, "Google AI Ultra Lite")
         XCTAssertEqual(snapshot.modelLabels["MODEL_PLACEHOLDER_M132"], "Gemini Flash")
         XCTAssertEqual(snapshot.buckets.first?.remainingPercent ?? -1, 91, accuracy: 0.001)
     }

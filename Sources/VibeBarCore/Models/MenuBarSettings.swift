@@ -465,6 +465,11 @@ public enum MenuBarFieldCatalog {
         option(.codex, "gpt_5_3_codex_spark_weekly", "GPT-5.3 Codex Spark · Weekly", "Spark Weekly")
     ]
 
+    public static let chatGPTChatFields: [MenuBarFieldOption] = [
+        option(.chatgptChat, "image_gen", "Image Generation", "Image Generation"),
+        option(.chatgptChat, "deep_research", "Deep Research", "Deep Research")
+    ]
+
     public static let claudeFields: [MenuBarFieldOption] = [
         option(.claude, "five_hour", "5 Hours", "5 Hours"),
         option(.claude, "weekly", "All Models · Weekly", "Weekly"),
@@ -513,7 +518,7 @@ public enum MenuBarFieldCatalog {
     ]
 
     public static let allFields: [MenuBarFieldOption] =
-        codexFields + claudeFields + geminiFields + antigravityFields
+        chatGPTChatFields + codexFields + claudeFields + geminiFields + antigravityFields
             + grokFields + cursorFields + grokBotFields
 
     public static func fields(for kind: MenuBarItemKind) -> [MenuBarFieldOption] {
@@ -569,7 +574,7 @@ public enum MenuBarFieldCatalog {
                 groups.append(
                     MenuBarCompanyFieldGroup(
                         company: tool.vendorName,
-                        accentTool: tool,
+                        accentTool: tool == .chatgptChat ? .codex : tool,
                         subProviders: subProviders
                     )
                 )

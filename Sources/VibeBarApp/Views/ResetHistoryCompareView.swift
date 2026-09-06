@@ -50,6 +50,7 @@ enum ResetHistoryLanes {
                 var liveBucketIds: Set<String> = []
                 for bucket in quota?.buckets ?? [] {
                     liveBucketIds.insert(bucket.id)
+                    guard bucket.supportsForecast else { continue }
                     let key = SubscriptionHistoryKey(accountId: account.id, bucketId: bucket.id)
                     let subProvider = tool.quotaSubProviderName(bucketID: bucket.id)
                     let trimmed = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -400,6 +401,7 @@ struct ResetHistoryCompareCard: View {
                 .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 .lineLimit(1)
             Spacer(minLength: 6)
+            ResetJournalButton(tools: tools).font(.caption)
             axisPicker
             windowPicker
         }
@@ -508,7 +510,7 @@ struct ResetHistoryCompareLayout: Equatable {
     let rowHeight: CGFloat
     let labelWidth: CGFloat
     /// Band above each track holding the early-refill dots.
-    let markerBand: CGFloat = 5
+    let markerBand: CGFloat = 12
     /// Gap under each track.
     let rowGap: CGFloat = 6
     let labelGap: CGFloat = 10
@@ -790,12 +792,7 @@ struct ResetHistoryCompareView: View {
                     .frame(width: 6, height: 9)
                 Text(L10n.ResetHistory.axisNow)
             }
-            HStack(spacing: 3) {
-                Circle()
-                    .fill(Color.secondary)
-                    .frame(width: 3, height: 3)
-                Text(L10n.ResetHistory.Legend.refilledEarly)
-            }
+
             Spacer(minLength: 0)
         }
         .font(.system(size: max(7.5, density.subtitleFontSize - 3), design: .rounded))
@@ -1211,9 +1208,11 @@ private struct ResetHistoryLanesCanvas: View, Equatable {
         // Above the bar rather than inside it: a cycle that expired untouched
         // fills its track to the top, where a marker would be the same colour
         // as the fill under it.
-        if cycle.refilledEarly {
-            let dot = CGRect(x: rect.midX - 1.5, y: layout.laneTop(laneIndex) + 1, width: 3, height: 3)
-            context.fill(Path(ellipseIn: dot), with: .color(accent.opacity(0.8)))
+        if cycle.isCompleted && (cycle.refilledEarly || cycle.creditRedeemedAt != nil) {
+            let kind = ResetJournalKind(resetKind: cycle.resetKind, creditRedeemedAt: cycle.creditRedeemedAt)
+            let diameter = min(12, rect.width)
+            let marker = CGRect(x: rect.midX - diameter / 2, y: layout.laneTop(laneIndex) + 1, width: diameter, height: diameter)
+            kind.drawMarker(&context, in: marker)
         }
     }
 

@@ -11,6 +11,12 @@ import Foundation
 public actor SubscriptionHistoryStore {
     public static let shared = SubscriptionHistoryStore()
 
+    private struct FeatureObservation: Codable {
+        var sample: ChatGPTChatAllowanceSample
+        var plan: String?
+        var identity: String?
+    }
+
     private struct Storage: Codable {
         var schemaVersion: Int
         var legacyTimelineImported: Bool
@@ -25,6 +31,9 @@ public actor SubscriptionHistoryStore {
         /// timeline for. Optional keeps older files decodable.
         var promotedProviderBackfillVersion: Int?
         var samples: [SubscriptionWindowSample]
+        var redemptions: [QuotaResetRedemption]?
+        var featureObservations: [String: FeatureObservation]?
+        var featureResets: [SubscriptionWindowSample]?
 
         init(
             schemaVersion: Int = SubscriptionHistoryStore.storageSchemaVersion,
@@ -115,7 +124,33 @@ public actor SubscriptionHistoryStore {
 
         var (storage, index) = loadIndexed()
         var dirty = false
-        for bucket in quota.buckets {
+        if let receipts = quota.resetCredits?.redemptions, !receipts.isEmpty {
+            var saved = Dictionary((storage.redemptions ?? []).map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+            var newReceipts: [CodexResetCreditRedemption] = []
+            for credit in receipts {
+                let receipt = QuotaResetRedemption(accountId: quota.accountId, credit: credit)
+                if saved[receipt.id] != receipt {
+                    saved[receipt.id] = receipt; newReceipts.append(credit); dirty = true
+                }
+            }
+            // The quota can refill before the redemption service publishes its
+            // receipt. Reconcile late receipts with the original observation
+            // interval, without requiring a second quota jump.
+            if !newReceipts.isEmpty {
+                for position in storage.samples.indices {
+                    guard storage.samples[position].accountId == quota.accountId,
+                          var details = storage.samples[position].resetDetails,
+                          details.creditRedeemedAt == nil,
+                          let redeemed = Self.matchingRedemption(receipts: newReceipts,
+                            after: details.observedAfter, before: details.observedBefore) else { continue }
+                    details.creditRedeemedAt = redeemed
+                    storage.samples[position].resetDetails = details
+                }
+            }
+            storage.redemptions = saved.values.sorted { $0.credit.redeemedAt < $1.credit.redeemedAt }
+        }
+        if observeFeatures(quota, now: now, storage: &storage) { dirty = true }
+        for bucket in quota.buckets where bucket.supportsForecast {
             guard let resetAt = bucket.resetAt, bucket.usedPercent.isFinite else { continue }
             let used = clamp(bucket.usedPercent)
             let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
@@ -145,6 +180,14 @@ public actor SubscriptionHistoryStore {
                 newResetAt: resetAt,
                 now: now
             ) {
+                current.resetDetails = QuotaResetDetails(
+                    previousResetAt: current.windowEnd, nextResetAt: resetAt,
+                    previousUsedPercent: current.lastUsedPercent, nextUsedPercent: used,
+                    observedAfter: current.lastSeenAt, observedBefore: now,
+                    creditRedeemedAt: Self.matchingRedemption(
+                        receipts: quota.resetCredits?.redemptions ?? [], after: current.lastSeenAt, before: now),
+                    plan: quota.plan
+                )
                 current.completedAt = now
                 current.completionReason = reason
                 // Classified before `windowEnd` is overwritten below: the reset
@@ -607,6 +650,54 @@ public actor SubscriptionHistoryStore {
     }
 
     public func allSamples() -> [SubscriptionWindowSample] { load().samples }
+    public func allRedemptions() -> [QuotaResetRedemption] { load().redemptions ?? [] }
+    public func allFeatureResets() -> [SubscriptionWindowSample] { load().featureResets ?? [] }
+
+    private func observeFeatures(_ quota: AccountQuota, now: Date, storage: inout Storage) -> Bool {
+        var changed = false
+        for bucket in quota.buckets {
+            guard let remaining = bucket.quantity?.remaining else { continue }
+            let key = PrivacyPreservingHash.fileComponent(prefix: "feature", rawValue: quota.accountId + ":" + bucket.id)
+            let sample = ChatGPTChatAllowanceSample(id: bucket.id, remaining: remaining, resetAt: bucket.resetAt, observedAt: now)
+            let previous = storage.featureObservations?[key]
+            guard previous == nil || now > previous!.sample.observedAt else { continue }
+            if storage.featureObservations == nil { storage.featureObservations = [:] }
+            storage.featureObservations?[key] = FeatureObservation(sample: sample, plan: quota.plan, identity: quota.chatGPTChat?.accountIdentity)
+            changed = true
+            guard let previous, previous.plan == quota.plan, previous.identity == quota.chatGPTChat?.accountIdentity else { continue }
+            let old = previous.sample
+            let crossed = old.resetAt.map { $0 <= now } ?? false
+            let advanced = old.resetAt.flatMap { oldDate in bucket.resetAt.map { $0.timeIntervalSince(oldDate) > 60 } } ?? false
+            guard remaining > old.remaining || (crossed && advanced) else { continue }
+            let kind: SubscriptionWindowSample.ResetKind
+            if let before = old.resetAt, let after = bucket.resetAt, let window = bucket.rawWindowSeconds,
+               let classified = Self.classifyReset(reportedResetAt: before, newResetAt: after, observedAt: now, rawWindowSeconds: window) {
+                kind = classified
+            } else if crossed && advanced { kind = .onSchedule }
+            else if let before = old.resetAt, let after = bucket.resetAt {
+                kind = abs(after.timeIntervalSince(before)) <= 60 ? .earlyClockUnchanged : .earlyClockRestarted
+            } else { kind = .earlyUnclear }
+            let details = QuotaResetDetails(previousResetAt: old.resetAt, nextResetAt: bucket.resetAt,
+                previousUsedPercent: 0, nextUsedPercent: 0, observedAfter: old.observedAt, observedBefore: now,
+                plan: quota.plan, previousRemaining: old.remaining, nextRemaining: remaining)
+            let record = SubscriptionWindowSample(accountId: quota.accountId, tool: quota.tool, bucketId: bucket.id,
+                windowEnd: now, peakUsedPercent: 0, lastUsedPercent: 0, observationCount: 2,
+                firstSeenAt: old.observedAt, lastSeenAt: old.observedAt, completedAt: now,
+                completionReason: .refillDetected, resetKind: kind, resetDetails: details)
+            if storage.featureResets == nil { storage.featureResets = [] }
+            storage.featureResets?.append(record)
+        }
+        return changed
+    }
+
+    static func matchingRedemption(receipts: [CodexResetCreditRedemption], after: Date, before: Date) -> Date? {
+        // A long offline interval cannot tie a later observed quota change to
+        // one particular redemption. Keep the receipt, but leave the source open.
+        guard before.timeIntervalSince(after) <= 900 else { return nil }
+        return receipts.map(\.redeemedAt)
+            .filter { $0 >= after && $0 <= before }
+            .max()
+    }
 
     public func prune(retentionDays: Int, now: Date = Date()) {
         var storage = load()
@@ -900,10 +991,18 @@ public actor SubscriptionHistoryStore {
         guard !CostDataSettings.isUnlimitedRetention(retentionDays) else { return false }
         let cutoff = now.addingTimeInterval(-TimeInterval(retentionDays) * 86_400)
         let before = storage.samples.count
+        let receiptCount = storage.redemptions?.count ?? 0
+        let featureCount = storage.featureResets?.count ?? 0
+        let observationCount = storage.featureObservations?.count ?? 0
+        storage.featureResets?.removeAll { ($0.completedAt ?? $0.lastSeenAt) < cutoff }
+        storage.featureObservations = storage.featureObservations?.filter { $0.value.sample.observedAt >= cutoff }
+        storage.redemptions?.removeAll { $0.credit.redeemedAt < cutoff }
         storage.samples.removeAll {
             let relevantDate = $0.completedAt ?? $0.lastSeenAt
             return relevantDate < cutoff
         }
-        return storage.samples.count != before
+        return storage.samples.count != before || (storage.redemptions?.count ?? 0) != receiptCount
+            || (storage.featureResets?.count ?? 0) != featureCount
+            || (storage.featureObservations?.count ?? 0) != observationCount
     }
 }

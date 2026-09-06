@@ -38,6 +38,7 @@ public enum ProviderHierarchyCatalog {
     //   L2 SubProvider : ChatGPT Agentic| Claude      | Gemini Web| AntiGravity | Grok     | Cursor
     //   L3 tool        : Codex          | Claude Code | Gemini Web| AntiGravity | Grok     | Cursor
 
+    public static let chatgptChat = ProviderHierarchy(vendor: "OpenAI", product: "ChatGPT Chat", tool: "ChatGPT Chat")
     public static let codex       = ProviderHierarchy(vendor: "OpenAI",    product: "ChatGPT Agentic", tool: "Codex")
     public static let claude      = ProviderHierarchy(vendor: "Anthropic", product: "Claude",          tool: "Claude Code")
     public static let gemini      = ProviderHierarchy(vendor: "Google AI", product: "Gemini Web",      tool: "Gemini Web")

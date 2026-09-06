@@ -68,7 +68,8 @@ public struct UsagePace: Sendable, Equatable {
         now: Date = Date(),
         allowsPostResetGrace: Bool = false
     ) -> UsagePace? {
-        compute(
+        guard bucket.supportsForecast else { return nil }
+        return compute(
             usedPercent: bucket.usedPercent,
             resetAt: bucket.resetAt,
             rawWindowSeconds: bucket.rawWindowSeconds,

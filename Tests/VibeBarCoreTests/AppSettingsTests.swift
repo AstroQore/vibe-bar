@@ -1047,10 +1047,33 @@ final class AppSettingsTests: XCTestCase {
         let settings = AppSettings.default
 
         XCTAssertNil(settings.planBadgeLabel(for: .codex))
-        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite"), "ChatGPT Pro Lite")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite"), "ChatGPT Pro 5x")
         XCTAssertEqual(settings.planBadgeLabel(for: .codex, accountPlan: "self_serve_business_usage_based"), "ChatGPT Self Serve Business Usage Based")
-        XCTAssertEqual(settings.planBadgeLabel(for: .claude, quotaPlan: "default_claude_max_20x"), "Claude Max")
+        XCTAssertEqual(settings.planBadgeLabel(for: .claude, quotaPlan: "default_claude_max_20x"), "Claude Max 20x")
         XCTAssertEqual(settings.planBadgeLabel(for: .claude, accountPlan: "Claude Pro Account"), "Claude Pro")
+    }
+
+    func testSubscriptionNameFormatPersistsAndToleratesOlderSettings() throws {
+        for json in [#"{}"#, #"{"subscriptionNameFormat":"future-style"}"#] {
+            let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+            XCTAssertEqual(legacy.subscriptionNameFormat, .full)
+        }
+        for format in SubscriptionNameFormat.allCases {
+            var settings = AppSettings.default
+            settings.subscriptionNameFormat = format
+            let restored = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+            XCTAssertEqual(restored.subscriptionNameFormat, format)
+            XCTAssertEqual(restored.planBadgeLabel(for: .codex, quotaPlan: "pro"), format.example)
+        }
+    }
+
+    func testSubscriptionFormatKeepsCustomLabelAndQuotaPlanPrecedence() {
+        var settings = AppSettings.default
+        settings.subscriptionNameFormat = .multiplier
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite", accountPlan: "pro"), "5x")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: " ", accountPlan: "pro"), "20x")
+        settings.setProviderPlanLabel("My subscription", for: .codex)
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "pro"), "My subscription")
     }
 
     func testProviderPlanLabelOverrideWinsAndRoundTrips() throws {

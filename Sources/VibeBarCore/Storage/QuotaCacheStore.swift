@@ -6,12 +6,16 @@ public enum QuotaCacheStore {
         var buckets: [QuotaBucket]
         var plan: String?
         var queriedAt: Date
+        var chatGPTChat: ChatGPTChatSummary?
+        var resetCredits: CodexResetCredits?
 
         init(_ quota: AccountQuota) {
             self.tool = quota.tool
             self.buckets = Self.normalizedBuckets(quota.buckets, tool: quota.tool)
             self.plan = quota.plan
             self.queriedAt = quota.queriedAt
+            self.chatGPTChat = quota.chatGPTChat
+            self.resetCredits = quota.resetCredits
         }
 
         func quota(accountId: String) -> AccountQuota {
@@ -23,7 +27,9 @@ public enum QuotaCacheStore {
                 email: nil,
                 queriedAt: queriedAt,
                 error: nil,
-                providerExtras: nil
+                providerExtras: nil,
+                resetCredits: resetCredits,
+                chatGPTChat: chatGPTChat
             )
         }
 

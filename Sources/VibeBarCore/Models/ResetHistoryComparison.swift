@@ -306,6 +306,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         public let usedPercent: Double
         public let isCompleted: Bool
         public let resetKind: SubscriptionWindowSample.ResetKind?
+        public let creditRedeemedAt: Date?
 
         /// What was left when the window refilled — and the bar's height.
         ///
@@ -328,7 +329,8 @@ public struct ResetHistoryComparison: Equatable, Sendable {
         /// Empty for an ordinary on-schedule reset — the two early shapes mean
         /// opposite things, so the copy says which (see `AGENTS.md` § 11).
         public var resetDescription: String {
-            switch resetKind {
+            if creditRedeemedAt != nil { return L10n.ResetJournal.credit }
+            return switch resetKind {
             case .earlyClockRestarted: L10n.ResetHistory.Reset.earlyClockRestarted
             case .earlyClockUnchanged: L10n.ResetHistory.Reset.earlyClockUnchanged
             case .earlyUnclear: L10n.ResetHistory.Reset.earlyUnclear
@@ -342,7 +344,8 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             end: Date,
             usedPercent: Double,
             isCompleted: Bool,
-            resetKind: SubscriptionWindowSample.ResetKind? = nil
+            resetKind: SubscriptionWindowSample.ResetKind? = nil,
+            creditRedeemedAt: Date? = nil
         ) {
             self.id = id
             self.start = start
@@ -350,6 +353,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
             self.usedPercent = usedPercent.isFinite ? min(100, max(0, usedPercent)) : 0
             self.isCompleted = isCompleted
             self.resetKind = resetKind
+            self.creditRedeemedAt = creditRedeemedAt
         }
     }
 
@@ -658,7 +662,8 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                     end: end,
                     usedPercent: sample.peakUsedPercent,
                     isCompleted: sample.isCompleted,
-                    resetKind: sample.resetKind
+                    resetKind: sample.resetKind,
+                    creditRedeemedAt: sample.resetDetails?.creditRedeemedAt
                 )
                 if sample.isCompleted {
                     completed.append(cycle)

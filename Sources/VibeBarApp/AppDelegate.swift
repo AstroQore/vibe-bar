@@ -9,6 +9,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var demoPresenter: DemoPresenter?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--chatgpt-chat-probe") {
+            NSApp.setActivationPolicy(.prohibited)
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 50) {
+                FileHandle.standardError.write(Data("ChatGPT Chat probe timed out.\n".utf8))
+                _exit(124)
+            }
+            Task { exit(await ChatGPTChatProbe.run()) }
+            return
+        }
         if handleRemoteCommandLine() { return }
         if let appearance = DemoMode.configuration?.appearance {
             // Before any window exists, so every surface — popover, mini

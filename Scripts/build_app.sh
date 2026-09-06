@@ -48,6 +48,9 @@ if [[ -z "$SPARKLE_FRAMEWORK_SOURCE" || ! -x "$SPARKLE_FRAMEWORK_SOURCE/Versions
 fi
 
 APP_DIR="$ROOT/.build/Vibe Bar.app"
+if [[ "${VIBEBAR_REVIEW_BUILD:-0}" == "1" ]]; then
+    APP_DIR="$ROOT/.build/Vibe Bar Chat Review.app"
+fi
 ENTITLEMENTS="$ROOT/Resources/VibeBar.entitlements"
 SPARKLE_FRAMEWORK="$APP_DIR/Contents/Frameworks/Sparkle.framework"
 echo "==> packaging $APP_DIR"
@@ -84,6 +87,29 @@ for lproj in "$I18N_RESOURCE_BUNDLE"/*.lproj; do
 done
 ditto "$SPARKLE_FRAMEWORK_SOURCE" "$SPARKLE_FRAMEWORK"
 cp "$ROOT/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
+if [[ "${VIBEBAR_REVIEW_BUILD:-0}" == "1" ]]; then
+    python3 - "$APP_DIR/Contents/Info.plist" "${VIBEBAR_REVIEW_HOME:-/tmp/vibebar-chat-preview}" <<'PYREVIEW'
+import pathlib, plistlib, sys
+info_path = pathlib.Path(sys.argv[1])
+review_dir = pathlib.Path(sys.argv[2]).resolve()
+if review_dir == pathlib.Path.home() or not (review_dir / "VIBEBAR_DEMO_HOME.txt").is_file():
+    raise SystemExit("A review build requires an isolated, marked demo home")
+with info_path.open("rb") as file:
+    info = plistlib.load(file)
+info["CFBundleIdentifier"] = "com.astroqore.VibeBar.ChatReview"
+info["CFBundleName"] = "Vibe Bar Chat Review"
+info["CFBundleDisplayName"] = "Vibe Bar Chat Review"
+info.pop("CFBundleURLTypes", None)
+info["LSEnvironment"] = {
+    "VIBEBAR_DEMO_HOME": str(review_dir),
+    "VIBEBAR_DEMO_SURFACE": "popover:openAI",
+    "VIBEBAR_DEMO_BACKDROP": "1",
+}
+with info_path.open("wb") as file:
+    plistlib.dump(info, file)
+PYREVIEW
+fi
+
 cp "$ROOT/THIRD_PARTY_NOTICES.md" \
     "$APP_DIR/Contents/Resources/THIRD_PARTY_NOTICES.md"
 cp -R "$ROOT/Resources/ThirdPartyLicenses" \

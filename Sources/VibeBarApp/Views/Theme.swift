@@ -321,7 +321,8 @@ enum Theme {
     /// in a chart is two providers as far as the reader is concerned.
     static func providerAccent(for tool: ToolType) -> Color {
         switch tool {
-        case .codex:       return Color(red: 0.30, green: 0.78, blue: 0.74)  // teal
+        case .chatgptChat: return Color(red: 0.30, green: 0.78, blue: 0.74)
+        case .codex: return Color(red: 0.30, green: 0.78, blue: 0.74)  // teal
         case .claude:      return Color(red: 0.93, green: 0.40, blue: 0.40)  // coral
         case .alibaba:     return Color(red: 1.00, green: 0.62, blue: 0.20)  // amber
         case .alibabaTokenPlan: return Color(red: 1.00, green: 0.48, blue: 0.18)  // deeper amber

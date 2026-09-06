@@ -46,6 +46,8 @@ final class CodexResetCreditsTests: XCTestCase {
         """
         let snapshot = CodexResetCreditsFetcher.parse(data: Data(json.utf8), now: now)
         XCTAssertEqual(snapshot?.availableCount, 2)
+        XCTAssertEqual(snapshot?.availableExpirations?.count, 2)
+        XCTAssertEqual(snapshot?.availableExpirations, snapshot?.availableExpirations?.sorted())
 
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
