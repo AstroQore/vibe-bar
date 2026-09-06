@@ -12,12 +12,27 @@ public struct ChatGPTChatAllowanceSample: Codable, Hashable, Sendable {
     }
 }
 
+/// What one feature's total is known to be.
+///
+/// The service reports a remainder and a reset, never a total. Two things
+/// stand in for it. From the first read, the largest remainder ever seen
+/// for this account and plan: the allowance is at least that, and on the
+/// day it refills it is exactly that. That is the estimate every read
+/// shows, so a monthly allowance has a percentage on day one instead of a
+/// season of "learning". Then, once three consistent reset boundaries have
+/// been watched, the total and its window are confirmed and the estimate
+/// mark comes off. A remainder above either figure raises the estimate and
+/// withdraws the confirmation, since the total was evidently larger.
 public struct ChatGPTChatAllowanceLearning: Codable, Sendable {
     public private(set) var previous: ChatGPTChatAllowanceSample?
+    /// The largest remainder reported so far. Never below a remainder that
+    /// was actually observed, so used = total − remaining cannot go negative.
+    public private(set) var observedMaximum: Int?
     public private(set) var candidateTotal: Int?
     public private(set) var matchingResets = 0
     public private(set) var candidateWindowSeconds: Int?
-    public var learnedWindowSeconds: Int? { matchingResets >= 3 ? candidateWindowSeconds : nil }
+    public var isConfirmed: Bool { matchingResets >= 3 && candidateWindowSeconds != nil && candidateTotal != nil }
+    public var learnedWindowSeconds: Int? { isConfirmed ? candidateWindowSeconds : nil }
 
     public init() {}
 
@@ -26,6 +41,7 @@ public struct ChatGPTChatAllowanceLearning: Codable, Sendable {
         if let previous, sample.observedAt <= previous.observedAt {
             return quantity(for: previous)
         }
+        observedMaximum = max(observedMaximum ?? 0, sample.remaining)
         if let previous, let oldReset = previous.resetAt, let newReset = sample.resetAt,
            newReset.timeIntervalSince(oldReset) > 60 {
             // An advancing date alone is not a refill: unused allowances can
@@ -60,16 +76,38 @@ public struct ChatGPTChatAllowanceLearning: Codable, Sendable {
         return quantity(for: sample)
     }
 
+    /// The window to show for a sample: the confirmed one, else the
+    /// service's own distance to the reset, rounded to whole days (or hours
+    /// for anything shorter than a day) so a read a minute into the window
+    /// does not shave the window.
+    public func windowSeconds(for sample: ChatGPTChatAllowanceSample) -> Int? {
+        if let learned = learnedWindowSeconds { return learned }
+        return Self.provisionalWindow(resetAt: sample.resetAt, observedAt: sample.observedAt)
+    }
+
+    static func provisionalWindow(resetAt: Date?, observedAt: Date) -> Int? {
+        guard let resetAt else { return nil }
+        let distance = resetAt.timeIntervalSince(observedAt)
+        guard distance > 0 else { return nil }
+        if distance >= 20 * 3_600 { return max(1, Int((distance / 86_400).rounded())) * 86_400 }
+        return max(1, Int((distance / 3_600).rounded())) * 3_600
+    }
+
     private func quantity(for sample: ChatGPTChatAllowanceSample) -> QuotaQuantity {
         let currentWindow = sample.resetAt.map { $0 > sample.observedAt } ?? false
-        let total = matchingResets >= 3 && candidateWindowSeconds != nil && currentWindow ? candidateTotal : nil
-        return QuotaQuantity(used: total.map { max(0, $0 - sample.remaining) },
-                             remaining: sample.remaining, limit: total, isEstimated: true)
+        let confirmed = isConfirmed && currentWindow
+        guard let total = confirmed ? candidateTotal : observedMaximum, total > 0 else {
+            return QuotaQuantity(remaining: sample.remaining, isEstimated: true)
+        }
+        return QuotaQuantity(used: max(0, total - sample.remaining), remaining: sample.remaining,
+                             limit: total, isEstimated: !confirmed)
     }
 }
 
-/// One current identity per local account. Switching accounts or changing any
-/// subscription identity starts over, including when switching back later.
+/// One current identity per local account. Switching accounts or changing
+/// plan starts over, including when switching back later. A read that could
+/// not name the plan keeps what is known rather than starting over, and
+/// the summary says the plan went unverified.
 public actor ChatGPTChatAllowanceStore {
     public static let shared = ChatGPTChatAllowanceStore()
     public struct Projection: Sendable {
@@ -89,14 +127,16 @@ public actor ChatGPTChatAllowanceStore {
         var all = (try? VibeBarLocalStore.readJSON([String: AccountState].self, from: url)) ?? [:]
         let key = ChatGPTChatParser.identity(localAccount)
         var state = all[key] ?? AccountState(identity: identity, plan: plan)
-        if state.identity != identity || state.plan != plan || plan == nil {
+        let planChanged = plan != nil && state.plan != nil && state.plan != plan
+        if state.identity != identity || planChanged {
             state = AccountState(identity: identity, plan: plan)
         }
+        if plan != nil { state.plan = plan }
         var result: [String: Projection] = [:]
         for sample in samples {
             var feature = state.features[sample.id] ?? ChatGPTChatAllowanceLearning()
             let quantity = feature.observe(sample)
-            result[sample.id] = Projection(quantity: quantity, windowSeconds: feature.learnedWindowSeconds)
+            result[sample.id] = Projection(quantity: quantity, windowSeconds: feature.windowSeconds(for: sample))
             state.features[sample.id] = feature
         }
         all[key] = state

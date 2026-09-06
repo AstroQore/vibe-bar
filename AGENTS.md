@@ -888,7 +888,7 @@ SubProvider → L3 quota / model group. Source of truth:
 | L1 company | L2 SubProvider        | L3 quota / model groups                  |
 | ---------- | --------------------- | ---------------------------------------- |
 | OpenAI     | ChatGPT Agentic       | All Models, Codex Spark …                 |
-| OpenAI     | ChatGPT Chat          | Image Generation, Deep Research, GPT-6 Pro · Weekly, GPT-5.6 Sol Pro · Daily, Pro Models · Daily/Weekly |
+| OpenAI     | ChatGPT Chat          | Image Generation, Deep Research, GPT-6 Astra Pro · Weekly, GPT-5.6 Sol Pro · Daily, Pro Models · Daily/Weekly |
 | Anthropic  | Claude                | All Models, Sonnet, Opus, Fable …         |
 | Google AI  | Gemini Web            | 5 Hours, Weekly                           |
 | Google AI  | AntiGravity           | Gemini Models, Claude & GPT Models        |
@@ -1004,12 +1004,14 @@ The GPT-6 Pro and GPT-5.6 Sol Pro allowances have no service count.
 `conversation/init` names a model in `model_limits` only once it is exhausted
 (`model_slug`, `resets_after`, `using_default_model_slug` — the ChatGPT
 client's own schema), and `/backend-api/models` carries no allowance field.
-With `ChatGPTChatSettings.trackProModels` on (off by default), the client
+With `ChatGPTChatSettings.trackProModels` on (the default), the client
 counts the account's saved conversations instead: `ChatGPTChatHistoryReader`
 walks `/backend-api/conversations` newest first inside a one-week window,
 skips Work rows and temporary chats, fetches only changed revisions (24 per
 refresh, 25 s), and `ChatGPTChatParser.conversation` charges each user turn
-to the model of its final answer, once. `ChatGPTChatProAllowances` holds the
+to the model of its final answer, once. The buckets file under the model as their L3 group (GPT-6 Astra Pro,
+GPT-5.6 Sol Pro, Pro Models) with the window (Weekly, Daily) as the row, the
+way Codex's Spark lanes are drawn. `ChatGPTChatProAllowances` holds the
 published totals per `plan_type` (`pro`: 200/week GPT-6 Pro, 170/day Sol Pro,
 200/day both; `prolite`: 50/week shared — help article 20001354, read
 2026-09-07); other plans get no Pro buckets. Counts are trailing-window
@@ -1019,11 +1021,18 @@ without a percentage. Only hashed ids, times and model slugs are cached, in
 `~/.vibebar/chatgpt_chat_history.json`. `ChatGPTChatRequestPolicy` admits the
 list with paging fields only and single conversations by UUID; nothing else.
 
-`ChatGPTChatAllowanceStore` learns a total only after three consistent observed
-reset boundaries. Initial reads, mismatches, missed boundaries, and account/plan
-changes withhold percentages; unknown totals use an indeterminate bar. No plan
-has a hardcoded feature total. The learned total and its samples live separately
-under `~/.vibebar/chatgpt_chat_learning.json`.
+`ChatGPTChatAllowanceStore` shows an *estimated* total from the first read —
+the largest remainder ever reported for the account and plan, with the
+service's distance to the reset (rounded to days or hours) as the window —
+and *confirms* it after three consistent observed reset boundaries, which
+takes the estimate mark off. A remainder above the total raises the estimate
+and withdraws the confirmation; an account/plan change starts over; a read
+that could not name the plan keeps what is known. No plan has a hardcoded
+feature total. The state lives under `~/.vibebar/chatgpt_chat_learning.json`.
+Both Chat switches default on (`ChatGPTChatSettings.defaultsVersion` applies
+new defaults once to older files); the Chat account is created only when a
+Codex OAuth login or a chatgpt.com web session exists
+(`AccountStore.hasChatGPTChatCredential`).
 
 `QuotaBucket.quantity` carries the count and learned total. Once the total and
 window are learned, the bucket enters the same percentage forecast, pace and

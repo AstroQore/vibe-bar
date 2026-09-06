@@ -1,20 +1,36 @@
 import Foundation
 
 public struct ChatGPTChatSettings: Codable, Hashable, Sendable {
-    public var enabled = false
-    /// Count GPT-6 Pro and GPT-5.6 Sol Pro messages in the account's saved
-    /// conversation history against the allowances OpenAI publishes for the
-    /// plan. Off by default: it reads the model and time of every recent
-    /// message, which the feature allowances never need.
-    public var trackProModels = false
+    /// Bumped when a default changes for everyone. A file written under an
+    /// older version takes the new defaults once; a choice made after that
+    /// is kept. Version 1 (2026-09-07) turned both switches on.
+    public static let currentDefaultsVersion = 1
+    public var enabled = true
+    /// Count GPT-6 Astra Pro and GPT-5.6 Sol Pro messages in the account's
+    /// saved conversation history against the allowances OpenAI publishes
+    /// for the plan. It reads the model and time of every recent message;
+    /// no text is kept.
+    public var trackProModels = true
+    public var defaultsVersion = ChatGPTChatSettings.currentDefaultsVersion
     public init() {}
-    private enum CodingKeys: String, CodingKey { case enabled, trackProModels }
+    private enum CodingKeys: String, CodingKey { case enabled, trackProModels, defaultsVersion }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
-        trackProModels = try c.decodeIfPresent(Bool.self, forKey: .trackProModels) ?? false
+        let version = try c.decodeIfPresent(Int.self, forKey: .defaultsVersion) ?? 0
+        if version >= Self.currentDefaultsVersion {
+            enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+            trackProModels = try c.decodeIfPresent(Bool.self, forKey: .trackProModels) ?? true
+        } else {
+            enabled = true
+            trackProModels = true
+        }
+        defaultsVersion = Self.currentDefaultsVersion
     }
-    public var sanitized: Self { self }
+    public var sanitized: Self {
+        var copy = self
+        copy.defaultsVersion = Self.currentDefaultsVersion
+        return copy
+    }
 }
 
 /// What one read of the saved history covered, so a count can say how much

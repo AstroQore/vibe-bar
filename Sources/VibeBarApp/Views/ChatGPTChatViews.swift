@@ -86,7 +86,7 @@ struct OpenAICombinedQuotaCard: View {
             }
             if settingsStore.settings.chatGPTChat.enabled {
                 subProviderHeader(.chatgptChat)
-                ProviderQuotaCard(tool: .chatgptChat, density: density, embedded: true, suppressGroupTitles: true)
+                ProviderQuotaCard(tool: .chatgptChat, density: density, embedded: true)
                 Divider()
             }
             subProviderHeader(.codex)
