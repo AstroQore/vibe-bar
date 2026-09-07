@@ -203,3 +203,125 @@ final class SessionIndexCompactorTests: XCTestCase {
         XCTAssertNil(try? fileManager.destinationOfSymbolicLink(atPath: plantedLink.path))
     }
 }
+
+extension SessionIndexCompactorTests {
+    /// The gate is what keeps the reparse off an indexing pass already
+    /// walking the same files.
+    func testAReparseWaitsForTheMaintenanceGate() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("index.sqlite3")
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(databaseURL.path, &handle,
+                                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil), SQLITE_OK)
+        let database = try XCTUnwrap(handle)
+        defer { sqlite3_close_v2(database) }
+        XCTAssertEqual(sqlite3_exec(database, """
+            CREATE TABLE session_files (path_hash TEXT PRIMARY KEY, path TEXT NOT NULL, provider TEXT NOT NULL);
+            INSERT INTO session_files VALUES ('a', '/a.db', 'antigravity');
+            """, nil, nil, nil), SQLITE_OK)
+
+        let gate = SessionIndexMaintenanceGate()
+        try await gate.acquire()
+        let held = Task {
+            await SessionIndexReparse.runIfNeededBehindGate(
+                databaseURL: databaseURL,
+                stampURL: directory.appendingPathComponent("stamp.json"),
+                version: 1, gate: gate
+            )
+        }
+        // Still held: the reparse is waiting rather than deleting.
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertFalse(held.isCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("stamp.json").path))
+        await gate.release()
+        let outcome = await held.value
+        XCTAssertEqual(outcome?.cursorsDropped, 1)
+        // And it handed the gate back.
+        let reclaimed = await gate.tryAcquire()
+        XCTAssertTrue(reclaimed)
+    }
+
+    /// A parser fix reaches files the index already read only if their
+    /// cursors go. The rows themselves stay, so nothing vanishes from the
+    /// Workbench while the next pass re-reads them.
+    func testAReparseDropsOnlyTheNamedProvidersCursorsAndRunsOnce() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("session_index.sqlite3")
+        let stampURL = directory.appendingPathComponent("reparse.json")
+
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(databaseURL.path, &handle,
+                                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil), SQLITE_OK)
+        let database = try XCTUnwrap(handle)
+        XCTAssertEqual(sqlite3_exec(database, """
+            CREATE TABLE session_files (path_hash TEXT PRIMARY KEY, path TEXT NOT NULL, provider TEXT NOT NULL);
+            INSERT INTO session_files VALUES ('a', '/a.db', 'antigravity'), ('b', '/b.db', 'antigravity'),
+                                             ('c', '/c.jsonl', 'claude');
+            """, nil, nil, nil), SQLITE_OK)
+        func remaining() -> [String] {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, "SELECT provider FROM session_files ORDER BY path_hash", -1,
+                                     &statement, nil) == SQLITE_OK else { return [] }
+            defer { sqlite3_finalize(statement) }
+            var out: [String] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                out.append(String(cString: sqlite3_column_text(statement, 0)))
+            }
+            return out
+        }
+
+        let first = SessionIndexReparse.runIfNeeded(databaseURL: databaseURL, stampURL: stampURL, version: 1)
+        XCTAssertEqual(first?.cursorsDropped, 2)
+        XCTAssertEqual(remaining(), ["claude"], "another provider's cursors are not this fix's business")
+
+        // Stamped, so a relaunch does not pay for the same re-scan again.
+        XCTAssertNil(SessionIndexReparse.runIfNeeded(databaseURL: databaseURL, stampURL: stampURL, version: 1))
+        // A later version runs again.
+        XCTAssertEqual(
+            SessionIndexReparse.runIfNeeded(databaseURL: databaseURL, stampURL: stampURL, version: 2,
+                                            providers: ["claude"])?.cursorsDropped,
+            1
+        )
+        XCTAssertTrue(remaining().isEmpty)
+        sqlite3_close_v2(database)
+
+        // A database that refuses the delete is left for the next launch:
+        // stamping over a delete that never ran would strand those files
+        // under the old parser for good.
+        let locked = directory.appendingPathComponent("locked.sqlite3")
+        let lockedStamp = directory.appendingPathComponent("locked-stamp.json")
+        var lockedHandle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(locked.path, &lockedHandle,
+                                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil), SQLITE_OK)
+        let lockedDatabase = try XCTUnwrap(lockedHandle)
+        XCTAssertEqual(sqlite3_exec(lockedDatabase, """
+            CREATE TABLE session_files (path_hash TEXT PRIMARY KEY, path TEXT NOT NULL, provider TEXT NOT NULL);
+            INSERT INTO session_files VALUES ('a', '/a.db', 'antigravity');
+            """, nil, nil, nil), SQLITE_OK)
+        // An exclusive lock another connection holds is exactly what a
+        // running index refresh looks like.
+        XCTAssertEqual(sqlite3_exec(lockedDatabase, "BEGIN EXCLUSIVE", nil, nil, nil), SQLITE_OK)
+        XCTAssertNil(SessionIndexReparse.runIfNeeded(databaseURL: locked, stampURL: lockedStamp, version: 1))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lockedStamp.path),
+                       "a delete that never ran must not be stamped as done")
+        XCTAssertEqual(sqlite3_exec(lockedDatabase, "COMMIT", nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(
+            SessionIndexReparse.runIfNeeded(databaseURL: locked, stampURL: lockedStamp, version: 1)?.cursorsDropped,
+            1,
+            "and the next launch does it"
+        )
+        sqlite3_close_v2(lockedDatabase)
+
+        // No index yet: nothing to do, and stamped so it never runs on the
+        // database the next scan creates.
+        let fresh = directory.appendingPathComponent("fresh.json")
+        XCTAssertNil(SessionIndexReparse.runIfNeeded(
+            databaseURL: directory.appendingPathComponent("missing.sqlite3"), stampURL: fresh, version: 1
+        ))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fresh.path))
+    }
+}

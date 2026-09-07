@@ -153,6 +153,11 @@ public enum VibeBarLocalStore {
     /// pass over `session_index.sqlite3` completed and under which
     /// `SessionIndexExcerptPolicy.version`. Its own file so maintenance
     /// never rewrites the settings blob.
+    /// Which `SessionIndexReparse` version has run against this index.
+    public static var sessionIndexReparseStampURL: URL {
+        baseDirectory.appendingPathComponent("session_index_reparse.json")
+    }
+
     public static var sessionIndexMaintenanceStampURL: URL {
         baseDirectory.appendingPathComponent("session_index_maintenance.json")
     }

@@ -171,7 +171,7 @@ there, not in the package.
 
 **Where it comes from.** `Package.swift` pins the package to an exact
 tag on GitHub (`.package(url: "https://github.com/AstroQore/agent-session-kit.git",
-exact: "0.7.0")`), so a plain clone builds and a release build resolves the
+exact: "0.8.1")`), so a plain clone builds and a release build resolves the
 same package the developer built against — `Package.resolved` is
 gitignored here, and the exact pin is what stands in for it.
 
@@ -905,6 +905,21 @@ Three rules keep the browser-cookie importers (the four core providers'
   Providers and in the setup assistant's browser-cookies step; it lists
   `BrowserCookieImportPreference.available()` — installed browsers with a
   cookie store — and ticking every browser back on clears the choice.
+
+### 7.0.1 A parser fix and an index that already read the file
+
+`SessionIndexService` skips a file whose size and mtime have not moved,
+which is what makes a refresh cheap — and what makes a *parser* upgrade
+invisible: nothing about the file changed, so the better reading is never
+asked for. `SessionIndexReparse` drops the affected provider's rows from
+`session_files` once per version at launch, so the next pass re-reads those
+files; it never touches `sessions` or `session_messages`, so nothing
+disappears from the Workbench meanwhile. Bump `currentVersion` and list the
+providers when a kit upgrade changes what already-indexed rows should say.
+It runs behind `SessionIndexMaintenanceGate` and stamps only after every
+delete reports `SQLITE_DONE`, so a pass that is already walking those files
+cannot skip one on a cursor being deleted, and a refusal is retried on the
+next launch rather than recorded as done.
 
 ### 7.1 Provider and harness naming
 
