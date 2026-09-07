@@ -906,6 +906,17 @@ Three rules keep the browser-cookie importers (the four core providers'
   `BrowserCookieImportPreference.available()` — installed browsers with a
   cookie store — and ticking every browser back on clears the choice.
 
+### 7.0.1 A parser fix and an index that already read the file
+
+`SessionIndexService` skips a file whose size and mtime have not moved,
+which is what makes a refresh cheap — and what makes a *parser* upgrade
+invisible: nothing about the file changed, so the better reading is never
+asked for. `SessionIndexReparse` drops the affected provider's rows from
+`session_files` once per version at launch, so the next pass re-reads those
+files; it never touches `sessions` or `session_messages`, so nothing
+disappears from the Workbench meanwhile. Bump `currentVersion` and list the
+providers when a kit upgrade changes what already-indexed rows should say.
+
 ### 7.1 Provider and harness naming
 
 Vibe Bar names a provider along **two orthogonal axes**. A surface picks

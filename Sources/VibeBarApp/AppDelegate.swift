@@ -73,6 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // MCP-only day, so launch is the trigger that always exists. The
         // compactor throttles itself to one completed pass per day.
         Task.detached(priority: .utility) {
+            // Before the compactor, and before anything reads the index: a
+            // parser upgrade only reaches files the index has already
+            // fingerprinted if their cursors are dropped first.
+            SessionIndexReparse.runIfNeeded()
             try? await Task.sleep(for: .seconds(60))
             await SessionIndexCompactor.standard.compactIfDue()
         }
