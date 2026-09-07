@@ -75,8 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task.detached(priority: .utility) {
             // Before the compactor, and before anything reads the index: a
             // parser upgrade only reaches files the index has already
-            // fingerprinted if their cursors are dropped first.
-            SessionIndexReparse.runIfNeeded()
+            // fingerprinted if their cursors are dropped first. Behind the
+            // maintenance gate, so a refresh that is already walking those
+            // files cannot skip one on the cursor this deletes.
+            await SessionIndexReparse.runIfNeededBehindGate()
             try? await Task.sleep(for: .seconds(60))
             await SessionIndexCompactor.standard.compactIfDue()
         }

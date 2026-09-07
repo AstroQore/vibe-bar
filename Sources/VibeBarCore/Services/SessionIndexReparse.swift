@@ -35,6 +35,27 @@ public enum SessionIndexReparse {
         var version: Int
     }
 
+    /// Behind the maintenance gate, which is what keeps this off an
+    /// indexing pass already walking the same files: that pass can skip a
+    /// file on the cursor this is about to delete and finish just after,
+    /// leaving the conversation on the old reading until the next refresh.
+    /// A gate that cannot be claimed leaves the stamp alone, so the next
+    /// launch tries again.
+    @discardableResult
+    public static func runIfNeededBehindGate(
+        databaseURL: URL = VibeBarLocalStore.sessionIndexURL,
+        stampURL: URL = VibeBarLocalStore.sessionIndexReparseStampURL,
+        version: Int = SessionIndexReparse.currentVersion,
+        providers: [String] = SessionIndexReparse.providers,
+        gate: SessionIndexMaintenanceGate = .shared
+    ) async -> Outcome? {
+        do { try await gate.acquire() } catch { return nil }
+        let outcome = runIfNeeded(databaseURL: databaseURL, stampURL: stampURL,
+                                  version: version, providers: providers)
+        await gate.release()
+        return outcome
+    }
+
     /// Run once per version. Returns what it did, or nil when the stamp is
     /// current, the index does not exist yet, or the database refused — and
     /// a refusal leaves the stamp alone, so the next launch tries again.

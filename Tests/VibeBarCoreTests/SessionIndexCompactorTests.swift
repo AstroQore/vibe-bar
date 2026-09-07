@@ -205,6 +205,44 @@ final class SessionIndexCompactorTests: XCTestCase {
 }
 
 extension SessionIndexCompactorTests {
+    /// The gate is what keeps the reparse off an indexing pass already
+    /// walking the same files.
+    func testAReparseWaitsForTheMaintenanceGate() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("index.sqlite3")
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(databaseURL.path, &handle,
+                                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil), SQLITE_OK)
+        let database = try XCTUnwrap(handle)
+        defer { sqlite3_close_v2(database) }
+        XCTAssertEqual(sqlite3_exec(database, """
+            CREATE TABLE session_files (path_hash TEXT PRIMARY KEY, path TEXT NOT NULL, provider TEXT NOT NULL);
+            INSERT INTO session_files VALUES ('a', '/a.db', 'antigravity');
+            """, nil, nil, nil), SQLITE_OK)
+
+        let gate = SessionIndexMaintenanceGate()
+        try await gate.acquire()
+        let held = Task {
+            await SessionIndexReparse.runIfNeededBehindGate(
+                databaseURL: databaseURL,
+                stampURL: directory.appendingPathComponent("stamp.json"),
+                version: 1, gate: gate
+            )
+        }
+        // Still held: the reparse is waiting rather than deleting.
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertFalse(held.isCancelled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("stamp.json").path))
+        await gate.release()
+        let outcome = await held.value
+        XCTAssertEqual(outcome?.cursorsDropped, 1)
+        // And it handed the gate back.
+        let reclaimed = await gate.tryAcquire()
+        XCTAssertTrue(reclaimed)
+    }
+
     /// A parser fix reaches files the index already read only if their
     /// cursors go. The rows themselves stay, so nothing vanishes from the
     /// Workbench while the next pass re-reads them.

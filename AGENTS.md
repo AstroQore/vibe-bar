@@ -916,6 +916,10 @@ asked for. `SessionIndexReparse` drops the affected provider's rows from
 files; it never touches `sessions` or `session_messages`, so nothing
 disappears from the Workbench meanwhile. Bump `currentVersion` and list the
 providers when a kit upgrade changes what already-indexed rows should say.
+It runs behind `SessionIndexMaintenanceGate` and stamps only after every
+delete reports `SQLITE_DONE`, so a pass that is already walking those files
+cannot skip one on a cursor being deleted, and a refusal is retried on the
+next launch rather than recorded as done.
 
 ### 7.1 Provider and harness naming
 
