@@ -73,6 +73,7 @@ struct SessionListView: View {
         SessionRow(
             density: density,
             row: row,
+            modelLabel: model.displayModel(for: row.summary),
             isSelected: model.selection?.id == row.id,
             isDeleteMode: model.isDeleteMode,
             isChecked: model.checkedIDs.contains(row.id),
@@ -176,6 +177,9 @@ struct SessionListView: View {
 private struct SessionRow: View {
     let density: Theme.Density
     let row: SessionManagerModel.Row
+    /// Resolved by the model, not here: it holds the labels AntiGravity
+    /// learned, and a row must not read a file to draw a chip.
+    let modelLabel: String?
     let isSelected: Bool
     let isDeleteMode: Bool
     let isChecked: Bool
@@ -293,15 +297,16 @@ private struct SessionRow: View {
             Text(summary.effectiveHarness.displayName)
                 .fontWeight(.medium)
                 .lineLimit(1)
-            // An unlearned AntiGravity model enum says nothing a reader can
-            // use; the row is better off without the chip.
-            if let model = summary.model, !model.isEmpty, !UsageModelNaming.isUnlabelledModelEnum(model) {
-                Text(UsageModelNaming.canonicalDisplayName(model))
+            // An AntiGravity model id that is still an internal enum says
+            // nothing a reader can use; the row is better off without the
+            // chip than with `MODEL_PLACEHOLDER_M318` on it.
+            if let modelLabel {
+                Text(modelLabel)
                     .lineLimit(1)
                     .padding(.horizontal, 5)
                     .frame(minHeight: 14)
                     .background(Capsule().fill(Color.primary.opacity(0.07)))
-                    .help(model)
+                    .help(summary.model ?? modelLabel)
             }
         }
         .font(.system(size: max(10, density.resetCountdownFontSize - 1)))

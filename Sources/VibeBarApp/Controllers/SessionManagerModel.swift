@@ -258,6 +258,9 @@ final class SessionManagerModel: ObservableObject {
 
     private let settingsStore: SettingsStore
     private let homeDirectory: String
+    /// Reloaded with each full summary reload, so a model AntiGravity ships
+    /// after launch names itself without a relaunch. One small JSON file.
+    private var antigravityModelLabels: AntigravityModelLabelStore
     private let registry: SessionProviderRegistry
     private let deleter: SessionDeleter
     private let index: SharedSessionIndex
@@ -346,6 +349,21 @@ final class SessionManagerModel: ObservableObject {
         self.deleter = SessionDeleter(homeDirectory: homeDirectory)
         self.index = index
         self.isIndexAvailable = index.store != nil
+        self.antigravityModelLabels = AntigravityModelLabelStore.load(homeDirectory: homeDirectory)
+    }
+
+    /// The name AntiGravity's own status endpoint gives a model id, or nil
+    /// when the id is still one of its internal enums and says nothing a
+    /// reader can use.
+    ///
+    /// AntiGravity writes `MODEL_PLACEHOLDER_M318` into its transcripts and
+    /// keeps the label — "Gemini 3.8 Flash (High)" — in the status response
+    /// the quota adapter already harvests into
+    /// `~/.vibebar/antigravity_model_labels.json`. The cost scanner has
+    /// resolved through that file for as long as it has existed; the session
+    /// list was reading the raw id and hiding the chip instead.
+    func displayModel(for summary: SessionSummary) -> String? {
+        UsageModelNaming.sessionChipLabel(model: summary.model, labels: antigravityModelLabels)
     }
 
     // MARK: - Lifecycle
@@ -478,6 +496,9 @@ final class SessionManagerModel: ObservableObject {
 
     private func reloadSummaryPage(reset: Bool) {
         guard let service else { return }
+        if reset {
+            antigravityModelLabels = AntigravityModelLabelStore.load(homeDirectory: homeDirectory)
+        }
         summaryGeneration &+= 1
         let generation = summaryGeneration
         // No harness selected queries nothing. Asking the index for an empty
