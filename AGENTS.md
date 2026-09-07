@@ -919,7 +919,7 @@ SubProvider → L3 quota / model group. Source of truth:
 | L1 company | L2 SubProvider        | L3 quota / model groups                  |
 | ---------- | --------------------- | ---------------------------------------- |
 | OpenAI     | ChatGPT Agentic       | All Models, Codex Spark …                 |
-| OpenAI     | ChatGPT Chat          | Image Generation, Deep Research, GPT-6 Astra Pro · Weekly, GPT-5.6 Sol Pro · Daily, Pro Models · Daily/Weekly |
+| OpenAI     | ChatGPT Chat          | Image Generation · Daily, Deep Research · Monthly, GPT-6 Astra Pro · Weekly, GPT-5.6 Sol Pro · Daily, Pro Models · Daily/Weekly |
 | Anthropic  | Claude                | All Models, Sonnet, Opus, Fable …         |
 | Google AI  | Gemini Web            | 5 Hours, Weekly                           |
 | Google AI  | AntiGravity           | Gemini Models, Claude & GPT Models        |
@@ -1040,9 +1040,15 @@ counts the account's saved conversations instead: `ChatGPTChatHistoryReader`
 walks `/backend-api/conversations` newest first inside a one-week window,
 skips Work rows and temporary chats, fetches only changed revisions (24 per
 refresh, 25 s), and `ChatGPTChatParser.conversation` charges each user turn
-to the model of its final answer, once. The buckets file under the model as their L3 group (GPT-6 Astra Pro,
-GPT-5.6 Sol Pro, Pro Models) with the window (Weekly, Daily) as the row, the
-way Codex's Spark lanes are drawn. `ChatGPTChatProAllowances` holds the
+to the model of its final answer, once. Every Chat bucket files under what it meters as its L3 group — Image
+Generation, Deep Research, GPT-6 Astra Pro, GPT-5.6 Sol Pro, Pro Models —
+with its window as the row (`ChatGPTChatWindow.label(seconds:)` names one
+from its length, tolerantly, because the service reports "now + window" on
+an untouched allowance). A feature with no known window keeps the feature
+name as its row and no group. A Pro bucket's reset is the oldest message
+still inside its window plus the window, or a whole window from now when
+nothing was spent — the rolling shape the service reports for the features
+it does time — so the Pro rows pace and forecast like every other row. `ChatGPTChatProAllowances` holds the
 published totals per `plan_type` (`pro`: 200/week GPT-6 Pro, 170/day Sol Pro,
 200/day both; `prolite`: 50/week shared — help article 20001354, read
 2026-09-07); other plans get no Pro buckets. Counts are trailing-window

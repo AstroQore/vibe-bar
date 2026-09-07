@@ -1,5 +1,26 @@
 import Foundation
 
+/// The contract name for a Chat allowance's window, so every Chat row reads
+/// the way the rest of the app's rows do: the thing being metered is the
+/// group, the window is the row.
+///
+/// Ranges rather than exact matches, because the window is usually inferred
+/// from the service's own `reset_after` — which is "now + window" on an
+/// allowance nothing has been spent from, so a read a few minutes into the
+/// window is a few minutes short of a whole one.
+public enum ChatGPTChatWindow {
+    public static func label(seconds: Int?) -> String? {
+        guard let seconds, seconds > 0 else { return nil }
+        switch seconds {
+        case (4 * 3_600)...(6 * 3_600): return "5 Hours"
+        case (20 * 3_600)...(28 * 3_600): return "Daily"
+        case (6 * 86_400)...(8 * 86_400): return "Weekly"
+        case (28 * 86_400)...(32 * 86_400): return "Monthly"
+        default: return nil
+        }
+    }
+}
+
 /// One Pro-model allowance as OpenAI publishes it for a plan's Chat surface.
 ///
 /// Source: "GPT-5.6 and GPT-6 Pro in ChatGPT", help.openai.com article
@@ -183,11 +204,18 @@ extension ChatGPTChatParser {
     }
 
     /// Each allowance as a quota bucket: the messages charged to its models
-    /// inside a window ending now, against the published total. The service
-    /// states no window start, so the count is a trailing window and is
-    /// marked estimated; a throttled model overrides it with the service's
-    /// own exhausted state and reset. A shared allowance counts as
-    /// throttled only when every model it covers is.
+    /// inside a window ending now, against the published total, marked
+    /// estimated.
+    ///
+    /// The reset is the moment the count next falls — the oldest message
+    /// still inside the window, plus the window — and a full allowance
+    /// resets a whole window from now. That is the same rolling shape the
+    /// service reports for the feature allowances it *does* time: an unused
+    /// Image Generation allowance comes back as "now + 24h" on every read.
+    /// With it the Pro rows carry the pace, forecast and history every other
+    /// quota row has. A throttled model overrides both count and reset with
+    /// the service's own; a shared allowance counts as throttled only when
+    /// every model it covers is.
     public static func proBuckets(allowances: [ChatGPTChatProAllowance], turns: [ChatGPTChatTurn],
                                   limits: [ChatGPTChatModelLimit], complete: Bool, now: Date) -> [QuotaBucket] {
         let unique = Dictionary(turns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }).values
@@ -204,7 +232,11 @@ extension ChatGPTChatParser {
             } else {
                 quantity = QuotaQuantity(used: used, remaining: complete ? max(0, allowance.limit - used) : nil,
                                          limit: allowance.limit, isEstimated: true, coverageComplete: complete)
-                resetAt = nil
+                let oldest = unique
+                    .filter { allowance.models.contains($0.model) && $0.createdAt > start && $0.createdAt <= now }
+                    .map(\.createdAt)
+                    .min()
+                resetAt = (oldest ?? now).addingTimeInterval(TimeInterval(allowance.windowSeconds))
             }
             return QuotaBucket(id: allowance.id, title: allowance.title, shortLabel: allowance.title,
                                usedPercent: quantity.usedPercent ?? 0, resetAt: resetAt,
