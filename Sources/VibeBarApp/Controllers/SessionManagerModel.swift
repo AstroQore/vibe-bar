@@ -258,9 +258,10 @@ final class SessionManagerModel: ObservableObject {
 
     private let settingsStore: SettingsStore
     private let homeDirectory: String
-    /// Reloaded with each full summary reload, so a model AntiGravity ships
-    /// after launch names itself without a relaunch. One small JSON file.
-    private var antigravityModelLabels: AntigravityModelLabelStore
+    /// Refreshed off the main actor with each full summary reload, so a
+    /// model AntiGravity ships after launch names itself without a relaunch
+    /// and no filter change waits on a disk read.
+    @Published private(set) var antigravityModelLabels = AntigravityModelLabelStore()
     private let registry: SessionProviderRegistry
     private let deleter: SessionDeleter
     private let index: SharedSessionIndex
@@ -349,7 +350,21 @@ final class SessionManagerModel: ObservableObject {
         self.deleter = SessionDeleter(homeDirectory: homeDirectory)
         self.index = index
         self.isIndexAvailable = index.store != nil
-        self.antigravityModelLabels = AntigravityModelLabelStore.load(homeDirectory: homeDirectory)
+        refreshAntigravityModelLabels()
+    }
+
+    /// Off the actor: this is a file read, and every filter change asks for
+    /// it. A row without its labels yet draws no chip, and gets one on the
+    /// next render.
+    private func refreshAntigravityModelLabels() {
+        let home = homeDirectory
+        Task.detached(priority: .utility) {
+            let store = AntigravityModelLabelStore.load(homeDirectory: home)
+            await MainActor.run { [weak self] in
+                guard let self, self.antigravityModelLabels != store else { return }
+                self.antigravityModelLabels = store
+            }
+        }
     }
 
     /// The name AntiGravity's own status endpoint gives a model id, or nil
@@ -496,9 +511,7 @@ final class SessionManagerModel: ObservableObject {
 
     private func reloadSummaryPage(reset: Bool) {
         guard let service else { return }
-        if reset {
-            antigravityModelLabels = AntigravityModelLabelStore.load(homeDirectory: homeDirectory)
-        }
+        if reset { refreshAntigravityModelLabels() }
         summaryGeneration &+= 1
         let generation = summaryGeneration
         // No harness selected queries nothing. Asking the index for an empty
