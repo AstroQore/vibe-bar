@@ -46,6 +46,7 @@ final class OnboardingWindowController: NSObject {
 
         let hosting = NSHostingController(
             rootView: OnboardingView(navigation: navigation)
+                .appLanguageLocale()
                 .vibeBarNoInitialFocus()
                 .environmentObject(environment)
                 .environmentObject(environment.accountStore)

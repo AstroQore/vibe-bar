@@ -261,6 +261,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 onToggleMiniWindow: { [weak controller] in controller?.toggleMiniWindow() },
                 initialPage: controller.popoverInitialPage
             )
+                .appLanguageLocale()
                 .vibeBarNoInitialFocus()
                 // While a shrink waits out its settle window the hosting view
                 // is briefly taller than the content; without an explicit top
