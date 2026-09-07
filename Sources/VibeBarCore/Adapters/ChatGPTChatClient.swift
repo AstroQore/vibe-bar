@@ -220,7 +220,10 @@ public struct ChatGPTChatClient: Sendable {
             // known the feature name is the row and there is no group, so a
             // first read never files a bucket under a group of one.
             let row = ChatGPTChatWindow.label(seconds: window)
-            return QuotaBucket(id: sample.id, title: row ?? feature, shortLabel: row ?? feature, usedPercent: 0,
+            // The row is the window, but `shortLabel` stays the feature: it
+            // is what the menu bar and the compact mini layouts print, and
+            // "Daily" alone would not say daily *what*.
+            return QuotaBucket(id: sample.id, title: row ?? feature, shortLabel: feature, usedPercent: 0,
                                resetAt: sample.resetAt, rawWindowSeconds: window,
                                groupTitle: row == nil ? nil : feature,
                                quantity: quantities[sample.id]?.quantity)

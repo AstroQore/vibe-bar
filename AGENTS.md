@@ -1048,7 +1048,14 @@ an untouched allowance). A feature with no known window keeps the feature
 name as its row and no group. A Pro bucket's reset is the oldest message
 still inside its window plus the window, or a whole window from now when
 nothing was spent — the rolling shape the service reports for the features
-it does time — so the Pro rows pace and forecast like every other row. `ChatGPTChatProAllowances` holds the
+it does time — so the Pro rows pace and forecast like every other row. Such
+a bucket sets `QuotaBucket.hasRollingReset`, which keeps
+`SubscriptionHistoryStore` out of it: a message ageing out returns one unit
+and moves the date, and reading that as a completed cycle would fill the
+reset history with cycles nothing ever reset. Every Chat field is
+`isBranchStyleField`, since each carries an L3 group; `shortLabel` stays the
+feature or model name, because the menu bar prints that one and "Daily"
+alone does not say daily what. `ChatGPTChatProAllowances` holds the
 published totals per `plan_type` (`pro`: 200/week GPT-6 Pro, 170/day Sol Pro,
 200/day both; `prolite`: 50/week shared — help article 20001354, read
 2026-09-07); other plans get no Pro buckets. Counts are trailing-window

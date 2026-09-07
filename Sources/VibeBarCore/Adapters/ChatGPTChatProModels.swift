@@ -226,6 +226,9 @@ extension ChatGPTChatParser {
             let exhausted = allowance.models.allSatisfy { limited[$0] != nil }
             let quantity: QuotaQuantity
             let resetAt: Date?
+            // The service's own reset is a real deadline; the one derived
+            // below is the next expiry of a rolling count.
+            var rolling = false
             if exhausted {
                 quantity = QuotaQuantity(used: allowance.limit, remaining: 0, limit: allowance.limit, isEstimated: true)
                 resetAt = allowance.models.compactMap { limited[$0]?.resetsAt }.max()
@@ -237,10 +240,12 @@ extension ChatGPTChatParser {
                     .map(\.createdAt)
                     .min()
                 resetAt = (oldest ?? now).addingTimeInterval(TimeInterval(allowance.windowSeconds))
+                rolling = true
             }
             return QuotaBucket(id: allowance.id, title: allowance.title, shortLabel: allowance.title,
                                usedPercent: quantity.usedPercent ?? 0, resetAt: resetAt,
-                               rawWindowSeconds: allowance.windowSeconds, groupTitle: allowance.group, quantity: quantity)
+                               rawWindowSeconds: allowance.windowSeconds, groupTitle: allowance.group,
+                               quantity: quantity, hasRollingReset: rolling)
         }
     }
 

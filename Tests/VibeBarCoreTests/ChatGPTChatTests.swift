@@ -152,6 +152,14 @@ final class ChatGPTChatTests: XCTestCase {
         // The feature is the group, its window is the row.
         XCTAssertEqual(quota.buckets.map(\.groupTitle), ["Image Generation", "Deep Research"])
         XCTAssertEqual(quota.buckets.map(\.title), ["Daily", "Monthly"])
+        // The compact surfaces still name the feature: "Daily" alone would
+        // not say daily what.
+        XCTAssertEqual(quota.buckets.map(\.shortLabel), ["Image Generation", "Deep Research"])
+        XCTAssertFalse(quota.buckets.contains(where: \.hasRollingReset), "these resets are the service's own")
+        for field in MenuBarFieldCatalog.chatGPTChatFields {
+            XCTAssertTrue(MenuBarFieldCatalog.isBranchStyleField(field),
+                          "\(field.bucketId) carries an L3 group, so every surface that composes one must know")
+        }
         XCTAssertNotNil(UsagePace.compute(bucket: quota.buckets[0], now: base))
         XCTAssertNil(quota.chatGPTChat?.history)
         let calls = await transport.calls
@@ -331,6 +339,8 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertTrue(buckets.allSatisfy { $0.quantity?.isEstimated == true && $0.hasPercentage })
         XCTAssertNotNil(UsagePace.compute(bucket: buckets[0], now: base), "a Pro row paces like every other row")
         XCTAssertNotNil(QuotaPaceForecast.compute(bucket: buckets[0], observations: [], cycles: [], now: base))
+        // A rolling reset paces and forecasts, and is not a cycle boundary.
+        XCTAssertTrue(buckets.allSatisfy(\.hasRollingReset))
         // Nothing spent: a whole window from now, as the service reports for
         // an untouched feature allowance.
         let untouched = ChatGPTChatParser.proBuckets(allowances: pro, turns: [], limits: [], complete: true, now: base)
@@ -350,6 +360,8 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertEqual(oneLimited[0].quantity?.remaining, 0)
         XCTAssertEqual(oneLimited[0].usedPercent, 100)
         XCTAssertEqual(oneLimited[0].resetAt, reset)
+        XCTAssertFalse(oneLimited[0].hasRollingReset, "a service-reported reset is a real deadline")
+        XCTAssertTrue(oneLimited[2].hasRollingReset)
         XCTAssertTrue(oneLimited[0].hasPercentage, "the service's exhausted state needs no history")
         XCTAssertEqual(oneLimited[2].quantity?.used, 3, "one throttled model does not exhaust a shared allowance")
         XCTAssertEqual(oneLimited[2].resetAt, base.addingTimeInterval(-7_200 + 86_400),
