@@ -258,6 +258,16 @@ final class SessionManagerModel: ObservableObject {
 
     private let settingsStore: SettingsStore
     private let homeDirectory: String
+    /// Refreshed off the main actor with each full summary reload, so a
+    /// model AntiGravity ships after launch names itself without a relaunch
+    /// and no filter change waits on a disk read.
+    @Published private(set) var antigravityModelLabels = AntigravityModelLabelStore()
+    /// When the label file the published labels came from was last written.
+    /// Ordering by the snapshot rather than by the read that asked for it:
+    /// two detached reads can finish either way round, and can even read
+    /// either way round, but the file's own timestamp says which of them
+    /// saw the newer file.
+    private var appliedLabelsWrittenAt: Date?
     private let registry: SessionProviderRegistry
     private let deleter: SessionDeleter
     private let index: SharedSessionIndex
@@ -346,6 +356,47 @@ final class SessionManagerModel: ObservableObject {
         self.deleter = SessionDeleter(homeDirectory: homeDirectory)
         self.index = index
         self.isIndexAvailable = index.store != nil
+        refreshAntigravityModelLabels()
+    }
+
+    /// Off the actor: this is a file read, and every filter change asks for
+    /// it. A row without its labels yet draws no chip, and gets one on the
+    /// next render.
+    ///
+    /// Two reads can straddle a quota refresh that rewrites the file —
+    /// `AntigravityQuotaAdapter` replaces a label whose value changed, so
+    /// the file is not append-only — and neither the order they were asked
+    /// for nor the order they finish in says which one read the newer file.
+    /// Its modification date does, so each read carries it and an older
+    /// snapshot is dropped.
+    private func refreshAntigravityModelLabels() {
+        let home = homeDirectory
+        Task.detached(priority: .utility) {
+            let url = AntigravityModelLabelStore.fileURL(homeDirectory: home)
+            let store = AntigravityModelLabelStore.load(homeDirectory: home)
+            let writtenAt = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                if let writtenAt, let applied = self.appliedLabelsWrittenAt, writtenAt < applied { return }
+                self.appliedLabelsWrittenAt = writtenAt ?? self.appliedLabelsWrittenAt
+                guard self.antigravityModelLabels != store else { return }
+                self.antigravityModelLabels = store
+            }
+        }
+    }
+
+    /// The name AntiGravity's own status endpoint gives a model id, or nil
+    /// when the id is still one of its internal enums and says nothing a
+    /// reader can use.
+    ///
+    /// AntiGravity writes `MODEL_PLACEHOLDER_M318` into its transcripts and
+    /// keeps the label — "Gemini 3.8 Flash (High)" — in the status response
+    /// the quota adapter already harvests into
+    /// `~/.vibebar/antigravity_model_labels.json`. The cost scanner has
+    /// resolved through that file for as long as it has existed; the session
+    /// list was reading the raw id and hiding the chip instead.
+    func displayModel(for summary: SessionSummary) -> String? {
+        UsageModelNaming.sessionChipLabel(model: summary.model, labels: antigravityModelLabels)
     }
 
     // MARK: - Lifecycle
@@ -478,6 +529,7 @@ final class SessionManagerModel: ObservableObject {
 
     private func reloadSummaryPage(reset: Bool) {
         guard let service else { return }
+        if reset { refreshAntigravityModelLabels() }
         summaryGeneration &+= 1
         let generation = summaryGeneration
         // No harness selected queries nothing. Asking the index for an empty

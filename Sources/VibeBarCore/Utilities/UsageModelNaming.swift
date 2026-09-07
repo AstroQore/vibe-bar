@@ -9,6 +9,25 @@ public enum UsageModelNaming {
     /// `MODEL_PLACEHOLDER_M318` and the like — for which no human label has
     /// been learned. It is an identifier for the pricing side to key on,
     /// not a name anyone should read.
+    /// The model name a session row should wear, or nil when the log named
+    /// no model a reader could use.
+    ///
+    /// AntiGravity writes that internal enum into its own transcripts and
+    /// keeps the human label — "Gemini 3.8 Flash (High)" — in the status
+    /// response the quota adapter harvests into
+    /// `AntigravityModelLabelStore`. Resolving through it here is what lets
+    /// a Sessions row name the model at all; the cost scanner has resolved
+    /// through the same file since the store existed.
+    public static func sessionChipLabel(
+        model: String?,
+        labels: AntigravityModelLabelStore
+    ) -> String? {
+        guard let model, !model.isEmpty else { return nil }
+        let resolved = labels.resolve(model)
+        guard !isUnlabelledModelEnum(resolved) else { return nil }
+        return canonicalDisplayName(resolved)
+    }
+
     public static func isUnlabelledModelEnum(_ raw: String) -> Bool {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("MODEL_"), trimmed.count > 6 else { return false }
