@@ -356,13 +356,23 @@ final class SessionManagerModel: ObservableObject {
     /// Off the actor: this is a file read, and every filter change asks for
     /// it. A row without its labels yet draws no chip, and gets one on the
     /// next render.
+    ///
+    /// Merged rather than assigned, so two reads that straddle a quota
+    /// refresh cannot end with the older one winning and a chip that was
+    /// already named going blank again. The file only ever gains entries —
+    /// `AntigravityQuotaAdapter` merges into it — so a union is the same
+    /// answer as the newest read, whichever order they land in.
     private func refreshAntigravityModelLabels() {
         let home = homeDirectory
         Task.detached(priority: .utility) {
             let store = AntigravityModelLabelStore.load(homeDirectory: home)
+            guard !store.labels.isEmpty else { return }
             await MainActor.run { [weak self] in
-                guard let self, self.antigravityModelLabels != store else { return }
-                self.antigravityModelLabels = store
+                guard let self else { return }
+                var merged = self.antigravityModelLabels
+                merged.labels.merge(store.labels) { _, new in new }
+                guard merged != self.antigravityModelLabels else { return }
+                self.antigravityModelLabels = merged
             }
         }
     }
