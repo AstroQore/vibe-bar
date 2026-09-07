@@ -1441,15 +1441,19 @@ struct CostHistoryView: View {
         _ granularity: CostChartGranularity,
         span: TimeInterval
     ) -> Date.FormatStyle {
-        switch granularity {
-        case .hour: .dateTime.hour()
+        // `.locale` on every branch: a format style carries its own locale
+        // and defaults to the system's, so an axis would spell its months in
+        // the language macOS is set to rather than the one the user picked.
+        let locale = AppLocale.current
+        return switch granularity {
+        case .hour: .dateTime.hour().locale(locale)
         case .day, .week:
             span > Self.multiYearSpan
-                ? .dateTime.month(.abbreviated).year(.twoDigits)
-                : .dateTime.day().month(.abbreviated)
+                ? .dateTime.month(.abbreviated).year(.twoDigits).locale(locale)
+                : .dateTime.day().month(.abbreviated).locale(locale)
         // Monthly bars only appear on spans where the day of the month is
         // noise, so the label goes straight to month-and-year.
-        case .month: .dateTime.month(.abbreviated).year(.twoDigits)
+        case .month: .dateTime.month(.abbreviated).year(.twoDigits).locale(locale)
         }
     }
 
