@@ -213,9 +213,19 @@ public struct ChatGPTChatClient: Sendable {
         let quantities = try await store.observe(localAccount: account.id, identity: identity,
                                                 plan: plan?.lowercased(), samples: samples)
         var buckets = samples.map { sample in
-            let title = sample.id == "image_gen" ? "Image Generation" : "Deep Research"
-            return QuotaBucket(id: sample.id, title: title, shortLabel: title, usedPercent: 0,
-                               resetAt: sample.resetAt, rawWindowSeconds: quantities[sample.id]?.windowSeconds,
+            let feature = sample.id == "image_gen" ? "Image Generation" : "Deep Research"
+            let window = quantities[sample.id]?.windowSeconds
+            // The feature is the group and its window is the row, the way
+            // Codex's Spark lanes and the Pro models read. Until a window is
+            // known the feature name is the row and there is no group, so a
+            // first read never files a bucket under a group of one.
+            let row = ChatGPTChatWindow.label(seconds: window)
+            // The row is the window, but `shortLabel` stays the feature: it
+            // is what the menu bar and the compact mini layouts print, and
+            // "Daily" alone would not say daily *what*.
+            return QuotaBucket(id: sample.id, title: row ?? feature, shortLabel: feature, usedPercent: 0,
+                               resetAt: sample.resetAt, rawWindowSeconds: window,
+                               groupTitle: row == nil ? nil : feature,
                                quantity: quantities[sample.id]?.quantity)
         }
         var summary = ChatGPTChatSummary(transport: transport.name, planVerified: plan != nil, accountIdentity: identity)

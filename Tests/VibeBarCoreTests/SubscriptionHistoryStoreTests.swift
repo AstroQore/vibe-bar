@@ -1209,3 +1209,52 @@ final class SubscriptionHistoryStoreTests: XCTestCase {
         ]
     }
 }
+
+extension SubscriptionHistoryStoreTests {
+    /// A trailing-window count has no cycle. Its reset moves every time a
+    /// message ages out, and the count falls with it — which the cycle
+    /// history would otherwise read as a quota that had just refilled, once
+    /// per expiry, for as long as the user keeps using the model.
+    func testARollingResetNeverRecordsACycleOrAFeatureReset() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SubscriptionHistoryStore(fileURL: directory.appendingPathComponent("history.json"))
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        func quota(used: Double, remaining: Int, resetAt: Date, rolling: Bool) -> AccountQuota {
+            AccountQuota(
+                accountId: "chat", tool: .chatgptChat,
+                buckets: [QuotaBucket(
+                    id: "gpt6_pro_weekly", title: "Weekly", shortLabel: "Weekly", usedPercent: used,
+                    resetAt: resetAt, rawWindowSeconds: 7 * 86_400, groupTitle: "GPT-6 Astra Pro",
+                    quantity: .init(used: Int(used * 2), remaining: remaining, limit: 200, isEstimated: true),
+                    hasRollingReset: rolling
+                )],
+                plan: "pro", email: nil, queriedAt: start
+            )
+        }
+        // Three expiries: the deadline walks forward a day at a time and the
+        // count falls with it.
+        for day in 0..<3 {
+            let now = start.addingTimeInterval(TimeInterval(day) * 86_400)
+            await store.observe(
+                quota(used: Double(30 - day * 10), remaining: 140 + day * 20,
+                      resetAt: now.addingTimeInterval(86_400), rolling: true),
+                now: now
+            )
+        }
+        let samples = await store.allSamples()
+        XCTAssertTrue(samples.isEmpty, "no cycle ended; time merely passed")
+
+        // The same shape without the flag is a real deadline, and is recorded.
+        for day in 0..<2 {
+            let now = start.addingTimeInterval(TimeInterval(day) * 86_400)
+            await store.observe(
+                quota(used: Double(90 - day * 80), remaining: 20 + day * 160,
+                      resetAt: now.addingTimeInterval(86_400), rolling: false),
+                now: now
+            )
+        }
+        let recorded = await store.allSamples()
+        XCTAssertFalse(recorded.isEmpty, "a bucket whose deadline is the provider's still records its cycles")
+    }
+}

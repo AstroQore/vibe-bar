@@ -190,20 +190,25 @@ public enum MockDataProvider {
         switch account.tool {
         case .chatgptChat:
             buckets = [
-                QuotaBucket(id: "image_gen", title: "Image Generation", shortLabel: "Image Generation", usedPercent: 0,
+                QuotaBucket(id: "image_gen", title: "Daily", shortLabel: "Daily", usedPercent: 0,
                             resetAt: now.addingTimeInterval(36000), rawWindowSeconds: 86_400,
+                            groupTitle: "Image Generation",
                             quantity: .init(used: 2, remaining: 998, limit: 1000, isEstimated: true)),
-                QuotaBucket(id: "deep_research", title: "Deep Research", shortLabel: "Deep Research", usedPercent: 0,
+                QuotaBucket(id: "deep_research", title: "Monthly", shortLabel: "Monthly", usedPercent: 0,
                             resetAt: now.addingTimeInterval(1209600), rawWindowSeconds: 30 * 86_400,
+                            groupTitle: "Deep Research",
                             quantity: .init(used: 3, remaining: 247, limit: 250, isEstimated: true)),
                 QuotaBucket(id: "gpt6_pro_weekly", title: "Weekly", shortLabel: "Weekly", usedPercent: 0,
-                            rawWindowSeconds: 7 * 86_400, groupTitle: "GPT-6 Astra Pro",
+                            resetAt: now.addingTimeInterval(4 * 86_400), rawWindowSeconds: 7 * 86_400,
+                            groupTitle: "GPT-6 Astra Pro",
                             quantity: .init(used: 6, remaining: 194, limit: 200, isEstimated: true)),
                 QuotaBucket(id: "sol_pro_daily", title: "Daily", shortLabel: "Daily", usedPercent: 0,
-                            rawWindowSeconds: 86_400, groupTitle: "GPT-5.6 Sol Pro",
+                            resetAt: now.addingTimeInterval(19 * 3_600), rawWindowSeconds: 86_400,
+                            groupTitle: "GPT-5.6 Sol Pro",
                             quantity: .init(used: 0, remaining: 170, limit: 170, isEstimated: true)),
                 QuotaBucket(id: "pro_daily", title: "Daily", shortLabel: "Daily", usedPercent: 0,
-                            rawWindowSeconds: 86_400, groupTitle: "Pro Models",
+                            resetAt: now.addingTimeInterval(11 * 3_600), rawWindowSeconds: 86_400,
+                            groupTitle: "Pro Models",
                             quantity: .init(used: 4, remaining: 196, limit: 200, isEstimated: true))
             ]
         case .codex:

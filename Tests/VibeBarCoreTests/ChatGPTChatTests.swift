@@ -149,6 +149,18 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertTrue(quota.buckets.allSatisfy { $0.hasPercentage && $0.quantity?.isEstimated == true },
                       "the first read already shows an estimated percentage")
         XCTAssertEqual(quota.buckets.first?.quantity?.limit, 998)
+        // The feature is the group, its window is the row.
+        XCTAssertEqual(quota.buckets.map(\.groupTitle), ["Image Generation", "Deep Research"])
+        XCTAssertEqual(quota.buckets.map(\.title), ["Daily", "Monthly"])
+        // The compact surfaces still name the feature: "Daily" alone would
+        // not say daily what.
+        XCTAssertEqual(quota.buckets.map(\.shortLabel), ["Image Generation", "Deep Research"])
+        XCTAssertFalse(quota.buckets.contains(where: \.hasRollingReset), "these resets are the service's own")
+        for field in MenuBarFieldCatalog.chatGPTChatFields {
+            XCTAssertTrue(MenuBarFieldCatalog.isBranchStyleField(field),
+                          "\(field.bucketId) carries an L3 group, so every surface that composes one must know")
+        }
+        XCTAssertNotNil(UsagePace.compute(bucket: quota.buckets[0], now: base))
         XCTAssertNil(quota.chatGPTChat?.history)
         let calls = await transport.calls
         XCTAssertEqual(calls, ["/api/auth/session", "/backend-api/wham/usage", "/backend-api/conversation/init"])
@@ -263,6 +275,20 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertTrue(ChatGPTChatParser.modelLimits(Data("{}".utf8), now: base).isEmpty)
     }
 
+    func testAWindowIsNamedByItsLengthAndTolerantOfAReadInsideIt() {
+        XCTAssertEqual(ChatGPTChatWindow.label(seconds: 86_400), "Daily")
+        XCTAssertEqual(ChatGPTChatWindow.label(seconds: 86_400 - 120), "Daily", "the service reports now + window")
+        XCTAssertEqual(ChatGPTChatWindow.label(seconds: 7 * 86_400), "Weekly")
+        XCTAssertEqual(ChatGPTChatWindow.label(seconds: 30 * 86_400 - 3_600), "Monthly")
+        XCTAssertEqual(ChatGPTChatWindow.label(seconds: 18_000), "5 Hours")
+        XCTAssertNil(ChatGPTChatWindow.label(seconds: 3 * 86_400), "a window with no standard name gets none")
+        XCTAssertNil(ChatGPTChatWindow.label(seconds: nil))
+        XCTAssertNil(ChatGPTChatWindow.label(seconds: 0))
+        for label in ["Daily", "Weekly", "Monthly", "5 Hours"] {
+            XCTAssertNotEqual(QuotaGroupLabelLocalizer.display(label), "", "\(label) is a label the catalogue translates")
+        }
+    }
+
     func testProAllowancesFollowThePublishedPlanTable() {
         let pro = ChatGPTChatProAllowances.allowances(plan: "pro")
         XCTAssertEqual(pro.map(\.id), ["gpt6_pro_weekly", "sol_pro_daily", "pro_daily"])
@@ -305,8 +331,22 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertEqual(buckets[1].quantity?.used, 2, "a duplicate turn id counts once")
         XCTAssertEqual(buckets[1].quantity?.remaining, 168)
         XCTAssertEqual(buckets[2].quantity?.used, 3)
-        XCTAssertNil(buckets[0].resetAt, "no window start is known, so no reset is claimed")
+        // The reset is when the count next falls: the oldest message inside
+        // the window, plus the window.
+        XCTAssertEqual(buckets[0].resetAt, base.addingTimeInterval(-(7 * 86_400 - 1) + 7 * 86_400))
+        XCTAssertEqual(buckets[1].resetAt, base.addingTimeInterval(-7_200 + 86_400),
+                       "the day-old Sol Pro message is outside the daily window; the two-hour-old one is the oldest inside it")
         XCTAssertTrue(buckets.allSatisfy { $0.quantity?.isEstimated == true && $0.hasPercentage })
+        XCTAssertNotNil(UsagePace.compute(bucket: buckets[0], now: base), "a Pro row paces like every other row")
+        XCTAssertNotNil(QuotaPaceForecast.compute(bucket: buckets[0], observations: [], cycles: [], now: base))
+        // A rolling reset paces and forecasts, and is not a cycle boundary.
+        XCTAssertTrue(buckets.allSatisfy(\.hasRollingReset))
+        // Nothing spent: a whole window from now, as the service reports for
+        // an untouched feature allowance.
+        let untouched = ChatGPTChatParser.proBuckets(allowances: pro, turns: [], limits: [], complete: true, now: base)
+        XCTAssertEqual(untouched.map(\.resetAt), [base.addingTimeInterval(7 * 86_400),
+                                                  base.addingTimeInterval(86_400),
+                                                  base.addingTimeInterval(86_400)])
 
         let partial = ChatGPTChatParser.proBuckets(allowances: pro, turns: turns, limits: [], complete: false, now: base)
         XCTAssertEqual(partial[0].quantity?.used, 3)
@@ -320,9 +360,12 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertEqual(oneLimited[0].quantity?.remaining, 0)
         XCTAssertEqual(oneLimited[0].usedPercent, 100)
         XCTAssertEqual(oneLimited[0].resetAt, reset)
+        XCTAssertFalse(oneLimited[0].hasRollingReset, "a service-reported reset is a real deadline")
+        XCTAssertTrue(oneLimited[2].hasRollingReset)
         XCTAssertTrue(oneLimited[0].hasPercentage, "the service's exhausted state needs no history")
         XCTAssertEqual(oneLimited[2].quantity?.used, 3, "one throttled model does not exhaust a shared allowance")
-        XCTAssertNil(oneLimited[2].resetAt)
+        XCTAssertEqual(oneLimited[2].resetAt, base.addingTimeInterval(-7_200 + 86_400),
+                       "the shared lane keeps its own rolling reset")
 
         let bothLimited = ChatGPTChatParser.proBuckets(allowances: pro, turns: turns, limits: [
             ChatGPTChatModelLimit(model: "gpt-6-pro", resetsAt: reset, fallbackModel: nil),
@@ -454,6 +497,8 @@ private actor HistoryFixtureTransport: ChatGPTChatTransport {
 
 private actor ChatFixtureTransport: ChatGPTChatTransport {
     nonisolated let name = "fixture"
+    nonisolated static let base = Date(timeIntervalSince1970: 1_800_000_000)
+    nonisolated static let iso = ISO8601DateFormatter()
     private(set) var calls: [String] = []
     func request(path: String, method: String, bearer: String?, body: Data?) async throws -> Data {
         calls.append(path)
@@ -461,7 +506,17 @@ private actor ChatFixtureTransport: ChatGPTChatTransport {
         switch path {
         case "/api/auth/session": return Data(#"{"accessToken":"synthetic-token","user":{"id":"synthetic-user"}}"#.utf8)
         case "/backend-api/wham/usage": return Data(#"{"plan_type":"prolite"}"#.utf8)
-        case "/backend-api/conversation/init": return Data(#"{"limits_progress":[{"feature_name":"image_gen","remaining":998},{"feature_name":"deep_research","remaining":250}]}"#.utf8)
+        case "/backend-api/conversation/init":
+            // `reset_after` as the service sends it: a whole window from now
+            // on an allowance nothing has been spent from.
+            let day = ChatFixtureTransport.iso.string(from: ChatFixtureTransport.base.addingTimeInterval(86_400 - 120))
+            let month = ChatFixtureTransport.iso.string(from: ChatFixtureTransport.base.addingTimeInterval(30 * 86_400 - 3_600))
+            return Data("""
+            {"limits_progress":[
+              {"feature_name":"image_gen","remaining":998,"reset_after":"\(day)"},
+              {"feature_name":"deep_research","remaining":250,"reset_after":"\(month)"}
+            ]}
+            """.utf8)
         default: throw QuotaError.parseFailure("Unexpected endpoint")
         }
     }
