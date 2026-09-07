@@ -263,6 +263,7 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
                 onClose: { [weak self] in self?.close(configID: configID) },
                 onToggleDisplayMode: { [weak self] in self?.cycleDisplayMode(configID: configID) }
             )
+                .appLanguageLocale()
                 .environmentObject(environment)
                 .environmentObject(environment.settingsStore)
                 .environmentObject(environment.quotaService)

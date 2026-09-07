@@ -47,6 +47,7 @@ final class LayoutStudioWindowController: NSObject {
 
         let hosting = NSHostingController(
             rootView: LayoutStudioView(model: model)
+                .appLanguageLocale()
                 .environmentObject(environment)
                 .environmentObject(environment.accountStore)
                 .environmentObject(environment.settingsStore)
