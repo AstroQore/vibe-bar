@@ -9,6 +9,16 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
     public var rawWindowSeconds: Int?
     public var groupTitle: String?
     public var quantity: QuotaQuantity?
+    /// True when `resetAt` is the moment this bucket's count next *falls*
+    /// rather than the moment its cycle ends.
+    ///
+    /// A trailing-window count has no cycle: every message that ages out
+    /// returns one unit and moves the date, so a deadline that advanced
+    /// says nothing happened except time passing. It is exactly what pace
+    /// and forecast need, and exactly what the cycle history must not see —
+    /// `SubscriptionHistoryStore` would read each expiry as a completed
+    /// cycle and fill the reset history with them.
+    public var hasRollingReset: Bool
 
     public var hasPercentage: Bool { quantity.map { $0.usedPercent != nil } ?? true }
     public var supportsForecast: Bool { hasPercentage }
@@ -21,8 +31,10 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         resetAt: Date? = nil,
         rawWindowSeconds: Int? = nil,
         groupTitle: String? = nil,
-        quantity: QuotaQuantity? = nil
+        quantity: QuotaQuantity? = nil,
+        hasRollingReset: Bool = false
     ) {
+        self.hasRollingReset = hasRollingReset
         self.quantity = quantity
         self.id = id
         self.title = VisibleSecretRedactor.redact(title) ?? ""
@@ -51,6 +63,7 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         case rawWindowSeconds
         case groupTitle
         case quantity
+        case hasRollingReset
     }
 
     public init(from decoder: Decoder) throws {
@@ -63,7 +76,8 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
             resetAt: try container.decodeIfPresent(Date.self, forKey: .resetAt),
             rawWindowSeconds: try container.decodeIfPresent(Int.self, forKey: .rawWindowSeconds),
             groupTitle: try container.decodeIfPresent(String.self, forKey: .groupTitle),
-            quantity: try container.decodeIfPresent(QuotaQuantity.self, forKey: .quantity)
+            quantity: try container.decodeIfPresent(QuotaQuantity.self, forKey: .quantity),
+            hasRollingReset: try container.decodeIfPresent(Bool.self, forKey: .hasRollingReset) ?? false
         )
     }
 
@@ -77,6 +91,9 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         try container.encodeIfPresent(rawWindowSeconds, forKey: .rawWindowSeconds)
         try container.encodeIfPresent(groupTitle, forKey: .groupTitle)
         try container.encodeIfPresent(quantity, forKey: .quantity)
+        // Absent means false, which is what every bucket written before this
+        // was; only the buckets that carry one pay a key.
+        if hasRollingReset { try container.encode(true, forKey: .hasRollingReset) }
     }
 
     /// Quota-window names are ordinary UI copy, not telemetry codes. Keep

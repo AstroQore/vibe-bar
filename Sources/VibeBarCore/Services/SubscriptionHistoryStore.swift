@@ -150,7 +150,10 @@ public actor SubscriptionHistoryStore {
             storage.redemptions = saved.values.sorted { $0.credit.redeemedAt < $1.credit.redeemedAt }
         }
         if observeFeatures(quota, now: now, storage: &storage) { dirty = true }
-        for bucket in quota.buckets where bucket.supportsForecast {
+        // A rolling reset is the next expiry of a trailing count, not the
+        // end of a cycle: reading each expiry as a completed cycle would
+        // fill the history with cycles nothing ever reset.
+        for bucket in quota.buckets where bucket.supportsForecast && !bucket.hasRollingReset {
             guard let resetAt = bucket.resetAt, bucket.usedPercent.isFinite else { continue }
             let used = clamp(bucket.usedPercent)
             let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
@@ -656,7 +659,9 @@ public actor SubscriptionHistoryStore {
     private func observeFeatures(_ quota: AccountQuota, now: Date, storage: inout Storage) -> Bool {
         var changed = false
         for bucket in quota.buckets {
-            guard let remaining = bucket.quantity?.remaining else { continue }
+            // Same reason as the cycle loop: a message ageing out returns a
+            // unit without anything having reset.
+            guard !bucket.hasRollingReset, let remaining = bucket.quantity?.remaining else { continue }
             let key = PrivacyPreservingHash.fileComponent(prefix: "feature", rawValue: quota.accountId + ":" + bucket.id)
             let sample = ChatGPTChatAllowanceSample(id: bucket.id, remaining: remaining, resetAt: bucket.resetAt, observedAt: now)
             let previous = storage.featureObservations?[key]

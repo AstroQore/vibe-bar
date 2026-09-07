@@ -49,9 +49,11 @@ and `/backend-api/models` carries no allowance fields. What OpenAI publishes
 is the total per plan, in "GPT-5.6 and GPT-6 Pro in ChatGPT" (help article
 20001354, read 2026-09-07):
 
-The buckets are grouped the way Codex's Spark lanes are: the model is the
-group header (GPT-6 Astra Pro, GPT-5.6 Sol Pro, Pro Models) and the window
-(Weekly, Daily) is the row.
+Every Chat bucket is grouped the way Codex's Spark lanes are: the thing
+being metered is the group header — Image Generation, Deep Research,
+GPT-6 Astra Pro, GPT-5.6 Sol Pro, Pro Models — and its window (Daily,
+Weekly, Monthly) is the row. A feature whose window is not known yet keeps
+the feature name as its row and has no group.
 
 | Plan | GPT-6 Astra Pro | GPT-5.6 Sol Pro |
 | --- | --- | --- |
@@ -67,8 +69,12 @@ and within 25 seconds. Each user turn is charged to the model of its final
 answer, once, however often it was regenerated. Only hashed ids, times and
 model slugs are cached, under `~/.vibebar/chatgpt_chat_history.json`.
 
-The service states no window start, so each bucket is the count inside a
-trailing window ending now, against the published total, marked estimated.
+Each bucket is the count inside a window ending now, against the published
+total, marked estimated. Its reset is the moment the count next falls: the
+oldest message still inside the window, plus the window — and a whole window
+from now when nothing has been spent. That is the rolling shape the service
+itself reports for the feature allowances it does time, and it gives the Pro
+rows the same pace, forecast and reset history every other quota row has.
 While part of the window is unread — the budget ran out, a fetch failed, or
 the list was cut short — the row shows the count and "history sync is
 incomplete" instead of a percentage. A throttled model overrides the count

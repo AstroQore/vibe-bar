@@ -6,6 +6,12 @@
         "antigravity"
       ],
       "buckets": [
+        "image_gen",
+        "deep_research",
+        "gpt6_pro_weekly",
+        "sol_pro_daily",
+        "pro_daily",
+        "pro_weekly",
         "gpt_5_3_codex_spark_five_hour",
         "gpt_5_3_codex_spark_weekly",
         "weekly_sonnet",

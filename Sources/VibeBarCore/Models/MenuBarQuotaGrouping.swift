@@ -58,6 +58,11 @@ public extension MenuBarFieldCatalog {
             return field.dynamicGroupTitle != nil
         }
         switch field.bucketId {
+        // Every ChatGPT Chat bucket files under what it meters — the
+        // feature or the model — with its window as the row.
+        case "image_gen", "deep_research",
+             "gpt6_pro_weekly", "sol_pro_daily", "pro_daily", "pro_weekly":
+            return true
         case "gpt_5_3_codex_spark_five_hour",
              "gpt_5_3_codex_spark_weekly",
              "weekly_sonnet",
