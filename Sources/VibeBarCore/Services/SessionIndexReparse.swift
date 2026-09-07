@@ -36,7 +36,8 @@ public enum SessionIndexReparse {
     }
 
     /// Run once per version. Returns what it did, or nil when the stamp is
-    /// current, the index does not exist yet, or the database refused.
+    /// current, the index does not exist yet, or the database refused — and
+    /// a refusal leaves the stamp alone, so the next launch tries again.
     @discardableResult
     public static func runIfNeeded(
         databaseURL: URL = VibeBarLocalStore.sessionIndexURL,
@@ -66,15 +67,22 @@ public enum SessionIndexReparse {
         for provider in providers {
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(database, "DELETE FROM session_files WHERE provider = ?1", -1,
-                                     &statement, nil) == SQLITE_OK, let statement else { continue }
+                                     &statement, nil) == SQLITE_OK, let statement else { return nil }
             sqlite3_bind_text(statement, 1, provider, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-            _ = sqlite3_step(statement)
+            let step = sqlite3_step(statement)
             sqlite3_finalize(statement)
+            // A busy database is the ordinary case — an index refresh is
+            // running — and it is why this must not stamp: a stamp written
+            // over a delete that never happened leaves those files under the
+            // old parser for good. Leave it for the next launch.
+            guard step == SQLITE_DONE else {
+                SafeLog.info("Session index reparse v\(version) deferred: \(provider) delete returned \(step)")
+                return nil
+            }
         }
         let dropped = Int(sqlite3_total_changes64(database) - before)
-        // Stamped whatever the count: a provider with nothing indexed is
-        // done, and a failed delete will not succeed on the next launch
-        // either. Only a database this could not open is left for later.
+        // Every delete ran, so the stamp is earned. A provider with nothing
+        // indexed drops nothing and is equally done.
         try? VibeBarLocalStore.writeJSON(Stamp(version: version), to: stampURL)
         SafeLog.info("Session index reparse v\(version): dropped \(dropped) cursor(s) for \(providers.joined(separator: ", "))")
         return Outcome(version: version, cursorsDropped: dropped)

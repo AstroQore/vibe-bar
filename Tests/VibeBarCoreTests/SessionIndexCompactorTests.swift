@@ -251,6 +251,33 @@ extension SessionIndexCompactorTests {
         XCTAssertTrue(remaining().isEmpty)
         sqlite3_close_v2(database)
 
+        // A database that refuses the delete is left for the next launch:
+        // stamping over a delete that never ran would strand those files
+        // under the old parser for good.
+        let locked = directory.appendingPathComponent("locked.sqlite3")
+        let lockedStamp = directory.appendingPathComponent("locked-stamp.json")
+        var lockedHandle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(locked.path, &lockedHandle,
+                                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil), SQLITE_OK)
+        let lockedDatabase = try XCTUnwrap(lockedHandle)
+        XCTAssertEqual(sqlite3_exec(lockedDatabase, """
+            CREATE TABLE session_files (path_hash TEXT PRIMARY KEY, path TEXT NOT NULL, provider TEXT NOT NULL);
+            INSERT INTO session_files VALUES ('a', '/a.db', 'antigravity');
+            """, nil, nil, nil), SQLITE_OK)
+        // An exclusive lock another connection holds is exactly what a
+        // running index refresh looks like.
+        XCTAssertEqual(sqlite3_exec(lockedDatabase, "BEGIN EXCLUSIVE", nil, nil, nil), SQLITE_OK)
+        XCTAssertNil(SessionIndexReparse.runIfNeeded(databaseURL: locked, stampURL: lockedStamp, version: 1))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lockedStamp.path),
+                       "a delete that never ran must not be stamped as done")
+        XCTAssertEqual(sqlite3_exec(lockedDatabase, "COMMIT", nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(
+            SessionIndexReparse.runIfNeeded(databaseURL: locked, stampURL: lockedStamp, version: 1)?.cursorsDropped,
+            1,
+            "and the next launch does it"
+        )
+        sqlite3_close_v2(lockedDatabase)
+
         // No index yet: nothing to do, and stamped so it never runs on the
         // database the next scan creates.
         let fresh = directory.appendingPathComponent("fresh.json")
