@@ -262,6 +262,9 @@ final class SessionManagerModel: ObservableObject {
     /// model AntiGravity ships after launch names itself without a relaunch
     /// and no filter change waits on a disk read.
     @Published private(set) var antigravityModelLabels = AntigravityModelLabelStore()
+    /// Orders the label reads above: issued, and last one applied.
+    private var labelsRefresh = 0
+    private var appliedLabelsRefresh = 0
     private let registry: SessionProviderRegistry
     private let deleter: SessionDeleter
     private let index: SharedSessionIndex
@@ -357,22 +360,22 @@ final class SessionManagerModel: ObservableObject {
     /// it. A row without its labels yet draws no chip, and gets one on the
     /// next render.
     ///
-    /// Merged rather than assigned, so two reads that straddle a quota
-    /// refresh cannot end with the older one winning and a chip that was
-    /// already named going blank again. The file only ever gains entries —
-    /// `AntigravityQuotaAdapter` merges into it — so a union is the same
-    /// answer as the newest read, whichever order they land in.
+    /// Numbered, because two reads can straddle a quota refresh that
+    /// rewrites the file — `AntigravityQuotaAdapter` replaces a label whose
+    /// value changed, so the file is not append-only — and the one that
+    /// started first could otherwise land last and put an older answer back.
+    /// A read whose number is not the newest is dropped.
     private func refreshAntigravityModelLabels() {
+        labelsRefresh &+= 1
+        let refresh = labelsRefresh
         let home = homeDirectory
         Task.detached(priority: .utility) {
             let store = AntigravityModelLabelStore.load(homeDirectory: home)
-            guard !store.labels.isEmpty else { return }
             await MainActor.run { [weak self] in
-                guard let self else { return }
-                var merged = self.antigravityModelLabels
-                merged.labels.merge(store.labels) { _, new in new }
-                guard merged != self.antigravityModelLabels else { return }
-                self.antigravityModelLabels = merged
+                guard let self, refresh > self.appliedLabelsRefresh else { return }
+                self.appliedLabelsRefresh = refresh
+                guard self.antigravityModelLabels != store else { return }
+                self.antigravityModelLabels = store
             }
         }
     }
