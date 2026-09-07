@@ -262,9 +262,12 @@ final class SessionManagerModel: ObservableObject {
     /// model AntiGravity ships after launch names itself without a relaunch
     /// and no filter change waits on a disk read.
     @Published private(set) var antigravityModelLabels = AntigravityModelLabelStore()
-    /// Orders the label reads above: issued, and last one applied.
-    private var labelsRefresh = 0
-    private var appliedLabelsRefresh = 0
+    /// When the label file the published labels came from was last written.
+    /// Ordering by the snapshot rather than by the read that asked for it:
+    /// two detached reads can finish either way round, and can even read
+    /// either way round, but the file's own timestamp says which of them
+    /// saw the newer file.
+    private var appliedLabelsWrittenAt: Date?
     private let registry: SessionProviderRegistry
     private let deleter: SessionDeleter
     private let index: SharedSessionIndex
@@ -360,20 +363,22 @@ final class SessionManagerModel: ObservableObject {
     /// it. A row without its labels yet draws no chip, and gets one on the
     /// next render.
     ///
-    /// Numbered, because two reads can straddle a quota refresh that
-    /// rewrites the file — `AntigravityQuotaAdapter` replaces a label whose
-    /// value changed, so the file is not append-only — and the one that
-    /// started first could otherwise land last and put an older answer back.
-    /// A read whose number is not the newest is dropped.
+    /// Two reads can straddle a quota refresh that rewrites the file —
+    /// `AntigravityQuotaAdapter` replaces a label whose value changed, so
+    /// the file is not append-only — and neither the order they were asked
+    /// for nor the order they finish in says which one read the newer file.
+    /// Its modification date does, so each read carries it and an older
+    /// snapshot is dropped.
     private func refreshAntigravityModelLabels() {
-        labelsRefresh &+= 1
-        let refresh = labelsRefresh
         let home = homeDirectory
         Task.detached(priority: .utility) {
+            let url = AntigravityModelLabelStore.fileURL(homeDirectory: home)
             let store = AntigravityModelLabelStore.load(homeDirectory: home)
+            let writtenAt = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
             await MainActor.run { [weak self] in
-                guard let self, refresh > self.appliedLabelsRefresh else { return }
-                self.appliedLabelsRefresh = refresh
+                guard let self else { return }
+                if let writtenAt, let applied = self.appliedLabelsWrittenAt, writtenAt < applied { return }
+                self.appliedLabelsWrittenAt = writtenAt ?? self.appliedLabelsWrittenAt
                 guard self.antigravityModelLabels != store else { return }
                 self.antigravityModelLabels = store
             }
