@@ -52,7 +52,7 @@ public struct MiniCanvasLayout: Codable, Equatable, Sendable {
     }
 
     /// Clamp the selection as a unit, preserving relative positions at edges.
-    public func moving(_ ids: Set<UUID>, dx: Double, dy: Double) -> Self {
+    public func moving(_ ids: Set<UUID>, dx: Double, dy: Double, magnetic: Bool = false) -> Self {
         var copy = normalized()
         let ids = copy.expandedSelection(ids)
         let selected = copy.elements.filter { ids.contains($0.id) }
@@ -63,8 +63,21 @@ public struct MiniCanvasLayout: Codable, Equatable, Sendable {
         let grid = Self.gridSpacing
         let proposedX = copy.snapToGrid ? (dx / grid).rounded() * grid : dx
         let proposedY = copy.snapToGrid ? (dy / grid).rounded() * grid : dy
-        let tx = min(max(proposedX, -minX), copy.width - maxX)
-        let ty = min(max(proposedY, -minY), copy.height - maxY)
+        var tx = min(max(proposedX, -minX), copy.width - maxX)
+        var ty = min(max(proposedY, -minY), copy.height - maxY)
+        if magnetic && !copy.snapToGrid {
+            let others = copy.elements.filter { !ids.contains($0.id) }
+            let targetsX: [Double] = [0.0, copy.width / 2, copy.width] + others.flatMap { [$0.x, $0.x + $0.width / 2, $0.x + $0.width] }
+            let targetsY: [Double] = [0.0, copy.height / 2, copy.height] + others.flatMap { [$0.y, $0.y + $0.height / 2, $0.y + $0.height] }
+            func correction(_ edges: [Double], _ targets: [Double]) -> Double {
+                targets.flatMap { target in edges.map { target - $0 } }
+                    .filter { abs($0) <= 5 }.min(by: { abs($0) < abs($1) }) ?? 0
+            }
+            tx += correction([minX + tx, (minX + maxX) / 2 + tx, maxX + tx], targetsX)
+            ty += correction([minY + ty, (minY + maxY) / 2 + ty, maxY + ty], targetsY)
+            tx = min(max(tx, -minX), copy.width - maxX)
+            ty = min(max(ty, -minY), copy.height - maxY)
+        }
         for i in copy.elements.indices where ids.contains(copy.elements[i].id) {
             copy.elements[i].x += tx
             copy.elements[i].y += ty
@@ -170,9 +183,23 @@ public struct MiniCanvasLayout: Codable, Equatable, Sendable {
 public struct MiniCanvasElement: Codable, Equatable, Identifiable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case ring, horizontalBar, verticalBar, sector, text
+        case quotaRing, quotaBar, ledger, strip, tile, focus, rail
+
+        public var presetMode: MiniWindowDisplayMode? {
+            switch self {
+            case .quotaRing: .regular
+            case .quotaBar: .compact
+            case .ledger: .ledger
+            case .strip: .strip
+            case .tile: .tile
+            case .focus: .focus
+            case .rail: .rail
+            default: nil
+            }
+        }
     }
     public enum TextContent: String, Codable, CaseIterable, Sendable {
-        case percent, label, countdown, custom
+        case percent, label, countdown, pace, custom
     }
     public enum Colour: String, Codable, CaseIterable, Sendable {
         case quota, provider, primary, custom
@@ -200,6 +227,13 @@ public struct MiniCanvasElement: Codable, Equatable, Identifiable, Sendable {
         case .verticalBar: width = 24; height = 72
         case .text: width = 72; height = 24
         case .ring, .sector: break
+        case .quotaRing: width = 72; height = 120
+        case .quotaBar: width = 96; height = 120
+        case .ledger: width = 288; height = 144
+        case .strip: width = 192; height = 96
+        case .tile: width = 144; height = 144
+        case .focus: width = 240; height = 192
+        case .rail: width = 288; height = 144
         }
     }
 }

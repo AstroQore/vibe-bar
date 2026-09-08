@@ -28,13 +28,13 @@ public struct OllamaQuotaAdapter: QuotaAdapter {
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
         let resolutions = MiscCookieResolver.resolveAll(for: Self.cookieSpec, account: account)
             .filter { Self.hasRecognizedSessionCookie($0.header) }
-        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
         let queriedAt = now()
         let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
             spec: Self.cookieSpec,
             account: account,
-            resolutions: resolutions
+            resolutions: resolutions,
+            resolutionFilter: { Self.hasRecognizedSessionCookie($0.header) }
         ) { resolution in
             try await self.fetchOneSlot(resolution, account: account, queriedAt: queriedAt)
         }

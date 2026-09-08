@@ -417,6 +417,7 @@ public enum MiscCookieResolver {
         silentContextLock.lock()
         defer { silentContextLock.unlock() }
         let context = sharedSilentContext()
+        context.detection.clearCache()
         let settings = currentSettings(for: spec.tool, instanceID: instanceID)
         // Only when browser-origin slots can actually be used. `manualOnly` is
         // an explicit "do not touch my browser" — reading the cookie stores
@@ -430,10 +431,10 @@ public enum MiscCookieResolver {
             return false
         }
 
-        let refreshable = MiscCookieSlotStore
-            .slots(for: spec.tool, instanceID: instanceID)
-            .filter { $0.origin != .manual }
-        guard !refreshable.isEmpty else { return false }
+        let existing = MiscCookieSlotStore.slots(for: spec.tool, instanceID: instanceID)
+        let refreshable = existing.filter { $0.origin != .manual }
+        // A manual-only store is never a request to replace those accounts.
+        guard existing.isEmpty || !refreshable.isEmpty else { return false }
 
         let sessions = browserSessions(
             spec: spec,
@@ -443,6 +444,15 @@ public enum MiscCookieResolver {
             maxSessions: nil
         )
         guard !sessions.isEmpty else { return false }
+        if existing.isEmpty, let session = sessions.first {
+            let slot = MiscCookieSlot(
+                cookieHeader: session.header, sourceLabel: session.sourceLabel,
+                importedAt: Date(), origin: .autoRefresh
+            )
+            return MiscCookieSlotStore.upsertBrowserImport(
+                slot, for: spec.tool, instanceID: instanceID
+            ) != nil
+        }
 
         var unclaimed = sessions
         var changed = false

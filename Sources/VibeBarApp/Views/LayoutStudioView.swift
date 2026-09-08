@@ -43,7 +43,13 @@ struct LayoutStudioView: View {
     @State private var wellFrame: CGRect = .zero
     @State private var scrollOffset: CGPoint = .zero
     @State private var scrollPosition = ScrollPosition()
+    @State private var miniSelection: String?
     @State private var hovered: String?
+    @State private var headerHeight: CGFloat = 0
+    @State private var previewOnlyPage: OverviewPage?
+    @State private var editingLabel: SurfaceItemFrames.Label?
+    @State private var labelDraft = ""
+    @FocusState private var isLabelFocused: Bool
     @State private var drag: StudioDrag?
     @State private var settling: StudioSettling?
     /// A cancelled drag's gesture is still down; nothing restarts it.
@@ -89,7 +95,7 @@ struct LayoutStudioView: View {
             backdrop
             HStack(spacing: 0) {
                 stage
-                if model.isInspectorShown {
+                if model.isInspectorShown && previewOnlyPage == nil {
                     inspector
                         .frame(width: Self.inspectorWidth)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -109,8 +115,11 @@ struct LayoutStudioView: View {
         }
         .onDisappear { model.keyHandler = nil }
         .onChange(of: model.subject) { _, _ in
-            model.frames.removeAll()
+            previewOnlyPage = nil
+            editingLabel = nil
+            headerHeight = 0
             hovered = nil
+            miniSelection = nil
             drag = nil
             settling = nil
             canvasSelection = []
@@ -182,22 +191,13 @@ struct LayoutStudioView: View {
 
     @ViewBuilder
     private var surface: some View {
+        if let page = previewOnlyPage {
+            popoverSurface(page)
+        } else {
         switch model.subject {
         case let .popoverPage(page):
             if let tab = OverviewPage.allCases.first(where: { $0.layoutPageID == page }) {
-                surfaceShell(cornerRadius: 14, flat: false) {
-                    PopoverRoot(
-                        // The width the popover actually opens at, so the
-                        // preview reflows exactly like the thing it previews.
-                        width: Self.popoverWidth(for: settingsStore.settings),
-                        onContentHeightChange: { _ in },
-                        onToggleMiniWindow: {},
-                        initialPage: tab
-                    )
-                }
-                // `PopoverRoot` applies `initialPage` to state it owns, once,
-                // so the page only follows the subject with a new identity.
-                .id(tab)
+                popoverSurface(tab)
             } else {
                 Text(L10n.Settings.Layout.previewUnavailable)
                     .font(.caption)
@@ -242,6 +242,7 @@ struct LayoutStudioView: View {
                                     onNaturalSize: { naturalSize = $0 })
             }
         }
+        }
     }
 
     /// The surface, lifted off the ground and wired to the studio.
@@ -250,14 +251,42 @@ struct LayoutStudioView: View {
     /// the stage is the real surface, so it keeps its own corners and gets
     /// only the light around it. The mini window is its own glass panel and
     /// gets the light alone.
+    private func popoverSurface(_ tab: OverviewPage) -> some View {
+        surfaceShell(cornerRadius: 14, flat: false, isInteractive: true) {
+            PopoverRoot(
+                width: Self.popoverWidth(for: settingsStore.settings),
+                onContentHeightChange: { _ in },
+                onToggleMiniWindow: {
+                    if let id = settingsStore.settings.miniWindow.windows.first?.id { model.subject = .miniWindow(id) }
+                },
+                initialPage: tab,
+                onPageChange: { page in
+                    model.frames.removeAll()
+                    cardSelection = []
+                    hovered = nil
+                    if let layoutPage = page.layoutPageID {
+                        previewOnlyPage = nil
+                        model.subject = .popoverPage(layoutPage)
+                    } else {
+                        previewOnlyPage = page
+                    }
+                    scrollPosition.scrollTo(x: 0, y: 0)
+                },
+                onHeaderHeightChange: { headerHeight = $0 }
+            )
+        }
+        .id(tab)
+    }
+
     private func surfaceShell<Content: View>(
         cornerRadius: CGFloat,
         flat: Bool,
+        isInteractive: Bool = false,
         @ViewBuilder content: () -> Content
     ) -> some View {
         let scale = self.scale
         let shape = RoundedRectangle(cornerRadius: cornerRadius * scale, style: .continuous)
-        return ScaledPreview(scale: scale, onNaturalSize: { naturalSize = $0 }) {
+        return ScaledPreview(scale: scale, onNaturalSize: { naturalSize = $0 }, isInteractive: isInteractive) {
             content()
         }
         .background {
@@ -267,7 +296,10 @@ struct LayoutStudioView: View {
         .overlay {
             if !flat { shape.strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5) }
         }
-        .overlay { interactionLayer(cornerRadius: cornerRadius * scale) }
+        .overlay {
+            if previewOnlyPage == nil { interactionLayer(cornerRadius: cornerRadius * scale) }
+        }
+        .overlay(alignment: .topLeading) { inlineLabelEditor }
         .shadow(
             color: .black.opacity(scheme == .dark ? 0.5 : 0.16),
             radius: 22 * max(0.6, scale),
@@ -294,6 +326,11 @@ struct LayoutStudioView: View {
     private func interactionLayer(cornerRadius: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             Color.clear.contentShape(Rectangle())
+            if case .miniWindow = model.subject, let selected = miniSelection, let frame = model.frames.frame(of: selected) {
+                StudioSelectionOutline()
+                    .frame(width: frame.width * scale, height: frame.height * scale)
+                    .offset(x: frame.minX * scale, y: frame.minY * scale)
+            }
             if !cardSelection.isEmpty, let frame = surfaceBounds(Array(cardSelection)) {
                 hoverOutline(frame.scaled(by: scale), cornerRadius: cornerRadius)
             }
@@ -305,6 +342,22 @@ struct LayoutStudioView: View {
                 segmentGuides(drag)
             }
         }
+        .contentShape(StudioSurfaceHitShape(headerHeight: {
+            if case .popoverPage = model.subject { return headerHeight * scale }
+            return 0
+        }()))
+        .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(Self.space)).onEnded { value in
+            guard case .miniWindow = model.subject, editingLabel == nil else { return }
+            miniSelection = surfaceHit(surfacePoint(value.location))
+        })
+        .simultaneousGesture(SpatialTapGesture(count: 2, coordinateSpace: .named(Self.space)).onEnded { value in
+            guard case .miniWindow = model.subject,
+                  let label = model.frames.label(at: surfacePoint(value.location)) else { return }
+            drag = nil
+            editingLabel = label
+            labelDraft = label.text
+            isLabelFocused = true
+        })
         .animation(.easeOut(duration: 0.12), value: hovered)
         .onContinuousHover(coordinateSpace: .named(Self.space)) { phase in
             switch phase {
@@ -323,17 +376,43 @@ struct LayoutStudioView: View {
         .highPriorityGesture(surfaceDrag)
     }
 
+    @ViewBuilder
+    private var inlineLabelEditor: some View {
+        if let label = editingLabel {
+            TextField("", text: $labelDraft)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: max(12, 9 * scale)))
+                .frame(width: max(100, label.frame.width * scale), height: max(24, label.frame.height * scale))
+                .offset(x: label.frame.minX * scale, y: label.frame.minY * scale)
+                .focused($isLabelFocused)
+                .onSubmit { commitLabel() }
+                .onExitCommand { editingLabel = nil }
+                .task { isLabelFocused = true }
+        }
+    }
+
+    private func commitLabel() {
+        guard let label = editingLabel, case let .miniWindow(id) = model.subject else { return }
+        let value = labelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        editingLabel = nil
+        guard value != label.text else { return }
+        updateMini(id) { config in
+            if label.isGroup {
+                config.modeGroupLabels[config.displayMode.rawValue, default: [:]][label.key] = value.isEmpty ? nil : value
+            } else {
+                config.modeCustomLabels[config.displayMode.rawValue, default: [:]][label.key] = value.isEmpty ? nil : value
+            }
+        }
+    }
+
     /// The card under the pointer, marked as something that can be picked
     /// up: a hairline in the accent and the faintest wash, nothing that
     /// competes with the card's own content.
     private func hoverOutline(_ frame: CGRect, cornerRadius: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        return shape
-            .fill(Color.accentColor.opacity(0.06))
-            .overlay(shape.strokeBorder(Color.accentColor.opacity(0.75), lineWidth: 1.5))
+        return StudioSelectionOutline(isSelected: !cardSelection.isEmpty)
             .frame(width: frame.width, height: frame.height)
             .offset(x: frame.minX, y: frame.minY)
-            .allowsHitTesting(false)
+
     }
 
     /// While a card is in flight on a page with more than one segment, the
@@ -445,6 +524,7 @@ struct LayoutStudioView: View {
     }
 
     private func title(for subject: LayoutStudioWindowController.Subject) -> String {
+        if subject == model.subject, let page = previewOnlyPage { return page.label }
         switch subject {
         case let .popoverPage(page):
             return OverviewPage.allCases.first { $0.layoutPageID == page }?.label
@@ -749,6 +829,7 @@ struct LayoutStudioView: View {
                         started.members = order.filter(cardSelection.contains)
                         if started.members.isEmpty { started.members = [item] }
                     }
+                    if case .miniWindow = model.subject { miniSelection = item }
                     drag = started
                 }
                 guard drag?.origin == .surface else { return }
@@ -1197,7 +1278,7 @@ struct LayoutStudioView: View {
             // companion keeps an invisible window over the top centre of the
             // screen, and a pill under it never sees the click. The corners
             // are the one part of the top edge nothing else claims.
-            subjectControls
+            if previewOnlyPage == nil { subjectControls }
             Spacer(minLength: 8)
             HStack(spacing: 8) {
                 if !model.undoStack.isEmpty {
@@ -1795,6 +1876,7 @@ struct LayoutStudioView: View {
 
     private func installKeys() {
         model.keyHandler = { key in
+            guard editingLabel == nil, previewOnlyPage == nil else { return false }
             switch key {
             case .selectAll:
                 guard case let .popoverPage(page) = model.subject else { return false }

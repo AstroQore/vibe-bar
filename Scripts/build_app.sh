@@ -88,7 +88,7 @@ done
 ditto "$SPARKLE_FRAMEWORK_SOURCE" "$SPARKLE_FRAMEWORK"
 cp "$ROOT/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 if [[ "${VIBEBAR_REVIEW_BUILD:-0}" == "1" ]]; then
-    python3 - "$APP_DIR/Contents/Info.plist" "${VIBEBAR_REVIEW_HOME:-/tmp/vibebar-chat-preview}" <<'PYREVIEW'
+    python3 - "$APP_DIR/Contents/Info.plist" "${VIBEBAR_REVIEW_HOME:-/tmp/vibebar-chat-preview}" "${VIBEBAR_REVIEW_SURFACE:-popover:openAI}" <<'PYREVIEW'
 import pathlib, plistlib, sys
 info_path = pathlib.Path(sys.argv[1])
 review_dir = pathlib.Path(sys.argv[2]).resolve()
@@ -102,7 +102,7 @@ info["CFBundleDisplayName"] = "Vibe Bar Chat Review"
 info.pop("CFBundleURLTypes", None)
 info["LSEnvironment"] = {
     "VIBEBAR_DEMO_HOME": str(review_dir),
-    "VIBEBAR_DEMO_SURFACE": "popover:openAI",
+    "VIBEBAR_DEMO_SURFACE": sys.argv[3],
     "VIBEBAR_DEMO_BACKDROP": "1",
 }
 with info_path.open("wb") as file:

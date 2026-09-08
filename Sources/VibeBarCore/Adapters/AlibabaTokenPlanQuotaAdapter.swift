@@ -82,9 +82,6 @@ public struct AlibabaTokenPlanQuotaAdapter: QuotaAdapter {
 
         let queriedAt = now()
         let cookieResolutions = MiscCookieResolver.resolveAll(for: AlibabaTokenPlanQuotaAdapter.cookieSpec, account: account)
-        guard !cookieResolutions.isEmpty else {
-            throw QuotaError.noCredential
-        }
 
         let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
             spec: AlibabaTokenPlanQuotaAdapter.cookieSpec,

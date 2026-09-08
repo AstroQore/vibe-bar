@@ -2,6 +2,28 @@ import XCTest
 @testable import VibeBarCore
 
 final class MiniCanvasLayoutTests: XCTestCase {
+    func testEveryBuiltInMiniModeHasAReusableCanvasComponent() {
+        let modes = Set(MiniCanvasElement.Kind.allCases.compactMap(\.presetMode))
+        XCTAssertEqual(modes, Set(MiniWindowDisplayMode.allCases.filter { $0 != .custom }))
+    }
+
+    func testMagneticMoveAlignsEdgesWithoutChangingGroupSpacing() {
+        var layout = MiniCanvasLayout()
+        layout.snapToGrid = false
+        layout.width = 400; layout.height = 240
+        let a = layout.add(.ring, fieldID: nil, x: 24, y: 24)
+        let b = layout.add(.ring, fieldID: nil, x: 96, y: 24)
+        _ = layout.add(.ring, fieldID: nil, x: 200, y: 24)
+        layout.group([a, b])
+        let moved = layout.moving([a], dx: 51, dy: 0, magnetic: true)
+        let first = moved.elements.first { $0.id == a }!
+        let second = moved.elements.first { $0.id == b }!
+        XCTAssertEqual(second.x + second.width, 200)
+        XCTAssertEqual(second.x - first.x, 72)
+        XCTAssertEqual(first.y, 24)
+        XCTAssertEqual(layout.elements.first { $0.id == a }?.x, 24)
+    }
+
     func testGroupMovesAsAUnitAndStopsAtCanvasEdges() {
         var canvas = MiniCanvasLayout()
         canvas.snapToGrid = false

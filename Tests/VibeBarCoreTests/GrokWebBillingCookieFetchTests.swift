@@ -123,7 +123,11 @@ final class GrokWebBillingCookieFetchTests: XCTestCase {
         let adapter = GrokQuotaAdapter(
             session: session,
             homeDirectory: home.path,
-            now: { Date(timeIntervalSince1970: 1_799_000_000) }
+            now: { Date(timeIntervalSince1970: 1_799_000_000) },
+            cookieHeader: {
+                XCTFail("A valid CLI bearer must not read web cookies or Keychain")
+                return nil
+            }
         )
         let account = AccountIdentity(
             id: "grok",

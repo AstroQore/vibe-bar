@@ -23,6 +23,7 @@ struct SettingsSidebarView: View {
 
     private let basicPages: [SettingsSectionID] = [
         .system,
+        .permissions,
         .costData,
         .pricing,
         .mcp,

@@ -75,10 +75,10 @@ struct MiscProviderLandingView: View {
             Divider()
 
             Toggle(
-                "Auto re-import from browser when cookies expire",
+                L10n.Settings.Cookies.retryToggle,
                 isOn: autoImportBinding
             )
-            Text("Off by default. When on, a provider that reports \"Needs re-login\" gets one silent re-read of your browser cookie store before the error is shown. It never asks for your Keychain password on its own — pasted cookies are left untouched.")
+            Text(L10n.Settings.Cookies.retryHelp)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

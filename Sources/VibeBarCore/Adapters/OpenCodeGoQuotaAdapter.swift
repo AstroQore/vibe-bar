@@ -32,7 +32,6 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
         let resolutions = MiscCookieResolver.resolveAll(for: Self.cookieSpec, account: account)
-        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
         let queriedAt = now()
         let results = await MiscCookieAutoImporter.shared.gatherSlotResults(

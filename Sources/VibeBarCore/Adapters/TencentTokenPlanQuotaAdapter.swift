@@ -67,7 +67,6 @@ public struct TencentTokenPlanQuotaAdapter: QuotaAdapter {
         let variant = Variant.from(settingsRegion: settings.region)
 
         let resolutions = MiscCookieResolver.resolveAll(for: TencentTokenPlanQuotaAdapter.cookieSpec, account: account)
-        guard !resolutions.isEmpty else { throw QuotaError.noCredential }
 
         let queriedAt = now()
         let results = await MiscCookieAutoImporter.shared.gatherSlotResults(

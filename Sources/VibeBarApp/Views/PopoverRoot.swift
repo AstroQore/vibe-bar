@@ -11,6 +11,8 @@ struct PopoverRoot: View {
     /// The tab the popover opens on. Production always starts on Overview;
     /// demo mode builds one popover per captured page.
     var initialPage: OverviewPage = .overview
+    var onPageChange: ((OverviewPage) -> Void)? = nil
+    var onHeaderHeightChange: ((CGFloat) -> Void)? = nil
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -25,6 +27,7 @@ struct PopoverRoot: View {
         let contentDensity = activeDensity
         let shellContentWidth = max(0, width - shellDensity.popoverPaddingH * 2)
         VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .trailing, spacing: 4) {
             HeaderView(
                 title: headerTitle,
                 subtitle: headerSubtitle,
@@ -33,7 +36,7 @@ struct PopoverRoot: View {
                 isRefreshing: isRefreshing,
                 titleFontSize: shellDensity.titleFontSize + 2,
                 subtitleFontSize: shellDensity.subtitleFontSize,
-                accessory: AnyView(OverviewPageSwitch(selection: $overviewPage, density: shellDensity)),
+                accessory: AnyView(OverviewPageSwitch(selection: pageSelection, density: shellDensity)),
                 onRefresh: { environment.refreshAll() },
                 onToggleMiniWindow: onToggleMiniWindow,
                 onShowWorkbench: { environment.showWorkbench() },
@@ -41,6 +44,13 @@ struct PopoverRoot: View {
             )
             .frame(height: shellDensity.headerHeight, alignment: .center)
             .padding(.bottom, max(4, shellDensity.interSectionSpacing * 0.45))
+            if overviewPage == .overview {
+                OverviewQuotaGranularityPicker().font(.caption)
+            }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(SurfaceCoordinates.space)).maxY } action: {
+                onHeaderHeightChange?($0)
+            }
             Divider()
                 .opacity(0.3)
                 .padding(.bottom, shellDensity.interSectionSpacing)
@@ -51,6 +61,8 @@ struct PopoverRoot: View {
                 // popover's ceiling was simply cut off, cards and all. Drawn
                 // whole instead; the Studio's Fit and zoom do the rest.
                 content(density: contentDensity)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                     .frame(width: shellContentWidth, alignment: .topLeading)
                     .padding(.bottom, 4)
             } else {
@@ -99,6 +111,13 @@ struct PopoverRoot: View {
         .onChange(of: overviewPage) { _, _ in
             refreshStaleCacheForCurrentPage()
         }
+    }
+
+    private var pageSelection: Binding<OverviewPage> {
+        Binding(get: { overviewPage }, set: { page in
+            overviewPage = page
+            onPageChange?(page)
+        })
     }
 
     /// Switching pages already refreshed a missing/stale/expired cache, but
@@ -649,6 +668,8 @@ private struct OverviewWaterfall: View {
                 minHeight: density.overviewSummaryHeight,
                 tools: settingsStore.settings.visibleCoreProviderList
             )
+        case let .overviewQuotaPart(partition):
+            OverviewQuotaPartitionCard(partition: partition, density: density)
         case let .overviewQuota(tool):
             if tool == .codex && settingsStore.settings.chatGPTChat.enabled {
                 OpenAICombinedQuotaCard(density: density)
@@ -1884,7 +1905,7 @@ private struct ProviderPageModule: View {
                     .padding(.vertical, 24)
                     .frame(maxWidth: .infinity)
             }
-        case .overviewCostSummary, .overviewStatusSummary, .overviewQuota,
+        case .overviewCostSummary, .overviewStatusSummary, .overviewQuota, .overviewQuotaPart,
              .overviewQuotaHistoryAll, .overviewCostAll, .overviewCost,
              .overviewUsageMix, .overviewUpcomingResets,
              .overviewResetHistoryCompare, .overviewModelRanking,
@@ -2029,6 +2050,7 @@ struct ProviderQuotaCard: View {
     var includedBucketIDs: Set<String>?
     var suppressGroupTitles: Bool = false
     var showsFreshnessWarning: Bool = true
+    var showsResetCredits: Bool = true
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -2104,7 +2126,7 @@ struct ProviderQuotaCard: View {
                 PageClock(interval: 30) { tickDate in
                     bucketContent(buckets, accountId: bucketAccountId, now: tickDate)
                 }
-                if tool == .codex, let credits = resolvedQuota?.resetCredits, credits.availableCount > 0 {
+                if showsResetCredits, tool == .codex, let credits = resolvedQuota?.resetCredits, credits.availableCount > 0 {
                     ResetCreditsRow(credits: credits, density: density)
                 }
                 if let liveError = resolvedLiveError {
@@ -2230,13 +2252,12 @@ struct ProviderQuotaCard: View {
             }
             if !compact, !extras.isEmpty {
                 let groups = groupExtraBuckets(extras)
-                ForEach(Array(groups.enumerated()), id: \.element.id) { _, group in
-                    // Soft hairline before every model group — separates Sonnet
-                    // from Designs from Daily Routines without overwhelming the
-                    // card visually.
-                    Divider()
-                        .opacity(0.18)
-                        .padding(.vertical, 1)
+                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                    if index > 0 || !primary.isEmpty {
+                        Divider()
+                            .opacity(0.18)
+                            .padding(.vertical, 1)
+                    }
                     VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
                         Text(QuotaGroupLabelLocalizer.display(group.title))
                             .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold))

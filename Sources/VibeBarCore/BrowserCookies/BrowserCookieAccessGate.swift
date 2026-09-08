@@ -237,7 +237,7 @@ extension BrowserCookieClient {
 /// telling us whether the browser stores its cookie-decryption key
 /// in the macOS Keychain (and therefore needs the access gate).
 extension Browser {
-    var usesKeychainForCookieDecryption: Bool {
+    public var usesKeychainForCookieDecryption: Bool {
         switch self {
         case .safari, .firefox, .zen:
             return false

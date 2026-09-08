@@ -45,19 +45,11 @@ struct MiniCanvasInspector: View {
                 }
             }
             Text(L10n.Common.add).font(.headline)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130))], alignment: .leading) {
-                ForEach(MiniCanvasElement.Kind.allCases, id: \.self) { kind in
-                    Button {
-                        var next = layout
-                        let id = next.add(kind, fieldID: fields.first?.id)
-                        layout = next; selection = [id]
-                    } label: {
-                        Label(kind.title, systemImage: kind.symbol)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .draggable("vibebar-mini:\(kind.rawValue)")
-                }
-            }
+            Text(L10n.Settings.MiniCanvas.primitives).font(.caption).foregroundStyle(.secondary)
+            palette(MiniCanvasElement.Kind.allCases.filter { $0.presetMode == nil })
+            Text(L10n.Settings.MiniCanvas.presetWidgets).font(.caption).foregroundStyle(.secondary)
+            palette(MiniCanvasElement.Kind.allCases.filter { $0.presetMode != nil })
+            Text(L10n.Settings.Layout.inlineEditHint).font(.caption).foregroundStyle(.secondary)
             Divider()
             if let selected { properties(selected) }
             if !selection.isEmpty { actions }
@@ -90,6 +82,22 @@ struct MiniCanvasInspector: View {
             Text(L10n.Platform.Macos.MiniCanvas.hint).font(.caption).foregroundStyle(.secondary)
         }
         .font(.system(size: 12))
+    }
+
+    private func palette(_ kinds: [MiniCanvasElement.Kind]) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 130))], alignment: .leading) {
+                ForEach(kinds, id: \.self) { kind in
+                    Button {
+                        var next = layout
+                        let id = next.add(kind, fieldID: fields.first?.id)
+                        layout = next; selection = [id]
+                    } label: {
+                        Label(kind.title, systemImage: kind.symbol)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .draggable("vibebar-mini:\(kind.rawValue)")
+                }
+            }
     }
 
     private func elementTitle(_ e: MiniCanvasElement) -> String {
@@ -129,6 +137,7 @@ struct MiniCanvasInspector: View {
                 Text(L10n.MenuBar.Composer.Metric.displayPercent).tag(MiniCanvasElement.TextContent.percent)
                 Text(L10n.MenuBar.Composer.Text.placeholder).tag(MiniCanvasElement.TextContent.label)
                 Text(L10n.MenuBar.Composer.Metric.resetsIn).tag(MiniCanvasElement.TextContent.countdown)
+                Text(L10n.MenuBar.Composer.Metric.pace).tag(MiniCanvasElement.TextContent.pace)
                 Text(L10n.MenuBar.Composer.Mode.custom).tag(MiniCanvasElement.TextContent.custom)
             }
             if e.textContent == .custom {
@@ -137,6 +146,11 @@ struct MiniCanvasInspector: View {
                     .id(e.id)
             }
             number(L10n.Settings.MiniCanvas.fontSize, binding: elementBinding(e, \.fontSize, fallback: 18), range: 8...96)
+        }
+        if e.kind.presetMode != nil {
+            DebouncedSettingsTextField(prompt: L10n.MenuBar.Composer.Block.text,
+                                       value: elementBinding(e, \.text, fallback: ""))
+                .id(e.id)
         }
         Picker(L10n.MenuBar.Composer.Field.colour, selection: elementBinding(e, \.colour, fallback: .quota)) {
             Text(L10n.Settings.MiniCanvas.quotaColor).tag(MiniCanvasElement.Colour.quota)

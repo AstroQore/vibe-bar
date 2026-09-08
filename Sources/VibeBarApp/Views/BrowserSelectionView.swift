@@ -14,7 +14,6 @@ import VibeBarCore
 struct BrowserSelectionView: View {
     @EnvironmentObject private var settingsStore: SettingsStore
     @State private var available: [Browser] = []
-    @State private var withoutCookieStore: Set<Browser> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -35,12 +34,6 @@ struct BrowserSelectionView: View {
                 ForEach(available, id: \.rawValue) { browser in
                     Toggle(browser.displayName, isOn: binding(for: browser))
                         .font(.system(size: 12))
-                    if withoutCookieStore.contains(browser) {
-                        Text(L10n.Settings.Browsers.cookieStoreUnavailable)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 20)
-                    }
                 }
                 Text(L10n.Settings.Browsers.help)
                     .font(.caption2)
@@ -53,6 +46,8 @@ struct BrowserSelectionView: View {
                     .font(.caption)
                 }
             }
+            Divider().padding(.vertical, 4)
+            BrowserDataAccessView(browsers: available)
         }
         .onAppear(perform: refresh)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -63,7 +58,6 @@ struct BrowserSelectionView: View {
     private func refresh() {
         let detection = BrowserDetection()
         available = BrowserCookieImportPreference.available(using: detection)
-        withoutCookieStore = Set(available.filter { !detection.isCookieSourceAvailable($0) })
     }
 
     private var chosen: [Browser] {
