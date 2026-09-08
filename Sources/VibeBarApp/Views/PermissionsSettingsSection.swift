@@ -16,24 +16,24 @@ struct PermissionsSettingsSection: View {
     private let terminals = ["com.apple.Terminal": "Terminal", "com.googlecode.iterm2": "iTerm"]
 
     var body: some View {
-        SettingsSectionCard(title: L10n.Settings.Permissions.title, density: density) {
-            Text(L10n.Settings.Permissions.help)
+        SettingsSectionCard(title: L10n.Platform.Macos.Permissions.title, density: density) {
+            Text(L10n.Platform.Macos.Permissions.help)
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button(L10n.Common.refresh) { refreshGeneration += 1 }
                     .disabled(checking)
                 if checking { ProgressView().controlSize(.small) }
                 Spacer()
-                Button(L10n.Settings.Permissions.systemSettings) {
+                Button(L10n.Platform.Macos.Permissions.systemSettings) {
                     AppPermissionDiagnostics.openPane("")
                 }
                 .buttonStyle(.link)
             }
             Divider()
             HStack {
-                Text(L10n.Settings.Permissions.automation).font(.caption.weight(.semibold))
+                Text(L10n.Platform.Macos.Permissions.automation).font(.caption.weight(.semibold))
                 Spacer()
-                Button(L10n.Settings.Permissions.automationSettings) {
+                Button(L10n.Platform.Macos.Permissions.automationSettings) {
                     AppPermissionDiagnostics.openPane("Privacy_Automation")
                 }.buttonStyle(.link).font(.caption)
             }
@@ -42,30 +42,30 @@ struct PermissionsSettingsSection: View {
             }
             Divider()
             HStack {
-                Text(L10n.Settings.Permissions.keychain).font(.caption.weight(.semibold))
+                Text(L10n.Platform.Macos.Permissions.keychain).font(.caption.weight(.semibold))
                 Spacer()
-                Button(L10n.Settings.Permissions.openKeychain) {
+                Button(L10n.Platform.Macos.Permissions.openKeychain) {
                     if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.keychainaccess") {
                         NSWorkspace.shared.open(url)
                     }
                 }.buttonStyle(.link).font(.caption)
             }
-            statusRow(L10n.Settings.Permissions.vault, status: keychain["vault"])
+            statusRow(L10n.Platform.Macos.Permissions.vault, status: keychain["vault"])
             ForEach(browsers.filter(\.usesKeychainForCookieDecryption), id: \.rawValue) { browser in
                 statusRow(browser.displayName, status: keychain[browser.rawValue])
             }
             Divider()
-            statusRow(L10n.Settings.Permissions.loginItems, status: loginItem)
+            statusRow(L10n.Platform.Macos.Permissions.loginItems, status: loginItem)
             HStack {
-                Button(L10n.Settings.Permissions.loginItemsSettings) {
+                Button(L10n.Platform.Macos.Permissions.loginItemsSettings) {
                     SMAppService.openSystemSettingsLoginItems()
                 }.buttonStyle(.link)
                 Spacer()
             }.font(.caption)
             HStack(alignment: .firstTextBaseline) {
-                Text(L10n.Settings.Permissions.fullDisk)
+                Text(L10n.Platform.Macos.Permissions.fullDisk)
                 Spacer()
-                Text(L10n.Settings.Permissions.confirmInSettings).foregroundStyle(.secondary)
+                Text(L10n.Platform.Macos.Permissions.confirmInSettings).foregroundStyle(.secondary)
                 Button(L10n.Settings.Browsers.openFullDisk) {
                     AppPermissionDiagnostics.openPane("Privacy_AllFiles")
                 }.buttonStyle(.link)
@@ -74,12 +74,12 @@ struct PermissionsSettingsSection: View {
             BrowserDataAccessView(browsers: browsers, compact: true)
             DisclosureGroup(L10n.Workbench.Sessions.details) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.Settings.Permissions.automationHelp)
-                    Text(L10n.Settings.Permissions.keychainHelp)
-                    Text(L10n.Settings.Permissions.loginItemsHelp)
-                    Text(L10n.Settings.Permissions.fullDiskHelp)
-                    Text(L10n.Settings.Permissions.unused)
-                    Text(L10n.Settings.Permissions.notRequired)
+                    Text(L10n.Platform.Macos.Permissions.automationHelp)
+                    Text(L10n.Platform.Macos.Permissions.keychainHelp)
+                    Text(L10n.Platform.Macos.Permissions.loginItemsHelp)
+                    Text(L10n.Platform.Macos.Permissions.fullDiskHelp)
+                    Text(L10n.Platform.Macos.Permissions.unused)
+                    Text(L10n.Platform.Macos.Permissions.notRequired)
                 }.foregroundStyle(.secondary)
             }.font(.caption)
         }
@@ -131,16 +131,16 @@ struct PermissionsSettingsSection: View {
     private func label(_ status: AppPermissionDiagnostics.Status?) -> String {
         switch status {
         case .none: L10n.Settings.notChecked
-        case .allowed: L10n.Settings.Permissions.allowed
-        case .denied: L10n.Settings.Permissions.denied
-        case .approvalNeeded: L10n.Settings.Permissions.needsApproval
-        case .targetNotRunning: L10n.Settings.Permissions.targetNotRunning
-        case .unknown: L10n.Settings.Permissions.unknown
-        case .itemVisible: L10n.Settings.Permissions.itemVisible
-        case .itemMissing: L10n.Settings.Permissions.itemMissing
-        case .disabled: L10n.Settings.Permissions.keychainDisabled
-        case .enabled: L10n.Settings.Permissions.enabled
-        case .notRegistered: L10n.Settings.Permissions.notRegistered
+        case .allowed: L10n.Platform.Macos.Permissions.allowed
+        case .denied: L10n.Platform.Macos.Permissions.denied
+        case .approvalNeeded: L10n.Platform.Macos.Permissions.needsApproval
+        case .targetNotRunning: L10n.Platform.Macos.Permissions.targetNotRunning
+        case .unknown: L10n.Platform.Macos.Permissions.unknown
+        case .itemVisible: L10n.Platform.Macos.Permissions.itemVisible
+        case .itemMissing: L10n.Platform.Macos.Permissions.itemMissing
+        case .disabled: L10n.Platform.Macos.Permissions.keychainDisabled
+        case .enabled: L10n.Platform.Macos.Permissions.enabled
+        case .notRegistered: L10n.Platform.Macos.Permissions.notRegistered
         }
     }
 }

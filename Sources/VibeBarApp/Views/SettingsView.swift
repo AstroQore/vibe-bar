@@ -35,7 +35,7 @@ enum SettingsSectionID: String {
         case .system: L10n.Settings.Section.system
         case .costData: L10n.Settings.Section.costData
         case .pricing: L10n.Onboarding.Step.Pricing.title
-        case .permissions: L10n.Settings.Permissions.title
+        case .permissions: L10n.Platform.Macos.Permissions.title
         case .privacy: L10n.Settings.Section.privacy
         case .remote: L10n.Settings.Section.remoteProbes
         case .mcp: L10n.Settings.Mcp.title
