@@ -109,7 +109,7 @@ struct MiniCanvasView: View {
         .accessibilityLabel(element.kind == .text
                             ? text(element, label: label, percent: percent, bucket: bucket, now: now)
                             : "\(element.kind.title) · \(label)")
-        .accessibilityValue(percent.map { String(format: "%.0f%%", $0) } ?? L10n.Settings.MiniCanvas.unavailable)
+        .accessibilityValue(percent.map { L10n.Common.percent(value: Int($0.rounded())) } ?? L10n.Settings.MiniCanvas.unavailable)
         .help(label)
     }
 
@@ -117,7 +117,7 @@ struct MiniCanvasView: View {
         switch element.textContent {
         case .custom: return element.text
         case .label: return label
-        case .percent: return percent.map { String(format: "%.0f%%", $0) } ?? "—"
+        case .percent: return percent.map { L10n.Common.percent(value: Int($0.rounded())) } ?? "—"
         case .countdown: return ResetCountdownFormatter.string(from: bucket?.resetAt, now: now) ?? "—"
         }
     }

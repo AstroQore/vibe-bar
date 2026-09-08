@@ -119,6 +119,35 @@ final class MiniCanvasLayoutTests: XCTestCase {
         }
     }
 
+    func testReorderingALoneElementCrossesAnEntireGroup() {
+        var canvas = MiniCanvasLayout()
+        let a = canvas.add(.ring, fieldID: nil)
+        let b = canvas.add(.text, fieldID: nil)
+        let c = canvas.add(.sector, fieldID: nil)
+        canvas.group([a, b])
+        let before = canvas
+        canvas.reorder(c, by: -1)
+        XCTAssertEqual(canvas.elements.map(\.id), [c, a, b])
+        XCTAssertEqual(canvas.elements[1].groupID, canvas.elements[2].groupID)
+        canvas.reorder(c, by: 1)
+        XCTAssertEqual(canvas, before)
+    }
+
+    func testReorderingAGroupMovesAllChildrenAndStopsAtTheEnds() {
+        var canvas = MiniCanvasLayout()
+        let a = canvas.add(.ring, fieldID: nil)
+        let b = canvas.add(.text, fieldID: nil)
+        let c = canvas.add(.sector, fieldID: nil)
+        canvas.group([a, b])
+        canvas.reorder(b, by: 1)
+        XCTAssertEqual(canvas.elements.map(\.id), [c, a, b])
+        let atFront = canvas
+        canvas.reorder(a, by: 1)
+        XCTAssertEqual(canvas, atFront)
+        canvas.reorder(a, by: -1)
+        XCTAssertEqual(canvas.elements.map(\.id), [a, b, c])
+    }
+
     @MainActor
     func testCanvasSurvivesRealSettingsSaveReloadAndAnExternalWindowEdit() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

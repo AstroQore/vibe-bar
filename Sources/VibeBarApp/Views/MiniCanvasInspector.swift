@@ -174,20 +174,14 @@ struct MiniCanvasInspector: View {
                 Button(L10n.MenuBar.Composer.Group.bind) { layout.group(selection) }.disabled(selection.count < 2)
                 Button(L10n.MenuBar.Composer.Group.unbind) { layout.ungroup(selection) }
             }
-            if let selected {
+            if let layer = layers.first(where: { Set($0.elements.map(\.id)) == selection }),
+               let element = layer.elements.first {
                 HStack {
-                    Button(L10n.Settings.MiniCanvas.back) { reorder(selected.id, delta: -1) }
-                    Button(L10n.Settings.MiniCanvas.front) { reorder(selected.id, delta: 1) }
+                    Button(L10n.Settings.MiniCanvas.back) { layout.reorder(element.id, by: -1) }
+                    Button(L10n.Settings.MiniCanvas.front) { layout.reorder(element.id, by: 1) }
                 }
             }
         }
-    }
-
-    private func reorder(_ id: UUID, delta: Int) {
-        guard let i = layout.elements.firstIndex(where: { $0.id == id }) else { return }
-        let target = i + delta
-        guard layout.elements.indices.contains(target) else { return }
-        layout.elements.swapAt(i, target)
     }
 
     private func canvasNumber(_ key: WritableKeyPath<MiniCanvasLayout, Double>, divisor: Double = 1) -> Binding<Double> {

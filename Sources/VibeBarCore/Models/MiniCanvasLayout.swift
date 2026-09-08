@@ -144,6 +144,24 @@ public struct MiniCanvasLayout: Codable, Equatable, Sendable {
         for i in elements.indices where ids.contains(elements[i].id) { elements[i].groupID = nil }
     }
 
+    /// Z-order is a list of complete layers. Crossing a group must never put
+    /// an unrelated element between its children.
+    public mutating func reorder(_ id: UUID, by delta: Int) {
+        guard delta != 0, let element = elements.first(where: { $0.id == id }) else { return }
+        var layers: [[MiniCanvasElement]] = []
+        var indices: [UUID: Int] = [:]
+        for child in elements {
+            let layer = child.groupID ?? child.id
+            if let index = indices[layer] { layers[index].append(child) }
+            else { indices[layer] = layers.count; layers.append([child]) }
+        }
+        guard let source = indices[element.groupID ?? element.id] else { return }
+        let target = source + (delta < 0 ? -1 : 1)
+        guard layers.indices.contains(target) else { return }
+        layers.swapAt(source, target)
+        elements = layers.flatMap { $0 }
+    }
+
     static func bound(_ value: Double, _ range: ClosedRange<Double>, fallback: Double) -> Double {
         value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : fallback
     }
