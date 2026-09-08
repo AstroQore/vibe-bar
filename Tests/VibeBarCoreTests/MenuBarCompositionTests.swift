@@ -3149,20 +3149,19 @@ final class MenuBarCompositionTests: XCTestCase {
         let apart = [tokens[0].id, tokens[2].id]
         let alone = [tokens[0].id]
         XCTAssertTrue(composition.canGroup(adjacent))
-        XCTAssertFalse(composition.canGroup(apart))
+        XCTAssertTrue(composition.canGroup(apart))
         XCTAssertFalse(composition.canGroup(alone))
         XCTAssertNotNil(composition.group(adjacent))
         var other = composition
-        XCTAssertNil(other.group(apart))
+        XCTAssertNotNil(other.group(apart))
         XCTAssertNil(other.group(alone))
     }
 
-    func testBlocksWithAStrangerBetweenThemAreRefusedRatherThanRearranged() {
+    func testGroupingGathersSeparatedElementsAtTheFirstSelection() {
         var (composition, tokens) = composedRun()
-        XCTAssertNil(composition.group([tokens[0].id, tokens[2].id]))
-        XCTAssertEqual(composition.segments.first?.top.map(\.id), tokens.map(\.id),
-                       "a refused binding must not move anything")
-        XCTAssertFalse(composition.isGrouped(tokens[0].id))
+        XCTAssertNotNil(composition.group([tokens[0].id, tokens[2].id]))
+        XCTAssertEqual(composition.segments.first?.top.map(\.id), [tokens[0].id, tokens[2].id, tokens[1].id, tokens[3].id])
+        XCTAssertEqual(composition.groupedRun(of: tokens[0].id), [tokens[0].id, tokens[2].id])
     }
 
     func testDraggingOneMemberBringsTheWholeRun() {
@@ -3189,31 +3188,31 @@ final class MenuBarCompositionTests: XCTestCase {
         )
     }
 
-    func testDroppingABlockIntoTheMiddleOfARunDissolvesIt() {
+    func testDroppingBeforeAGroupMemberKeepsTheContainerIntact() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[1].id, tokens[2].id])
         composition.move(tokens[3].id, before: tokens[2].id)
         XCTAssertEqual(
             composition.segments.first?.top.map(\.id),
-            [tokens[0].id, tokens[1].id, tokens[3].id, tokens[2].id]
+            [tokens[0].id, tokens[3].id, tokens[1].id, tokens[2].id]
         )
-        XCTAssertFalse(composition.isGrouped(tokens[1].id),
-                       "a run with a stranger through it is not a run")
+        XCTAssertTrue(composition.isGrouped(tokens[1].id))
     }
 
-    func testARunDownToOneBlockIsNoLongerAGroup() {
+    func testRemovingAnyMemberRemovesTheWholeContainer() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[1].id, tokens[2].id])
         composition.remove(tokens[2].id)
-        XCTAssertFalse(composition.isGrouped(tokens[1].id))
-        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[1].id])
+        XCTAssertNil(composition.token(tokens[1].id))
+        XCTAssertNil(composition.token(tokens[2].id))
+        XCTAssertEqual(composition.segments[0].top.map(\.id), [tokens[0].id, tokens[3].id])
     }
 
-    func testAThirdMemberLeavesTheOthersBound() {
+    func testRemovingAThreeElementGroupDoesNotLeaveStragglers() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[1].id, tokens[2].id, tokens[3].id])
         composition.remove(tokens[3].id)
-        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[1].id, tokens[2].id])
+        XCTAssertEqual(composition.segments[0].top.map(\.id), [tokens[0].id])
     }
 
     func testASegmentIsNotSplitThroughARun() {
@@ -3226,16 +3225,17 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertTrue(composition.isGrouped(tokens[1].id))
     }
 
-    func testRebindingAnOverlappingRunLeavesNoStragglers() {
+    func testGroupingAnExistingContainerIncludesEveryChildAndCopiesIndependently() {
         var (composition, tokens) = composedRun()
         composition.group([tokens[0].id, tokens[1].id])
         composition.group([tokens[1].id, tokens[2].id])
-        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[1].id, tokens[2].id])
-        XCTAssertFalse(composition.isGrouped(tokens[0].id))
+        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[0].id, tokens[1].id, tokens[2].id])
+        XCTAssertTrue(composition.isGrouped(tokens[0].id))
         let copy = try? XCTUnwrap(composition.duplicate(tokens[0].id))
         XCTAssertNotNil(copy)
-        XCTAssertNil(composition.token(copy!)?.groupID,
-                     "a stale binding must not be copied onto the duplicate")
+        XCTAssertEqual(composition.groupedRun(of: copy!).count, 3)
+        XCTAssertNotEqual(composition.token(copy!)?.groupID, composition.token(tokens[0].id)?.groupID)
+        XCTAssertTrue(Set(composition.groupedRun(of: copy!)).isDisjoint(with: tokens.map(\.id)))
     }
 
     func testARunCutAcrossTwoRowsIsDissolvedWholesale() {
@@ -3328,16 +3328,18 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertEqual(reloaded.groupedRun(of: tokens[0].id), [tokens[0].id])
     }
 
-    func testASelectionAcrossTwoRowsIsNotARun() {
+    func testGroupingAcrossRowsGathersMembersWithoutIncludingTheirNeighbours() {
         var (composition, tokens) = composedRun()
         var segment = composition.segments[0]
         let moved = Array(segment.top[2...])
         segment.top.removeSubrange(2...)
         segment.bottom = moved
         composition.segments[0] = segment
-        XCTAssertFalse(composition.canGroup([tokens[1].id, tokens[2].id]),
-                       "one block per row is not side by side")
-        XCTAssertNil(composition.group([tokens[1].id, tokens[2].id]))
+        XCTAssertTrue(composition.canGroup([tokens[1].id, tokens[2].id]))
+        XCTAssertNotNil(composition.group([tokens[1].id, tokens[2].id]))
+        XCTAssertEqual(composition.segments[0].top.map(\.id), [tokens[0].id, tokens[1].id, tokens[2].id])
+        XCTAssertEqual(composition.segments[0].bottom?.map(\.id), [tokens[3].id])
+        XCTAssertEqual(composition.groupedRun(of: tokens[1].id), [tokens[1].id, tokens[2].id])
     }
 
     func testAPresetCarryingABrokenRunLandsUnbound() {

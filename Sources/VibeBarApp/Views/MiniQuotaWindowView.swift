@@ -23,6 +23,7 @@ struct MiniQuotaWindowView: View {
     let configID: UUID
     let onClose: () -> Void
     let onToggleDisplayMode: () -> Void
+    var canvasOverride: MiniCanvasLayout? = nil
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -64,6 +65,10 @@ struct MiniQuotaWindowView: View {
                     MiniFocusLayout(entries: miniEntries(config: config))
                 case .rail:
                     MiniRailLayout(entries: miniEntries(config: config))
+                case .custom:
+                    MiniCanvasView(layout: canvasOverride ?? settingsStore.settings.miniCanvasLayouts[configID.uuidString] ?? MiniCanvasLayout())
+                        .padding(12)
+                        .padding(.top, 14)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)

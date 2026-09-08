@@ -874,6 +874,9 @@ struct SettingsView: View {
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
 
+            LayoutStudioButton {
+                LayoutStudioWindowController.shared.open(subject: .menuBar(kind), environment: environment)
+            }
             if isCustom {
                 MenuBarComposerEditor(kind: kind, density: density)
             } else {

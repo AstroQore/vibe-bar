@@ -553,7 +553,8 @@ private struct OverviewWaterfall: View {
         // under the pointer.
         if let override = studioPageOverride, override.page == page {
             arrangedWaterfall(descriptors: descriptors, context: context, arrangement: override.arrangement)
-        } else if layoutModel.mode(for: page) == .auto {
+        } else if layoutModel.mode(for: page) == .auto,
+                  settings.studioCardGroups[page.rawValue]?.isEmpty ?? true {
             balancedWaterfall(descriptors: descriptors, context: context)
         } else {
             arrangedWaterfall(descriptors: descriptors, context: context)

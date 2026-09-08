@@ -288,6 +288,18 @@ final class PageLayoutModel: ObservableObject {
         descriptors: [PageModuleDescriptor],
         spacing: Double
     ) -> PageLayoutArrangement {
+        let base = ungroupedArrangement(for: page, descriptors: descriptors, spacing: spacing)
+        let groups = settingsStore.settings.studioCardGroups[page.rawValue] ?? []
+        guard !groups.isEmpty else { return base }
+        return Self.segmented(
+            columns: StudioCardGroups.gathering(groups, columns: base.flattened.columns),
+            segments: base.moduleSegments, ratio: base.ratio, measured: base.flattened.measuredHeights
+        )
+    }
+
+    private func ungroupedArrangement(
+        for page: PageLayoutPageID, descriptors: [PageModuleDescriptor], spacing: Double
+    ) -> PageLayoutArrangement {
         let visible = visibleDescriptors(for: page, descriptors: descriptors)
         let segments = resolvedSegments(for: page, descriptors: descriptors)
         let measured = measuredHeights(for: page)
@@ -649,7 +661,8 @@ final class PageLayoutModel: ObservableObject {
         segments: [[PageLayoutModuleID]],
         for page: PageLayoutPageID,
         available: [PageLayoutModuleID],
-        unhiding: PageLayoutModuleID? = nil
+        unhiding: PageLayoutModuleID? = nil,
+        groups: [[String]]? = nil
     ) {
         let stored = storedLayouts[page]
         let merged = PageLayoutResolver.mergingEdit(
@@ -661,7 +674,8 @@ final class PageLayoutModel: ObservableObject {
         if let unhiding {
             hidden.removeAll { $0 == unhiding }
         }
-        settingsStore.settings.pageLayouts[page] = StoredPageLayout(
+        var settings = settingsStore.settings
+        settings.pageLayouts[page] = StoredPageLayout(
             mode: .manual,
             ratio: merged.ratio,
             columns: merged.columns,
@@ -672,6 +686,8 @@ final class PageLayoutModel: ObservableObject {
             ),
             hidden: hidden
         )
+        if let groups { settings.studioCardGroups[page.rawValue] = groups }
+        settingsStore.settings = settings
         compactPackings.removeValue(forKey: page)
     }
 
@@ -696,7 +712,10 @@ final class PageLayoutModel: ObservableObject {
     /// that are not on screen. Saved presets are untouched — they exist so an
     /// arrangement survives exactly this.
     func reset(for page: PageLayoutPageID) {
-        settingsStore.settings.pageLayouts.removeValue(forKey: page)
+        var settings = settingsStore.settings
+        settings.pageLayouts.removeValue(forKey: page)
+        settings.studioCardGroups.removeValue(forKey: page.rawValue)
+        settingsStore.settings = settings
         measured.removeValue(forKey: page)
         compactPackings.removeValue(forKey: page)
         Task { [store] in

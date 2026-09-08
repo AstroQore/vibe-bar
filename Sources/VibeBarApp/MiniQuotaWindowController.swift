@@ -197,6 +197,10 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
     /// order matters — it drives the company folding — so the ids are joined
     /// in order, not sorted.
     static func sizingFingerprint(config: MiniWindowConfig, environment: AppEnvironment? = nil) -> String {
+        if config.displayMode == .custom {
+            let layout = (environment?.settingsStore.settings.miniCanvasLayouts[config.id.uuidString] ?? MiniCanvasLayout()).normalized()
+            return "custom|\(layout.width)|\(layout.height)"
+        }
         let ids = visibleOrderedFieldIDs(config: config, environment: environment).joined(separator: ",")
         return "\(config.displayMode.rawValue)|\(config.stripDensity.rawValue)|\(ids)"
     }
@@ -413,6 +417,9 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             return NSSize(width: MiniFocusMetrics.size.width, height: MiniFocusMetrics.size.height)
         case .rail:
             return NSSize(width: MiniRailMetrics.size.width, height: MiniRailMetrics.size.height)
+        case .custom:
+            let layout = (environment?.settingsStore.settings.miniCanvasLayouts[config.id.uuidString] ?? MiniCanvasLayout()).normalized()
+            return NSSize(width: layout.width + 24, height: layout.height + 38)
         }
     }
 

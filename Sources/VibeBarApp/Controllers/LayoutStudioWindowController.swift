@@ -34,6 +34,10 @@ final class LayoutStudioWindowController: NSObject {
 
     func open(subject: Subject, environment: AppEnvironment) {
         model.subject = subject
+        if case let .miniWindow(id) = subject,
+           environment.settingsStore.settings.miniWindow.config(id: id)?.displayMode == .custom {
+            model.isInspectorShown = true
+        }
         // Before the window exists: switching activation policy reorders the
         // app's windows, and doing it afterwards can drop the new one behind.
         DockActivationController.shared.acquire(.layoutStudio)
@@ -82,7 +86,9 @@ final class LayoutStudioWindowController: NSObject {
         // behind them.
         win.titlebarAppearsTransparent = true
         win.titleVisibility = .hidden
-        win.isMovableByWindowBackground = true
+        // The background contains native palette drags and a free canvas.
+        // Moving the window from those surfaces steals their first drag.
+        win.isMovableByWindowBackground = false
         win.isOpaque = false
         win.backgroundColor = .clear
         win.isReleasedWhenClosed = false
@@ -207,6 +213,10 @@ final class LayoutStudioModel: ObservableObject {
         case nextSubject
         case previousSubject
         case toggleInspector
+        case group
+        case ungroup
+        case removeSelection
+        case selectAll
     }
 
     @Published var subject: LayoutStudioWindowController.Subject = .popoverPage(.overview)
@@ -239,6 +249,7 @@ final class LayoutStudioModel: ObservableObject {
         let shift = flags.contains(.shift)
         switch event.keyCode {
         case 53:  return command || option ? nil : .escape
+        case 51, 117: return command || option ? nil : .removeSelection
         case 123: return command || option ? nil : .previousSubject
         case 124: return command || option ? nil : .nextSubject
         default: break
@@ -250,6 +261,8 @@ final class LayoutStudioModel: ObservableObject {
         case "-": return .zoomOut
         case "0": return .zoomFit
         case "z": return shift || option ? nil : .undo
+        case "g": return option ? nil : shift ? .ungroup : .group
+        case "a": return option || shift ? nil : .selectAll
         case "]": return .nextSubject
         case "[": return .previousSubject
         case "i": return option ? .toggleInspector : nil
@@ -268,14 +281,14 @@ final class StudioPointer: ObservableObject {
 /// just before. `nil` is a real state — a page never arranged, a window
 /// that did not exist.
 enum StudioUndo: Equatable {
-    case page(PageLayoutPageID, StoredPageLayout?)
-    case miniWindow(UUID, MiniWindowConfig?)
+    case page(PageLayoutPageID, StoredPageLayout?, [[String]])
+    case miniWindow(UUID, MiniWindowConfig?, MiniCanvasLayout?)
     case menuBar(MenuBarItemKind, MenuBarItemSettings)
 
     var subject: LayoutStudioWindowController.Subject {
         switch self {
-        case let .page(page, _): return .popoverPage(page)
-        case let .miniWindow(id, _): return .miniWindow(id)
+        case let .page(page, _, _): return .popoverPage(page)
+        case let .miniWindow(id, _, _): return .miniWindow(id)
         case let .menuBar(kind, _): return .menuBar(kind)
         }
     }
