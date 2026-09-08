@@ -1162,27 +1162,43 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
 
     @discardableResult
     public mutating func remove(_ id: UUID) -> Bool {
-        guard let location = location(of: id) else { return false }
-        segments[location.segment][location.row].remove(at: location.offset)
-        // Removing one member leaves the rest bound; removing the
-        // second-to-last leaves a group of one, which is not a group.
+        guard location(of: id) != nil else { return false }
+        let ids = Set(groupedRun(of: id))
+        for segment in segments.indices {
+            for row in MenuBarSegment.Row.allCases {
+                segments[segment][row].removeAll { ids.contains($0.id) }
+            }
+        }
         normalizeGroups()
         return true
     }
 
-    /// Copy a block in place, directly after the original. The copy is a new
-    /// block, so it gets a new identity — two blocks that render identically
-    /// are still two blocks the editor can drag apart.
-    /// Returns the copy's id so the editor can select what it just made.
+    /// Copy a whole group (or a lone block) after the original with fresh
+    /// child and group identities. Returns its first child for selection.
     @discardableResult
     public mutating func duplicate(_ id: UUID) -> UUID? {
         guard let location = location(of: id) else { return nil }
-        var copy = segments[location.segment][location.row][location.offset]
-        copy.id = UUID()
-        // The copy lands inside the run, so it joins it rather than splitting
-        // it — carrying `groupID` over is what keeps that true.
-        segments[location.segment][location.row].insert(copy, at: location.offset + 1)
-        return copy.id
+        let ids = Set(groupedRun(of: id))
+        let row = segments[location.segment][location.row]
+        guard let last = row.lastIndex(where: { ids.contains($0.id) }) else { return nil }
+        let group = ids.count > 1 ? UUID() : nil
+        let copies = row.filter { ids.contains($0.id) }.map { token in
+            var copy = token; copy.id = UUID(); copy.groupID = group; return copy
+        }
+        segments[location.segment][location.row].insert(contentsOf: copies, at: last + 1)
+        return copies.first?.id
+    }
+
+    public mutating func duplicateSelection(_ ids: [UUID]) -> [UUID] {
+        let wanted = Set(ids)
+        let order = segments.flatMap(\.tokens).map(\.id).filter(wanted.contains)
+        var done = Set<UUID>()
+        var result: [UUID] = []
+        for id in order where !done.contains(id) {
+            done.formUnion(groupedRun(of: id))
+            if let copy = duplicate(id) { result += groupedRun(of: copy) }
+        }
+        return result
     }
 
     /// Move `id` into `target`'s row, immediately before it. No-op when they
@@ -1197,6 +1213,7 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// the invariant the group is holding.
     public mutating func move(_ id: UUID, before target: UUID) {
         let run = groupedRun(of: id)
+        let target = groupedRun(of: target).first ?? target
         // Both ends checked before anything is lifted. Validating the target
         // afterwards could not recover: the source is already out, so the
         // "put it back" lookup finds nothing and strands the run in a segment
@@ -1300,21 +1317,21 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         return Set(counts.filter { $0.value > 1 }.keys)
     }
 
-    /// Bind blocks that already sit side by side in one row.
-    ///
-    /// Refused rather than repaired when they do not: two blocks with a third
-    /// between them are not a run, and quietly moving that third one is an
-    /// edit the user did not ask for. Returns the new group's id.
+    /// Gather selected elements into one movable container at the first
+    /// selection. Existing containers enter whole. Returns the new group id.
     @discardableResult
     public mutating func group(_ ids: [UUID]) -> UUID? {
-        guard let run = contiguousRun(ids) else { return nil }
+        guard canGroup(ids) else { return nil }
+        let wanted = Set(ids.flatMap { groupedRun(of: $0) })
+        let ordered = segments.flatMap(\.tokens).filter { wanted.contains($0.id) }.map(\.id)
+        guard let first = ordered.first, let anchor = location(of: first) else { return nil }
+        var members = lift(ordered)
         let group = UUID()
-        for offset in run.offsets {
-            segments[run.segment][run.row][offset].groupID = group
-        }
-        // Binding B and C when A-B were bound leaves A holding an id nobody
-        // else has. It is not a group any more, and a stale one would be
-        // copied by `duplicate` and quietly bind the copy to nothing.
+        for index in members.indices { members[index].groupID = group }
+        // Grouping is an explicit gather: preserve reading order, place the
+        // container at the first selected element, and leave other elements
+        // outside it. Existing groups enter whole, never partially.
+        segments[anchor.segment][anchor.row].insert(contentsOf: members, at: anchor.offset)
         normalizeGroups()
         return group
     }
@@ -1322,41 +1339,12 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
     /// Whether `group(_:)` would bind these. One predicate, so the button that
     /// offers the action and the action itself cannot disagree about it.
     public func canGroup(_ ids: [UUID]) -> Bool {
-        contiguousRun(ids) != nil
-    }
-
-    /// Where these blocks are, if they are two or more sitting side by side in
-    /// one row. `nil` says they are not a run — which is a refusal, not a
-    /// problem to fix by moving them.
-    private func contiguousRun(
-        _ ids: [UUID]
-    ) -> (segment: Int, row: MenuBarSegment.Row, offsets: [Int])? {
         let wanted = Set(ids)
-        guard wanted.count > 1 else { return nil }
-        // One walk of the strip rather than `location(of:)` per id, which
-        // scans it each time: this runs on every redraw while a selection is
-        // being built, and a big selection on a big strip made that quadratic.
-        var home: (segment: Int, row: MenuBarSegment.Row)?
-        var offsets: [Int] = []
-        for segmentIndex in segments.indices {
-            for row in MenuBarSegment.Row.allCases {
-                for (offset, token) in segments[segmentIndex][row].enumerated()
-                where wanted.contains(token.id) {
-                    if let home {
-                        // A selection spanning two rows is not a run, and
-                        // finding that out early costs nothing.
-                        guard home == (segmentIndex, row) else { return nil }
-                    } else {
-                        home = (segmentIndex, row)
-                    }
-                    offsets.append(offset)
-                }
-            }
-        }
-        guard let home, offsets.count == wanted.count else { return nil }
-        offsets.sort()
-        guard offsets.last! - offsets.first! == offsets.count - 1 else { return nil }
-        return (home.segment, home.row, offsets)
+        let tokens = segments.flatMap(\.tokens)
+        guard wanted.count > 1, wanted.isSubset(of: Set(tokens.map(\.id))) else { return false }
+        let selected = tokens.filter { wanted.contains($0.id) }
+        if let group = selected.first?.groupID, selected.allSatisfy({ $0.groupID == group }) { return false }
+        return true
     }
 
     /// Unbind the run `id` belongs to. The blocks stay exactly where they are.

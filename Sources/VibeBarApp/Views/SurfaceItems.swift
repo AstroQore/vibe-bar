@@ -87,6 +87,10 @@ private struct LiftedSurfaceItemKey: EnvironmentKey {
     static let defaultValue: String? = nil
 }
 
+private struct LiftedSurfaceItemsKey: EnvironmentKey {
+    static let defaultValue: Set<String> = []
+}
+
 private struct StudioPageOverrideKey: EnvironmentKey {
     static let defaultValue: StudioPageOverride? = nil
 }
@@ -106,6 +110,11 @@ extension EnvironmentValues {
     var liftedSurfaceItem: String? {
         get { self[LiftedSurfaceItemKey.self] }
         set { self[LiftedSurfaceItemKey.self] = newValue }
+    }
+
+    var liftedSurfaceItems: Set<String> {
+        get { self[LiftedSurfaceItemsKey.self] }
+        set { self[LiftedSurfaceItemsKey.self] = newValue }
     }
 
     var studioPageOverride: StudioPageOverride? {
@@ -136,6 +145,7 @@ private struct SurfaceItemModifier: ViewModifier {
 
     @Environment(\.surfaceItemFrames) private var frames
     @Environment(\.liftedSurfaceItem) private var lifted
+    @Environment(\.liftedSurfaceItems) private var liftedItems
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -144,8 +154,8 @@ private struct SurfaceItemModifier: ViewModifier {
                 // The placeholder: still in layout so the others make room
                 // around it, faded so the picture under the pointer is
                 // unmistakably the thing being moved.
-                .opacity(lifted == id ? 0.22 : 1)
-                .animation(.easeOut(duration: 0.18), value: lifted == id)
+                .opacity(lifted == id || liftedItems.contains(id) ? 0.22 : 1)
+                .animation(.easeOut(duration: 0.18), value: lifted == id || liftedItems.contains(id))
                 .onGeometryChange(for: CGRect.self) { proxy in
                     proxy.frame(in: .named(SurfaceCoordinates.space))
                 } action: { frame in

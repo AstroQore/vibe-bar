@@ -231,7 +231,7 @@ struct MenuBarStageView: View {
                     .foregroundStyle(.tertiary)
                     .padding(18)
             } else {
-                MenuBarStripStage(
+                MenuBarNativeStage(
                     composition: composition,
                     plan: plan,
                     template: composition.template,
@@ -295,21 +295,14 @@ struct MenuBarStageView: View {
         plan: MenuBarRenderPlan
     ) -> MenuBarStageRunGhost {
         let tokens = drag.run.compactMap { composition.token($0) }
-        var rendered: [UUID: MenuBarRenderedToken] = [:]
-        for column in plan.columns {
-            for token in column.top.tokens { rendered[token.id] = token }
-            for token in column.bottom?.tokens ?? [] { rendered[token.id] = token }
-        }
         return MenuBarStageRunGhost(
             tokens: tokens,
-            rendered: rendered,
             template: composition.template,
             plan: plan,
             quotas: snapshots,
             displayMode: settingsStore.settings.displayMode,
             scheme: scheme,
-            zoom: zoom,
-            naming: naming
+            zoom: zoom
         )
     }
 
@@ -465,14 +458,15 @@ struct MenuBarStageView: View {
             return
         }
         let flags = NSEvent.modifierFlags
+        let run = Set(composition.groupedRun(of: anchor))
         if flags.contains(.shift) || flags.contains(.command) {
             if selection.contains(anchor) {
-                selection.remove(anchor)
+                selection.subtract(run)
             } else {
-                selection.insert(anchor)
+                selection.formUnion(run)
             }
         } else {
-            selection = [anchor]
+            selection = flags.contains(.option) ? [anchor] : run
         }
     }
 
@@ -496,6 +490,9 @@ struct MenuBarStageView: View {
         }
         guard press.modifiers.contains(.command) else { return .ignored }
         switch press.characters.lowercased() {
+        case "a":
+            selection = Set(composition.segments.flatMap(\.tokens).map(\.id))
+            return .handled
         case "g":
             if press.modifiers.contains(.shift) {
                 ungroupSelection(composition)
@@ -504,7 +501,7 @@ struct MenuBarStageView: View {
             }
             return .handled
         case "d":
-            guard selection.count == 1 else { return .ignored }
+            guard !selection.isEmpty else { return .ignored }
             duplicateSelected()
             return .handled
         default:
@@ -621,10 +618,10 @@ struct MenuBarStageView: View {
     }
 
     private func duplicateSelected() {
-        guard selection.count == 1, let id = selection.first else { return }
-        var copy: UUID?
-        mutate { copy = $0.duplicate(id) }
-        if let copy { selection = [copy] }
+        guard !selection.isEmpty else { return }
+        var copies: [UUID] = []
+        mutate { copies = $0.duplicateSelection(Array(selection)) }
+        selection = Set(copies)
     }
 
     private func remove(_ ids: [UUID]) {

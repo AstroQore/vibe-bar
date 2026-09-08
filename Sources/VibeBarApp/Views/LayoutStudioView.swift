@@ -50,10 +50,15 @@ struct LayoutStudioView: View {
     @State private var isDragCancelled = false
     /// An undo writes the saved state too; that write is not a new step.
     @State private var isUndoing = false
+    /// `onChange` runs after the action returns, so a transient Bool cannot
+    /// identify an undo write. Consume the exact restored state once.
+    @State private var undoWrite: StudioUndo?
     @State private var isHintShown = false
     /// The menu bar subject's selection — shared with the composer in the
     /// inspector, so the block picked on the stage is the block it edits.
     @State private var stripSelection: Set<UUID> = []
+    @State private var canvasSelection: Set<UUID> = []
+    @State private var cardSelection: Set<String> = []
     /// The menu bar the strip is previewed on; the window's own until picked.
     @State private var stripScheme: ColorScheme?
     /// Whether the strip has a block in hand — what decides who answers
@@ -108,6 +113,8 @@ struct LayoutStudioView: View {
             hovered = nil
             drag = nil
             settling = nil
+            canvasSelection = []
+            cardSelection = []
             // A page is drawn whole now, so the stage may be scrolled deep
             // into one when the subject changes; the next surface starts
             // at its top, not partway down where the last one was left.
@@ -120,6 +127,10 @@ struct LayoutStudioView: View {
         // keeps an inspector edit from being swallowed by the undo of the
         // stage edit before it.
         .onChange(of: savedState) { old, new in
+            if let restored = undoWrite {
+                undoWrite = nil
+                if new.state == restored { return }
+            }
             guard !isUndoing, old.subject == new.subject, old.state != new.state else { return }
             model.undoStack.append(old.state)
             if model.undoStack.count > 40 { model.undoStack.removeFirst() }
@@ -194,16 +205,23 @@ struct LayoutStudioView: View {
             }
         case let .miniWindow(id):
             let config = settingsStore.settings.miniWindow.config(id: id)
-            let size = config.map {
-                MiniQuotaWindowController.stableContentSize(config: $0, environment: environment)
+            if config?.displayMode == .custom {
+                ScaledPreview(scale: scale, onNaturalSize: { naturalSize = $0 }, isInteractive: true) {
+                    MiniCanvasStage(configID: id, layout: canvasBinding(id), selection: $canvasSelection,
+                                    defaultFieldID: fieldOptions.first?.id)
+                }
+                .id(id)
+            } else {
+                let size = config.map {
+                    MiniQuotaWindowController.stableContentSize(config: $0, environment: environment)
+                }
+                surfaceShell(cornerRadius: Theme.miniCornerRadius, flat: true) {
+                    MiniQuotaWindowView(configID: id, onClose: {}, onToggleDisplayMode: {})
+                        // The panel's own size, close-button reserve and all.
+                        .frame(width: size?.width, height: size?.height)
+                }
+                .id(id)
             }
-            surfaceShell(cornerRadius: Theme.miniCornerRadius, flat: true) {
-                MiniQuotaWindowView(configID: id, onClose: {}, onToggleDisplayMode: {})
-                    // The panel's own size, close-button reserve and all, so
-                    // the window on the stage is spaced like the one on screen.
-                    .frame(width: size?.width, height: size?.height)
-            }
-            .id(id)
         case let .menuBar(kind):
             // Not through `surfaceShell`: the strip is not a picture scaled
             // from outside but a live surface that draws itself at the
@@ -220,12 +238,8 @@ struct LayoutStudioView: View {
                 )
                 .id(kind)
             } else {
-                Text(L10n.Platform.Macos.MenuBar.composerStudioDefault)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
-                    .padding(24)
+                MenuBarDefaultStage(kind: kind, scheme: stripScheme ?? scheme, scale: scale,
+                                    onNaturalSize: { naturalSize = $0 })
             }
         }
     }
@@ -266,6 +280,7 @@ struct LayoutStudioView: View {
         // Dimmed only once the drag has lifted: a press that never moves is
         // a click, and a click must not make a card flicker.
         .environment(\.liftedSurfaceItem, (drag?.engaged == true ? drag?.item : nil) ?? settling?.item)
+        .environment(\.liftedSurfaceItems, drag?.engaged == true ? Set(drag?.members ?? []) : Set(settling?.members ?? []))
         .environment(\.studioPageOverride, pageOverride)
         .environment(\.studioMiniOrderOverride, miniOverride)
         .animation(.smooth(duration: 0.22), value: scale)
@@ -279,7 +294,10 @@ struct LayoutStudioView: View {
     private func interactionLayer(cornerRadius: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             Color.clear.contentShape(Rectangle())
-            if drag == nil, settling == nil, let hovered, let frame = model.frames.frame(of: hovered) {
+            if !cardSelection.isEmpty, let frame = surfaceBounds(Array(cardSelection)) {
+                hoverOutline(frame.scaled(by: scale), cornerRadius: cornerRadius)
+            }
+            if drag == nil, settling == nil, let hovered, let frame = surfaceBounds(cardRun(hovered)) {
                 hoverOutline(frame.scaled(by: scale), cornerRadius: cornerRadius)
                     .transition(.opacity)
             }
@@ -302,7 +320,7 @@ struct LayoutStudioView: View {
                 if drag == nil { NSCursor.arrow.set() }
             }
         }
-        .gesture(surfaceDrag)
+        .highPriorityGesture(surfaceDrag)
     }
 
     /// The card under the pointer, marked as something that can be picked
@@ -508,6 +526,93 @@ struct LayoutStudioView: View {
         )
     }
 
+    private var cardGroups: [[String]] {
+        guard case let .popoverPage(page) = model.subject else { return [] }
+        return settingsStore.settings.studioCardGroups[page.rawValue] ?? []
+    }
+
+    private func surfaceBounds(_ ids: [String]) -> CGRect? {
+        let rect = ids.compactMap { model.frames.frame(of: $0) }.reduce(CGRect.null) { $0.union($1) }
+        return rect.isNull ? nil : rect
+    }
+
+    private func studioBounds(_ ids: [String]) -> CGRect? {
+        surfaceBounds(ids)?.scaled(by: scale).offsetBy(dx: surfaceFrame.minX, dy: surfaceFrame.minY)
+    }
+
+    private func cardRun(_ id: String) -> [String] {
+        let live = (cardGroups.first { $0.contains(id) } ?? [id]).filter { model.frames.frame(of: $0) != nil }
+        return live.isEmpty ? [id] : live
+    }
+
+    private func groupCards(_ page: PageLayoutPageID) {
+        let context = pageContext(page)
+        let order = context.displayed.flattened.moduleIDs.map(\.rawValue)
+        let groups = StudioCardGroups.grouping(cardSelection, in: cardGroups, order: order)
+        let members = order.filter(StudioCardGroups.expanded(cardSelection, groups: groups).contains).map(PageLayoutModuleID.init(rawValue:))
+        guard members.count > 1, let first = members.first else { return }
+        let columns = StudioCardGroups.gathering(groups, columns: context.displayed.flattened.columns)
+        let segments = StudioCardGroups.joiningSegment(members, anchor: first, segments: context.displayed.moduleSegments)
+        layoutModel.applyStudioArrangement(
+            PageLayoutConfig(ratio: context.displayed.ratio, columns: columns,
+                             measuredHeights: layoutModel.measuredHeights(for: page)),
+            segments: segments, for: page, available: availableModuleIDs(context), groups: groups
+        )
+        cardSelection = Set(members.map(\.rawValue))
+    }
+
+    private func ungroupCards(_ page: PageLayoutPageID) {
+        settingsStore.settings.studioCardGroups[page.rawValue] = cardGroups.filter { Set($0).isDisjoint(with: cardSelection) }
+    }
+
+    private func hideSelectedCards(_ page: PageLayoutPageID) {
+        var settings = settingsStore.settings
+        var stored = layoutModel.storedLayout(for: page) ?? StoredPageLayout(pageContext(page).displayed.flattened)
+        for id in StudioCardGroups.expanded(cardSelection, groups: cardGroups) {
+            stored = stored.settingHidden(PageLayoutModuleID(rawValue: id), true)
+        }
+        settings.pageLayouts[page] = stored
+        settingsStore.settings = settings
+        cardSelection = []
+    }
+
+    private func pageGroupControls(_ page: PageLayoutPageID) -> some View {
+        let context = pageContext(page)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Button(L10n.MenuBar.Composer.Group.bind) { groupCards(page) }.disabled(cardSelection.count < 2)
+                Button(L10n.MenuBar.Composer.Group.unbind) { ungroupCards(page) }.disabled(cardSelection.isEmpty)
+                Button(L10n.Common.remove) { hideSelectedCards(page) }.disabled(cardSelection.isEmpty)
+            }
+            if !cardSelection.isEmpty {
+                Text(L10n.MenuBar.Composer.Group.selected(count: cardSelection.count)).font(.caption).foregroundStyle(.secondary)
+            }
+            DisclosureGroup(L10n.MenuBar.Composer.Group.bind) {
+                ForEach(context.displayed.flattened.moduleIDs, id: \.self) { id in
+                    Toggle(context.descriptor(id)?.displayName ?? id.rawValue, isOn: Binding(
+                        get: { cardSelection.contains(id.rawValue) },
+                        set: { selected in
+                            let run = Set(cardRun(id.rawValue))
+                            if selected { cardSelection.formUnion(run) } else { cardSelection.subtract(run) }
+                        }
+                    ))
+                    .font(.caption)
+                }
+            }
+            ForEach(Array(cardGroups.enumerated()), id: \.offset) { _, group in
+                Button { cardSelection = Set(group.filter { model.frames.frame(of: $0) != nil }) } label: {
+                    Label(group.compactMap { context.descriptor(PageLayoutModuleID(rawValue: $0))?.displayName }.joined(separator: " · "),
+                          systemImage: "square.stack.3d.up")
+                        .font(.caption).lineLimit(2)
+                }
+            }
+        }
+    }
+
+    private func surfaceHit(_ point: CGPoint) -> String? {
+        model.frames.item(at: point) ?? cardGroups.first { surfaceBounds($0)?.contains(point) == true }?.first
+    }
+
     private var pageOverride: StudioPageOverride? {
         guard case let .popoverPage(page) = model.subject else { return nil }
         var arrangement: PageLayoutArrangement?
@@ -534,6 +639,13 @@ struct LayoutStudioView: View {
 
     private func miniConfig(_ id: UUID) -> MiniWindowConfig? {
         settingsStore.settings.miniWindow.config(id: id)
+    }
+
+    private func canvasBinding(_ id: UUID) -> Binding<MiniCanvasLayout> {
+        Binding(
+            get: { (settingsStore.settings.miniCanvasLayouts[id.uuidString] ?? MiniCanvasLayout()).normalized() },
+            set: { settingsStore.settings.miniCanvasLayouts[id.uuidString] = $0.normalized() }
+        )
     }
 
     private func updateMini(_ id: UUID, _ mutate: (inout MiniWindowConfig) -> Void) {
@@ -590,6 +702,7 @@ struct LayoutStudioView: View {
 
         // Pages
         var baseColumns: [[PageLayoutModuleID]] = []
+        var members: [String] = []
         var baseSegments: [[PageLayoutModuleID]] = []
         var ratio: PageColumnRatio = .equal
         var provisionalColumns: [[PageLayoutModuleID]]?
@@ -606,6 +719,7 @@ struct LayoutStudioView: View {
     /// The picture of a dropped item on its way into its slot.
     private struct StudioSettling {
         let item: String
+        let members: [String]
         let image: NSImage?
         let label: String
         let accent: Color
@@ -622,9 +736,19 @@ struct LayoutStudioView: View {
             .onChanged { value in
                 if drag == nil {
                     guard !isDragCancelled, settling == nil,
-                          let item = model.frames.item(at: surfacePoint(value.startLocation)),
-                          let started = makeDrag(item: item, origin: .surface, at: value.startLocation)
+                          let item = surfaceHit(surfacePoint(value.startLocation)),
+                          var started = makeDrag(item: item, origin: .surface, at: value.startLocation)
                     else { return }
+                    if case .popoverPage = model.subject {
+                        let run = Set(cardRun(item))
+                        if NSEvent.modifierFlags.contains(.shift) {
+                            if cardSelection.contains(item) { cardSelection.subtract(run) }
+                            else { cardSelection.formUnion(run) }
+                        } else if !cardSelection.contains(item) { cardSelection = run }
+                        let order = started.baseColumns.flatMap { $0 }.map(\.rawValue)
+                        started.members = order.filter(cardSelection.contains)
+                        if started.members.isEmpty { started.members = [item] }
+                    }
                     drag = started
                 }
                 guard drag?.origin == .surface else { return }
@@ -679,6 +803,7 @@ struct LayoutStudioView: View {
                 location: start
             )
             started.baseColumns = context.displayed.flattened.columns
+            started.members = cardRun(item)
             started.baseSegments = context.displayed.moduleSegments
             started.ratio = context.displayed.ratio
             return started
@@ -695,6 +820,7 @@ struct LayoutStudioView: View {
                 location: start
             )
             started.baseOrder = config.fieldIds
+            started.members = [item]
             started.axis = config.displayMode.stageAxis
             return started
         case .menuBar:
@@ -715,7 +841,7 @@ struct LayoutStudioView: View {
                 return
             }
             current.engaged = true
-            if let rect = studioRect(of: current.item) {
+            if let rect = studioBounds(current.members.isEmpty ? [current.item] : current.members) {
                 current.image = LayoutStudioWindowController.shared.snapshot(
                     of: rect.offsetBy(dx: rootGlobalOrigin.x, dy: rootGlobalOrigin.y)
                 )
@@ -734,27 +860,30 @@ struct LayoutStudioView: View {
         switch model.subject {
         case .popoverPage:
             let moduleID = PageLayoutModuleID(rawValue: current.item)
+            let members = current.members.map(PageLayoutModuleID.init(rawValue:))
+            let moving = Set(members)
             var columns: [[PageLayoutModuleID]]?
             var segments: [[PageLayoutModuleID]]?
             var slot: StudioArranging.ColumnSlot?
             if removed {
-                columns = StudioArranging.columnsRemoving(moduleID, from: current.baseColumns)
+                columns = current.baseColumns.map { $0.filter { !moving.contains($0) } }
                 segments = current.baseSegments
             } else {
                 let next = StudioArranging.columnSlot(
                     at: point,
                     columnRanges: columnRanges(ratio: current.ratio),
-                    columns: current.baseColumns,
+                    columns: current.baseColumns.map { $0.filter { $0 == moduleID || !moving.contains($0) } },
                     frames: pageFrames(),
                     dragging: moduleID
                 )
                 slot = next
                 if next != current.slot || current.provisionalColumns == nil {
-                    let moved = StudioArranging.columnsMoving(moduleID, to: next, in: current.baseColumns)
+                    let moved = StudioCardGroups.moving(members, to: next, columns: current.baseColumns)
                     columns = moved
-                    segments = StudioArranging.segmentsAfterMove(
+                    let placement = StudioArranging.segmentsAfterMove(
                         moduleID, columns: moved, segments: current.baseSegments
                     )
+                    segments = StudioCardGroups.joiningSegment(members, anchor: moduleID, segments: placement)
                 }
             }
             current.slot = slot
@@ -831,7 +960,7 @@ struct LayoutStudioView: View {
                 withAnimation(Self.reflow) { drag = nil }
                 return
             }
-            let target = studioRect(of: current.item)
+            let target = studioBounds(current.members)
             if let columns = current.provisionalColumns,
                columns != current.baseColumns || current.origin == .tray {
                 commitPage(current, page: page, columns: columns,
@@ -870,6 +999,7 @@ struct LayoutStudioView: View {
         )
         var landing = StudioSettling(
             item: current.item,
+            members: current.members,
             image: current.image,
             label: current.label,
             accent: current.accent,
@@ -908,11 +1038,11 @@ struct LayoutStudioView: View {
     private var savedState: SavedState {
         switch model.subject {
         case let .popoverPage(page):
-            return SavedState(subject: model.subject, state: .page(page, layoutModel.storedLayout(for: page)))
+            return SavedState(subject: model.subject, state: .page(page, layoutModel.storedLayout(for: page), cardGroups))
         case let .miniWindow(id):
             return SavedState(
                 subject: model.subject,
-                state: .miniWindow(id, miniConfig(id))
+                state: .miniWindow(id, miniConfig(id), settingsStore.settings.miniCanvasLayouts[id.uuidString])
             )
         case let .menuBar(kind):
             return SavedState(
@@ -958,7 +1088,12 @@ struct LayoutStudioView: View {
     private func commitRemoval(_ current: StudioDrag) {
         switch model.subject {
         case let .popoverPage(page):
-            layoutModel.setHidden(true, for: PageLayoutModuleID(rawValue: current.item), page: page)
+            var settings = settingsStore.settings
+            var stored = layoutModel.storedLayout(for: page) ?? StoredPageLayout(pageContext(page).displayed.flattened)
+            for id in current.members { stored = stored.settingHidden(PageLayoutModuleID(rawValue: id), true) }
+            settings.pageLayouts[page] = stored
+            settingsStore.settings = settings
+            cardSelection = []
         case let .miniWindow(id):
             guard let config = miniConfig(id) else { return }
             updateMini(id) { $0.fieldIds.removeAll { $0 == current.item } }
@@ -969,6 +1104,7 @@ struct LayoutStudioView: View {
 
     private func undo() {
         guard let entry = model.undoStack.popLast() else { return }
+        undoWrite = entry
         if entry.subject != model.subject {
             model.subject = entry.subject
         }
@@ -976,10 +1112,14 @@ struct LayoutStudioView: View {
         defer { isUndoing = false }
         withAnimation(Self.reflow) {
             switch entry {
-            case let .page(page, stored):
-                layoutModel.restoreStoredLayout(stored, for: page)
-            case let .miniWindow(id, config):
+            case let .page(page, stored, groups):
                 var settings = settingsStore.settings
+                settings.pageLayouts[page] = stored
+                settings.studioCardGroups[page.rawValue] = groups
+                settingsStore.settings = settings
+            case let .miniWindow(id, config, canvas):
+                var settings = settingsStore.settings
+                settings.miniCanvasLayouts[id.uuidString] = canvas
                 if let config {
                     settings.miniWindow.upsert(config)
                 } else {
@@ -1208,6 +1348,7 @@ struct LayoutStudioView: View {
                             guard candidate != config.displayMode else { return }
                             withAnimation(Self.reflow) {
                                 updateMini(id) { $0.displayMode = candidate }
+                                if candidate == .custom { model.isInspectorShown = true }
                             }
                         }
                     }
@@ -1484,6 +1625,7 @@ struct LayoutStudioView: View {
             return L10n.Settings.Layout.studioHintPage
         case let .miniWindow(id):
             guard let config = miniConfig(id) else { return nil }
+            if config.displayMode == .custom { return L10n.Platform.Macos.MiniCanvas.hint }
             return config.displayMode.supportsStageArranging
                 ? L10n.Settings.Layout.studioHintMini
                 : L10n.Settings.Layout.studioHintFixedStyle
@@ -1577,6 +1719,7 @@ struct LayoutStudioView: View {
             VStack(alignment: .leading, spacing: 14) {
                 switch model.subject {
                 case let .popoverPage(page):
+                    pageGroupControls(page)
                     // Identity per subject: the editors keep their own
                     // selection in `@State`, so without a rebuild the controls
                     // would go on editing whatever the last one was while the
@@ -1584,8 +1727,13 @@ struct LayoutStudioView: View {
                     LayoutEditorView(initialPage: page)
                         .id(page)
                 case let .miniWindow(id):
-                    MiniWindowsSettingsSection(initialWindowID: id)
-                        .id(id)
+                    if miniConfig(id)?.displayMode == .custom {
+                        MiniCanvasInspector(layout: canvasBinding(id), selection: $canvasSelection, fields: fieldOptions)
+                            .id(id)
+                    } else {
+                        MiniWindowsSettingsSection(initialWindowID: id)
+                            .id(id)
+                    }
                 case let .menuBar(kind):
                     menuBarInspector(kind)
                         .id(kind)
@@ -1648,12 +1796,47 @@ struct LayoutStudioView: View {
     private func installKeys() {
         model.keyHandler = { key in
             switch key {
+            case .selectAll:
+                guard case let .popoverPage(page) = model.subject else { return false }
+                cardSelection = Set(pageContext(page).displayed.flattened.moduleIDs.map(\.rawValue))
+            case .group:
+                guard case let .popoverPage(page) = model.subject else { return false }
+                groupCards(page)
+            case .ungroup:
+                guard case let .popoverPage(page) = model.subject else { return false }
+                ungroupCards(page)
+            case .removeSelection:
+                switch model.subject {
+                case let .popoverPage(page):
+                    guard !cardSelection.isEmpty else { return false }
+                    hideSelectedCards(page)
+                case let .miniWindow(id):
+                    guard miniConfig(id)?.displayMode == .custom, !canvasSelection.isEmpty else { return false }
+                    var layout = canvasBinding(id).wrappedValue
+                    let members = layout.expandedSelection(canvasSelection)
+                    layout.elements.removeAll { members.contains($0.id) }
+                    canvasBinding(id).wrappedValue = layout
+                    canvasSelection = []
+                case let .menuBar(kind):
+                    guard !stripSelection.isEmpty else { return false }
+                    var item = settingsStore.settings.menuBarItem(kind)
+                    guard var composition = item.composition else { return false }
+                    for id in stripSelection { composition.remove(id) }
+                    item.composition = composition
+                    settingsStore.settings.setMenuBarItem(item)
+                    stripSelection = []
+                }
             case .escape:
+                if !cardSelection.isEmpty, drag == nil { cardSelection = []; return true }
                 // The strip answers Escape itself — a drag to cancel, a
                 // selection to clear — through the key press the window
                 // passes on when this returns false. With neither, Escape
                 // closes the Studio as it does for every other subject.
                 if case .menuBar = model.subject, stripIsDragging || !stripSelection.isEmpty {
+                    return false
+                }
+                if case let .miniWindow(id) = model.subject,
+                   miniConfig(id)?.displayMode == .custom, !canvasSelection.isEmpty {
                     return false
                 }
                 if drag != nil {

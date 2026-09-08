@@ -40,9 +40,11 @@ public enum BrowserCookieImportPreference {
         return selected.filter(order.contains)
     }
 
-    /// What the picker lists: the installed browsers with a cookie store on
-    /// this Mac, in the catalogue's order.
+    /// What the picker lists: installed browsers, in catalogue order. A
+    /// profile probe can fail before macOS grants browser-data access; that
+    /// must not hide an installed app or prevent choosing it. Importers still
+    /// apply the stricter cookie-source gate immediately before reading.
     public static func available(using detection: BrowserDetection = BrowserDetection()) -> [Browser] {
-        Browser.defaultImportOrder.filter { detection.isCookieSourceAvailable($0) }
+        Browser.defaultImportOrder.filter { detection.isAppInstalled($0) }
     }
 }

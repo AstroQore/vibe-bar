@@ -903,8 +903,11 @@ Three rules keep the browser-cookie importers (the four core providers'
   provider's own `preferredBrowser` still wins for that provider.
   `BrowserSelectionView` is the picker, shown in Settings › Misc
   Providers and in the setup assistant's browser-cookies step; it lists
-  `BrowserCookieImportPreference.available()` — installed browsers with a
-  cookie store — and ticking every browser back on clears the choice.
+  `BrowserCookieImportPreference.available()` — installed browsers, even
+  when their cookie data is not yet accessible. The picker reports an
+  unavailable cookie store separately and can re-check it; importers still
+  require the stricter cookie-source gate. Ticking every browser back on
+  clears the choice.
 
 ### 7.0.1 A parser fix and an index that already read the file
 

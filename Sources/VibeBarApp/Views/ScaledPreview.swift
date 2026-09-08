@@ -21,6 +21,9 @@ struct ScaledPreview<Content: View>: View {
     var maxHeight: CGFloat = .infinity
     /// The content's own size, before scaling, whenever it changes.
     var onNaturalSize: ((CGSize) -> Void)? = nil
+    /// A free canvas owns its gestures; ordinary previews leave interaction
+    /// to Studio's overlay or to the settings controls beside the picture.
+    var isInteractive = false
     @ViewBuilder var content: Content
 
     @State private var natural: CGSize = .zero
@@ -41,8 +44,8 @@ struct ScaledPreview<Content: View>: View {
                 alignment: .topLeading
             )
             .clipped()
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+            .allowsHitTesting(isInteractive)
+            .accessibilityHidden(!isInteractive)
     }
 }
 

@@ -606,7 +606,9 @@ struct MenuBarComposerEditor: View {
         let isDegraded = availability.degradedTokenIds.contains(token.id)
         let isBound = token.groupID.map(bound.contains) ?? false
         return Button {
-            selection = isSelected && selection.count == 1 ? [] : [token.id]
+            let composed = item.composition ?? MenuBarComposition()
+            let run = Set(composed.groupedRun(of: token.id))
+            selection = NSEvent.modifierFlags.contains(.option) ? [token.id] : (selection == run ? [] : run)
         } label: {
             HStack(spacing: 4) {
                 // A quota block wears its provider's mark, the way the
@@ -667,10 +669,11 @@ struct MenuBarComposerEditor: View {
         // pick a block and shift-click build the run to bind.
         .highPriorityGesture(
             TapGesture().modifiers(.shift).onEnded {
+                let run = Set((item.composition ?? MenuBarComposition()).groupedRun(of: token.id))
                 if selection.contains(token.id) {
-                    selection.remove(token.id)
+                    selection.subtract(run)
                 } else {
-                    selection.insert(token.id)
+                    selection.formUnion(run)
                 }
             }
         )
@@ -690,17 +693,24 @@ struct MenuBarComposerEditor: View {
                 Spacer(minLength: 8)
                 Button(L10n.MenuBar.Composer.Group.bind) {
                     mutate { $0.group(ids) }
-                    selection = []
                 }
                 .buttonStyle(.vibeBar)
                 .disabled(!canBind)
+                Button(L10n.MenuBar.Composer.Group.unbind) {
+                    mutate { composed in for id in ids { composed.ungroup(id) } }
+                }
+                Button(L10n.MenuBar.Composer.Action.duplicate) {
+                    var copies: [UUID] = []
+                    mutate { copies = $0.duplicateSelection(ids) }
+                    selection = Set(copies)
+                }
+                Button(L10n.Common.remove) {
+                    mutate { composed in for id in ids { composed.remove(id) } }
+                    selection = []
+                }
                 Button(L10n.Common.clear) { selection = [] }
                     .buttonStyle(.vibeBar)
             }
-            Text(canBind ? L10n.MenuBar.Composer.Group.hint : L10n.MenuBar.Composer.Group.notAdjacent)
-                .font(.caption2)
-                .foregroundStyle(canBind ? .tertiary : .secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

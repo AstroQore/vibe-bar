@@ -414,222 +414,7 @@ final class MenuBarStripInputObserver: ObservableObject {
 /// It does not resolve quotas, compute forecasts, or read settings. Everything
 /// it needs arrives as a value, so re-rendering it while the user types costs
 /// a layout pass and nothing else.
-struct MenuBarStripView: View {
-    let plan: MenuBarRenderPlan
-    let quotas: [MenuBarQuotaSnapshot]
-    let displayMode: DisplayMode
-    /// The face the status item would draw this plan at.
-    var baseFontSize: CGFloat = MenuBarStripMetrics.singleRowFontSize
-    /// Draws the id'd block with a selection ring, so the editor's chip
-    /// selection is visible in the preview too.
-    var highlighted: UUID?
-
-    /// Rows the strip actually draws — the same count the status item uses to
-    /// pick its face and its glyph box.
-    private var drawnRowCount: Int {
-        plan.isTwoRow ? 2 : 1
-    }
-
-    var body: some View {
-        Group {
-            if plan.columns.isEmpty {
-                Text("—")
-                    .font(.system(size: baseFontSize, weight: .regular).monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            } else if plan.isTwoRow {
-                // Columns side by side at the rasterizer's own spacing, each
-                // cell centred inside the column — `twoRowImage` centres a
-                // narrower cell inside the width its column earned, and a
-                // preview that left-aligned it would show the user something
-                // the menu bar will not draw.
-                HStack(alignment: .center, spacing: MenuBarStripMetrics.twoRowColumnSpacing) {
-                    ForEach(Array(plan.columns.enumerated()), id: \.offset) { _, column in
-                        VStack(alignment: .center, spacing: 0) {
-                            rowView(column.top)
-                            if let bottom = column.bottom { rowView(bottom) }
-                        }
-                    }
-                }
-            } else {
-                HStack(spacing: 0) {
-                    ForEach(Array(plan.columns.enumerated()), id: \.offset) { index, column in
-                        if index > 0 { columnBoundary }
-                        rowView(column.top)
-                    }
-                }
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            plan.spokenDescription.isEmpty
-                ? L10n.MenuBar.Composer.Preview.empty
-                : plan.spokenDescription
-        )
-    }
-
-    /// What a one-row strip puts between two groups: the template's divider
-    /// with the strip's own gap on each side, or just the gap.
-    @ViewBuilder
-    private var columnBoundary: some View {
-        let gap = baseFontSize * plan.tokenSpacing * Self.spacingToPoints
-        if let separator = plan.columnSeparator {
-            Text(separator)
-                .font(.system(size: baseFontSize, weight: .regular))
-                .foregroundStyle(Color.primary.opacity(0.45))
-                .fixedSize()
-                .padding(.horizontal, gap)
-        } else {
-            Color.clear.frame(width: gap, height: 0)
-        }
-    }
-
-    private func rowView(_ row: MenuBarRenderRow) -> some View {
-        HStack(spacing: baseFontSize * plan.tokenSpacing * Self.spacingToPoints) {
-            ForEach(row.tokens) { token in
-                tokenView(token)
-            }
-        }
-    }
-
-    /// The plan states gaps as a multiplier on the base font size because the
-    /// status item realizes them as a space glyph, which is the only thing the
-    /// two-row canvas can carry. A stack has real point spacing, so convert
-    /// with the width a system-font space actually occupies — close enough
-    /// that the preview and the bar agree at a glance.
-    private static let spacingToPoints: CGFloat = 0.28
-
-    private func tokenView(_ token: MenuBarRenderedToken) -> some View {
-        MenuBarStripTokenView(
-            token: token,
-            baseFontSize: baseFontSize,
-            rowCount: drawnRowCount,
-            quotas: quotas,
-            displayMode: displayMode
-        )
-        .padding(.horizontal, highlighted == token.id ? 2 : 0)
-        .background {
-            if highlighted == token.id {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.28))
-            }
-        }
-    }
-}
-
-/// One rendered block, drawn the way the strip draws it: the composer's live
-/// canvas lays these out itself, so it needs the block on its own.
-struct MenuBarStripTokenView: View {
-    let token: MenuBarRenderedToken
-    /// The face the strip is being drawn at.
-    let baseFontSize: CGFloat
-    /// Rows the strip draws — the glyph box depends on it.
-    let rowCount: Int
-    let quotas: [MenuBarQuotaSnapshot]
-    let displayMode: DisplayMode
-    /// How much larger than the bar this is drawn. The glyph box is capped
-    /// at the bar's own ceiling, so the cap has to scale with the drawing
-    /// or a strip drawn large keeps menu-bar-sized marks beside big text.
-    var zoom: CGFloat = 1
-
-    var body: some View {
-        let size = max(4, baseFontSize * token.fontScale)
-        let paint = MenuBarStripPalette.paint(
-            for: token.color,
-            quotas: quotas,
-            displayMode: displayMode
-        )
-        Group {
-            if let glyph = token.glyph {
-                MenuBarStripGlyph(
-                    glyph: glyph,
-                    // Whatever the bar will use for this many rows, not a
-                    // preview-only cap — at the bar's size, then scaled.
-                    side: MenuBarStripMetrics.glyphSide(
-                        fontSize: size / max(1, zoom),
-                        rowCount: rowCount
-                    ) * max(1, zoom),
-                    paint: paint
-                )
-            } else if let text = token.text {
-                Text(text)
-                    .font(font(size: size))
-                    .foregroundStyle(MenuBarStripPalette.color(paint))
-                    .fixedSize()
-            }
-        }
-    }
-
-    private func font(size: CGFloat) -> Font {
-        let weight: Font.Weight
-        switch token.weight {
-        case .regular: weight = .regular
-        case .medium: weight = .medium
-        case .semibold: weight = .semibold
-        }
-        let base = Font.system(size: size, weight: weight)
-        return token.monospacedDigits ? base.monospacedDigit() : base
-    }
-}
-
-/// A glyph inside the preview — a provider's brand mark or Vibe Bar's own —
-/// tinted to match the block's paint and rasterized against the preview's own
-/// colour scheme rather than the app's: a light-menu-bar preview has to show
-/// the light-menu-bar glyph.
-private struct MenuBarStripGlyph: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let glyph: MenuBarRenderedToken.Glyph
-    let side: CGFloat
-    let paint: MenuBarStripPaint
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(nsImage: image).resizable().scaledToFit()
-            } else {
-                Image(systemName: fallbackSymbol)
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(MenuBarStripPalette.color(paint))
-            }
-        }
-        .frame(width: side, height: side)
-        .accessibilityHidden(true)
-    }
-
-    private var image: NSImage? {
-        let size = NSSize(width: side, height: side)
-        let tint = MenuBarStripPalette.nsColor(paint)
-        let appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
-        switch glyph {
-        case let .provider(tool):
-            return ProviderBrandIcon.image(for: tool, size: size, tint: tint, appearance: appearance)
-        case let .brand(logo):
-            if let mark = logo.brandMark {
-                return ProviderBrandIcon.image(for: mark, size: size, tint: tint, appearance: appearance)
-            }
-            return ProviderBrandIcon.image(for: logo.tool, size: size, tint: tint, appearance: appearance)
-        case .app:
-            return ProviderBrandIcon.image(
-                for: MenuBarItemKind.compact, size: size, tint: tint, appearance: appearance
-            )
-        }
-    }
-
-    private var fallbackSymbol: String {
-        switch glyph {
-        case let .provider(tool): return ProviderBrandIcon.fallbackSystemImage(for: tool)
-        case let .brand(logo):
-            return logo.brandMark?.fallbackSystemImage ?? ProviderBrandIcon.fallbackSystemImage(for: logo.tool)
-        case .app: return ProviderBrandIcon.fallbackSystemImage(for: MenuBarItemKind.compact)
-        }
-    }
-}
-
-/// The strip shown twice, on a light and a dark menu-bar ground.
-///
-/// Both, always: a fixed colour is the one thing in the composer that can look
-/// deliberate on one menu bar and be invisible on the other, and the user has
-/// no way to check that without switching their whole system appearance.
+/// Light and dark previews of the exact native composed strip.
 struct MenuBarStripPreview: View {
     let plan: MenuBarRenderPlan
     let quotas: [MenuBarQuotaSnapshot]
@@ -650,21 +435,27 @@ struct MenuBarStripPreview: View {
         // rasterized two-row strip at 9pt, then shrinks two rows that do not
         // fit. The preview does all three, or it is previewing a strip the
         // user will never see.
-        let base = MenuBarStripMetrics.baseFontSize(
-            template: template,
-            rowCount: plan.isTwoRow ? 2 : 1
+        let drawing = MenuBarNativeRenderer.render(
+            plan: plan, quotas: quotas, template: template, displayMode: displayMode,
+            appearance: NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)!
         )
-        let fit = MenuBarStripMetrics.estimatedFitScale(plan: plan, baseFontSize: base)
-        return MenuBarStripView(
-            plan: plan,
-            quotas: quotas,
-            displayMode: displayMode,
-            baseFontSize: base * fit,
-            highlighted: highlighted
-        )
+        return ScrollView(.horizontal) {
+        Image(nsImage: drawing.image)
+        .frame(width: drawing.size.width, height: drawing.size.height)
+        .accessibilityLabel(plan.spokenDescription)
+        .overlay(alignment: .topLeading) {
+            if let highlighted, let rect = drawing.tokens[highlighted] {
+                Rectangle().strokeBorder(Color.accentColor, lineWidth: 1)
+                    .frame(width: rect.width, height: rect.height)
+                    .offset(x: rect.minX, y: rect.minY)
+            }
+        }
         .environment(\.colorScheme, scheme)
         .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+        .frame(height: 30)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: 32)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 // A stand-in for a menu bar, not a card: the point is a light
@@ -675,6 +466,7 @@ struct MenuBarStripPreview: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             scheme == .dark ? L10n.MenuBar.Composer.Preview.dark : L10n.MenuBar.Composer.Preview.light

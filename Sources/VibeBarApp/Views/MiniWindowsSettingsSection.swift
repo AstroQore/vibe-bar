@@ -238,12 +238,17 @@ struct MiniWindowsSettingsSection: View {
                 .foregroundStyle(.secondary)
         }
 
-        Text(L10n.Settings.MiniWindow.styleCycle)
+        Text(L10n.Settings.MiniCanvas.styleCycle)
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         cycleEditor(config)
 
+        if config.displayMode == .custom {
+            LayoutStudioButton {
+                LayoutStudioWindowController.shared.open(subject: .miniWindow(config.id), environment: environment)
+            }
+        } else {
         Text(L10n.Settings.MiniWindow.treeDetail)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -277,6 +282,7 @@ struct MiniWindowsSettingsSection: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         notShownList(config)
+        }
     }
 
     /// The window itself, drawn beside the list that arranges it.

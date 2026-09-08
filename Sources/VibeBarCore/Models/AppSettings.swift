@@ -28,6 +28,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var antigravityUsageMode: AntigravityUsageMode
     public var menuBarItems: [MenuBarItemSettings]
     public var miniWindow: MiniWindowSettings
+    public var miniCanvasLayouts: [String: MiniCanvasLayout] = [:]
+    public var studioCardGroups: [String: [[String]]] = [:]
     /// One density profile controls the entire tabbed popover workspace.
     public var popoverDensity: PopoverDensity
     /// Optional user-visible plan badge overrides. Empty means "Auto".
@@ -476,6 +478,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case antigravityUsageMode
         case menuBarItems
         case miniWindow
+        case miniCanvasLayouts
+        case studioCardGroups
         case popoverDensities
         case popoverDensity   // legacy single-value form
         case providerPlanLabels
@@ -549,6 +553,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         let decodedItems = lossyItems?.compactMap(\.value) ?? Self.defaultMenuBarItems
         self.menuBarItems = Self.normalizedMenuBarItems(decodedItems)
         self.miniWindow = try c.decodeIfPresent(MiniWindowSettings.self, forKey: .miniWindow) ?? Self.defaultMiniWindow
+        self.miniCanvasLayouts = try c.decodeIfPresent([String: MiniCanvasLayout].self, forKey: .miniCanvasLayouts) ?? [:]
+        self.studioCardGroups = (try c.decodeIfPresent([String: [[String]]].self, forKey: .studioCardGroups) ?? [:]).mapValues(StudioCardGroups.normalized)
 
         if let density = try c.decodeIfPresent(PopoverDensity.self, forKey: .popoverDensity) {
             self.popoverDensity = density
@@ -746,6 +752,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(antigravityUsageMode, forKey: .antigravityUsageMode)
         try c.encode(menuBarItems, forKey: .menuBarItems)
         try c.encode(miniWindow, forKey: .miniWindow)
+        try c.encode(miniCanvasLayouts, forKey: .miniCanvasLayouts)
+        try c.encode(studioCardGroups, forKey: .studioCardGroups)
         try c.encode(popoverDensity, forKey: .popoverDensity)
         let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
         try c.encode(planLabels, forKey: .providerPlanLabels)
@@ -1237,8 +1245,8 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
     public var modeCustomLabels: [String: [String: String]]
     /// Same per-style inheritance for SubProvider / quota-group labels.
     public var modeGroupLabels: [String: [String: String]]
-    /// The display modes a double-click on the window cycles through, in
-    /// this order. Empty means every mode, in the natural order.
+    /// The display modes a double-click cycles through, in this order.
+    /// Empty means the built-in styles; a custom canvas is opt-in.
     public var cycleModes: [MiniWindowDisplayMode]
 
     /// The id every pre-multi-window settings blob migrates onto. It must be
@@ -1274,10 +1282,10 @@ public struct MiniWindowConfig: Codable, Equatable, Sendable, Identifiable {
     }
 
     /// Where a double-click moves next from the current mode. An empty
-    /// cycle means every mode; a mode outside its own cycle enters at the
+    /// cycle means the built-in styles; a mode outside its cycle enters at the
     /// cycle's start rather than being stuck.
     public func nextDisplayMode() -> MiniWindowDisplayMode {
-        let cycle = cycleModes.isEmpty ? Array(MiniWindowDisplayMode.allCases) : cycleModes
+        let cycle = cycleModes.isEmpty ? MiniWindowDisplayMode.allCases.filter { $0 != .custom } : cycleModes
         guard let index = cycle.firstIndex(of: displayMode) else {
             return cycle.first ?? displayMode
         }
@@ -1546,6 +1554,7 @@ public enum MiniWindowDisplayMode: String, Codable, CaseIterable, Identifiable, 
     case tile
     case focus
     case rail
+    case custom
 
     public var id: String { rawValue }
 
@@ -1558,6 +1567,7 @@ public enum MiniWindowDisplayMode: String, Codable, CaseIterable, Identifiable, 
         case .tile:    return L10n.Settings.MiniWindow.Mode.tiles
         case .focus:   return L10n.Settings.MiniWindow.Mode.focus
         case .rail:    return L10n.Settings.MiniWindow.Mode.rail
+        case .custom:  return L10n.MenuBar.Composer.Mode.custom
         }
     }
 
@@ -1570,6 +1580,7 @@ public enum MiniWindowDisplayMode: String, Codable, CaseIterable, Identifiable, 
         case .tile:    return L10n.Settings.MiniWindow.Mode.tilesDetail
         case .focus:   return L10n.Settings.MiniWindow.Mode.focusDetail
         case .rail:    return L10n.Settings.MiniWindow.Mode.railDetail
+        case .custom:  return L10n.Settings.MiniCanvas.detail
         }
     }
 

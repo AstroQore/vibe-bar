@@ -24,6 +24,7 @@ extension MiniWindowDisplayMode {
         case .tile:    return "square.grid.3x2"
         case .focus:   return "scope"
         case .rail:    return "timeline.selection"
+        case .custom:  return "square.dashed"
         }
     }
 
@@ -33,7 +34,7 @@ extension MiniWindowDisplayMode {
     var supportsStageArranging: Bool {
         switch self {
         case .regular, .compact, .ledger, .strip, .tile: return true
-        case .focus, .rail: return false
+        case .focus, .rail, .custom: return false
         }
     }
 

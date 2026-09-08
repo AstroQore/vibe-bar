@@ -37,7 +37,7 @@ final class BrowserCookieImportPreferenceTests: XCTestCase {
         XCTAssertNil(BrowserCookieImportPreference.selected)
     }
 
-    func testThePickerListsInstalledBrowsersWithACookieStoreInCatalogueOrder() {
+    func testThePickerListsInstalledBrowsersInCatalogueOrder() {
         let detection = BrowserDetection(
             homeDirectory: "/Users/example",
             fileExists: { path in
@@ -47,6 +47,17 @@ final class BrowserCookieImportPreferenceTests: XCTestCase {
             directoryContents: { _ in ["Default"] }
         )
         XCTAssertEqual(BrowserCookieImportPreference.available(using: detection), [.safari, .chrome, .edge])
+    }
+
+    func testAnUnreadableOrUnusedProfileDoesNotHideAnInstalledBrowser() {
+        let detection = BrowserDetection(
+            homeDirectory: "/Users/example",
+            fileExists: { $0 == "/Applications/Google Chrome.app" },
+            directoryContents: { _ in nil }
+        )
+        XCTAssertEqual(BrowserCookieImportPreference.available(using: detection), [.safari, .chrome])
+        XCTAssertFalse(detection.isCookieSourceAvailable(.chrome), "listing must not weaken the import gate")
+        XCTAssertFalse(detection.isAppInstalled(.edge))
     }
 
     func testTheSettingRoundTripsAndDropsDuplicatesAndBlanks() throws {

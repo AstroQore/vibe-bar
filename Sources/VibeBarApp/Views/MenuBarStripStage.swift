@@ -21,6 +21,7 @@ import VibeBarCore
 final class MenuBarStageFrames {
     private(set) var tokens: [UUID: CGRect] = [:]
     private(set) var rows: [MenuBarComposition.RowAddress: CGRect] = [:]
+    var groups: [UUID: CGRect] = [:]
     /// The bar under the strip that a block is dropped on to remove it.
     var well: CGRect = .null
 
@@ -33,6 +34,7 @@ final class MenuBarStageFrames {
     /// and the gap beside it is not something anyone means to press.
     func token(at point: CGPoint) -> UUID? {
         tokens.first { $0.value.insetBy(dx: -2, dy: -3).contains(point) }?.key
+            ?? groups.first { $0.value.contains(point) }?.key
     }
 
     /// The row under `point`, or the nearest one within `reach` of it — a
@@ -192,346 +194,35 @@ enum MenuBarStageSpace {
     static let name = "vibebar.menubar.canvas"
 }
 
-/// The strip, drawn large on a menu-bar ground, every block in its place.
-///
-/// Laid out from the composition rather than from the render plan, so a
-/// block the bar is not drawing right now — a quota that is not answering, a
-/// rule that is not met — still has a place to be picked up from. Blocks the
-/// plan did render are drawn exactly as the bar draws them; the rest are
-/// ghosts that say their name.
-struct MenuBarStripStage<TokenMenu: View, SegmentMenu: View>: View {
-    /// The order being drawn — provisional while a drag is in flight.
-    let composition: MenuBarComposition
-    let plan: MenuBarRenderPlan
-    let template: MenuBarComposition.Template
-    let quotas: [MenuBarQuotaSnapshot]
-    let displayMode: DisplayMode
-    let availability: MenuBarComposition.Availability
-    /// Group ids that bind more than one block — see `boundGroupIDs`.
-    let bound: Set<UUID>
-    let selection: Set<UUID>
-    /// Blocks being carried: drawn in place as a dimmed placeholder.
-    let lifted: Set<UUID>
-    let scheme: ColorScheme
-    /// How much larger than the bar the strip is drawn.
-    let zoom: CGFloat
-    let frames: MenuBarStageFrames
-    let naming: MenuBarTokenNaming
-    @ViewBuilder let tokenMenu: (MenuBarToken) -> TokenMenu
-    @ViewBuilder let segmentMenu: (MenuBarSegment, Int) -> SegmentMenu
-
-    /// Rows the bar draws for this plan — the same count the status item
-    /// picks its face and glyph box by. From the plan, not the template: a
-    /// two-row template whose segments have all lost their second row is
-    /// drawn as one row, and the stage must not preview a smaller one.
-    private var rowCount: Int { plan.isTwoRow ? 2 : 1 }
-
-    /// The face the bar would draw this strip at, times the zoom.
-    private var base: CGFloat {
-        let face = MenuBarStripMetrics.baseFontSize(template: template, rowCount: rowCount)
-        let fit = MenuBarStripMetrics.estimatedFitScale(plan: plan, baseFontSize: face)
-        return face * fit * zoom
-    }
-
-    private var gap: CGFloat { base * plan.tokenSpacing * 0.28 }
-
-    var body: some View {
-        let rendered = renderedByID
-        HStack(alignment: .center, spacing: 0) {
-            ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
-                if index > 0 { boundary }
-                segmentBox(segment, index: index, rendered: rendered)
-            }
-        }
-        .environment(\.colorScheme, scheme)
-    }
-
-    private var renderedByID: [UUID: MenuBarRenderedToken] {
-        var out: [UUID: MenuBarRenderedToken] = [:]
-        for column in plan.columns {
-            for token in column.top.tokens { out[token.id] = token }
-            for token in column.bottom?.tokens ?? [] { out[token.id] = token }
-        }
-        return out
-    }
-
-    /// What the bar puts between two segments: the template's divider with a
-    /// gap each side, or the two-row column gap.
-    @ViewBuilder
-    private var boundary: some View {
-        if let separator = plan.columnSeparator, rowCount == 1 {
-            Text(separator)
-                .font(.system(size: base, weight: .regular))
-                .foregroundStyle(Color.primary.opacity(0.45))
-                .fixedSize()
-                .padding(.horizontal, gap + 6)
-        } else {
-            Color.clear.frame(width: MenuBarStripMetrics.twoRowColumnSpacing * zoom + 8, height: 0)
-        }
-    }
-
-    private func segmentBox(
-        _ segment: MenuBarSegment,
-        index: Int,
-        rendered: [UUID: MenuBarRenderedToken]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            rowView(segment, row: .top, rendered: rendered)
-            if segment.isStacked {
-                Rectangle()
-                    .fill(Color.primary.opacity(0.10))
-                    .frame(height: 0.5)
-                rowView(segment, row: .bottom, rendered: rendered)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, 14)
-        .padding(.bottom, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.045))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-        )
-        // The segment's number and its menu ride the box's top edge, small,
-        // so the strip itself stays the thing being looked at.
-        .overlay(alignment: .topLeading) {
-            Text(L10n.MenuBar.Composer.Segment.title(index: index + 1))
-                .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .textCase(.uppercase)
-                .padding(.leading, 8)
-                .padding(.top, 3)
-        }
-        .overlay(alignment: .topTrailing) {
-            segmentMenu(segment, index)
-                .padding(.trailing, 4)
-        }
-    }
-
-    private func rowView(
-        _ segment: MenuBarSegment,
-        row: MenuBarSegment.Row,
-        rendered: [UUID: MenuBarRenderedToken]
-    ) -> some View {
-        let address = MenuBarComposition.RowAddress(segment: segment.id, row: row)
-        let tokens = segment[row]
-        return Group {
-            if tokens.isEmpty {
-                Text(L10n.MenuBar.Composer.Row.empty)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 4)
-            } else {
-                HStack(spacing: gap) {
-                    ForEach(chunks(tokens), id: \.first!.id) { chunk in
-                        chunkView(chunk, rendered: rendered)
-                    }
-                }
-            }
-        }
-        .frame(minWidth: 48, minHeight: base * MenuBarStripMetrics.lineHeightRatio + 8, alignment: .leading)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(MenuBarStageSpace.name)) } action: { frame in
-            frames.report(frame, row: address)
-        }
-        .onDisappear { frames.forget(row: address) }
-    }
-
-    /// A row as runs: blocks bound together become one chunk, everything
-    /// else a chunk of one — so a group can be drawn around, and carried, as
-    /// the single thing it is.
-    private func chunks(_ tokens: [MenuBarToken]) -> [[MenuBarToken]] {
-        var out: [[MenuBarToken]] = []
-        for token in tokens {
-            if let group = token.groupID, bound.contains(group),
-               let last = out.last?.last, last.groupID == group {
-                out[out.count - 1].append(token)
-            } else {
-                out.append([token])
-            }
-        }
-        return out
-    }
-
-    @ViewBuilder
-    private func chunkView(_ chunk: [MenuBarToken], rendered: [UUID: MenuBarRenderedToken]) -> some View {
-        let isGroup = chunk.count > 1
-        HStack(spacing: gap) {
-            ForEach(chunk) { token in
-                cell(token, rendered: rendered[token.id])
-            }
-        }
-        .padding(.horizontal, isGroup ? 5 : 0)
-        .padding(.vertical, isGroup ? 3 : 0)
-        .background {
-            if isGroup {
-                Capsule(style: .continuous)
-                    .fill(Color.accentColor.opacity(0.12))
-            }
-        }
-        .overlay {
-            if isGroup {
-                Capsule(style: .continuous)
-                    .strokeBorder(Color.accentColor.opacity(0.42), lineWidth: 0.7)
-            }
-        }
-    }
-
-    private func cell(_ token: MenuBarToken, rendered: MenuBarRenderedToken?) -> some View {
-        let isSelected = selection.contains(token.id)
-        let isSilent = availability.silentTokenIds.contains(token.id)
-        let isDegraded = availability.degradedTokenIds.contains(token.id)
-        let isSpace: Bool = { if case .space = token.kind { return true }; return false }()
-        return Group {
-            if let rendered {
-                MenuBarStripTokenView(
-                    token: rendered,
-                    baseFontSize: base,
-                    rowCount: rowCount,
-                    quotas: quotas,
-                    displayMode: displayMode,
-                    zoom: zoom
-                )
-                // A space draws nothing, and nothing cannot be picked up:
-                // the canvas shows it as the width it takes.
-                .background {
-                    if isSpace {
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(Color.primary.opacity(0.10))
-                    }
-                }
-            } else {
-                ghost(token)
-            }
-        }
-        .padding(.horizontal, 3)
-        .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.accentColor.opacity(isSelected ? 0.22 : 0))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .strokeBorder(Color.accentColor.opacity(isSelected ? 0.9 : 0), lineWidth: 1)
-        )
-        .overlay(alignment: .topTrailing) {
-            if isSilent || isDegraded {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 7, weight: .semibold))
-                    .foregroundStyle(isSilent ? Color.orange : Color.secondary)
-                    .offset(x: 4, y: -5)
-            }
-        }
-        .opacity(lifted.contains(token.id) ? 0.28 : 1)
-        .contentShape(Rectangle())
-        .contextMenu { tokenMenu(token) }
-        .help(help(token, rendered: rendered != nil, isSilent: isSilent, isDegraded: isDegraded))
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(MenuBarStageSpace.name)) } action: { frame in
-            frames.report(frame, token: token.id)
-        }
-        .onDisappear { frames.forget(token: token.id) }
-    }
-
-    /// A block the bar is not drawing right now, by name, so it can still be
-    /// picked up, grouped or removed.
-    private func ghost(_ token: MenuBarToken) -> some View {
-        let size = max(9, min(12, base * 0.82))
-        return HStack(spacing: 4) {
-            Image(systemName: MenuBarTokenNaming.symbol(for: token.kind))
-                .font(.system(size: size * 0.85, weight: .semibold))
-            Text(naming.title(token))
-                .font(.system(size: size, weight: .medium))
-                .lineLimit(1)
-        }
-        .foregroundStyle(.tertiary)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(
-                    Color.primary.opacity(0.32),
-                    style: StrokeStyle(lineWidth: 0.7, dash: [3, 2])
-                )
-        )
-    }
-
-    private func help(_ token: MenuBarToken, rendered: Bool, isSilent: Bool, isDegraded: Bool) -> String {
-        if isSilent { return L10n.MenuBar.Composer.Warning.silent }
-        if isDegraded { return L10n.MenuBar.Composer.Warning.degraded }
-        if !rendered {
-            if case let .text(text) = token.kind,
-               text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return L10n.MenuBar.Composer.Text.empty
-            }
-            return L10n.MenuBar.Composer.Canvas.hiddenByRule
-        }
-        return naming.title(token)
-    }
-}
-
 // MARK: - The run in flight
 
 /// The picture carried under the pointer: the blocks being moved, drawn the
 /// way the canvas draws them, lifted off the strip with a shadow.
 struct MenuBarStageRunGhost: View {
     let tokens: [MenuBarToken]
-    let rendered: [UUID: MenuBarRenderedToken]
     let template: MenuBarComposition.Template
     let plan: MenuBarRenderPlan
     let quotas: [MenuBarQuotaSnapshot]
     let displayMode: DisplayMode
     let scheme: ColorScheme
     let zoom: CGFloat
-    let naming: MenuBarTokenNaming
-
-    private var rowCount: Int { plan.isTwoRow ? 2 : 1 }
-
-    private var base: CGFloat {
-        let face = MenuBarStripMetrics.baseFontSize(template: template, rowCount: rowCount)
-        let fit = MenuBarStripMetrics.estimatedFitScale(plan: plan, baseFontSize: face)
-        return face * fit * zoom
-    }
 
     var body: some View {
-        let gap = base * plan.tokenSpacing * 0.28
-        let isGroup = tokens.count > 1
-        HStack(spacing: gap) {
-            ForEach(tokens) { token in
-                Group {
-                    if let drawn = rendered[token.id] {
-                        MenuBarStripTokenView(
-                            token: drawn,
-                            baseFontSize: base,
-                            rowCount: rowCount,
-                            quotas: quotas,
-                            displayMode: displayMode,
-                            zoom: zoom
-                        )
-                    } else {
-                        Text(naming.title(token))
-                            .font(.system(size: max(9, min(12, base * 0.82)), weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                .padding(.horizontal, 3)
-                .padding(.vertical, 2)
-            }
+        let drawing = MenuBarNativeRenderer.render(
+            plan: plan, quotas: quotas, template: template, displayMode: displayMode,
+            appearance: NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)!, magnification: zoom
+        )
+        let union = tokens.compactMap { drawing.tokens[$0.id] }.reduce(CGRect.null) { $0.union($1) }
+        let box = union.isNull ? CGRect(x: 0, y: 0, width: 1, height: 1) : union
+        ZStack(alignment: .topLeading) {
+            Image(nsImage: drawing.image)
+                .offset(x: -box.minX * zoom, y: -box.minY * zoom)
         }
-        .padding(.horizontal, isGroup ? 5 : 2)
-        .padding(.vertical, isGroup ? 3 : 1)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(scheme == .dark ? Color.black.opacity(0.86) : Color.white.opacity(0.96))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(Color.accentColor.opacity(isGroup ? 0.6 : 0.35), lineWidth: 0.8)
-        )
-        .shadow(color: .black.opacity(0.32), radius: 12, y: 6)
-        .environment(\.colorScheme, scheme)
+        .frame(width: box.width * zoom, height: box.height * zoom, alignment: .topLeading)
+        .clipped()
+        .background(scheme == .dark ? Color.black.opacity(0.85) : Color.white.opacity(0.95))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
         .allowsHitTesting(false)
     }
 }
