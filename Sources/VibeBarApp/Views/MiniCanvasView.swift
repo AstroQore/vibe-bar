@@ -9,6 +9,8 @@ extension MiniCanvasElement.Kind {
         case .verticalBar: return L10n.Settings.MiniCanvas.verticalBar
         case .sector: return L10n.Settings.MiniCanvas.sector
         case .text: return L10n.MenuBar.Composer.Block.text
+        case .quotaRing, .quotaBar, .ledger, .strip, .tile, .focus, .rail:
+            return presetMode?.label ?? L10n.Settings.MiniCanvas.unavailable
         }
     }
     var symbol: String {
@@ -18,6 +20,13 @@ extension MiniCanvasElement.Kind {
         case .verticalBar: return "rectangle.bottomhalf.filled"
         case .sector: return "chart.pie"
         case .text: return "textformat"
+        case .quotaRing: return "gauge.with.dots.needle.67percent"
+        case .quotaBar: return "chart.bar.fill"
+        case .ledger: return "list.bullet.rectangle"
+        case .strip: return "rectangle.split.3x1"
+        case .tile: return "square.grid.2x2"
+        case .focus: return "scope"
+        case .rail: return "calendar.badge.clock"
         }
     }
 }
@@ -33,7 +42,7 @@ struct MiniCanvasView: View {
     var body: some View {
         let layout = layout.normalized()
         TimelineView(QuotaClockSchedule(
-            isActive: layout.elements.contains { $0.kind == .text && $0.textContent == .countdown },
+            isActive: layout.elements.contains { $0.kind.presetMode != nil || ($0.kind == .text && ($0.textContent == .countdown || $0.textContent == .pace)) },
             interval: 30
         )) { clock in
             ZStack(alignment: .topLeading) {
@@ -69,7 +78,7 @@ struct MiniCanvasView: View {
         return Group {
             switch element.kind {
             case .text:
-                Text(text(element, label: label, percent: percent, bucket: bucket, now: now))
+                Text(Self.resolvedText(element, label: label, percent: percent, bucket: bucket, now: now))
                     .font(.system(size: element.fontSize, weight: .medium))
                     .monospacedDigit()
                     .lineLimit(element.textContent == .percent || element.textContent == .countdown ? 1 : nil)
@@ -98,6 +107,19 @@ struct MiniCanvasView: View {
                         }
                     }
                 }
+            case .quotaRing, .quotaBar, .ledger, .strip, .tile, .focus, .rail:
+                if let field, let bucket {
+                    let entry = MiniEntry(
+                        tool: field.tool, field: field, bucket: bucket,
+                        subProviderName: field.tool.quotaSubProviderName(bucketID: field.bucketId),
+                        subProviderDisplayName: field.tool.quotaSubProviderName(bucketID: field.bucketId),
+                        companyName: field.tool.vendorName, groupLabel: bucket.groupTitle,
+                        customLabel: element.text.isEmpty ? nil : element.text
+                    )
+                    MiniCanvasPresetWidget(kind: element.kind, entry: entry, now: now)
+                } else {
+                    Text(L10n.Settings.MiniCanvas.unavailable).font(.caption).foregroundStyle(.secondary)
+                }
             case .sector:
                 ZStack {
                     Circle().fill(color.opacity(0.15))
@@ -107,18 +129,19 @@ struct MiniCanvasView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(element.kind == .text
-                            ? text(element, label: label, percent: percent, bucket: bucket, now: now)
+                            ? Self.resolvedText(element, label: label, percent: percent, bucket: bucket, now: now)
                             : "\(element.kind.title) · \(label)")
         .accessibilityValue(percent.map { L10n.Common.percent(value: Int($0.rounded())) } ?? L10n.Settings.MiniCanvas.unavailable)
         .help(label)
     }
 
-    private func text(_ element: MiniCanvasElement, label: String, percent: Double?, bucket: QuotaBucket?, now: Date) -> String {
+    static func resolvedText(_ element: MiniCanvasElement, label: String, percent: Double?, bucket: QuotaBucket?, now: Date) -> String {
         switch element.textContent {
         case .custom: return element.text
         case .label: return label
         case .percent: return percent.map { L10n.Common.percent(value: Int($0.rounded())) } ?? "—"
         case .countdown: return ResetCountdownFormatter.string(from: bucket?.resetAt, now: now) ?? "—"
+        case .pace: return bucket.flatMap { UsagePace.compute(bucket: $0, now: now, allowsPostResetGrace: true) }?.stageSummary ?? "—"
         }
     }
 

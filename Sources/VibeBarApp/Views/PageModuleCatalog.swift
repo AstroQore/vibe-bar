@@ -34,6 +34,7 @@ enum PageModuleKind: Hashable {
     case overviewCostSummary
     case overviewStatusSummary
     case overviewQuota(ToolType)
+    case overviewQuotaPart(OverviewQuotaPartition)
     case overviewQuotaHistoryAll
     case overviewCostAll
     case overviewCost(ToolType)
@@ -233,6 +234,7 @@ enum PageModuleCatalog {
                 )
             )
         }
+        if settings.overviewQuotaGranularity == .company {
         for tool in settings.visibleCoreProviderList {
             result.append(
                 PageModuleDescriptor(
@@ -245,6 +247,16 @@ enum PageModuleCatalog {
                     fallbackHeight: FallbackHeight.quota
                 )
             )
+        }
+        } else {
+            for part in overviewQuotaPartitions(environment: environment, settings: settings) {
+                result.append(PageModuleDescriptor(
+                    id: .custom(part.id), kind: .overviewQuotaPart(part),
+                    displayName: [part.tool.vendorName, part.subProvider, part.groupTitle].compactMap { $0 }.joined(separator: " · "),
+                    defaultColumn: 0, accent: .provider(part.tool), masonryPhase: .quota,
+                    fallbackHeight: FallbackHeight.quota
+                ))
+            }
         }
         if hasCostData {
             result.append(
@@ -321,6 +333,25 @@ enum PageModuleCatalog {
             )
         }
         return result
+    }
+
+    @MainActor
+    static func overviewQuotaPartitions(environment: AppEnvironment, settings: AppSettings) -> [OverviewQuotaPartition] {
+        settings.visibleCoreProviderList.flatMap { company in
+            company.coreProviderMembers.flatMap { member -> [OverviewQuotaPartition] in
+                if member == .chatgptChat && !settings.chatGPTChat.enabled { return [] }
+                if member == .cursor,
+                   !(environment.account(for: .cursor).map { $0.source != .notConfigured } ?? false),
+                   environment.quota(for: .cursor) == nil { return [] }
+                let accounts = member == .gemini
+                    ? environment.accountStore.accounts(for: .gemini).sorted { $0.id < $1.id }
+                    : (environment.account(for: member).map { [$0] } ?? [])
+                let buckets = accounts.isEmpty ? (environment.quota(for: member)?.buckets ?? [])
+                    : accounts.flatMap { environment.quotaService.cachedQuota(for: $0.id)?.buckets ?? [] }
+                return OverviewQuotaPartition.partitions(tool: member, buckets: buckets,
+                    granularity: settings.overviewQuotaGranularity)
+            }
+        }
     }
 
     @MainActor

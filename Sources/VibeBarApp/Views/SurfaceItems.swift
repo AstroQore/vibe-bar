@@ -32,17 +32,47 @@ enum SurfaceCoordinates {
 @MainActor
 final class SurfaceItemFrames {
     private(set) var frames: [String: CGRect] = [:]
-
-    func report(_ frame: CGRect, for id: String) {
-        frames[id] = frame
+    private var owners: [String: UUID] = [:]
+    struct Label {
+        let key: String
+        var text: String
+        let isGroup: Bool
+        let frame: CGRect
+        let owner: UUID
+        var id: String { "\(isGroup ? "group" : "field"):\(key)" }
+    }
+    private var labels: [String: Label] = [:]
+    func reportLabel(_ label: Label) { labels[label.id] = label }
+    func updateLabel(key: String, text: String, isGroup: Bool, owner: UUID) {
+        let id = "\(isGroup ? "group" : "field"):\(key)"
+        guard labels[id]?.owner == owner else { return }
+        labels[id]?.text = text
+    }
+    func forgetLabel(key: String, isGroup: Bool, owner: UUID) {
+        let id = "\(isGroup ? "group" : "field"):\(key)"
+        guard labels[id]?.owner == owner else { return }
+        labels.removeValue(forKey: id)
+    }
+    func label(at point: CGPoint) -> Label? {
+        labels.values.filter { $0.frame.insetBy(dx: -2, dy: -2).contains(point) }
+            .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
     }
 
-    func forget(_ id: String) {
+    func report(_ frame: CGRect, for id: String, owner: UUID) {
+        frames[id] = frame
+        owners[id] = owner
+    }
+
+    func forget(_ id: String, owner: UUID) {
+        guard owners[id] == owner else { return }
         frames.removeValue(forKey: id)
+        owners.removeValue(forKey: id)
     }
 
     func removeAll() {
         frames.removeAll()
+        owners.removeAll()
+        labels.removeAll()
     }
 
     func frame(of id: String) -> CGRect? {
@@ -142,6 +172,7 @@ extension View {
 
 private struct SurfaceItemModifier: ViewModifier {
     let id: String
+    @State private var owner = UUID()
 
     @Environment(\.surfaceItemFrames) private var frames
     @Environment(\.liftedSurfaceItem) private var lifted
@@ -159,9 +190,9 @@ private struct SurfaceItemModifier: ViewModifier {
                 .onGeometryChange(for: CGRect.self) { proxy in
                     proxy.frame(in: .named(SurfaceCoordinates.space))
                 } action: { frame in
-                    frames.report(frame, for: id)
+                    frames.report(frame, for: id, owner: owner)
                 }
-                .onDisappear { frames.forget(id) }
+                .onDisappear { frames.forget(id, owner: owner) }
         } else {
             content
         }

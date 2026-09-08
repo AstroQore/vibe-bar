@@ -1245,6 +1245,30 @@ public struct MenuBarComposition: Codable, Equatable, Sendable {
         normalizeGroups()
     }
 
+    /// Move an editor selection as one unit, expanding bound groups while
+    /// preserving source order and validating the destination before lifting.
+    public mutating func moveSelection(_ ids: [UUID], before target: UUID) {
+        let wanted = Set(ids.flatMap { groupedRun(of: $0) })
+        let target = groupedRun(of: target).first ?? target
+        guard !wanted.contains(target), location(of: target) != nil else { return }
+        let ordered = segments.flatMap(\.tokens).map(\.id).filter(wanted.contains)
+        guard !ordered.isEmpty else { return }
+        let lifted = lift(ordered)
+        guard let destination = location(of: target) else { return }
+        segments[destination.segment][destination.row].insert(contentsOf: lifted, at: destination.offset)
+        normalizeGroups()
+    }
+
+    public mutating func moveSelection(_ ids: [UUID], toEndOf address: RowAddress) {
+        guard let destination = segmentIndex(of: address.segment),
+              address.row == .top || segments[destination].isStacked else { return }
+        let wanted = Set(ids.flatMap { groupedRun(of: $0) })
+        let ordered = segments.flatMap(\.tokens).map(\.id).filter(wanted.contains)
+        let lifted = lift(ordered)
+        segments[destination][address.row].append(contentsOf: lifted)
+        normalizeGroups()
+    }
+
     /// Take a run of blocks out of the arrangement, in row order. Empty when
     /// the ids are not all present.
     private mutating func lift(_ ids: [UUID]) -> [MenuBarToken] {

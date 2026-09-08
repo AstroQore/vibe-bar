@@ -30,6 +30,15 @@ final class MenuBarStageFrames {
     func report(_ frame: CGRect, row: MenuBarComposition.RowAddress) { rows[row] = frame }
     func forget(row: MenuBarComposition.RowAddress) { rows.removeValue(forKey: row) }
 
+    /// Hit testing follows the renderer's exact rectangles. Measuring an
+    /// offset SwiftUI overlay can lag behind the pixels during reflow.
+    func replaceNativeGeometry(tokens: [UUID: CGRect], rows: [MenuBarComposition.RowAddress: CGRect],
+                               groups: [UUID: CGRect], emptyRows: Set<MenuBarComposition.RowAddress>) {
+        self.tokens = tokens
+        self.rows = self.rows.filter { emptyRows.contains($0.key) }.merging(rows) { _, new in new }
+        self.groups = groups
+    }
+
     /// The block under `point`. A little slack around each: a glyph is small,
     /// and the gap beside it is not something anyone means to press.
     func token(at point: CGPoint) -> UUID? {

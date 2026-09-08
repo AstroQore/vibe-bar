@@ -13,11 +13,13 @@ struct MenuBarNativeStage<TokenMenu: View, SegmentMenu: View>: View {
     let availability: MenuBarComposition.Availability
     let bound: Set<UUID>
     let selection: Set<UUID>
+    let hovered: Set<UUID>
     let lifted: Set<UUID>
     let scheme: ColorScheme
     let zoom: CGFloat
     let frames: MenuBarStageFrames
     let naming: MenuBarTokenNaming
+    @State private var nativeOrigin = CGPoint.zero
     @ViewBuilder var tokenMenu: (MenuBarToken) -> TokenMenu
     @ViewBuilder var segmentMenu: (MenuBarSegment, Int) -> SegmentMenu
 
@@ -30,7 +32,33 @@ struct MenuBarNativeStage<TokenMenu: View, SegmentMenu: View>: View {
             ZStack(alignment: .topLeading) {
                 Image(nsImage: drawing.image)
                     .frame(width: drawing.size.width * zoom, height: drawing.size.height * zoom)
+                    .mask {
+                        Canvas { context, size in
+                            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.white))
+                            context.blendMode = .copy
+                            for rect in drawing.tokens.values {
+                                context.fill(Path(CGRect(x: rect.minX * zoom, y: rect.minY * zoom,
+                                    width: rect.width * zoom, height: rect.height * zoom)), with: .color(.clear))
+                            }
+                        }
+                    }
                     .accessibilityLabel(plan.spokenDescription)
+                // Stable token identities let native pixels move smoothly;
+                // replacing one full-strip bitmap cannot animate a reflow.
+                ForEach(composition.segments.flatMap(\.tokens)) { token in
+                    if let rect = drawing.tokens[token.id] {
+                        ZStack(alignment: .topLeading) {
+                            Image(nsImage: drawing.image)
+                                .offset(x: -rect.minX * zoom, y: -rect.minY * zoom)
+                        }
+                        .frame(width: rect.width * zoom, height: rect.height * zoom, alignment: .topLeading)
+                        .clipped()
+                        .transaction { $0.animation = nil }
+                        .opacity(lifted.contains(token.id) ? 0.22 : 1)
+                        .offset(x: rect.minX * zoom, y: rect.minY * zoom)
+                        .allowsHitTesting(false)
+                    }
+                }
                 ForEach(Array(composition.segments.enumerated()), id: \.element.id) { index, segment in
                     if let rect = union(segment.tokens.map(\.id), drawing: drawing) {
                         HStack(spacing: 2) {
@@ -58,20 +86,21 @@ struct MenuBarNativeStage<TokenMenu: View, SegmentMenu: View>: View {
                 }
                 ForEach(Array(bound), id: \.self) { group in
                     let members = composition.segments.flatMap(\.tokens).filter { $0.groupID == group }
-                    if let anchor = members.first?.id, let rect = union(members.map(\.id), drawing: drawing) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Color.accentColor.opacity(members.contains { selection.contains($0.id) } ? 0.9 : 0.25), lineWidth: 1)
-                            .background(Color.accentColor.opacity(members.contains { selection.contains($0.id) } ? 0.10 : 0.025))
+                    if let rect = union(members.map(\.id), drawing: drawing) {
+                        StudioSelectionOutline(isSelected: members.contains { selection.contains($0.id) })
+                            .opacity(members.contains { selection.contains($0.id) || hovered.contains($0.id) } ? 1 : 0.3)
                             .frame(width: rect.width * zoom + 4, height: rect.height * zoom + 4)
                             .offset(x: rect.minX * zoom - 2, y: rect.minY * zoom - 2)
                             .allowsHitTesting(false)
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(MenuBarStageSpace.name)) } action: {
-                                frames.groups[anchor] = $0
-                            }
-                            .onDisappear { frames.groups.removeValue(forKey: anchor) }
                     }
                 }
             }
+            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .named(MenuBarStageSpace.name)).origin } action: { origin in
+                nativeOrigin = origin
+                reportGeometry(drawing, origin: origin)
+            }
+            .onChange(of: drawing.tokens) { _, _ in reportGeometry(drawing, origin: nativeOrigin) }
+            .onAppear { reportGeometry(drawing, origin: nativeOrigin) }
             .padding(.top, 18)
             if !emptyRows.isEmpty {
                 HStack(spacing: 8) {
@@ -92,6 +121,29 @@ struct MenuBarNativeStage<TokenMenu: View, SegmentMenu: View>: View {
         .environment(\.colorScheme, scheme)
     }
 
+    private func reportGeometry(_ drawing: MenuBarNativeRenderer.Drawing, origin: CGPoint) {
+        let tokenFrames = drawing.tokens.mapValues { rect in
+            CGRect(x: origin.x + rect.minX * zoom, y: origin.y + rect.minY * zoom,
+                   width: rect.width * zoom, height: rect.height * zoom)
+        }
+        func bounds(_ ids: [UUID]) -> CGRect? {
+            let rect = ids.compactMap { tokenFrames[$0] }.reduce(CGRect.null) { $0.union($1) }
+            return rect.isNull ? nil : rect
+        }
+        var rowFrames: [MenuBarComposition.RowAddress: CGRect] = [:]
+        for segment in composition.segments {
+            for row in MenuBarSegment.Row.allCases {
+                if let rect = bounds(segment[row].map(\.id)) { rowFrames[.init(segment: segment.id, row: row)] = rect }
+            }
+        }
+        var groupFrames: [UUID: CGRect] = [:]
+        for group in bound {
+            let members = composition.segments.flatMap(\.tokens).filter { $0.groupID == group }.map(\.id)
+            if let anchor = members.first, let rect = bounds(members) { groupFrames[anchor] = rect.insetBy(dx: -2, dy: -2) }
+        }
+        frames.replaceNativeGeometry(tokens: tokenFrames, rows: rowFrames, groups: groupFrames, emptyRows: Set(emptyRows))
+    }
+
     private var emptyRows: [MenuBarComposition.RowAddress] {
         composition.segments.flatMap { segment in
             (segment.isStacked ? MenuBarSegment.Row.allCases : [.top]).compactMap { row in
@@ -107,20 +159,17 @@ struct MenuBarNativeStage<TokenMenu: View, SegmentMenu: View>: View {
 
     private func tokenRegion(_ token: MenuBarToken, rect: CGRect) -> some View {
         let grouped = token.groupID.map(bound.contains) ?? false
-        return Rectangle()
-            .fill(Color.accentColor.opacity(!grouped && selection.contains(token.id) ? 0.14 : 0))
+        return Color.clear
             .overlay {
-                if !grouped && selection.contains(token.id) { Rectangle().strokeBorder(Color.accentColor, lineWidth: 1) }
+                if !grouped && (selection.contains(token.id) || hovered.contains(token.id)) {
+                    StudioSelectionOutline(isSelected: selection.contains(token.id))
+                }
             }
             .frame(width: rect.width * zoom, height: rect.height * zoom)
             .offset(x: rect.minX * zoom, y: rect.minY * zoom)
             .contentShape(Rectangle())
             .contextMenu { tokenMenu(token) }
             .help(naming.title(token))
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(MenuBarStageSpace.name)) } action: {
-                frames.report($0, token: token.id)
-            }
-            .onDisappear { frames.forget(token: token.id) }
     }
 
     private func rowRegion(_ address: MenuBarComposition.RowAddress, rect: CGRect) -> some View {
@@ -128,9 +177,5 @@ struct MenuBarNativeStage<TokenMenu: View, SegmentMenu: View>: View {
             .frame(width: rect.width * zoom, height: rect.height * zoom)
             .offset(x: rect.minX * zoom, y: rect.minY * zoom)
             .allowsHitTesting(false)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(MenuBarStageSpace.name)) } action: {
-                frames.report($0, row: address)
-            }
-            .onDisappear { frames.forget(row: address) }
     }
 }

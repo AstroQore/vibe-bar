@@ -766,7 +766,7 @@ private struct MiniMemberStack: View {
 
     var body: some View {
         VStack(alignment: .center, spacing: MiniRingMetrics.subProviderLabelGap) {
-            Text(miniSubProviderTitle(for: member, labels: labels).uppercased())
+            StudioMiniLabel(text: miniSubProviderTitle(for: member, labels: labels).uppercased(), key: MiniWindowGroupLabelCatalog.subProviderKey(tool: member.tool, name: member.subProviderName), isGroup: true)
                 .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(1.2)
@@ -830,7 +830,7 @@ private struct MiniPrimaryRingGroup: View {
     let now: Date
 
     var body: some View {
-        MiniRingGroupShell(title: title, width: groupWidth) {
+        MiniRingGroupShell(title: title, width: groupWidth, labelKey: cells.first.map { "\($0.tool.rawValue).all-models" }) {
             HStack(alignment: .top, spacing: MiniRingMetrics.ringSpacing) {
                 ForEach(cells) { cell in
                     MiniRingCell(cell: cell, now: now)
@@ -850,7 +850,7 @@ private struct MiniBranchRingGroup: View {
     let now: Date
 
     var body: some View {
-        MiniRingGroupShell(title: group.title, width: groupWidth) {
+        MiniRingGroupShell(title: group.title, width: groupWidth, labelKey: group.cells.first?.groupKey) {
             HStack(alignment: .top, spacing: MiniRingMetrics.ringSpacing) {
                 ForEach(group.cells) { cell in
                     MiniBranchRingCell(cell: cell, now: now)
@@ -868,13 +868,14 @@ private struct MiniBranchRingGroup: View {
 private struct MiniRingGroupShell<Content: View>: View {
     let title: String?
     let width: CGFloat
+    var labelKey: String? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(spacing: 5) {
             Group {
                 if let title {
-                    Text(title.uppercased())
+                    StudioMiniLabel(text: title.uppercased(), key: labelKey, isGroup: true)
                         .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary.opacity(0.58))
                         .tracking(2.2)
@@ -946,7 +947,7 @@ private struct MiniBranchRingCell: View {
                     .minimumScaleFactor(0.55)
                     .lineLimit(1)
             }
-            Text(cell.title)
+            StudioMiniLabel(text: cell.title, key: cell.field.id)
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -1063,7 +1064,7 @@ private struct MiniRingCell: View {
         }
         VStack(spacing: 3) {
             ringGauge(pace: pace, forecast: forecast, now: now)
-            Text(cell.resolvedLabel)
+            StudioMiniLabel(text: cell.resolvedLabel, key: cell.field.id)
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -1246,7 +1247,7 @@ private struct MiniCompactMemberStack: View {
 
     var body: some View {
         VStack(alignment: .center, spacing: MiniCompactMetrics.subProviderLabelGap) {
-            Text(miniSubProviderTitle(for: member, labels: labels).uppercased())
+            StudioMiniLabel(text: miniSubProviderTitle(for: member, labels: labels).uppercased(), key: MiniWindowGroupLabelCatalog.subProviderKey(tool: member.tool, name: member.subProviderName), isGroup: true)
                 .font(.system(size: 7.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .tracking(1.2)
@@ -1310,7 +1311,7 @@ private struct MiniCompactPrimaryGroup: View {
     let now: Date
 
     var body: some View {
-        MiniCompactGroupShell(title: title, width: groupWidth) {
+        MiniCompactGroupShell(title: title, width: groupWidth, labelKey: cells.first.map { "\($0.tool.rawValue).all-models" }) {
             HStack(alignment: .top, spacing: MiniCompactMetrics.ringSpacing) {
                 ForEach(cells) { cell in
                     MiniCompactBarCell(
@@ -1340,7 +1341,7 @@ private struct MiniCompactBranchGroup: View {
     let now: Date
 
     var body: some View {
-        MiniCompactGroupShell(title: group.title, width: groupWidth) {
+        MiniCompactGroupShell(title: group.title, width: groupWidth, labelKey: group.cells.first?.groupKey) {
             HStack(alignment: .top, spacing: MiniCompactMetrics.ringSpacing) {
                 ForEach(group.cells) { cell in
                     MiniCompactBarCell(
@@ -1368,13 +1369,14 @@ private struct MiniCompactBranchGroup: View {
 private struct MiniCompactGroupShell<Content: View>: View {
     let title: String?
     let width: CGFloat
+    var labelKey: String? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(spacing: 4) {
             Group {
                 if let title {
-                    Text(title.uppercased())
+                    StudioMiniLabel(text: title.uppercased(), key: labelKey, isGroup: true)
                         .font(.system(size: 7.5, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary.opacity(0.56))
                         .tracking(1.7)
@@ -1454,7 +1456,7 @@ private struct MiniCompactBarCell: View {
             ?? .secondary.opacity(0.45)
 
         VStack(spacing: 1.5) {
-            Text(data.title)
+            StudioMiniLabel(text: data.title, key: data.fieldID)
                 .font(.system(size: 7.5, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -1645,4 +1647,44 @@ private func miniCellHelp(tool: ToolType, bucket: QuotaBucket) -> String {
     let group = QuotaGroupLabelLocalizer.displayComposed(bucket.groupTitle ?? bucket.shortLabel)
     let title = QuotaGroupLabelLocalizer.displayComposed(bucket.title)
     return "\(providerTitle(for: tool)) · \(group) · \(title)"
+}
+
+
+/// Preset components reuse the exact views in built-in mini modes. The canvas
+/// controls their size; the preset renderer continues to own typography,
+/// provider context, pace, reset countdowns and live quota updates.
+struct MiniCanvasPresetWidget: View {
+    let kind: MiniCanvasElement.Kind
+    let entry: MiniEntry
+    let now: Date
+    @State private var natural: CGSize = .zero
+
+    var body: some View {
+        GeometryReader { proxy in
+            let scale = natural.width > 0 && natural.height > 0
+                ? min(proxy.size.width / natural.width, proxy.size.height / natural.height) : 1
+            ScaledPreview(scale: scale, onNaturalSize: { natural = $0 }) {
+                content
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch kind {
+        case .quotaRing:
+            MiniRingCell(cell: MiniCell(tool: entry.tool, field: entry.field, bucket: entry.bucket,
+                                       customLabel: entry.customLabel), now: now)
+        case .quotaBar:
+            MiniCompactBarCell(data: MiniCompactCellData(id: entry.id, fieldID: entry.id, tool: entry.tool,
+                title: entry.bucketDisplayName, bucket: entry.bucket, help: entry.rowLabel), now: now)
+        case .ledger: MiniLedgerLayout(entries: [entry])
+        case .strip: MiniStripLayout(entries: [entry], density: .roomy)
+        case .tile: MiniTileLayout(entries: [entry])
+        case .focus: MiniFocusLayout(entries: [entry])
+        case .rail: MiniRailLayout(entries: [entry])
+        default: EmptyView()
+        }
+    }
 }

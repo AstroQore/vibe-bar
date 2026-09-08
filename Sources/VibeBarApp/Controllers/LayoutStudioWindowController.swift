@@ -219,7 +219,13 @@ final class LayoutStudioModel: ObservableObject {
         case selectAll
     }
 
-    @Published var subject: LayoutStudioWindowController.Subject = .popoverPage(.overview)
+    @Published var subject: LayoutStudioWindowController.Subject = .popoverPage(.overview) {
+        willSet {
+            // Clear before the next surface lays itself out. Clearing in the
+            // view's onChange can erase geometry just reported by that surface.
+            if newValue != subject { frames.removeAll() }
+        }
+    }
     /// Actual size to begin with: the surface on the stage is the real one,
     /// and it should look like it. A page taller than the window scrolls;
     /// Fit (⌘0) is a step away for the overview of it.

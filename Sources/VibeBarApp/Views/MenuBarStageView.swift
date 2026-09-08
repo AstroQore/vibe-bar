@@ -51,6 +51,8 @@ struct MenuBarStageView: View {
 
     @State private var frames = MenuBarStageFrames()
     @State private var drag: StageDrag?
+    @State private var hovered: UUID?
+    @State private var dragStageWidth: CGFloat?
     /// The pointer while a drag is in flight. Its own object so the picture
     /// under the pointer is the only view that redraws per mouse move — the
     /// strip itself redraws only when the slot changes.
@@ -77,7 +79,7 @@ struct MenuBarStageView: View {
     private static let dragThreshold: CGFloat = 4
     /// How far above or below a row a drag may hover and still mean it.
     private static let reach: CGFloat = 40
-    private static let reflow = Animation.snappy(duration: 0.26, extraBounce: 0.03)
+    private static let reflow = Animation.snappy(duration: 0.3, extraBounce: 0.04)
 
     private struct StageDrag {
         /// The block pressed, nil for a press on the ground.
@@ -170,6 +172,7 @@ struct MenuBarStageView: View {
             well
         }
         .fixedSize(horizontal: true, vertical: false)
+        .frame(width: dragStageWidth, alignment: .leading)
         .coordinateSpace(.named(MenuBarStageSpace.name))
         .onChange(of: drag?.engaged == true) { _, isDragging in onDragChange?(isDragging) }
         .onChange(of: pendingBlock) { _, _ in rebuild() }
@@ -240,6 +243,7 @@ struct MenuBarStageView: View {
                     availability: availability,
                     bound: bound,
                     selection: selection,
+                    hovered: Set(hovered.map { composition.groupedRun(of: $0) } ?? []),
                     lifted: lifted,
                     scheme: scheme,
                     zoom: zoom,
@@ -261,6 +265,17 @@ struct MenuBarStageView: View {
         // High priority: the stage sits in the Studio's scrolling stage, and
         // a drag along the strip must not be read as a pan.
         .highPriorityGesture(dragGesture)
+        .onContinuousHover(coordinateSpace: .named(MenuBarStageSpace.name)) { phase in
+            guard drag?.engaged != true else { return }
+            switch phase {
+            case let .active(point):
+                hovered = frames.token(at: point)
+                (hovered == nil ? NSCursor.arrow : NSCursor.openHand).set()
+            case .ended:
+                hovered = nil
+                NSCursor.arrow.set()
+            }
+        }
         .onDrop(
             of: [.text],
             delegate: MenuBarStageDropDelegate(
@@ -347,10 +362,19 @@ struct MenuBarStageView: View {
             .onChanged { value in
                 if drag == nil {
                     guard !isDragCancelled else { return }
+                    dragStageWidth = stageFrame.width
                     let anchor = frames.token(at: value.startLocation)
+                    let run: [UUID]
+                    if let anchor, selection.contains(anchor) {
+                        let ids = Set(selection.flatMap { composition.groupedRun(of: $0) })
+                        run = composition.segments.flatMap(\.tokens).map(\.id).filter(ids.contains)
+                    } else { run = anchor.map { composition.groupedRun(of: $0) } ?? [] }
+                    if anchor != nil && !NSEvent.modifierFlags.contains(.shift) && !NSEvent.modifierFlags.contains(.command) {
+                        selection = Set(run)
+                    }
                     drag = StageDrag(
                         anchor: anchor,
-                        run: anchor.map { composition.groupedRun(of: $0) } ?? [],
+                        run: run,
                         start: value.startLocation,
                         location: value.location
                     )
@@ -361,6 +385,7 @@ struct MenuBarStageView: View {
                 isDragCancelled = false
                 guard let current = drag else { return }
                 drag = nil
+                withAnimation(Self.reflow) { dragStageWidth = nil }
                 if current.engaged {
                     finish(current)
                 } else {
@@ -391,7 +416,7 @@ struct MenuBarStageView: View {
             NSCursor.closedHand.set()
             drag = current
         }
-        guard let anchor = current.anchor else { return }
+        guard current.anchor != nil else { return }
         let target: MenuBarStageTarget?
         if frames.well.contains(location) {
             target = .removed
@@ -415,9 +440,9 @@ struct MenuBarStageView: View {
         var next = composition
         switch target {
         case let .before(id):
-            next.move(anchor, before: id)
+            next.moveSelection(current.run, before: id)
         case let .endOf(address):
-            next.move(anchor, toEndOf: address)
+            next.moveSelection(current.run, toEndOf: address)
         case .removed:
             for id in current.run { next.remove(id) }
         }
@@ -444,6 +469,7 @@ struct MenuBarStageView: View {
         guard let current = drag, current.engaged else { return }
         isDragCancelled = true
         drag = nil
+        dragStageWidth = nil
         withAnimation(Self.reflow) { dragComposition = nil }
         NSCursor.arrow.set()
     }

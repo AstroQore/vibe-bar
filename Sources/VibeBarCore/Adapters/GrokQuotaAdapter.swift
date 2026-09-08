@@ -23,23 +23,24 @@ public struct GrokQuotaAdapter: QuotaAdapter {
     private let session: URLSession
     private let homeDirectory: String
     private let now: @Sendable () -> Date
+    private let cookieHeader: @Sendable () -> String?
 
     public init(
         session: URLSession = .shared,
         homeDirectory: String = RealHomeDirectory.path,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        cookieHeader: @escaping @Sendable () -> String? = { try? GrokWebCookieStore.readCookieHeader() }
     ) {
         self.session = session
         self.homeDirectory = homeDirectory
         self.now = now
+        self.cookieHeader = cookieHeader
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
         let credentials = (try? GrokCredentialsStore.load(homeDirectory: homeDirectory)).flatMap { creds in
             creds.isExpired ? nil : creds
         }
-
-        let header = try? GrokWebCookieStore.readCookieHeader()
 
         if let credentials {
             do {
@@ -49,12 +50,12 @@ public struct GrokQuotaAdapter: QuotaAdapter {
                 // one, reads the same billing — the fallback AccountStore
                 // promises for this account — so it is tried before the
                 // refusal is reported.
-                guard let header else { throw error }
+                guard let header = cookieHeader() else { throw error }
                 return try await fetchWithCookies(header: header, account: account)
             }
         }
 
-        if let header {
+        if let header = cookieHeader() {
             return try await fetchWithCookies(header: header, account: account)
         }
 

@@ -2,6 +2,7 @@ import Foundation
 
 public struct AppSettings: Codable, Equatable, Sendable {
     public var displayMode: DisplayMode
+    public var overviewQuotaGranularity: OverviewQuotaGranularity
     public var refreshIntervalSeconds: Int
     public var refreshOnPopoverOpen: Bool
     public var popoverOpenRefreshCooldownSeconds: Int
@@ -329,6 +330,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public init(
         displayMode: DisplayMode,
+        overviewQuotaGranularity: OverviewQuotaGranularity = .company,
         refreshIntervalSeconds: Int,
         refreshOnPopoverOpen: Bool = false,
         popoverOpenRefreshCooldownSeconds: Int = 60,
@@ -374,6 +376,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mcpServer: MCPServerSettings = .default
     ) {
         self.displayMode = displayMode
+        self.overviewQuotaGranularity = overviewQuotaGranularity
         self.refreshIntervalSeconds = refreshIntervalSeconds
         self.refreshOnPopoverOpen = refreshOnPopoverOpen
         self.popoverOpenRefreshCooldownSeconds = max(60, popoverOpenRefreshCooldownSeconds)
@@ -461,6 +464,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case displayMode
+        case overviewQuotaGranularity
         case refreshIntervalSeconds
         case refreshOnPopoverOpen
         case popoverOpenRefreshCooldownSeconds
@@ -512,6 +516,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        overviewQuotaGranularity = (try? c.decodeIfPresent(OverviewQuotaGranularity.self, forKey: .overviewQuotaGranularity)) ?? .company
         self.displayMode = try c.decodeIfPresent(DisplayMode.self, forKey: .displayMode) ?? Self.default.displayMode
         self.refreshIntervalSeconds = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalSeconds) ?? Self.default.refreshIntervalSeconds
         self.refreshOnPopoverOpen = try c.decodeIfPresent(Bool.self, forKey: .refreshOnPopoverOpen) ?? Self.default.refreshOnPopoverOpen
@@ -735,6 +740,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(displayMode, forKey: .displayMode)
+        try c.encode(overviewQuotaGranularity, forKey: .overviewQuotaGranularity)
         try c.encode(refreshIntervalSeconds, forKey: .refreshIntervalSeconds)
         try c.encode(refreshOnPopoverOpen, forKey: .refreshOnPopoverOpen)
         try c.encode(popoverOpenRefreshCooldownSeconds, forKey: .popoverOpenRefreshCooldownSeconds)

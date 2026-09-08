@@ -278,7 +278,7 @@ struct MiniLedgerLayout: View {
     }
 
     private func subProviderHeader(for entry: MiniEntry) -> some View {
-        Text(entry.subProviderDisplayName.uppercased())
+        StudioMiniLabel(text: entry.subProviderDisplayName.uppercased(), key: MiniWindowGroupLabelCatalog.subProviderKey(tool: entry.tool, name: entry.subProviderName), isGroup: true)
             .font(.system(size: 8.5, weight: .semibold, design: .rounded))
             .foregroundStyle(.secondary)
             .tracking(0.8)
@@ -303,7 +303,7 @@ struct MiniLedgerLayout: View {
         let percent = entryPercent(entry, mode: mode)
         let color = entryColor(entry, mode: mode)
         return HStack(spacing: 8) {
-            Text(entry.bucketDisplayName)
+            StudioMiniLabel(text: entry.bucketDisplayName, key: entry.id)
                 .font(.system(size: 10.5, weight: .medium, design: .rounded))
                 .foregroundStyle(.primary.opacity(0.88))
                 .lineLimit(1)
@@ -493,7 +493,7 @@ struct MiniStripLayout: View {
         let percent = entryPercent(entry, mode: mode)
         let color = entryColor(entry, mode: mode)
         return HStack(spacing: 5) {
-            Text(entry.rowLabel)
+            StudioMiniLabel(text: entry.rowLabel, key: entry.id)
                 .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -521,7 +521,7 @@ struct MiniStripLayout: View {
         let color = entryColor(entry, mode: mode)
         let size = MiniStripMetrics.cellFontSize(density)
         return HStack(spacing: 5) {
-            Text(entry.rowLabel)
+            StudioMiniLabel(text: entry.rowLabel, key: entry.id)
                 .font(.system(size: size, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -631,7 +631,7 @@ struct MiniTileLayout: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.55)
                     }
-                    Text(entry.rowLabel)
+                    StudioMiniLabel(text: entry.rowLabel, key: entry.id)
                         .font(.system(size: 9.5, weight: .medium, design: .rounded))
                         .foregroundStyle(.primary.opacity(0.88))
                         .lineLimit(1)
@@ -793,7 +793,7 @@ struct MiniFocusLayout: View {
         return HStack(spacing: 6) {
             ForEach(Array(others)) { entry in
                 HStack(spacing: 2) {
-                    Text(entry.rowLabel)
+                    StudioMiniLabel(text: entry.rowLabel, key: entry.id)
                         .font(.system(size: 8.5, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                     Text(

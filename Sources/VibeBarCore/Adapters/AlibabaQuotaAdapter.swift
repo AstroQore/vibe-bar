@@ -103,9 +103,6 @@ public struct AlibabaQuotaAdapter: QuotaAdapter {
 
         // Path 2: console cookies. Average buckets across every
         // imported cookie slot.
-        guard !cookieResolutions.isEmpty else {
-            throw QuotaError.noCredential
-        }
         let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
             spec: AlibabaQuotaAdapter.cookieSpec,
             account: account,

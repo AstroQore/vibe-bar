@@ -742,6 +742,20 @@ final class MenuBarCompositionTests: XCTestCase {
         XCTAssertNil(composed.duplicate(UUID()))
     }
 
+    func testMovingSeveralSelectedBlocksPreservesOrderAndBoundGroups() {
+        var composed = composition(["a", "b", "c", "d", "e"].map { MenuBarToken(kind: .text($0)) })
+        let ids = composed.tokens.map(\.id)
+        _ = composed.group([ids[0], ids[1]])
+        composed.moveSelection([ids[0], ids[3]], before: ids[4])
+        XCTAssertEqual(composed.tokens.map(\.kind), [.text("c"), .text("a"), .text("b"), .text("d"), .text("e")])
+        XCTAssertEqual(Set(composed.groupedRun(of: ids[0])), Set([ids[0], ids[1]]))
+        let unchanged = composed
+        composed.moveSelection([ids[0], ids[3]], before: ids[1])
+        XCTAssertEqual(composed, unchanged)
+        composed.moveSelection([ids[0], ids[3]], before: UUID())
+        XCTAssertEqual(composed, unchanged)
+    }
+
     func testMoveBeforeWorksInBothDragDirections() {
         var composed = editable()
         let a = composed.tokens[0].id

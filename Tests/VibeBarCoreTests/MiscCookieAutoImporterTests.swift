@@ -217,7 +217,7 @@ final class MiscCookieAutoImporterTests: XCTestCase {
 
     /// Non-credential errors are not a stale cookie; a flaky network must
     /// not be answered by rewriting the user's Keychain slot.
-    func testNetworkErrorDoesNotTriggerReimport() async {
+    func testNetworkErrorTriggersOneReimport() async {
         let reimportCalls = Counter()
         let importer = MiscCookieAutoImporter(
             isEnabled: { true },
@@ -236,7 +236,7 @@ final class MiscCookieAutoImporterTests: XCTestCase {
             throw QuotaError.network("timeout")
         }
 
-        XCTAssertEqual(reimportCalls.value, 0)
+        XCTAssertEqual(reimportCalls.value, 1)
         XCTAssertEqual(results.first?.outcome.failureError, .network("timeout"))
     }
 
@@ -254,7 +254,8 @@ final class MiscCookieAutoImporterTests: XCTestCase {
             },
             resolve: { _, _ in
                 [.init(slotID: slotID, header: "kimi-auth=also-stale", sourceLabel: "Chrome")]
-            }
+            },
+            reimportCooldown: 6 * 60 * 60
         )
 
         for _ in 0..<3 {
@@ -315,7 +316,8 @@ final class MiscCookieAutoImporterTests: XCTestCase {
             },
             resolve: { _, _ in
                 [.init(slotID: slotID, header: "kimi-auth=also-stale", sourceLabel: "Chrome")]
-            }
+            },
+            reimportCooldown: 6 * 60 * 60
         )
 
         func staleFetch() async {
@@ -370,7 +372,8 @@ final class MiscCookieAutoImporterTests: XCTestCase {
             },
             resolve: { _, _ in
                 [.init(slotID: slotID, header: "kimi-auth=also-stale", sourceLabel: "Chrome")]
-            }
+            },
+            reimportCooldown: 6 * 60 * 60
         )
 
         func staleFetch() async {
@@ -391,6 +394,59 @@ final class MiscCookieAutoImporterTests: XCTestCase {
         importer.resetCooldown(for: .kimi, instanceID: "some-other-instance")
         await staleFetch()
         XCTAssertEqual(reimportCalls.value, 1, "another instance's reset must not clear this one")
+    }
+
+    func testEveryFailedRefreshAttemptsAReimportByDefault() async {
+        let calls = Counter()
+        let importer = MiscCookieAutoImporter(isEnabled: { true }, reimport: { _, _ in
+            calls.increment()
+            return false
+        }, resolve: { _, _ in [] })
+        for _ in 0..<3 {
+            _ = await importer.gatherSlotResults(spec: spec, account: account,
+                resolutions: [.init(slotID: UUID(), header: "kimi-auth=stale", sourceLabel: "Chrome")]
+            ) { _ in throw QuotaError.needsLogin }
+        }
+        XCTAssertEqual(calls.value, 3)
+    }
+
+    func testMissingCookiesRecoverOnceWithoutRecursiveRetry() async {
+        let calls = Counter()
+        let fetches = Counter()
+        let id = UUID()
+        let importer = MiscCookieAutoImporter(isEnabled: { true }, reimport: { _, _ in
+            calls.increment()
+            return true
+        }, resolve: { _, _ in [.init(slotID: id, header: "kimi-auth=fresh", sourceLabel: "Chrome")] })
+        let result = await importer.gatherSlotResults(spec: spec, account: account, resolutions: []) { _ in
+            fetches.increment()
+            throw QuotaError.needsLogin
+        }
+        XCTAssertEqual(calls.value, 1)
+        XCTAssertEqual(fetches.value, 1)
+        XCTAssertEqual(result.first?.outcome.failureError, .needsLogin)
+    }
+
+    func testMissingCookieRecoveryHonorsAdapterFilter() async {
+        let importer = MiscCookieAutoImporter(isEnabled: { true }, reimport: { _, _ in true },
+            resolve: { _, _ in [.init(slotID: UUID(), header: "unrecognized=value", sourceLabel: "Chrome")] })
+        let result = await importer.gatherSlotResults(spec: spec, account: account, resolutions: [],
+            resolutionFilter: { _ in false }) { _ in
+                XCTFail("Excluded sessions must not be queried after recovery")
+                throw QuotaError.needsLogin
+            }
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    func testDisabledMissingCookieRecoveryDoesNotReadBrowser() async {
+        let importer = MiscCookieAutoImporter(isEnabled: { false }, reimport: { _, _ in
+            XCTFail("Opt-out must prevent browser reads")
+            return true
+        }, resolve: { _, _ in [] })
+        let result = await importer.gatherSlotResults(spec: spec, account: account, resolutions: []) { _ in
+            throw QuotaError.needsLogin
+        }
+        XCTAssertTrue(result.isEmpty)
     }
 
     func testMergeKeepsOrderAndUntouchedSlots() {

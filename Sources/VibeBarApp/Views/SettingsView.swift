@@ -15,6 +15,7 @@ enum SettingsSectionID: String {
     case costData
     case pricing
     case privacy
+    case permissions
     case remote
     case mcp
 
@@ -34,6 +35,7 @@ enum SettingsSectionID: String {
         case .system: L10n.Settings.Section.system
         case .costData: L10n.Settings.Section.costData
         case .pricing: L10n.Onboarding.Step.Pricing.title
+        case .permissions: L10n.Platform.Macos.Permissions.title
         case .privacy: L10n.Settings.Section.privacy
         case .remote: L10n.Settings.Section.remoteProbes
         case .mcp: L10n.Settings.Mcp.title
@@ -54,6 +56,7 @@ enum SettingsSectionID: String {
         case .system: "desktopcomputer"
         case .costData: "chart.bar.xaxis"
         case .pricing: "dollarsign.circle"
+        case .permissions: "checkmark.shield"
         case .privacy: "hand.raised.fill"
         case .remote: "antenna.radiowaves.left.and.right"
         case .mcp: "point.3.connected.trianglepath.dotted"
@@ -286,6 +289,10 @@ struct SettingsView: View {
                     }
 
                     if selectedSection == .layout {
+                    settingsSection(L10n.Settings.OverviewGranularity.title) {
+                        OverviewQuotaGranularityPicker()
+                        Text(L10n.Settings.OverviewGranularity.help).font(.caption).foregroundStyle(.secondary)
+                    }
                     settingsSection(L10n.Settings.Section.layout) {
                         LayoutEditorView()
                     }
@@ -678,6 +685,11 @@ struct SettingsView: View {
                     if selectedSection == .mcp, let mcp = environment.mcp {
                     MCPSettingsSection(density: density, controller: mcp)
                         .id(SettingsSectionID.mcp.id)
+                    }
+
+                    if selectedSection == .permissions {
+                        PermissionsSettingsSection(density: density)
+                            .id(SettingsSectionID.permissions.id)
                     }
 
                     if selectedSection == .privacy {
