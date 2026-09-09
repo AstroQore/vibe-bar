@@ -27,7 +27,6 @@ struct PopoverRoot: View {
         let contentDensity = activeDensity
         let shellContentWidth = max(0, width - shellDensity.popoverPaddingH * 2)
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .trailing, spacing: 4) {
             HeaderView(
                 title: headerTitle,
                 subtitle: headerSubtitle,
@@ -44,10 +43,6 @@ struct PopoverRoot: View {
             )
             .frame(height: shellDensity.headerHeight, alignment: .center)
             .padding(.bottom, max(4, shellDensity.interSectionSpacing * 0.45))
-            if overviewPage == .overview {
-                OverviewQuotaGranularityPicker().font(.caption)
-            }
-            }
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(SurfaceCoordinates.space)).maxY } action: {
                 onHeaderHeightChange?($0)
             }
