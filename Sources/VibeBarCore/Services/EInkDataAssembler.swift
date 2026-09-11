@@ -16,8 +16,24 @@ public protocol EInkUsageQuerying: Sendable {
 /// Deliberately short and fixed: the panel is 296 px wide and these strings
 /// are measured against the pixel font's metrics by the presets. The quota
 /// axis names companies, never harnesses — see the naming contract.
-public enum EInkProviderNaming {
-    public static func displayName(for tool: ToolType) -> String {
+/// The single table of provider labels the panel is allowed to print.
+///
+/// These are deliberately **not** `ToolType.hierarchy`'s display names, and
+/// the difference is a product decision rather than an oversight. A Quote/0
+/// panel is 296 px wide; a quota ledger spends about 126 px of that on the
+/// provider column, which is roughly eleven pixel-font characters. The
+/// hierarchy's names are written for a Mac window with room to disambiguate a
+/// vendor from its surfaces — "ChatGPT Agentic" does not fit in that column
+/// at any supported font size, and it is not the name the owner of the device
+/// uses for it either. The short form is what the panel shows and what the
+/// person reading it across a desk expects to see.
+///
+/// Keep this the only place the mapping lives. If a label ever has to change,
+/// it changes here and every preset follows.
+public enum EInkProviderLabel {
+    /// The panel label for a provider. Falls back to a capitalized raw value
+    /// so a tool added upstream still draws something readable.
+    public static func short(for tool: ToolType) -> String {
         switch tool.rawValue {
         case "codex": "Codex"
         case "claude": "Claude"
@@ -114,7 +130,7 @@ public struct EInkDataAssembler: Sendable {
             rows.append(
                 EInkQuotaRow(
                     fieldID: selector.fieldID,
-                    providerDisplayName: EInkProviderNaming.displayName(for: selector.tool),
+                    providerDisplayName: EInkProviderLabel.short(for: selector.tool),
                     windowTitle: bucket.title.isEmpty ? bucket.shortLabel : bucket.title,
                     remainingPercent: remaining,
                     resetAt: bucket.resetAt,

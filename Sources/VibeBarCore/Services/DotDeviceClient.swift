@@ -3,9 +3,16 @@ import Foundation
 public enum DotDeviceError: Error, Equatable, Sendable, CustomStringConvertible {
     /// 401 / 403 — the stored API key is gone or was revoked.
     case unauthorized
-    /// 404 on a write: the Canvas API task is not in the device's loop. The
-    /// API can only update an existing task, never create one.
+    /// 404 on the canvas write: the Canvas API task is not in the device's
+    /// loop. The API can only update an existing task, never create one, so
+    /// this is the one 404 the user can actually fix — by adding the task on
+    /// the phone. It is deliberately *not* what a 404 on any other endpoint
+    /// means; telling someone to edit a loop when the device id is simply
+    /// wrong sends them to the wrong screen.
     case taskNotInLoop
+    /// 404 on a device-scoped read or settings write: no such device on this
+    /// account, usually a device removed after Vibe Bar cached its roster.
+    case deviceNotFound(deviceID: String)
     case rateLimited
     case http(code: Int)
     case network(String)
@@ -16,6 +23,7 @@ public enum DotDeviceError: Error, Equatable, Sendable, CustomStringConvertible 
         switch self {
         case .unauthorized: "Dot API rejected the key (401/403)"
         case .taskNotInLoop: "Dot API task not found in the device loop (404)"
+        case let .deviceNotFound(deviceID): "Dot API has no device \(deviceID) on this account (404)"
         case .rateLimited: "Dot API rate limit reached (429)"
         case let .http(code): "Dot API returned HTTP \(code)"
         case let .network(detail): "Dot API network failure: \(detail)"
@@ -83,7 +91,13 @@ public struct DotDeviceClient: Sendable {
     // MARK: - Endpoints
 
     public func listDevices(apiKey: String) async throws -> [DotDevice] {
-        let data = try await send(method: "GET", path: "/api/authV2/open/devices", apiKey: apiKey)
+        // A 404 on the account-wide roster is not about any one device.
+        let data = try await send(
+            method: "GET",
+            path: "/api/authV2/open/devices",
+            apiKey: apiKey,
+            notFound: .http(code: 404)
+        )
         return try parse { try DotResponseParser.devices(data) }
     }
 
@@ -91,7 +105,8 @@ public struct DotDeviceClient: Sendable {
         let data = try await send(
             method: "GET",
             path: "/api/authV2/open/device/\(encoded(deviceID))/status",
-            apiKey: apiKey
+            apiKey: apiKey,
+            notFound: .deviceNotFound(deviceID: deviceID)
         )
         return try parse { try DotResponseParser.status(data, deviceID: deviceID) }
     }
@@ -100,7 +115,8 @@ public struct DotDeviceClient: Sendable {
         let data = try await send(
             method: "GET",
             path: "/api/authV2/open/device/\(encoded(deviceID))/\(type.rawValue)/list",
-            apiKey: apiKey
+            apiKey: apiKey,
+            notFound: .deviceNotFound(deviceID: deviceID)
         )
         return try parse { try DotResponseParser.tasks(data) }
     }
@@ -117,7 +133,8 @@ public struct DotDeviceClient: Sendable {
             method: "POST",
             path: "/api/authV2/open/device/\(encoded(deviceID))/canvas",
             apiKey: apiKey,
-            body: body
+            body: body,
+            notFound: .taskNotInLoop
         )
         return DotResponseParser.message(data)
     }
@@ -139,7 +156,8 @@ public struct DotDeviceClient: Sendable {
             method: "POST",
             path: "/api/authV2/open/device/\(encoded(deviceID))/settings",
             apiKey: apiKey,
-            body: body
+            body: body,
+            notFound: .deviceNotFound(deviceID: deviceID)
         )
         return DotResponseParser.message(data)
     }
@@ -164,7 +182,15 @@ public struct DotDeviceClient: Sendable {
         }
     }
 
-    private func send(method: String, path: String, apiKey: String, body: Data? = nil) async throws -> Data {
+    /// What a 404 means depends entirely on which endpoint returned it, so
+    /// every call site states its own mapping rather than sharing one guess.
+    private func send(
+        method: String,
+        path: String,
+        apiKey: String,
+        body: Data? = nil,
+        notFound: DotDeviceError
+    ) async throws -> Data {
         guard let url = URL(string: path, relativeTo: baseURL) else { throw DotDeviceError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -194,7 +220,7 @@ public struct DotDeviceClient: Sendable {
         switch http.statusCode {
         case 200...299: return data
         case 401, 403: throw DotDeviceError.unauthorized
-        case 404: throw DotDeviceError.taskNotInLoop
+        case 404: throw notFound
         case 429: throw DotDeviceError.rateLimited
         default: throw DotDeviceError.http(code: http.statusCode)
         }

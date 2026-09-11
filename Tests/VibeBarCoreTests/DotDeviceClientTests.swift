@@ -113,7 +113,7 @@ final class DotDeviceClientTests: XCTestCase {
         let cases: [(Int, DotDeviceError)] = [
             (401, .unauthorized),
             (403, .unauthorized),
-            (404, .taskNotInLoop),
+            (404, .http(code: 404)),
             (429, .rateLimited),
             (503, .http(code: 503))
         ]
@@ -128,6 +128,46 @@ final class DotDeviceClientTests: XCTestCase {
         }
         XCTAssertTrue(DotDeviceError.unauthorized.invalidatesCredential)
         XCTAssertFalse(DotDeviceError.rateLimited.invalidatesCredential)
+    }
+
+    /// A 404 means something different on every endpoint: only the canvas
+    /// write can be fixed by editing the device's loop.
+    func testNotFoundIsMappedPerEndpoint() async throws {
+        let payload = try EInkRenderer.render(
+            slide: EInkFixtures.slide(preset: .usageTiles),
+            device: EInkFixtures.device(orientation: .degrees0),
+            snapshot: EInkFixtures.snapshot()
+        )
+        func error(_ work: @escaping (DotDeviceClient) async throws -> Void) async -> DotDeviceError? {
+            respond(404, "{}")
+            do {
+                try await work(client())
+                return nil
+            } catch {
+                return error as? DotDeviceError
+            }
+        }
+
+        let device = "0000AAAA0000"
+        var caught = await error { _ = try await $0.sendCanvas(deviceID: device, payload: payload, apiKey: "k") }
+        XCTAssertEqual(caught, .taskNotInLoop)
+
+        caught = await error { _ = try await $0.status(deviceID: device, apiKey: "k") }
+        XCTAssertEqual(caught, .deviceNotFound(deviceID: device))
+
+        caught = await error { _ = try await $0.listTasks(deviceID: device, type: .loop, apiKey: "k") }
+        XCTAssertEqual(caught, .deviceNotFound(deviceID: device))
+
+        caught = await error {
+            _ = try await $0.updateInterval(deviceID: device, powerMs: 300_000, batteryMs: 600_000, apiKey: "k")
+        }
+        XCTAssertEqual(caught, .deviceNotFound(deviceID: device))
+
+        caught = await error { _ = try await $0.listDevices(apiKey: "k") }
+        XCTAssertEqual(caught, .http(code: 404))
+
+        XCTAssertFalse(DotDeviceError.deviceNotFound(deviceID: device).invalidatesCredential)
+        XCTAssertTrue(DotDeviceError.deviceNotFound(deviceID: device).description.contains(device))
     }
 
     func testUnparseableBodyBecomesADecodingError() async {

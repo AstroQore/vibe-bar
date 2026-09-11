@@ -33,7 +33,7 @@ final class EInkPresetRenderTests: XCTestCase {
                     let device = EInkFixtures.device(orientation: orientation)
                     let label = "\(preset.rawValue)/\(orientation.rawValue)/\(count)"
 
-                    let node = EInkRenderer.tree(
+                    let node = try EInkRenderer.tree(
                         slide: slide,
                         orientation: orientation,
                         profile: device.profile,
@@ -105,6 +105,28 @@ final class EInkPresetRenderTests: XCTestCase {
         XCTAssertEqual(ordered.first?.providerDisplayName, "AntiGravity")
         XCTAssertEqual(ordered[1].providerDisplayName, "Grok")
         XCTAssertEqual(Set(ordered.map(\.fieldID)), Set(rows.map(\.fieldID)))
+    }
+
+    func testACustomSlideThrowsInsteadOfDrawingQuotaContent() {
+        let snapshot = EInkFixtures.snapshot()
+        let device = EInkFixtures.device(orientation: .degrees0)
+        var slide = EInkFixtures.slide(preset: .quotaLedger)
+        slide.kind = .custom(layoutID: "layout-1")
+
+        XCTAssertThrowsError(try EInkRenderer.render(slide: slide, device: device, snapshot: snapshot)) { error in
+            XCTAssertEqual(error as? EInkRenderError, .layoutMissing(layoutID: "layout-1"))
+        }
+
+        let layouts = ["layout-1": EInkCanvasLayout()]
+        XCTAssertThrowsError(
+            try EInkRenderer.render(slide: slide, device: device, snapshot: snapshot, layouts: layouts)
+        ) { error in
+            XCTAssertEqual(error as? EInkRenderError, .customLayoutUnsupported(layoutID: "layout-1"))
+        }
+
+        XCTAssertThrowsError(
+            try EInkRenderer.tree(slide: slide, orientation: .degrees0, snapshot: snapshot, layouts: layouts)
+        )
     }
 
     func testTaskAliasIsPlainEnglish() {

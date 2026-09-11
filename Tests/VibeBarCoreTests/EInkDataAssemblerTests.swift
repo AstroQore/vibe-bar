@@ -85,13 +85,22 @@ final class EInkDataAssemblerTests: XCTestCase {
         XCTAssertEqual(rows[2].countdown, "")
     }
 
-    func testProviderDisplayNamesUseTheCompanyAxis() {
-        XCTAssertEqual(EInkProviderNaming.displayName(for: .codex), "Codex")
-        XCTAssertEqual(EInkProviderNaming.displayName(for: .claude), "Claude")
-        XCTAssertEqual(EInkProviderNaming.displayName(for: .grok), "Grok")
-        XCTAssertEqual(EInkProviderNaming.displayName(for: .antigravity), "AntiGravity")
-        XCTAssertEqual(EInkProviderNaming.displayName(for: .gemini), "Gemini")
-        XCTAssertEqual(EInkProviderNaming.displayName(for: .cursor), "Cursor")
+    /// Deliberately short, and deliberately not `ToolType.hierarchy` — see
+    /// the doc comment on `EInkProviderLabel`.
+    func testProviderLabelsAreTheShortPanelForms() {
+        XCTAssertEqual(EInkProviderLabel.short(for: .codex), "Codex")
+        XCTAssertEqual(EInkProviderLabel.short(for: .claude), "Claude")
+        XCTAssertEqual(EInkProviderLabel.short(for: .grok), "Grok")
+        XCTAssertEqual(EInkProviderLabel.short(for: .antigravity), "AntiGravity")
+        XCTAssertEqual(EInkProviderLabel.short(for: .gemini), "Gemini")
+        XCTAssertEqual(EInkProviderLabel.short(for: .cursor), "Cursor")
+        for tool in ToolType.allCases {
+            XCTAssertLessThanOrEqual(
+                EInkTextMetrics.width(EInkProviderLabel.short(for: tool), font: .pixel12(bold: false)),
+                126,
+                "\(tool.rawValue) does not fit the ledger's provider column"
+            )
+        }
     }
 
     func testUsageWindowsAreTodayFromLocalMidnightPlusRollingSevenAndThirtyDays() async throws {

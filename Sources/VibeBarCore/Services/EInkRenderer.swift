@@ -1,20 +1,47 @@
 import Foundation
 
+/// Why a render can fail before it reaches the device's own limits.
+///
+/// Both cases exist so the renderer never *substitutes* content. A panel is a
+/// glanceable surface: someone reading "Claude 41%" across a desk has no way
+/// to tell that the slide they configured was a custom layout and that the
+/// quota ledger in front of them is a stand-in. Refusing to draw is the
+/// honest failure, and it is the one the sync engine can surface.
+public enum EInkRenderError: Error, Equatable, Sendable {
+    /// The slide names a layout that exists, but the custom-layout renderer
+    /// has not shipped yet. Removed once the Studio renderer lands.
+    case customLayoutUnsupported(layoutID: String)
+    /// The slide names a layout that is not in the passed table at all —
+    /// deleted in the Studio, or a settings file edited by hand.
+    case layoutMissing(layoutID: String)
+}
+
 /// Turns a configured slide plus a data snapshot into the exact JSON the
 /// device accepts. Pure: same inputs always produce identical bytes, which is
 /// what lets the sync engine skip a push that would change nothing.
 public enum EInkRenderer {
     /// The layout tree, before it is flattened to absolute boxes. Exposed so
     /// the preview can reuse the same geometry the device gets.
+    ///
+    /// `layouts` is the Studio's layout table, keyed by layout id. A slide
+    /// that names a custom layout throws rather than falling back to a
+    /// preset — see `EInkRenderError`.
     public static func tree(
         slide: EInkSlide,
         orientation: EInkOrientation,
         profile: EInkDeviceProfile = .quote0,
-        snapshot: EInkDataSnapshot
-    ) -> EInkNode {
+        snapshot: EInkDataSnapshot,
+        layouts: [String: EInkCanvasLayout] = [:]
+    ) throws -> EInkNode {
         let size = profile.frameSize(for: orientation)
         let frame = EInkRect(x: 0, y: 0, width: size.width, height: size.height)
-        let preset = slide.kind.preset ?? .quotaLedger
+        guard let preset = slide.kind.preset else {
+            let layoutID = slide.kind.layoutID ?? ""
+            guard layouts[layoutID] != nil else {
+                throw EInkRenderError.layoutMissing(layoutID: layoutID)
+            }
+            throw EInkRenderError.customLayoutUnsupported(layoutID: layoutID)
+        }
         let capacity = preset.capacity(for: orientation)
         let portrait = orientation.isPortrait
 
@@ -73,13 +100,15 @@ public enum EInkRenderer {
         snapshot: EInkDataSnapshot,
         refreshNow: Bool = false,
         taskKey: String? = nil,
-        taskAlias: String? = nil
+        taskAlias: String? = nil,
+        layouts: [String: EInkCanvasLayout] = [:]
     ) throws -> DotCanvasPayload {
-        let node = tree(
+        let node = try tree(
             slide: slide,
             orientation: device.orientation,
             profile: device.profile,
-            snapshot: snapshot
+            snapshot: snapshot,
+            layouts: layouts
         )
         return try DotCanvasEncoder.encode(
             node,
