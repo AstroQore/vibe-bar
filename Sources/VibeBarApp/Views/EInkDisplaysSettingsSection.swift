@@ -95,6 +95,10 @@ struct EInkDisplaysSettingsSection: View {
                 var settings = settingsStore.settings
                 settings.einkSync.apiKeyPresent = present
                 settingsStore.settings = settings
+                // Replacing a rejected key does not move `apiKeyPresent`, so
+                // the settings mirror alone would never restart the loops the
+                // 401 stopped.
+                service.credentialDidChange()
             })
 
             Divider().padding(.vertical, 2)

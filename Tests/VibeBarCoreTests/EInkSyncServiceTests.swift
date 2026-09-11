@@ -297,6 +297,50 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertTrue(client.pushes.allSatisfy { $0.refreshNow })
     }
 
+    func testAChangedConfigurationGetsItsOwnPassRatherThanTheStaleOnesResult() async {
+        let client = FakeDotClient()
+        var config = device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        let sync = service(client: client, device: config)
+
+        // A pass under the old settings, then a rotation, then a refresh: the
+        // rotation must not ride out the whole interval on the old picture.
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.count, 1)
+
+        config.orientation = .degrees90
+        sync.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [config]),
+            layouts: [:]
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.count, 2)
+        XCTAssertNotEqual(
+            client.pushes[0].windowDataDigest,
+            client.pushes[1].windowDataDigest,
+            "the second push must carry the rotated layout"
+        )
+    }
+
+    func testReplacingARejectedKeyStartsSyncingAgain() async {
+        let client = FakeDotClient()
+        client.sendErrors = [.unauthorized]
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertTrue(sync.credentialInvalid)
+
+        client.reset()
+        // `apiKeyPresent` does not move when a key is replaced, so only the
+        // explicit signal can clear the flag.
+        sync.credentialDidChange()
+        XCTAssertFalse(sync.credentialInvalid)
+        let outcome = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(outcome.pushed, 1)
+        XCTAssertEqual(client.pushes.count, 1)
+    }
+
     // MARK: - Cadence
 
     func testABatteryDeviceUsesTheSlowerCadence() async {

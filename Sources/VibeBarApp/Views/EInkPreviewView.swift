@@ -44,8 +44,14 @@ struct EInkPreviewView: View {
             .accessibilityHidden(true)
     }
 
+    /// The authored canvas is **centred** in the paper and then turned about
+    /// its own centre. That centring is not cosmetic: a portrait layout is
+    /// authored 152 × 296 inside a 296 × 152 panel, and the encoder spends the
+    /// same `(panel − authored) / 2` offsets before its root `rotate()`.
+    /// Pinning the canvas to the top-left instead would rotate it out of the
+    /// paper and clip most of the slide away.
     private var paper: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack(alignment: .center) {
             Color.white
             canvas
                 .frame(width: CGFloat(plan.authoredWidth), height: CGFloat(plan.authoredHeight))

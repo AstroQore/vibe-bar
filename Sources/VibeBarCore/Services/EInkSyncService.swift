@@ -165,8 +165,13 @@ public final class EInkSyncService: ObservableObject {
     // MARK: - Loops
 
     private final class RefreshRun {
+        let generation: Int
         let task: Task<EInkPushOutcome, Never>
-        init(task: Task<EInkPushOutcome, Never>) { self.task = task }
+
+        init(generation: Int, task: Task<EInkPushOutcome, Never>) {
+            self.generation = generation
+            self.task = task
+        }
     }
 
     private var refreshLoops: [String: Task<Void, Never>] = [:]
@@ -212,6 +217,20 @@ public final class EInkSyncService: ObservableObject {
         guard changed else { return }
         configurationGeneration += 1
         if settings.apiKeyPresent { credentialInvalid = false }
+        restartLoops()
+    }
+
+    /// The stored key was replaced (or removed). Clears the rejected-key flag
+    /// and restarts the loops that the 401 stopped.
+    ///
+    /// It needs its own call because the settings mirror cannot carry the
+    /// news: replacing a rejected key leaves `apiKeyPresent` exactly where it
+    /// was, so the `removeDuplicates()` that watches `EInkSyncSettings` sees
+    /// no change and syncing would stay stopped until some unrelated E-ink
+    /// setting moved.
+    public func credentialDidChange() {
+        configurationGeneration += 1
+        credentialInvalid = false
         restartLoops()
     }
 
@@ -303,24 +322,24 @@ public final class EInkSyncService: ObservableObject {
     // MARK: - Triggers
 
     /// Runs one pass, or joins the pass already in flight for this device.
+    ///
+    /// Joining is only right when the pass in flight is running under the
+    /// configuration the caller wants. A run started before the user rotated
+    /// the panel is fenced from committing anything, so treating it as this
+    /// caller's pass would leave the loop sleeping a whole interval — up to a
+    /// day — on the old picture. A stale run is waited out and then replaced.
     @discardableResult
     public func refresh(deviceID: String) async -> EInkPushOutcome {
-        if let existing = activeRuns[deviceID] {
-            return await existing.task.value
+        while let existing = activeRuns[deviceID] {
+            let outcome = await existing.task.value
+            if existing.generation == configurationGeneration { return outcome }
+            if activeRuns[deviceID] === existing {
+                activeRuns.removeValue(forKey: deviceID)
+                busyDeviceIDs.remove(deviceID)
+                break
+            }
         }
-        let generation = configurationGeneration
-        let run = RefreshRun(task: Task { [weak self] in
-            guard let self else { return EInkPushOutcome() }
-            return await self.performRun(deviceID: deviceID, generation: generation, force: false)
-        })
-        activeRuns[deviceID] = run
-        busyDeviceIDs.insert(deviceID)
-        let outcome = await run.task.value
-        if activeRuns[deviceID] === run {
-            activeRuns.removeValue(forKey: deviceID)
-            busyDeviceIDs.remove(deviceID)
-        }
-        return outcome
+        return await startRun(deviceID: deviceID, force: false)
     }
 
     /// The settings pane's "Push now": the same pass, except the digest check
@@ -331,10 +350,14 @@ public final class EInkSyncService: ObservableObject {
         if let existing = activeRuns[deviceID] {
             _ = await existing.task.value
         }
+        return await startRun(deviceID: deviceID, force: true)
+    }
+
+    private func startRun(deviceID: String, force: Bool) async -> EInkPushOutcome {
         let generation = configurationGeneration
-        let run = RefreshRun(task: Task { [weak self] in
+        let run = RefreshRun(generation: generation, task: Task { [weak self] in
             guard let self else { return EInkPushOutcome() }
-            return await self.performRun(deviceID: deviceID, generation: generation, force: true)
+            return await self.performRun(deviceID: deviceID, generation: generation, force: force)
         })
         activeRuns[deviceID] = run
         busyDeviceIDs.insert(deviceID)
