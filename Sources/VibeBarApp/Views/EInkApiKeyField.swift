@@ -9,8 +9,13 @@ import VibeBarCore
 /// view, the value is never logged, and `settings.json` only ever learns the
 /// boolean that `onChange` reports.
 struct EInkApiKeyField: View {
-    /// Called with the new presence after a successful save or clear, so the
-    /// caller can mirror it into `EInkSyncSettings.apiKeyPresent`.
+    /// What `EInkSyncSettings.apiKeyPresent` currently says. The Keychain is
+    /// the truth; this is compared against it on appear so a `settings.json`
+    /// that was reset, lost, or restored beside a Vault that still holds the
+    /// key cannot leave every control disabled under a "key saved" badge.
+    let mirroredPresence: Bool
+    /// Called with the new presence after a successful save or clear — and on
+    /// appear when the mirror disagrees with the Keychain.
     let onChange: (Bool) -> Void
 
     @State private var draft = ""
@@ -49,7 +54,16 @@ struct EInkApiKeyField: View {
                     .foregroundStyle(.orange)
             }
         }
-        .onAppear { hasStored = EInkCredentialStore.hasAPIKey() }
+        // Detached: the Vault read can reach the Keychain, and a settings
+        // pane that blocks its first frame on that is the stall AGENTS.md § 7
+        // treats as a bug.
+        .task {
+            let present = await Task.detached(priority: .userInitiated) {
+                EInkCredentialStore.hasAPIKey()
+            }.value
+            hasStored = present
+            if present != mirroredPresence { onChange(present) }
+        }
     }
 
     private func save() {

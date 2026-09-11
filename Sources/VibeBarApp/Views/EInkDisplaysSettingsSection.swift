@@ -91,7 +91,7 @@ struct EInkDisplaysSettingsSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            EInkApiKeyField(onChange: { present in
+            EInkApiKeyField(mirroredPresence: sync.apiKeyPresent, onChange: { present in
                 var settings = settingsStore.settings
                 settings.einkSync.apiKeyPresent = present
                 settingsStore.settings = settings
@@ -759,9 +759,17 @@ struct EInkDisplaysSettingsSection: View {
         await loadRenderImage()
     }
 
+    /// Fetches the read-back thumbnail for the device that was selected when
+    /// the request started.
+    ///
+    /// The recheck matters because two clicks in quick succession start two
+    /// fetches, and the first one finishing last would put panel A's render in
+    /// panel B's card — a picture of the wrong device is worse than none.
     private func loadRenderImage() async {
         guard let deviceID = selectedDevice?.deviceID else { return }
-        guard let data = await service.fetchRenderImage(deviceID: deviceID) else { return }
+        let data = await service.fetchRenderImage(deviceID: deviceID)
+        guard selectedDevice?.deviceID == deviceID else { return }
+        guard let data else { return }
         renderImage = NSImage(data: data)
     }
 

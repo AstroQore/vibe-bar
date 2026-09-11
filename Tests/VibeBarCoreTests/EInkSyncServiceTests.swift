@@ -278,6 +278,48 @@ final class EInkSyncServiceTests: XCTestCase {
         }
     }
 
+    func testTwoPanelsRefreshingTogetherStillShareTheOneRequestBudget() async {
+        let client = FakeDotClient()
+        func panel(_ id: String) -> EInkDeviceConfig {
+            EInkDeviceConfig(
+                deviceID: id,
+                enabled: true,
+                playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300),
+                taskKeys: ["k1", "k2"],
+                slides: [slide("a"), slide("b")]
+            )
+        }
+        let sync = EInkSyncService(
+            client: client,
+            store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
+            apiKeyProvider: { "synthetic-key" },
+            snapshotProvider: { EInkFixtures.snapshot() },
+            retryDelays: [],
+            snapshotReuseWindow: .zero
+        )
+        sync.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [panel("panel-1"), panel("panel-2")]
+            ),
+            layouts: [:]
+        )
+        async let first: Void = { _ = await sync.refresh(deviceID: "panel-1") }()
+        async let second: Void = { _ = await sync.refresh(deviceID: "panel-2") }()
+        _ = await (first, second)
+
+        let stamps = client.pushes.map(\.at).sorted()
+        XCTAssertEqual(stamps.count, 4)
+        for (previous, next) in zip(stamps, stamps.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(
+                next.timeIntervalSince(previous),
+                0.1,
+                "the rate limit is per account, not per device"
+            )
+        }
+    }
+
     func testAdvancingTheCarouselMovesToTheNextSlideAndWrapsAround() async {
         let client = FakeDotClient()
         let sync = service(

@@ -178,6 +178,10 @@ public final class EInkSyncService: ObservableObject {
     private var carouselLoops: [String: Task<Void, Never>] = [:]
     private var activeRuns: [String: RefreshRun] = [:]
     private var cachedSnapshot: (snapshot: EInkDataSnapshot, takenAt: Date)?
+    private var cachedAPIKey: String?
+    private var apiKeyLoaded = false
+    /// When the last request to the service went out, for *any* device.
+    private var lastRequestAt: Date?
 
     // MARK: - Init
 
@@ -230,6 +234,8 @@ public final class EInkSyncService: ObservableObject {
     /// setting moved.
     public func credentialDidChange() {
         configurationGeneration += 1
+        cachedAPIKey = nil
+        apiKeyLoaded = false
         credentialInvalid = false
         restartLoops()
     }
@@ -255,14 +261,25 @@ public final class EInkSyncService: ObservableObject {
     }
 
     private var canSync: Bool {
-        isRunning && settings.syncEnabled && settings.apiKeyPresent && !credentialInvalid && apiKey != nil
+        isRunning && settings.syncEnabled && settings.apiKeyPresent && !credentialInvalid
     }
 
-    private var apiKey: String? {
-        guard let key = apiKeyProvider()?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
-            return nil
-        }
-        return key
+    /// The key, read off the main actor once and then held in memory.
+    ///
+    /// The whole service is `@MainActor`, and the Vault read behind
+    /// `apiKeyProvider` can touch the Keychain — including a one-time legacy
+    /// migration that writes and deletes. Doing that synchronously from a
+    /// settings interaction (an orientation tap restarts the loops) is exactly
+    /// the main-thread stall AGENTS.md § 7 calls a blocker, so the lookup is
+    /// detached and the answer is cached until `credentialDidChange()`.
+    private func currentAPIKey() async -> String? {
+        if apiKeyLoaded { return cachedAPIKey }
+        let provider = apiKeyProvider
+        let value = await Task.detached(priority: .utility) { provider() }.value
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        cachedAPIKey = (trimmed?.isEmpty == false) ? trimmed : nil
+        apiKeyLoaded = true
+        return cachedAPIKey
     }
 
     private var activeDevices: [EInkDeviceConfig] {
@@ -382,9 +399,10 @@ public final class EInkSyncService: ObservableObject {
 
     private func performRun(deviceID: String, generation: Int, force: Bool) async -> EInkPushOutcome {
         guard let device = settings.device(id: deviceID), device.enabled else { return EInkPushOutcome() }
-        guard let key = apiKey, !credentialInvalid else {
+        guard !credentialInvalid, let key = await currentAPIKey() else {
             return record(deviceID: deviceID, failure: .unauthorized, detail: nil, generation: generation)
         }
+        guard generation == configurationGeneration else { return EInkPushOutcome() }
 
         var state = self.state(for: deviceID)
         state.lastAttemptAt = clock()
@@ -410,7 +428,6 @@ public final class EInkSyncService: ObservableObject {
         var skipped = 0
         var failure = plan.failure
         var detail: String?
-        var isFirstRequest = true
 
         for item in plan.items {
             guard generation == configurationGeneration, !Task.isCancelled else { break }
@@ -439,8 +456,8 @@ public final class EInkSyncService: ObservableObject {
                 continue
             }
 
-            if !isFirstRequest { try? await Task.sleep(for: requestSpacing) }
-            isFirstRequest = false
+            await paceRequest()
+            guard generation == configurationGeneration else { break }
 
             do {
                 try await withRetry(generation: generation) {
@@ -488,6 +505,7 @@ public final class EInkSyncService: ObservableObject {
     }
 
     private func readStatus(deviceID: String, key: String, generation: Int) async -> DotDeviceStatus? {
+        await paceRequest()
         do {
             let status = try await client.status(deviceID: deviceID, apiKey: key)
             guard generation == configurationGeneration else { return nil }
@@ -500,12 +518,35 @@ public final class EInkSyncService: ObservableObject {
         }
     }
 
+    /// Holds every outbound request to one per `requestSpacing`, across all
+    /// devices rather than within one pass.
+    ///
+    /// Per-pass spacing was not enough: two enabled panels refresh together at
+    /// launch, after wake, and after any settings change, and each pass
+    /// counting its own gap put two writes on the wire every 150 ms — over the
+    /// documented ten per second once the status reads are added.
+    private func paceRequest() async {
+        let spacing = Self.seconds(requestSpacing)
+        let now = clock()
+        let scheduled = max(now, (lastRequestAt ?? .distantPast).addingTimeInterval(spacing))
+        // Claim the slot *before* suspending. Reading the stamp, sleeping, and
+        // only then writing it lets two device passes wake into the same
+        // instant and fire together; the claim and the read are one
+        // uninterrupted step on the main actor, so every caller queues behind
+        // the last slot handed out rather than behind the last send.
+        lastRequestAt = scheduled
+        let wait = scheduled.timeIntervalSince(now)
+        if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+    }
+
+    static func seconds(_ duration: Duration) -> TimeInterval {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+    }
+
     private func assembleSnapshot() async throws -> EInkDataSnapshot {
         if let cached = cachedSnapshot {
             let age = clock().timeIntervalSince(cached.takenAt)
-            let window = Double(snapshotReuseWindow.components.seconds)
-                + Double(snapshotReuseWindow.components.attoseconds) / 1e18
-            if age >= 0, age < window { return cached.snapshot }
+            if age >= 0, age < Self.seconds(snapshotReuseWindow) { return cached.snapshot }
         }
         let snapshot = try await snapshotProvider()
         cachedSnapshot = (snapshot, clock())
@@ -591,7 +632,8 @@ public final class EInkSyncService: ObservableObject {
     /// Lists the account's devices and merges them into the stored roster,
     /// keeping every existing device's configuration intact.
     public func fetchDevices() async throws -> [DotDevice] {
-        guard let key = apiKey else { throw DotDeviceError.unauthorized }
+        guard let key = await currentAPIKey() else { throw DotDeviceError.unauthorized }
+        await paceRequest()
         do {
             let devices = try await client.listDevices(apiKey: key)
             credentialInvalid = false
@@ -607,7 +649,8 @@ public final class EInkSyncService: ObservableObject {
     /// the loop can carry.
     @discardableResult
     public func rescanTasks(deviceID: String) async throws -> [DotTask] {
-        guard let key = apiKey else { throw DotDeviceError.unauthorized }
+        guard let key = await currentAPIKey() else { throw DotDeviceError.unauthorized }
+        await paceRequest()
         do {
             let tasks = try await client.listTasks(deviceID: deviceID, type: .loop, apiKey: key)
             var state = self.state(for: deviceID)
@@ -625,13 +668,14 @@ public final class EInkSyncService: ObservableObject {
     /// Fetches the render the device is showing, for the read-back thumbnail.
     public func fetchRenderImage(deviceID: String) async -> Data? {
         guard let url = state(for: deviceID).renderImage else { return nil }
+        await paceRequest()
         return try? await client.fetchRenderImage(url: url)
     }
 
     /// Reads status without pushing anything — the pane's status line on open.
     @discardableResult
     public func refreshStatus(deviceID: String) async -> DotDeviceStatus? {
-        guard let key = apiKey else { return nil }
+        guard let key = await currentAPIKey() else { return nil }
         guard let status = await readStatus(deviceID: deviceID, key: key, generation: configurationGeneration) else {
             return nil
         }
