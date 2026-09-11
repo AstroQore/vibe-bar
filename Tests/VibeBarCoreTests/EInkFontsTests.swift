@@ -160,4 +160,23 @@ final class EInkFontsTests: XCTestCase {
             }
         }
     }
+
+    /// `THIRD_PARTY_NOTICES.md` claims the constituent projects' notices are
+    /// reproduced in the bundled license file. Fusion Pixel is built from Ark
+    /// Pixel, Cubic 11 and Galmuri, and the upstream release ships a notice
+    /// for each next to its `OFL.txt`; dropping one would make the claim false
+    /// and the OFL attribution incomplete.
+    func testTheBundledFusionPixelLicenseCarriesEveryConstituentNotice() throws {
+        let url = try XCTUnwrap(EInkFonts.licenseURL(for: .pixel))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.hasPrefix("Copyright (c) 2022, TakWolf"))
+        for marker in [
+            "with Reserved Font Name \"Ark Pixel\".",
+            "[Cubic 11]",
+            "[JF Dot M+H 12]",
+            "Copyright (c) 2019\u{2013}2025 Lee Minseo",
+        ] {
+            XCTAssertTrue(text.contains(marker), "bundled Fusion Pixel license is missing: \(marker)")
+        }
+    }
 }

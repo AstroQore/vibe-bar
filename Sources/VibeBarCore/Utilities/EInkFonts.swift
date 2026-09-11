@@ -92,7 +92,23 @@ public enum EInkFonts {
     /// Location of the bundled font file, or `nil` if the resource bundle is
     /// missing (a broken `.app`, never a normal run).
     public static func resourceURL(for role: Role) -> URL? {
-        bundledFontURL(named: resourceName(for: role))
+        bundledResourceURL(named: resourceName(for: role), extension: "otf")
+    }
+
+    /// Base name (no extension) of the OFL text that has to ship with each
+    /// role's file. Both faces are OFL 1.1, and the OFL requires the notice to
+    /// travel with the Font Software.
+    public static func licenseResourceName(for role: Role) -> String {
+        switch role {
+        case .pixel: "FusionPixel-OFL"
+        case .sans, .sansBold: "VibeBarPaperSans-OFL"
+        }
+    }
+
+    /// Location of the bundled OFL text for a role, or `nil` if the resource
+    /// bundle is missing.
+    public static func licenseURL(for role: Role) -> URL? {
+        bundledResourceURL(named: licenseResourceName(for: role), extension: "txt")
     }
 
     // MARK: - Registration
@@ -201,23 +217,23 @@ public enum EInkFonts {
     /// `Scripts/build_app.sh` embeds the generated resource bundle in
     /// `Contents/Resources` and that copy is checked first — the same order
     /// `PricingResolver` uses.
-    private static func bundledFontURL(named name: String) -> URL? {
+    private static func bundledResourceURL(named name: String, extension ext: String) -> URL? {
         if let resourcesURL = Bundle.main.resourceURL {
             let embeddedBundleURL = resourcesURL
                 .appendingPathComponent("VibeBar_VibeBarCore.bundle", isDirectory: true)
             if let embeddedBundle = Bundle(url: embeddedBundleURL),
-               let url = fontURL(named: name, in: embeddedBundle)
+               let url = resourceURL(named: name, extension: ext, in: embeddedBundle)
             {
                 return url
             }
         }
-        return fontURL(named: name, in: .module)
+        return resourceURL(named: name, extension: ext, in: .module)
     }
 
     /// SwiftPM's `.process` rule flattens some resource directories and keeps
     /// others, so ask for both spellings rather than depending on which.
-    private static func fontURL(named name: String, in bundle: Bundle) -> URL? {
-        bundle.url(forResource: name, withExtension: "otf", subdirectory: "Fonts")
-            ?? bundle.url(forResource: name, withExtension: "otf")
+    private static func resourceURL(named name: String, extension ext: String, in bundle: Bundle) -> URL? {
+        bundle.url(forResource: name, withExtension: ext, subdirectory: "Fonts")
+            ?? bundle.url(forResource: name, withExtension: ext)
     }
 }

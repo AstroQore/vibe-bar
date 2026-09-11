@@ -88,9 +88,16 @@ to, and the license above covers only the copied vector artwork.
 - License: [OFL 1.1](Resources/ThirdPartyLicenses/FusionPixelFont.txt)
   ([upstream](https://github.com/TakWolf/fusion-pixel-font/blob/master/LICENSE-OFL))
 - Copyright: Copyright (c) 2022, TakWolf, with Reserved Font Name "Fusion Pixel".
-  The font is itself a fusion of Ark Pixel, Cubic 11 and Galmuri; those
-  projects' own OFL notices travel with the release and are reproduced in the
-  bundled license file.
+  The font is itself a fusion of Ark Pixel, Cubic 11 and Galmuri. The upstream
+  release ships those projects' own notices next to its `OFL.txt`, as
+  `LICENSE/ark-pixel.txt`, `LICENSE/cubic-11.txt` and `LICENSE/galmuri.txt`;
+  the bundled license file is upstream's `OFL.txt` verbatim, followed by all
+  three of them reproduced verbatim under a "Constituent project notices"
+  heading — Ark Pixel (Copyright (c) 2021, TakWolf, Reserved Font Name "Ark
+  Pixel", OFL 1.1), Cubic 11 (an unlimited free-software grant, carrying the
+  OFL 1.1 notices of its own ancestors JF Dot M+H 12, Copyright (c) 2005 M+
+  FONTS PROJECT, and M+ BITMAP FONTS, Copyright (C) 2002-2004 COZ) and Galmuri
+  (Copyright (c) 2019–2025 Lee Minseo, OFL 1.1).
 
 ### Vibe Bar Paper Sans (subset of ChillDuanSans / 寒蝉端黑体)
 
