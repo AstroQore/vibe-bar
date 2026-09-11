@@ -70,6 +70,54 @@ Brand marks in `Resources/ProviderIcons/` remain the trademarks of their
 respective owners; Vibe Bar draws them to identify the service a quota belongs
 to, and the license above covers only the copied vector artwork.
 
+### Fusion Pixel 12px (缝合怪像素字体)
+
+- Project:
+  [TakWolf/fusion-pixel-font](https://github.com/TakWolf/fusion-pixel-font)
+- Use in Vibe Bar:
+  `Sources/VibeBarCore/Resources/Fonts/FusionPixel-12px-Proportional-zh_hans.otf`
+  is the preview typeface for e-ink displays. A Dot. Quote/0 render of Latin,
+  digit and CJK sample strings was compared pixel-for-pixel against local
+  renders, and the device's unsuffixed `text-pixel-12` class matched this face
+  exactly — so the in-app preview draws what the panel will draw.
+- Redistributed **unmodified**, as released upstream. The bundled file is
+  release `2025.08.24` (the 12px, proportional, `zh_hans` variant), pinned
+  rather than tracking the newest tag because later releases redraw `1` and `y`
+  and the device firmware still carries the older shapes. `EInkFonts` documents
+  the re-verification to do before moving the pin.
+- License: [OFL 1.1](Resources/ThirdPartyLicenses/FusionPixelFont.txt)
+  ([upstream](https://github.com/TakWolf/fusion-pixel-font/blob/master/LICENSE-OFL))
+- Copyright: Copyright (c) 2022, TakWolf, with Reserved Font Name "Fusion Pixel".
+  The font is itself a fusion of Ark Pixel, Cubic 11 and Galmuri; those
+  projects' own OFL notices travel with the release and are reproduced in the
+  bundled license file.
+
+### Vibe Bar Paper Sans (subset of ChillDuanSans / 寒蝉端黑体)
+
+- Project:
+  [Warren2060/ChillDuanSans](https://github.com/Warren2060/ChillDuanSans) —
+  寒蝉端黑体, by ChillType.
+- Use in Vibe Bar:
+  `Sources/VibeBarCore/Resources/Fonts/VibeBarPaperSans-{Regular,Bold}.otf` are
+  the proportional preview faces for e-ink displays, matching the device's
+  `text-[Npx]-chillduansans` class.
+- **Modified.** Each file is a subset of the upstream OTF restricted to Basic
+  Latin, the Latin-1 and General Punctuation characters the presets emit, and
+  the arrow / maths signs they may use — about 17 KB each, down from 7 MB. The
+  OFL reserves the font name "Duan" for the upstream project and a subset is a
+  Modified Version, so the subsets are renamed to the neutral family
+  **Vibe Bar Paper Sans**; the upstream copyright and license strings are kept
+  intact in the `name` table. CJK text in the preview falls back to the system
+  font (the device still draws it in the real typeface).
+- License: [OFL 1.1](Resources/ThirdPartyLicenses/ChillDuanSans.txt)
+- Copyright: © 2023 ChillType, with Reserved Font Name 'Duan'; © 2022 The
+  Figtree Project Authors; © 2014-2021 Adobe, with Reserved Font Name 'Source'.
+
+Vibe Bar deliberately does **not** bundle zpix, the face behind the device's
+`text-pixel-12-zpix` class: its commercial license is not compatible with
+redistribution. Presets should prefer the unsuffixed `text-pixel-12` class,
+which is the Fusion Pixel face above.
+
 ## Direct dependencies
 
 ### SweetCookieKit 0.5.2
