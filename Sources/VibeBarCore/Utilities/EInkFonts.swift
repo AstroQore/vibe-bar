@@ -153,20 +153,44 @@ public enum EInkFonts {
     /// This is the measurement the Studio's overflow warnings are built on: a
     /// text box on a 296 px panel either fits or it does not, and the device
     /// will not reflow it.
+    ///
+    /// It measures a **shaped** `CTLine`, not raw per-glyph advances, for two
+    /// reasons. The Latin-only sans subsets have no Han glyphs, and summing
+    /// raw advances would map every one of them to glyph 0 and add 0 — so an
+    /// all-Chinese label would measure near zero and silently *suppress* the
+    /// overflow warning it should raise. Shaping instead lets CoreText's
+    /// cascade substitute the system font, which is exactly what the preview
+    /// renderer draws. Shaping also applies kerning and ligatures, which raw
+    /// advances skip.
+    ///
+    /// Use ``coversEveryCharacter(of:role:)`` when the question is "is this
+    /// the device's own typeface?" rather than "how wide is it here?".
     public static func advanceWidth(
         of string: String,
         role: Role,
         size: CGFloat = pixelPointSize
     ) -> CGFloat {
         guard !string.isEmpty else { return 0 }
-        let font = font(role, size: size)
+        let attributed = NSAttributedString(
+            string: string,
+            attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font(role, size: size)]
+        )
+        let line = CTLineCreateWithAttributedString(attributed)
+        return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+    }
+
+    /// Whether `role`'s own face carries a glyph for every character of
+    /// `string`, i.e. whether ``advanceWidth(of:role:size:)`` measured it
+    /// without falling back to a substituted font.
+    ///
+    /// The Latin-only sans subsets answer `false` for any CJK text: the device
+    /// still draws it in the real ChillDuanSans, but the local preview cannot.
+    public static func coversEveryCharacter(of string: String, role: Role) -> Bool {
+        guard !string.isEmpty else { return true }
+        let font = font(role, size: pixelPointSize)
         let characters = Array(string.utf16)
         var glyphs = [CGGlyph](repeating: 0, count: characters.count)
-        // A `false` return only means some character had no glyph; the
-        // corresponding entry is 0 and contributes a 0 advance, which is the
-        // honest answer for "this face cannot draw that".
-        _ = CTFontGetGlyphsForCharacters(font, characters, &glyphs, characters.count)
-        return CTFontGetAdvancesForGlyphs(font, .horizontal, glyphs, nil, glyphs.count)
+        return CTFontGetGlyphsForCharacters(font, characters, &glyphs, characters.count)
     }
 
     // MARK: - Bundle resolution

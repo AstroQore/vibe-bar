@@ -91,12 +91,33 @@ final class EInkFontsTests: XCTestCase {
             let width = EInkFonts.advanceWidth(of: sample, role: role, size: 14)
             XCTAssertGreaterThan(width, CGFloat(sample.count) * 3)
             for scalar in Set(sample) where !scalar.isWhitespace {
-                XCTAssertGreaterThan(
-                    EInkFonts.advanceWidth(of: String(scalar), role: role, size: 14),
-                    0,
+                // Asked of the face itself, not of the measurement: since
+                // `advanceWidth` shapes a line, a missing glyph would be
+                // substituted and still measure > 0.
+                XCTAssertTrue(
+                    EInkFonts.coversEveryCharacter(of: String(scalar), role: role),
                     "\(role.rawValue) has no glyph for \(scalar)"
                 )
             }
+        }
+    }
+
+    /// The Latin-only sans subsets have no Han glyphs. Summing raw glyph
+    /// advances mapped every one of them to glyph 0 and returned ~0, which
+    /// would make an all-Chinese label look like it fit any box and silently
+    /// suppress the Studio's overflow warning. Shaping a `CTLine` lets
+    /// CoreText substitute the system font — the same thing the preview
+    /// renderer draws — so the width is real.
+    func testCJKInTheLatinOnlySansMeasuresThroughTheFontCascade() {
+        for role in [EInkFonts.Role.sans, .sansBold] {
+            XCTAssertFalse(EInkFonts.coversEveryCharacter(of: "缝合怪", role: role))
+            let width = EInkFonts.advanceWidth(of: "缝合怪", role: role, size: 16)
+            XCTAssertGreaterThan(width, 16, "\(role.rawValue) measured CJK as if it were empty")
+            let mixed = EInkFonts.advanceWidth(of: "Claude 缝合怪", role: role, size: 16)
+            XCTAssertGreaterThan(
+                mixed,
+                EInkFonts.advanceWidth(of: "Claude ", role: role, size: 16)
+            )
         }
     }
 
