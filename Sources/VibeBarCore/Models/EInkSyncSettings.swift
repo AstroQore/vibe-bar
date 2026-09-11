@@ -28,6 +28,21 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
 
     public static let `default` = EInkSyncSettings()
 
+    /// Every quota bucket any slide on any device has picked, in first-seen
+    /// order. The assembler needs it so a chosen bucket is actually gathered.
+    public var selectedQuotaFieldIDs: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for device in devices {
+            for slide in device.slides where slide.kind.preset?.isQuotaPreset ?? false {
+                for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
+                    result.append(fieldID)
+                }
+            }
+        }
+        return result
+    }
+
     public func device(id: String) -> EInkDeviceConfig? {
         devices.first { $0.deviceID == id }
     }

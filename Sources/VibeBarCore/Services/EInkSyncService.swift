@@ -143,7 +143,9 @@ public final class EInkSyncService: ObservableObject {
     private let client: any DotDeviceClienting
     private let store: EInkSyncStateStore
     private let apiKeyProvider: @Sendable () -> String?
-    private let snapshotProvider: @Sendable () async throws -> EInkDataSnapshot
+    /// Assembles a snapshot that covers the passed field ids as well as the
+    /// default priority order.
+    private let snapshotProvider: @Sendable ([String]) async throws -> EInkDataSnapshot
     private let clock: @Sendable () -> Date
     /// Spacing between two canvas writes in the same pass. A stored property
     /// only so tests can collapse it; not part of the public API.
@@ -189,7 +191,7 @@ public final class EInkSyncService: ObservableObject {
         client: any DotDeviceClienting = DotDeviceClient(),
         store: EInkSyncStateStore = EInkSyncStateStore(),
         apiKeyProvider: @escaping @Sendable () -> String? = { try? EInkCredentialStore.readAPIKey() },
-        snapshotProvider: @escaping @Sendable () async throws -> EInkDataSnapshot,
+        snapshotProvider: @escaping @Sendable ([String]) async throws -> EInkDataSnapshot,
         clock: @escaping @Sendable () -> Date = Date.init,
         requestSpacing: Duration = .milliseconds(150),
         retryDelays: [Duration] = [.seconds(1), .seconds(2)],
@@ -220,7 +222,11 @@ public final class EInkSyncService: ObservableObject {
         self.layouts = layouts
         guard changed else { return }
         configurationGeneration += 1
-        if settings.apiKeyPresent { credentialInvalid = false }
+        // A settings edit must *not* clear a rejected key. `apiKeyPresent`
+        // stays true through a 401, so treating any edit as good news would
+        // restart the loops with the same rejected credential and earn another
+        // round of 401s; only `credentialDidChange()` lifts the stop.
+        cachedSnapshot = nil
         restartLoops()
     }
 
@@ -548,7 +554,7 @@ public final class EInkSyncService: ObservableObject {
             let age = clock().timeIntervalSince(cached.takenAt)
             if age >= 0, age < Self.seconds(snapshotReuseWindow) { return cached.snapshot }
         }
-        let snapshot = try await snapshotProvider()
+        let snapshot = try await snapshotProvider(settings.selectedQuotaFieldIDs)
         cachedSnapshot = (snapshot, clock())
         return snapshot
     }

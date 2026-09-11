@@ -808,10 +808,14 @@ struct EInkDisplaysSettingsSection: View {
         }
     }
 
+    /// The result line belongs to the device it was asked for. Two pushes in
+    /// quick succession would otherwise race, and a line reading "pushed 2"
+    /// under the wrong panel is a lie the user has no way to catch.
     private func pushNow(_ deviceID: String) {
         pushStatus = nil
         Task {
             let outcome = await service.pushNow(deviceID: deviceID)
+            guard selectedDevice?.deviceID == deviceID else { return }
             if let failure = outcome.failure {
                 pushStatus = message(for: failure)
             } else {
@@ -997,7 +1001,12 @@ struct EInkDisplaysSettingsSection: View {
 
     private func applySlideMove(_ deviceID: String, slideID: String, to index: Int, order: [String]) {
         var ordered = order.filter { $0 != slideID }
-        ordered.insert(slideID, at: min(index, ordered.count))
+        // The caret index counts the dragged row, and the row is gone from
+        // `ordered`. Dragging the first of three between the other two would
+        // otherwise land it at the end.
+        var target = index
+        if let source = order.firstIndex(of: slideID), source < index { target -= 1 }
+        ordered.insert(slideID, at: min(max(0, target), ordered.count))
         updateDevice(deviceID) { device in
             let byID = Dictionary(device.slides.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             device.slides = ordered.compactMap { byID[$0] }

@@ -407,9 +407,9 @@ final class AppEnvironment: ObservableObject {
         // E-ink sync reads the same cached quota and ledger the popover does,
         // so it is built here and handed a closure rather than its own copies
         // of anything. It stays idle until the settings say otherwise.
-        let eink = EInkSyncService(snapshotProvider: { [weak self] in
+        let eink = EInkSyncService(snapshotProvider: { [weak self] selectedFieldIDs in
             guard let self else { throw CancellationError() }
-            return try await self.einkAssembler().snapshot()
+            return try await self.einkAssembler(selectedFieldIDs: selectedFieldIDs).snapshot()
         })
         self.einkSyncService = eink
         eink.apply(settings: settings.settings.einkSync, layouts: settings.settings.einkCanvasLayouts)
@@ -593,7 +593,7 @@ final class AppEnvironment: ObservableObject {
     /// Rebuilt per pass rather than stored, because it captures the ledger and
     /// the cost service as they are *now* — a stored assembler would keep a
     /// snapshot source alive across a settings change that replaced it.
-    func einkAssembler() -> EInkDataAssembler {
+    func einkAssembler(selectedFieldIDs: [String] = []) -> EInkDataAssembler {
         let usage: any EInkUsageQuerying = usageLedger.map {
             EInkLedgerUsageSource(ledger: $0)
         } ?? EInkEmptyUsageSource()
@@ -607,7 +607,8 @@ final class AppEnvironment: ObservableObject {
                     guard let self else { return [] }
                     return ToolType.allCases.compactMap { self.costService.snapshot(for: $0) }
                 }
-            }
+            },
+            quotaPriority: EInkDataAssembler.priority(includingSelected: selectedFieldIDs)
         )
     }
 

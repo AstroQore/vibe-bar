@@ -81,6 +81,22 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
     func fetchRenderImage(url: URL) async throws -> Data { Data() }
 }
 
+/// Records the field ids the service asked the assembler to cover.
+private final class RequestedFields: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [[String]] = []
+
+    func record(_ fields: [String]) {
+        lock.lock(); defer { lock.unlock() }
+        values.append(fields)
+    }
+
+    var last: [String]? {
+        lock.lock(); defer { lock.unlock() }
+        return values.last
+    }
+}
+
 @MainActor
 final class EInkSyncServiceTests: XCTestCase {
     private var temporaryHome: URL!
@@ -120,7 +136,7 @@ final class EInkSyncServiceTests: XCTestCase {
     private func service(
         client: FakeDotClient,
         device: EInkDeviceConfig,
-        snapshot: @escaping @Sendable () async throws -> EInkDataSnapshot = { EInkFixtures.snapshot() },
+        snapshot: @escaping @Sendable ([String]) async throws -> EInkDataSnapshot = { _ in EInkFixtures.snapshot() },
         requestSpacing: Duration = .milliseconds(150),
         retryDelays: [Duration] = []
     ) -> EInkSyncService {
@@ -293,7 +309,7 @@ final class EInkSyncServiceTests: XCTestCase {
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
             apiKeyProvider: { "synthetic-key" },
-            snapshotProvider: { EInkFixtures.snapshot() },
+            snapshotProvider: { _ in EInkFixtures.snapshot() },
             retryDelays: [],
             snapshotReuseWindow: .zero
         )
@@ -460,6 +476,64 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertFalse(EInkSyncService.isTransient(.http(code: 400)))
         XCTAssertFalse(EInkSyncService.isTransient(.unauthorized))
         XCTAssertFalse(EInkSyncService.isTransient(.taskNotInLoop))
+    }
+
+    func testASettingsEditDoesNotLiftTheStopOnARejectedKey() async {
+        let client = FakeDotClient()
+        client.sendErrors = [.unauthorized]
+        var config = device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        let sync = service(client: client, device: config)
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertTrue(sync.credentialInvalid)
+
+        client.reset()
+        config.orientation = .degrees180
+        sync.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [config]),
+            layouts: [:]
+        )
+        XCTAssertTrue(sync.credentialInvalid, "apiKeyPresent is still true after a 401 — an edit is not news")
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.count, 0)
+    }
+
+    func testThePickedBucketsAreTheOnesTheAssemblerIsAskedFor() async {
+        let client = FakeDotClient()
+        var slide = self.slide("a")
+        slide.quotaFieldIDs = ["codex.five_hour", "claude.weekly"]
+        let requested = RequestedFields()
+        let sync = EInkSyncService(
+            client: client,
+            store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
+            apiKeyProvider: { "synthetic-key" },
+            snapshotProvider: { fields in
+                requested.record(fields)
+                return EInkFixtures.snapshot()
+            },
+            retryDelays: [],
+            snapshotReuseWindow: .zero
+        )
+        sync.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [device(slides: [slide], taskKeys: ["k1"], playback: .single(slideID: "a"))]
+            ),
+            layouts: [:]
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(requested.last, ["codex.five_hour", "claude.weekly"])
+
+        // …and the assembler turns them into selectors the default order misses.
+        let priority = EInkDataAssembler.priority(includingSelected: ["codex.five_hour", "claude.weekly"])
+        XCTAssertTrue(priority.contains { $0.fieldID == "codex.five_hour" })
+        XCTAssertEqual(
+            priority.filter { $0.fieldID == "claude.weekly" }.count,
+            1,
+            "a bucket already in the default order must not be added twice"
+        )
+        XCTAssertNil(EInkDataAssembler.selector(fieldID: "nonsense"))
+        XCTAssertNil(EInkDataAssembler.selector(fieldID: "notatool.weekly"))
     }
 
     // MARK: - Digest

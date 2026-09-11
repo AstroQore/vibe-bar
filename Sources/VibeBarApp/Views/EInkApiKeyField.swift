@@ -21,6 +21,7 @@ struct EInkApiKeyField: View {
     @State private var draft = ""
     @State private var hasStored = false
     @State private var saveError: String?
+    @State private var isWorking = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -30,13 +31,14 @@ struct EInkApiKeyField: View {
                     .onSubmit(save)
                 Button(L10n.Common.save, action: save)
                     .buttonStyle(.vibeBar)
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isWorking || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if hasStored {
                     Button(role: .destructive, action: clear) {
                         Image(systemName: "trash")
                     }
                     .buttonStyle(.vibeBar)
                     .help(L10n.Settings.Misc.removeApiKey(provider: "Dot."))
+                    .disabled(isWorking)
                 }
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -66,25 +68,42 @@ struct EInkApiKeyField: View {
         }
     }
 
+    /// Both mutations run detached. The Vault does a read-modify-write of one
+    /// Keychain item, and on a locked or slow Keychain that is seconds — long
+    /// enough for a Settings pane to look hung on the click that started it.
     private func save() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        do {
-            try EInkCredentialStore.writeAPIKey(trimmed)
+        guard !trimmed.isEmpty, !isWorking else { return }
+        isWorking = true
+        Task {
+            let wrote = await Task.detached(priority: .userInitiated) {
+                (try? EInkCredentialStore.writeAPIKey(trimmed)) != nil
+            }.value
+            isWorking = false
+            guard wrote else {
+                saveError = L10n.Error.keychainSave
+                return
+            }
             draft = ""
             hasStored = true
             saveError = nil
             onChange(true)
-        } catch {
-            saveError = L10n.Error.keychainSave
         }
     }
 
     private func clear() {
-        try? EInkCredentialStore.deleteAPIKey()
-        draft = ""
-        hasStored = EInkCredentialStore.hasAPIKey()
-        saveError = nil
-        onChange(hasStored)
+        guard !isWorking else { return }
+        isWorking = true
+        Task {
+            let present = await Task.detached(priority: .userInitiated) { () -> Bool in
+                try? EInkCredentialStore.deleteAPIKey()
+                return EInkCredentialStore.hasAPIKey()
+            }.value
+            isWorking = false
+            draft = ""
+            hasStored = present
+            saveError = nil
+            onChange(present)
+        }
     }
 }

@@ -77,6 +77,34 @@ public struct EInkDataAssembler: Sendable {
         QuotaSelector(tool: .cursor, bucketID: "models")
     ]
 
+    /// The selector a `MenuBarFieldCatalog` field id names, or `nil` when the
+    /// id is not a `<tool>.<bucket>` pair this build knows a tool for.
+    public static func selector(fieldID: String) -> QuotaSelector? {
+        guard let dot = fieldID.firstIndex(of: ".") else { return nil }
+        let rawTool = String(fieldID[fieldID.startIndex..<dot])
+        let bucketID = String(fieldID[fieldID.index(after: dot)...])
+        guard !bucketID.isEmpty, let tool = ToolType(rawValue: rawTool) else { return nil }
+        return QuotaSelector(tool: tool, bucketID: bucketID)
+    }
+
+    /// The verified priority order, followed by anything a slide picked that
+    /// the order does not already cover.
+    ///
+    /// Without this the picker would be a trap: it lists every bucket the
+    /// catalog and the runtime registry know, while the snapshot only ever
+    /// carried the seven in `defaultQuotaPriority` — so choosing, say, Codex's
+    /// 5 Hours drew an empty row on a panel across the room, which is the one
+    /// failure mode a glanceable surface cannot afford.
+    public static func priority(includingSelected fieldIDs: [String]) -> [QuotaSelector] {
+        var seen = Set(defaultQuotaPriority.map(\.fieldID))
+        var result = defaultQuotaPriority
+        for fieldID in fieldIDs {
+            guard seen.insert(fieldID).inserted, let selector = selector(fieldID: fieldID) else { continue }
+            result.append(selector)
+        }
+        return result
+    }
+
     public var quotaLookup: @Sendable (ToolType) async -> AccountQuota?
     public var usage: any EInkUsageQuerying
     /// Per-tool cost snapshots; only their all-time columns are read.
