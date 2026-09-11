@@ -114,6 +114,20 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("mini_window_geometry.json")
     }
 
+    /// Per-device E-ink sync state: the digest of the payload last pushed to
+    /// each Canvas API task, when the last push landed, the last error, and
+    /// the read-back render URL. Its own file rather than `AppSettings`
+    /// because the sync loop writes it on every pass, and every settings write
+    /// fans out to every Combine subscriber.
+    public static var einkStateURL: URL {
+        einkStateURL(homeDirectory: RealHomeDirectory.path)
+    }
+
+    /// Explicit-home variant, for tests and demo trees.
+    public static func einkStateURL(homeDirectory: String) -> URL {
+        baseDirectory(homeDirectory: homeDirectory).appendingPathComponent("eink_state.json")
+    }
+
     /// Catalog-external quota buckets the adapters have returned on this Mac
     /// (`QuotaFieldRegistry`). Its own file for the same reason as the
     /// geometry: discovery happens on quota refreshes, and rewriting the

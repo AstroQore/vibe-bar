@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Combine
 import VibeBarCore
@@ -22,6 +23,10 @@ final class AppEnvironment: ObservableObject {
     /// Local MCP server. Built here so its lifetime matches the app's; the
     /// socket itself exists only while `AppSettings.mcpServer.enabled` is on.
     private(set) var mcp: MCPController!
+    /// Pushes rendered slides to the user's e-ink panels. Built in `start()`
+    /// for the same reason `mcp` is: its data source is this environment, so
+    /// it cannot exist before the services it reads from do.
+    private(set) var einkSyncService: EInkSyncService!
     /// One skills actor for the whole process, shared by the Workbench's
     /// Skills page and the MCP `skills.install` tool. Two instances would mean
     /// two writers doing read-modify-write on `~/.vibebar/skills.json`, so an
@@ -56,6 +61,7 @@ final class AppEnvironment: ObservableObject {
     /// Finish can land the user on the readout; nil in demo mode, where
     /// there is no status item to anchor to.
     var presentPopoverHandler: (() -> Void)?
+    private var einkWakeObserver: NSObjectProtocol?
     private var workbenchServicesStorage: WorkbenchServices?
     private var sessionIndexStorage: SharedSessionIndex?
     private var cancellables: Set<AnyCancellable> = []
@@ -398,6 +404,25 @@ final class AppEnvironment: ObservableObject {
         self.mcp = mcp
         mcp.start(settingsStore: settings)
 
+        // E-ink sync reads the same cached quota and ledger the popover does,
+        // so it is built here and handed a closure rather than its own copies
+        // of anything. It stays idle until the settings say otherwise.
+        let eink = EInkSyncService(snapshotProvider: { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.einkAssembler().snapshot()
+        })
+        self.einkSyncService = eink
+        eink.apply(settings: settings.settings.einkSync, layouts: settings.settings.einkCanvasLayouts)
+
+        settings.$settings
+            .map(EInkConfiguration.init(settings:))
+            .removeDuplicates()
+            .debounce(for: .milliseconds(400), scheduler: RunLoop.main)
+            .sink { [weak eink] configuration in
+                eink?.apply(settings: configuration.sync, layouts: configuration.layouts)
+            }
+            .store(in: &cancellables)
+
         // Demo mode stops here. Everything below either leaves the demo home
         // (provider, status, pricing and Relay refreshes; Keychain and browser
         // cookie imports) or would overwrite the snapshot the home shipped
@@ -407,6 +432,8 @@ final class AppEnvironment: ObservableObject {
         scheduler.start()
         serviceStatus.start()
         remoteProbeService.start()
+        eink.start()
+        installEInkWakeObserver()
 
         // Kick off the cost scan loop: once at launch, then on its own slow
         // cadence. Cost data updates slowly compared to live quota, and a
@@ -559,6 +586,42 @@ final class AppEnvironment: ObservableObject {
     func quota(for tool: ToolType) -> AccountQuota? {
         guard let account = account(for: tool) else { return nil }
         return quotaService.cachedQuota(for: account.id)
+    }
+
+    /// Builds the assembler the E-ink sync engine and its preview share.
+    ///
+    /// Rebuilt per pass rather than stored, because it captures the ledger and
+    /// the cost service as they are *now* — a stored assembler would keep a
+    /// snapshot source alive across a settings change that replaced it.
+    func einkAssembler() -> EInkDataAssembler {
+        let usage: any EInkUsageQuerying = usageLedger.map {
+            EInkLedgerUsageSource(ledger: $0)
+        } ?? EInkEmptyUsageSource()
+        return EInkDataAssembler(
+            quotaLookup: { [weak self] tool in
+                await MainActor.run { self?.quota(for: tool) }
+            },
+            usage: usage,
+            allTimeCostSnapshots: { [weak self] in
+                await MainActor.run {
+                    guard let self else { return [] }
+                    return ToolType.allCases.compactMap { self.costService.snapshot(for: $0) }
+                }
+            }
+        )
+    }
+
+    /// The panels were asleep with the Mac, so whatever they show is as stale
+    /// as the sleep was long. One pass per enabled device on wake.
+    private func installEInkWakeObserver() {
+        let observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.einkSyncService?.wakeFromSleep() }
+        }
+        einkWakeObserver = observer
     }
 
     func quota(for instance: MiscProviderInstance) -> AccountQuota? {
@@ -1328,5 +1391,20 @@ final class AppEnvironment: ObservableObject {
             matching: DateComponents(hour: 0, minute: 0, second: 0),
             matchingPolicy: .nextTime
         )
+    }
+}
+
+
+/// The two top-level settings keys the E-ink sync engine reads, lifted into
+/// one value so the Combine chain that watches them is a plain
+/// `removeDuplicates()` rather than a tuple comparison the type checker has to
+/// work out from scratch.
+private struct EInkConfiguration: Equatable {
+    let sync: EInkSyncSettings
+    let layouts: [String: EInkCanvasLayout]
+
+    init(settings: AppSettings) {
+        self.sync = settings.einkSync
+        self.layouts = settings.einkCanvasLayouts
     }
 }

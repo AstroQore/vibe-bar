@@ -131,7 +131,7 @@ public struct EInkDataAssembler: Sendable {
                 EInkQuotaRow(
                     fieldID: selector.fieldID,
                     providerDisplayName: EInkProviderLabel.short(for: selector.tool),
-                    windowTitle: bucket.title.isEmpty ? bucket.shortLabel : bucket.title,
+                    windowTitle: Self.windowTitle(for: bucket),
                     remainingPercent: remaining,
                     resetAt: bucket.resetAt,
                     countdown: EInkFormat.countdown(bucket.resetAt, now: now),
@@ -140,6 +140,19 @@ public struct EInkDataAssembler: Sendable {
             )
         }
         return rows
+    }
+
+    /// The window as the panel prints it, written out in full.
+    ///
+    /// Never `shortLabel`. That field exists for the menu bar, where "5h" and
+    /// "WK" buy back pixels that matter; a panel across a desk has 296 of them
+    /// and an abbreviation there is just a word the reader has to decode. The
+    /// group title is the only fallback, because it is written out too — a
+    /// bucket with neither draws no window word at all rather than an
+    /// abbreviation nobody asked for.
+    static func windowTitle(for bucket: QuotaBucket) -> String {
+        if !bucket.title.isEmpty { return bucket.title }
+        return bucket.groupTitle ?? ""
     }
 
     // MARK: - Usage

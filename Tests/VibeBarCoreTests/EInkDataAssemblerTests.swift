@@ -206,3 +206,42 @@ final class EInkDataAssemblerTests: XCTestCase {
         )
     }
 }
+
+// MARK: - The panel never abbreviates
+
+extension EInkDataAssemblerTests {
+    /// `shortLabel` is the menu bar's vocabulary — "5h", "WK", "TOK". The
+    /// panel writes windows out in full, so the assembler must never reach for
+    /// it, not even as a fallback.
+    func testWindowTitlesAreWrittenOutInFullAndNeverFallBackToShortLabel() async {
+        let accounts: [ToolType: AccountQuota] = [
+            .claude: AccountQuota(
+                accountId: "synthetic-account",
+                tool: .claude,
+                buckets: [
+                    QuotaBucket(id: "five_hour", title: "5 Hours", shortLabel: "5h", usedPercent: 10),
+                    QuotaBucket(
+                        id: "weekly",
+                        title: "",
+                        shortLabel: "WK",
+                        usedPercent: 20,
+                        groupTitle: "Weekly"
+                    )
+                ],
+                plan: "Test Plan"
+            ),
+            .codex: AccountQuota(
+                accountId: "synthetic-account-2",
+                tool: .codex,
+                buckets: [QuotaBucket(id: "weekly", title: "", shortLabel: "WK", usedPercent: 30)],
+                plan: "Test Plan"
+            )
+        ]
+        let ledger = FakeUsageLedger(summaries: [.empty], harnessRows: [], trendPoints: [])
+        let rows = await assembler(accounts: accounts, ledger: ledger).quotaRows(now: now)
+        XCTAssertEqual(rows.map(\.windowTitle), ["5 Hours", "Weekly", ""])
+        for row in rows {
+            XCTAssertFalse(row.windowTitle == "5h" || row.windowTitle == "WK")
+        }
+    }
+}
