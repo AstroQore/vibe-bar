@@ -30,6 +30,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var menuBarItems: [MenuBarItemSettings]
     public var miniWindow: MiniWindowSettings
     public var miniCanvasLayouts: [String: MiniCanvasLayout] = [:]
+    /// E-ink display roster. Its own top-level key, so a client editing
+    /// devices never rewrites `einkCanvasLayouts` (and vice versa).
+    public var einkSync: EInkSyncSettings = .default
+    /// Custom E-ink slide layouts, keyed by layout ID.
+    public var einkCanvasLayouts: [String: EInkCanvasLayout] = [:]
     public var studioCardGroups: [String: [[String]]] = [:]
     /// One density profile controls the entire tabbed popover workspace.
     public var popoverDensity: PopoverDensity
@@ -483,6 +488,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case menuBarItems
         case miniWindow
         case miniCanvasLayouts
+        case einkSync
+        case einkCanvasLayouts
         case studioCardGroups
         case popoverDensities
         case popoverDensity   // legacy single-value form
@@ -559,6 +566,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.menuBarItems = Self.normalizedMenuBarItems(decodedItems)
         self.miniWindow = try c.decodeIfPresent(MiniWindowSettings.self, forKey: .miniWindow) ?? Self.defaultMiniWindow
         self.miniCanvasLayouts = try c.decodeIfPresent([String: MiniCanvasLayout].self, forKey: .miniCanvasLayouts) ?? [:]
+        self.einkSync = ((try? c.decodeIfPresent(EInkSyncSettings.self, forKey: .einkSync)) ?? .default)?.sanitized ?? .default
+        self.einkCanvasLayouts = ((try? c.decodeIfPresent([String: EInkCanvasLayout].self, forKey: .einkCanvasLayouts)) ?? [:])?
+            .mapValues { $0.normalized() } ?? [:]
         self.studioCardGroups = (try c.decodeIfPresent([String: [[String]]].self, forKey: .studioCardGroups) ?? [:]).mapValues(StudioCardGroups.normalized)
 
         if let density = try c.decodeIfPresent(PopoverDensity.self, forKey: .popoverDensity) {
@@ -759,6 +769,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(menuBarItems, forKey: .menuBarItems)
         try c.encode(miniWindow, forKey: .miniWindow)
         try c.encode(miniCanvasLayouts, forKey: .miniCanvasLayouts)
+        try c.encode(einkSync.sanitized, forKey: .einkSync)
+        try c.encode(einkCanvasLayouts, forKey: .einkCanvasLayouts)
         try c.encode(studioCardGroups, forKey: .studioCardGroups)
         try c.encode(popoverDensity, forKey: .popoverDensity)
         let planLabels = Dictionary(uniqueKeysWithValues: providerPlanLabels.map { ($0.key.rawValue, $0.value) })
