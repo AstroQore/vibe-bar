@@ -20,6 +20,9 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
         case usagePeriods
         /// Per-harness rows, taken from the snapshot in cost order.
         case harnessRows
+        /// Nothing to pick. The layout's content is fixed by what it is, so
+        /// the settings UI must not offer a selection for it at all.
+        case none
     }
 
     public var selectionAxis: SelectionAxis {
@@ -27,13 +30,17 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
         case .quotaLedger, .quotaRings, .quotaRail: .quotaFields
         case .usageTiles, .usageSplit: .usagePeriods
         case .usageTable, .usageDual: .harnessRows
-        case .usageTrend: .usagePeriods
+        // Trend draws today plus the last seven days, always. There is no
+        // meaningful subset of that — a "trend" of one bucket is a number —
+        // so the slide's period selection does not apply to it.
+        case .usageTrend: SelectionAxis.none
         }
     }
 
     /// How many items of `selectionAxis` the layout has room for. Fewer than
     /// the capacity is always allowed — the layout packs what it is given and
-    /// leaves no empty slot.
+    /// leaves no empty slot. A preset with no axis reports 1: it draws one
+    /// screen, and there is nothing to choose.
     public func capacity(for orientation: EInkOrientation) -> Int {
         let portrait = orientation.isPortrait
         switch self {

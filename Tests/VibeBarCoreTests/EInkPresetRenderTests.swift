@@ -19,6 +19,9 @@ final class EInkPresetRenderTests: XCTestCase {
         case .harnessRows:
             snapshot = EInkFixtures.snapshot(harnessCount: count)
             slide = EInkFixtures.slide(preset: preset)
+        case .none:
+            snapshot = EInkFixtures.snapshot()
+            slide = EInkFixtures.slide(preset: preset)
         }
         return (slide, snapshot)
     }
@@ -127,6 +130,57 @@ final class EInkPresetRenderTests: XCTestCase {
         XCTAssertThrowsError(
             try EInkRenderer.tree(slide: slide, orientation: .degrees0, snapshot: snapshot, layouts: layouts)
         )
+    }
+
+    /// A fixed-width text box clips, so any such box narrower than the string
+    /// it holds is a silent lie about the number in it. The portrait table is
+    /// the tightest layout in the set: 140 px of content width across three
+    /// columns and a header row.
+    func testPortraitTableColumnsFitTheirMeasuredContent() throws {
+        let snapshot = EInkFixtures.snapshot(harnessCount: EInkPreset.usageTable.capacity(for: .degrees90))
+        let node = try EInkRenderer.tree(
+            slide: EInkFixtures.slide(preset: .usageTable),
+            orientation: .degrees90,
+            snapshot: snapshot
+        )
+        let frame = EInkRect(x: 0, y: 0, width: 152, height: 296)
+        var checked = 0
+        for box in EInkBoxLayout.resolve(node, in: frame) {
+            guard box.clipsContent, case let .text(value, font, _) = box.content else { continue }
+            checked += 1
+            XCTAssertLessThanOrEqual(
+                EInkTextMetrics.width(value, font: font),
+                box.frame.width,
+                "\"\(value)\" needs more than the \(box.frame.width) px its column gives it"
+            )
+        }
+        XCTAssertGreaterThan(checked, 20, "the portrait table should have plenty of fixed-width cells")
+
+        // The headers are the cells that forced the split, so name them.
+        for (title, width) in [("HARNESS", 68), ("TOK", 34), ("COST", 34)] {
+            XCTAssertLessThanOrEqual(EInkTextMetrics.width(title, font: .pixel12(bold: true)), width, title)
+            XCTAssertLessThanOrEqual(EInkTextMetrics.width(title, font: .pixel12(bold: false)), width, title)
+        }
+        XCTAssertEqual(68 + 34 + 34 + 2 * 2, 140, "the columns plus their gaps must be the full content width")
+    }
+
+    /// Trend always draws today plus the last seven days, so it exposes no
+    /// selection and the slide's period list must not change what it renders.
+    func testUsageTrendHasNoSelectionAxisAndIgnoresPeriods() throws {
+        XCTAssertEqual(EInkPreset.usageTrend.selectionAxis, EInkPreset.SelectionAxis.none)
+        XCTAssertEqual(EInkPreset.usageTrend.capacity(for: .degrees0), 1)
+        XCTAssertEqual(EInkPreset.usageTrend.capacity(for: .degrees90), 1)
+
+        let snapshot = EInkFixtures.snapshot()
+        let device = EInkFixtures.device(orientation: .degrees0)
+        let all = EInkFixtures.slide(preset: .usageTrend, periods: EInkUsagePeriod.allCases)
+        let one = EInkFixtures.slide(preset: .usageTrend, periods: [.today])
+        let none = EInkFixtures.slide(preset: .usageTrend, periods: [])
+        let rendered = try [all, one, none].map {
+            try EInkRenderer.render(slide: $0, device: device, snapshot: snapshot).jsonData()
+        }
+        XCTAssertEqual(rendered[0], rendered[1])
+        XCTAssertEqual(rendered[1], rendered[2])
     }
 
     func testTaskAliasIsPlainEnglish() {

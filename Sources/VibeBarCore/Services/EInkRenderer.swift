@@ -80,6 +80,10 @@ public enum EInkRenderer {
                 ? EInkPresets.dualPortrait(capacity, snapshot, frame: frame)
                 : EInkPresets.dualLandscape(capacity, snapshot, frame: frame)
         case .usageTrend:
+            // `slide.usagePeriods` is deliberately not read here: trend has
+            // `SelectionAxis.none` and always draws today plus the last seven
+            // days. A slide carrying periods from an earlier preset choice is
+            // ignored rather than half-honoured.
             return portrait
                 ? EInkPresets.trendPortrait(snapshot, frame: frame)
                 : EInkPresets.trendLandscape(snapshot, frame: frame)

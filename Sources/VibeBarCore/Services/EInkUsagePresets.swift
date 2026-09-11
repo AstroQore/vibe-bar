@@ -229,10 +229,28 @@ extension EInkPresets {
     }
 
     static func tablePortrait(_ limit: Int, _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
-        // 74 + 26 + 34 plus two 3 px gaps is exactly the 140 px content width.
+        // 68 + 34 + 34 plus two 2 px gaps is exactly the 140 px content
+        // width, and every part of that split is a measured number rather
+        // than a guess (Fusion Pixel 12 px, via `EInkTextMetrics`):
+        //
+        //   * cost 34 — the widest `moneyCompact` figure is "$121k" at 34,
+        //     comfortably over the "COST" header's 28.
+        //   * tokens 34 — the widest figure is "242M"/"315M" at 29. The
+        //     header is the reason this column is not 29: "TOKENS" measures
+        //     42 and simply does not exist at this width, so the portrait
+        //     table says "TOK". Spending the difference on the label column
+        //     instead of a header nobody needs to read twice is the trade.
+        //   * label 68 — what is left, and enough for "HARNESS" (49),
+        //     "TOTAL" (35) and every common harness name: "Claude Code" 67,
+        //     "AntiGravity" 63, "Gemini CLI" 62, "Grok Build" 59. The two
+        //     longest names in the catalog, "Claude Cowork" (80) and
+        //     "ChatGPT Work" (76), still clip — on a 152 px panel the label
+        //     is the column where clipping is the right answer, because a
+        //     truncated name still identifies its row while a truncated
+        //     number lies about the figure.
         let columns = [
-            TableColumn(key: .label, width: 74, title: "HARNESS"),
-            TableColumn(key: .tokens, width: 26, title: "TOKENS"),
+            TableColumn(key: .label, width: 68, title: "HARNESS"),
+            TableColumn(key: .tokens, width: 34, title: "TOK"),
             TableColumn(key: .cost, width: 34, title: "COST")
         ]
         let blocks: [(String, EInkUsageTotals)] = [("TODAY", snapshot.usage.today), ("7 DAYS", snapshot.usage.week)]
@@ -251,7 +269,7 @@ extension EInkPresets {
                 limit: counts[index],
                 rowHeight: rowHeight,
                 numberFont: pixelBold,
-                gap: 3,
+                gap: 2,
                 compactMoney: true
             )
         }
