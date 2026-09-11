@@ -134,7 +134,8 @@ extension EInkPresets {
         rowHeight: Int,
         numberFont: EInkFont,
         gap: Int,
-        compactMoney: Bool
+        compactMoney: Bool,
+        headerFitsColumns: Bool = true
     ) -> [EInkNode] {
         func money(_ value: Double) -> String {
             compactMoney ? EInkFormat.moneyCompact(value) : EInkFormat.money(value)
@@ -146,12 +147,14 @@ extension EInkPresets {
         var output: [EInkNode] = []
         if let caption { output.append(text(caption, pixelBold, height: .points(12))) }
         output.append(
-            row(
-                columns.map { cell($0, $0.title, $0.key == .label ? pixelBold : pixel) },
-                height: .points(12),
-                gap: gap,
-                align: .center
-            )
+            headerFitsColumns
+                ? row(
+                    columns.map { cell($0, $0.title, $0.key == .label ? pixelBold : pixel) },
+                    height: .points(12),
+                    gap: gap,
+                    align: .center
+                )
+                : freeHeaderRow(columns, gap: gap)
         )
         for harness in totals.rows.prefix(limit) {
             let values: [TableColumn.Key: String] = [
@@ -228,6 +231,27 @@ extension EInkPresets {
         return screen(children, frame: frame, gap: gap)
     }
 
+    /// A header row whose cells size to their own text instead of to the
+    /// data columns below them.
+    ///
+    /// Device text is never abbreviated, so "TOKENS" has to be printed in
+    /// full even where its data column is 34 px wide. Nothing below a header
+    /// depends on the header's *box*, only on its right edge, so the last two
+    /// titles keep their columns' right edges while the widest one is free to
+    /// extend leftwards into the row's slack. Every cell here is `.auto`, so
+    /// none of them clips.
+    static func freeHeaderRow(_ columns: [TableColumn], gap: Int) -> EInkNode {
+        guard let first = columns.first else { return row([], height: .points(12)) }
+        var children: [EInkNode] = [text(first.title, pixelBold), spacer()]
+        for column in columns.dropFirst().dropLast() {
+            children.append(text(column.title, pixel, align: .trailing))
+        }
+        if columns.count > 1, let last = columns.last {
+            children.append(text(last.title, pixel, width: .points(last.width), align: .trailing))
+        }
+        return row(children, height: .points(12), gap: gap, align: .center)
+    }
+
     static func tablePortrait(_ limit: Int, _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
         // 68 + 34 + 34 plus two 2 px gaps is exactly the 140 px content
         // width, and every part of that split is a measured number rather
@@ -235,11 +259,11 @@ extension EInkPresets {
         //
         //   * cost 34 — the widest `moneyCompact` figure is "$121k" at 34,
         //     comfortably over the "COST" header's 28.
-        //   * tokens 34 — the widest figure is "242M"/"315M" at 29. The
-        //     header is the reason this column is not 29: "TOKENS" measures
-        //     42 and simply does not exist at this width, so the portrait
-        //     table says "TOK". Spending the difference on the label column
-        //     instead of a header nobody needs to read twice is the trade.
+        //   * tokens 34 — the widest figure is "242M"/"315M" at 29. Its
+        //     header, "TOKENS", measures 42 and does not fit; device text is
+        //     never abbreviated, so the header row sizes to its own text
+        //     instead (see `freeHeaderRow`) and "TOKENS" extends leftwards
+        //     into the row's slack while keeping this column's right edge.
         //   * label 68 — what is left, and enough for "HARNESS" (49),
         //     "TOTAL" (35) and every common harness name: "Claude Code" 67,
         //     "AntiGravity" 63, "Gemini CLI" 62, "Grok Build" 59. The two
@@ -250,7 +274,7 @@ extension EInkPresets {
         //     number lies about the figure.
         let columns = [
             TableColumn(key: .label, width: 68, title: "HARNESS"),
-            TableColumn(key: .tokens, width: 34, title: "TOK"),
+            TableColumn(key: .tokens, width: 34, title: "TOKENS"),
             TableColumn(key: .cost, width: 34, title: "COST")
         ]
         let blocks: [(String, EInkUsageTotals)] = [("TODAY", snapshot.usage.today), ("7 DAYS", snapshot.usage.week)]
@@ -270,7 +294,8 @@ extension EInkPresets {
                 rowHeight: rowHeight,
                 numberFont: pixelBold,
                 gap: 2,
-                compactMoney: true
+                compactMoney: true,
+                headerFitsColumns: false
             )
         }
         return screen(children, frame: frame, gap: gap)

@@ -95,6 +95,12 @@ public enum EInkPresets {
         )
     }
 
+    /// Free space that draws nothing. A container with no border and no fill
+    /// emits no box, so this costs the device's element budget nothing.
+    static func spacer(_ width: EInkLength = .flex(1)) -> EInkNode {
+        EInkNode(.row, width: width)
+    }
+
     static func screen(_ children: [EInkNode], frame: EInkRect, gap: Int) -> EInkNode {
         column(
             children,

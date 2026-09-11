@@ -144,24 +144,84 @@ final class EInkPresetRenderTests: XCTestCase {
             snapshot: snapshot
         )
         let frame = EInkRect(x: 0, y: 0, width: 152, height: 296)
-        var checked = 0
-        for box in EInkBoxLayout.resolve(node, in: frame) {
+        let boxes = EInkBoxLayout.resolve(node, in: frame)
+
+        // Data cells are fixed-width and clip, so each must be wide enough
+        // for the string it was given.
+        var clipped = 0
+        for box in boxes {
             guard box.clipsContent, case let .text(value, font, _) = box.content else { continue }
-            checked += 1
+            clipped += 1
             XCTAssertLessThanOrEqual(
                 EInkTextMetrics.width(value, font: font),
                 box.frame.width,
                 "\"\(value)\" needs more than the \(box.frame.width) px its column gives it"
             )
         }
-        XCTAssertGreaterThan(checked, 20, "the portrait table should have plenty of fixed-width cells")
+        XCTAssertGreaterThan(clipped, 20, "the portrait table should have plenty of fixed-width cells")
 
-        // The headers are the cells that forced the split, so name them.
-        for (title, width) in [("HARNESS", 68), ("TOK", 34), ("COST", 34)] {
-            XCTAssertLessThanOrEqual(EInkTextMetrics.width(title, font: .pixel12(bold: true)), width, title)
-            XCTAssertLessThanOrEqual(EInkTextMetrics.width(title, font: .pixel12(bold: false)), width, title)
+        // Header cells size to their own text, so they must not clip either —
+        // and "TOKENS" must be there in full, never abbreviated.
+        let headers = boxes.filter {
+            if case let .text(value, _, _) = $0.content { return ["HARNESS", "TOKENS", "COST"].contains(value) }
+            return false
         }
-        XCTAssertEqual(68 + 34 + 34 + 2 * 2, 140, "the columns plus their gaps must be the full content width")
+        XCTAssertEqual(headers.count, 6, "two blocks, three headers each")
+        for box in headers {
+            guard case let .text(value, font, _) = box.content else { continue }
+            XCTAssertLessThanOrEqual(EInkTextMetrics.width(value, font: font), box.frame.width, value)
+            XCTAssertFalse(box.clipsContent && value == "TOKENS", "the widest header must not be a clipping box")
+        }
+
+        // The two right-hand headers keep their data columns' right edges.
+        let tokensHeader = try XCTUnwrap(headers.first { if case let .text(v, _, _) = $0.content { return v == "TOKENS" } else { return false } })
+        let costHeader = try XCTUnwrap(headers.first { if case let .text(v, _, _) = $0.content { return v == "COST" } else { return false } })
+        XCTAssertEqual(costHeader.frame.maxX, 146, "COST ends at the right safe margin")
+        XCTAssertEqual(tokensHeader.frame.maxX, 146 - 34 - 2, "TOKENS ends where its data column ends")
+        XCTAssertGreaterThanOrEqual(tokensHeader.frame.width, 42, "TOKENS may extend leftwards into the row's slack")
+
+        XCTAssertEqual(68 + 34 + 34 + 2 * 2, 140, "the data columns plus their gaps are the full content width")
+    }
+
+    /// The owner's rule for device text: no abbreviations, anywhere. A 152 px
+    /// panel is read at a glance and across a desk, and "WK" or "5H" buys a
+    /// few pixels at the cost of the one thing the panel is for.
+    ///
+    /// Matching is whole-word and case-sensitive on purpose. "TOKENS"
+    /// contains "TOK" and a base64 ring contains "7D", so a substring scan
+    /// would only teach people to disable it; and the lowercase countdown
+    /// ("5d 23h") is a duration, not a label, so it stays legal.
+    func testNoPresetEverPrintsAnAbbreviation() throws {
+        let banned: Set<String> = ["TOK", "5H", "WK", "7D", "30D", "REQ", "TKN", "TOKS"]
+        let snapshot = EInkFixtures.snapshot()
+        for preset in EInkPreset.allCases {
+            for orientation in EInkOrientation.allCases {
+                let payload = try EInkRenderer.render(
+                    slide: EInkFixtures.slide(preset: preset),
+                    device: EInkFixtures.device(orientation: orientation),
+                    snapshot: snapshot
+                )
+                for string in payload.windowData.allStrings where !string.hasPrefix("data:") {
+                    let words = string.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+                    for word in words where banned.contains(word) {
+                        XCTFail("\(preset.rawValue)/\(orientation.rawValue)° prints \"\(string)\", abbreviated as \"\(word)\"")
+                    }
+                }
+            }
+        }
+    }
+
+    /// The scan is only worth having if it would actually catch a regression.
+    func testTheAbbreviationScanCatchesWhatItIsFor() {
+        func words(_ string: String) -> [String] {
+            string.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        }
+        XCTAssertTrue(words("HARNESS TOK COST").contains("TOK"))
+        XCTAssertTrue(words("5H · 62%").contains("5H"))
+        XCTAssertTrue(words("WK $242").contains("WK"))
+        XCTAssertFalse(words("HARNESS TOKENS COST").contains("TOK"))
+        XCTAssertFalse(words("7 DAYS $6,061").contains("7D"))
+        XCTAssertFalse(words("5d 23h").contains("5H"), "a lowercase countdown is a duration, not a label")
     }
 
     /// Trend always draws today plus the last seven days, so it exposes no
