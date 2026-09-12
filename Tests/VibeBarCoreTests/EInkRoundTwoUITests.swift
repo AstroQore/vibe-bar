@@ -301,6 +301,40 @@ final class EInkRoundTwoUITests: XCTestCase {
         XCTAssertEqual(old, .default)
     }
 
+    /// Rotating a custom slide onto an orientation nobody has authored
+    /// explodes its preset on the fly. That fallback has to use the preset the
+    /// slide came from, or the panel quietly becomes a quota ledger until
+    /// somebody presses Re-layout.
+    func testAnUnauthoredOrientationFallsBackToTheSourcePreset() throws {
+        var slide = EInkFixtures.slide(preset: .briefing, fieldIDs: ["claude.weekly", "codex.weekly"])
+        slide.options.sourcePreset = .briefing
+        slide.kind = .custom(layoutID: "authored")
+        let authored = EInkPresetExploder.explode(
+            slide: slide,
+            orientation: .degrees0,
+            snapshot: snapshot,
+            calendar: EInkFixtures.calendar()
+        )
+        // Only 0° is stored; 90° has to be synthesized.
+        let layouts = [EInkRenderer.layoutKey("authored", orientation: .degrees0): authored]
+        let tree = try EInkRenderer.tree(
+            slide: slide,
+            orientation: .degrees90,
+            snapshot: snapshot,
+            layouts: layouts,
+            calendar: EInkFixtures.calendar()
+        )
+        let printed = EInkBoxLayout.resolve(tree, in: EInkRect(x: 0, y: 0, width: 152, height: 296))
+            .compactMap { box -> String? in
+                if case let .text(value, _, _) = box.content { return value }
+                return nil
+            }
+        XCTAssertTrue(
+            printed.contains { $0.hasPrefix("Today $") },
+            "the briefing's own spend line, not a ledger's"
+        )
+    }
+
     // MARK: - Briefing long names
 
     private func briefingBoxes(_ rows: [EInkQuotaRow]) -> [EInkDrawBox] {

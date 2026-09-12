@@ -1758,6 +1758,12 @@ struct LayoutStudioView: View {
                         } custom: {
                             EInkOrientationGlyph(orientation: candidate)
                         }
+                        // The glyph is four rectangles; without this the pill
+                        // has no name for a screen reader to say.
+                        .accessibilityLabel(EInkNaming.orientation(candidate))
+                        .accessibilityAddTraits(
+                            candidate == einkOrientation(deviceID) ? [.isSelected] : []
+                        )
                     }
                 }
                 .padding(3)

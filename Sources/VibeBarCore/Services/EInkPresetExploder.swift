@@ -22,7 +22,12 @@ public enum EInkPresetExploder {
         snapshot: EInkDataSnapshot,
         calendar: Calendar = .current
     ) -> EInkCanvasLayout {
-        let preset = slide.kind.preset ?? .quotaLedger
+        // The slide's own preset, then the one it was exploded from, then the
+        // ledger. That middle step is what `EInkRenderer.tree` leans on when a
+        // custom slide is rotated onto an orientation nobody has authored: it
+        // explodes on the fly, and without the memory a Briefing would come
+        // back as a quota ledger on the panel.
+        let preset = slide.kind.preset ?? slide.options.sourcePreset ?? .quotaLedger
         let size = profile.frameSize(for: orientation)
         let frame = EInkRect(x: 0, y: 0, width: size.width, height: size.height)
         let tree = EInkRenderer.presetTree(
