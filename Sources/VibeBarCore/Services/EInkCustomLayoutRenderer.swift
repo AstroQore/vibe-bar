@@ -326,8 +326,9 @@ public enum EInkCustomLayoutRenderer {
             guard let row = quotaRow(for: element, snapshot: snapshot, options: options) else { return "" }
             // Written out, never abbreviated: the SubProvider, the quota group
             // and the window, because a panel read from a metre away has no
-            // tooltip to expand a short form.
-            return row.slotLabel
+            // tooltip to expand a short form. A name too long for one line is
+            // drawn as two boxes, and each one prints only its own part.
+            return element.labelPart.text(of: row)
         case .countdown:
             guard let row = quotaRow(for: element, snapshot: snapshot, options: options) else { return "" }
             return row.countdown

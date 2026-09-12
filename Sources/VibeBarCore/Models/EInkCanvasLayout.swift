@@ -424,6 +424,14 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
     public var font: EInkFont = .pixel12(bold: false)
     public var alignment: EInkTextAlignment = .leading
     public var textBinding: TextBinding = .percent
+    /// Which part of a `label` binding this element prints.
+    ///
+    /// A name that does not fit one line is drawn as two boxes, and each of
+    /// them has to be able to say which half of the name it is — otherwise
+    /// exploding the slide into the Studio turns both halves into fixed text
+    /// and the panel quietly stops following the bucket's name. Ignored by
+    /// every other binding.
+    public var labelPart: EInkSlotLabelPart = .whole
     public var text = ""
     /// A stat tile's bottom line. Empty draws the binding's own second
     /// figure — a quota countdown, or the tokens behind a cost.
@@ -484,7 +492,8 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
 
     private enum CodingKeys: String, CodingKey {
         case id, kind, fieldID, fieldIDs, periods, x, y, width, height, font, alignment
-        case textBinding, text, subText, imageSource, autoWidth, clipsOverflow, usagePeriod, usageMetric
+        case textBinding, labelPart, text, subText, imageSource, autoWidth, clipsOverflow
+        case usagePeriod, usageMetric
         case thickness, percentOverride, groupID, moduleID
     }
 
@@ -501,6 +510,7 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
         font = c.lenient(EInkFont.self, .font, font)
         alignment = c.lenient(EInkTextAlignment.self, .alignment, .leading)
         textBinding = c.lenient(TextBinding.self, .textBinding, .percent)
+        labelPart = c.lenient(EInkSlotLabelPart.self, .labelPart, .whole)
         text = c.lenient(String.self, .text, "")
         subText = c.lenient(String.self, .subText, "")
         imageSource = c.lenient(String.self, .imageSource, "")
@@ -528,6 +538,7 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
         try c.encode(font, forKey: .font)
         try c.encode(alignment, forKey: .alignment)
         try c.encode(textBinding, forKey: .textBinding)
+        try c.encode(labelPart, forKey: .labelPart)
         try c.encode(text, forKey: .text)
         try c.encode(subText, forKey: .subText)
         try c.encode(imageSource, forKey: .imageSource)

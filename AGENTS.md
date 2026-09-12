@@ -894,6 +894,33 @@ capture against § 8 before committing it — a screenshot is source content.
   vocabulary, and a word the reader has to decode from across a desk
   costs more than the pixels it saves. Write "5 Hours" and "Weekly".
 
+  **A name is never cut, and a figure never at all.** The panel's own
+  complaint from round 2 was a column of clipped names, so the quota layouts
+  fit their labels rather than truncating them: the label column grows until
+  the bar would fall under `EInkPresets.barMinimumWidth`, then the slot takes
+  a second line (`EInkSlotLabel.slotLines`), and a slot that still does not
+  fit costs the panel its trailing slot instead of its words
+  (`EInkPreset.rowCount(for:labels:)` reports what a given set of names
+  actually draws). Centred cells — the rings and the rail — break a name at
+  its tiers and then at its spaces, and may overhang their cell by at most
+  `EInkPresets.cellSpill`. The one truncation the panel is allowed is a name
+  that outruns a whole row of its own; it ends in "…" and the Studio's
+  diagnostics report it. Every measurement carries
+  `EInkSlotLabel.measurementSlack`, because `EInkTextMetrics` is an estimate
+  of the device's font and a box sized to the estimate exactly is how "67%"
+  came back from the panel as "7%".
+
+  **A slot may wear its provider's mark instead of its name.**
+  `EInkSlideOptions.labelStyle` (and the per-slot `labelStyles`) swaps the
+  SubProvider tier for the same 1-bit brand mark the menu bar draws, which is
+  worth 60–100 px of a 284 px row. Core cannot read the app's SVGs, so the
+  App implements `EInkLogoProviding` (`EInkBrandLogos`, which rasterizes
+  `ProviderBrandIcon`'s art at 4× and thresholds it through `EInkBitmap`) and
+  the assembler files the results in the snapshot; a tool with no art, or a
+  snapshot assembled without a provider, falls back to a two-letter monogram
+  (`EInkMonogramRasterizer`) and, failing that, to the name in words. A mark
+  is never a substitute for the figures beside it.
+
   **Fonts.** The preview bundles two faces, both under
   `Sources/VibeBarCore/Resources/Fonts/` and both recorded in
   `THIRD_PARTY_NOTICES.md`. Fusion Pixel 12px is pinned to upstream

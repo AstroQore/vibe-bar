@@ -101,6 +101,16 @@ public enum EInkLayoutDiagnostics {
             }
 
             guard element.kind == .text || element.kind == .statTile else { continue }
+            // A name the layout had to cut is still a cut name, even though
+            // the box it ended up in fits it. It is the one truncation the
+            // panel is allowed, and the Studio says so rather than letting a
+            // trailing "…" pass for the bucket's real name.
+            let drawn = EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot, options: slide.options)
+            if element.moduleID?.hasPrefix(EInkPresets.slotModulePrefix) == true,
+               EInkSlotLabel.isTruncated(drawn)
+            {
+                issues.append(.textOverflow(elementID: element.id))
+            }
             // A tile draws three fixed-width lines in two different faces, and
             // a caption clipped on the device is exactly as wrong as a value
             // clipped on it — so every line is measured in the face it is

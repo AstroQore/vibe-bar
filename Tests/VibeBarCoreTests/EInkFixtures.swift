@@ -37,6 +37,51 @@ enum EInkFixtures {
         }
     }
 
+    /// The names the owner's own panel carries, which is where round 2's
+    /// long-name rule came from: three tiers, written out, and far wider than
+    /// any column a 296 px panel has.
+    static func longNameRows(count: Int = 7) -> [EInkQuotaRow] {
+        let seeds: [(String, String, String, Int, Int)] = [
+            ("codex.spark_weekly", "ChatGPT Agentic", "GPT-5.3 Codex Spark · Weekly", 62, 3 * 3600),
+            ("antigravity.claude_gpt_weekly", "AntiGravity", "Claude and GPT Models · Weekly", 73, 5 * 86_400),
+            ("claude.fable_weekly", "Claude", "Fable · Weekly", 41, 4 * 86_400),
+            ("codex.weekly", "ChatGPT Agentic", "Weekly", 88, 2 * 86_400),
+            ("claude.five_hour", "Claude", "5 Hours", 17, 30 * 60),
+            ("grok.weekly", "Grok Bot", "Weekly", 95, 6 * 86_400),
+            ("cursor.models", "Cursor", "Cursor Models · Monthly", 8, 12 * 3600)
+        ]
+        return seeds.prefix(count).map { seed in
+            let resetAt = referenceDate.addingTimeInterval(TimeInterval(seed.4))
+            return EInkQuotaRow(
+                fieldID: seed.0,
+                providerDisplayName: seed.1,
+                windowTitle: seed.2,
+                remainingPercent: seed.3,
+                resetAt: resetAt,
+                countdown: EInkFormat.countdown(resetAt, now: referenceDate),
+                plan: "Test Plan"
+            )
+        }
+    }
+
+    /// Monogram marks for a set of rows, which is what a snapshot assembled
+    /// without the App's rasterizer carries.
+    static func logos(for rows: [EInkQuotaRow]) -> [String: String] {
+        var result: [String: String] = [:]
+        for row in rows {
+            for size in EInkLogo.sizes {
+                guard let uri = EInkLogo.dataURI(
+                    fieldID: row.fieldID,
+                    subProvider: row.providerDisplayName,
+                    size: size,
+                    provider: nil
+                ) else { continue }
+                result[EInkLogo.key(fieldID: row.fieldID, size: size)] = uri
+            }
+        }
+        return result
+    }
+
     static func harnessRows(count: Int) -> [EInkHarnessRow] {
         let labels = ["Claude Code", "Codex CLI", "AntiGravity", "Grok Build", "Cursor", "Gemini CLI"]
         return (0..<count).map { index -> EInkHarnessRow in

@@ -358,33 +358,51 @@ final class EInkRoundTwoUITests: XCTestCase {
     private func longNamedRows() -> [EInkQuotaRow] {
         EInkFixtures.quotaRows(count: 3).enumerated().map { index, row in
             var copy = row
-            copy.providerDisplayName = "ChatGPT Agentic · GPT-5.3 Codex Spark \(index)"
-            copy.windowTitle = "Weekly"
+            copy.providerDisplayName = "ChatGPT Agentic"
+            copy.windowTitle = "GPT-5.3 Codex Spark \(index) · Weekly"
             return copy
         }
     }
 
     /// The owner's panel printed "ChatGPT Agentic · GPT-5.3 Code…". The name
-    /// now takes a line of its own instead: the layout gives up a row, never a
-    /// word.
-    func testLandscapeBriefingWrapsALongNameInsteadOfCuttingIt() {
+    /// now breaks where it reads instead: the SubProvider keeps the figures
+    /// company and the rest of the name takes the whole width of the line
+    /// under it. The layout gives up a row, never a word.
+    func testLandscapeBriefingWrapsALongNameInsteadOfCuttingIt() throws {
         let rows = longNamedRows()
         let boxes = briefingBoxes(rows)
-        let names = boxes.filter { box in
-            guard case let .text(value, _, _) = box.content else { return false }
-            return value.hasPrefix("ChatGPT Agentic")
+        func text(_ box: EInkDrawBox) -> String {
+            if case let .text(value, _, _) = box.content { return value }
+            return ""
         }
+        let names = boxes.filter { text($0) == "ChatGPT Agentic" }
         XCTAssertEqual(names.count, rows.count)
-        for box in names {
-            XCTAssertFalse(box.clipsContent, "a name is never cut")
+        for box in boxes where !text(box).isEmpty {
+            guard box.clipsContent, case let .text(value, font, _) = box.content else { continue }
+            XCTAssertLessThanOrEqual(
+                EInkTextMetrics.width(value, font: font),
+                box.frame.width,
+                "\"\(value)\" is cut by its box"
+            )
         }
-        // The figures sit under the name rather than beside it.
-        for name in names {
-            let below = boxes.contains { box in
-                guard case let .text(value, _, _) = box.content else { return false }
-                return value.contains("%") && box.frame.y >= name.frame.maxY && box.frame.y < name.frame.maxY + 14
-            }
-            XCTAssertTrue(below, "the figures wrap under the name")
+        for (index, name) in names.enumerated() {
+            // The rest of the name is on its own line, in full.
+            XCTAssertTrue(
+                boxes.contains { box in
+                    text(box) == "GPT-5.3 Codex Spark \(index) · Weekly"
+                        && box.frame.y >= name.frame.maxY
+                        && box.frame.y < name.frame.maxY + 14
+                },
+                "the group and window take the line under the SubProvider"
+            )
+            // The figures stay beside the first line, which is what leaves the
+            // whole width of the second one for the name.
+            XCTAssertTrue(
+                boxes.contains { box in
+                    text(box).contains("%") && box.frame.y == name.frame.y && box.frame.x > name.frame.x
+                },
+                "the figures sit beside the name's first line"
+            )
         }
     }
 
