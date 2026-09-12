@@ -44,8 +44,8 @@ public enum DemoMode {
         /// The first-run setup assistant, opened on the named step.
         case onboarding(step: String)
         /// The Layout Studio, opened on a popover page (`overview`, `openAI`,
-        /// …), the first mini window (`mini`) or the menu bar strip
-        /// (`menuBar`).
+        /// …), the first mini window (`mini`), the menu bar strip
+        /// (`menuBar`) or the first custom e-ink slide (`eink`).
         case studio(subject: String)
 
         /// `kind:identifier`. An unknown kind is `nil`; an empty identifier

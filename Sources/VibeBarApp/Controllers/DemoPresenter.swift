@@ -184,6 +184,16 @@ final class DemoPresenter {
             return environment.settingsStore.settings.miniWindow.windows.first.map { .miniWindow($0.id) }
         case "menuBar":
             return .menuBar(.compact)
+        case "eink":
+            // The first custom slide on any configured panel, so a demo home
+            // that carries one can be captured without clicking through
+            // Settings to find it.
+            for device in environment.settingsStore.settings.einkSync.devices {
+                if let slide = device.slides.first(where: { $0.kind.preset == nil }) {
+                    return .einkSlide(deviceID: device.deviceID, slideID: slide.id)
+                }
+            }
+            return nil
         default:
             guard let tab = OverviewPage(rawValue: identifier), let page = tab.layoutPageID else { return nil }
             return .popoverPage(page)

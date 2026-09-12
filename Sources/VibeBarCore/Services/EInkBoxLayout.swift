@@ -31,6 +31,17 @@ public struct EInkRect: Sendable, Equatable {
     }
 }
 
+/// Integer offset in device pixels. Only a `.stack`'s children carry one.
+public struct EInkPoint: Sendable, Equatable {
+    public var x: Int
+    public var y: Int
+
+    public init(x: Int, y: Int) {
+        self.x = x
+        self.y = y
+    }
+}
+
 public struct EInkInsets: Sendable, Equatable {
     public var top: Int
     public var leading: Int
@@ -85,6 +96,16 @@ public struct EInkNode: Sendable, Equatable {
     public enum Kind: Sendable, Equatable {
         case row
         case column
+        /// Absolutely positioned children: each one sits at its own `origin`
+        /// inside this container and none of them displaces another.
+        ///
+        /// This is what a Studio layout *is* — the author placed every
+        /// element at a pixel — so it is a container kind rather than a
+        /// second layout engine. It also lets a whole preset be dropped in as
+        /// one child: the preset subtree lays itself out inside the rectangle
+        /// the author gave it, exactly as it would inside a panel of that
+        /// size.
+        case stack
         case text(String, font: EInkFont, alignment: EInkTextAlignment)
         /// A 1-bit PNG data URI; both dimensions must be `.points`.
         case image(String)
@@ -105,6 +126,17 @@ public struct EInkNode: Sendable, Equatable {
     public var gap = 0
     public var justify: EInkMainAlignment = .start
     public var align: EInkCrossAlignment = .stretch
+    /// Where this node sits inside its parent. Read only by a `.stack`.
+    public var origin: EInkPoint?
+    /// Re-scopes the clamp bounds for this node's whole subtree to its own
+    /// rectangle, inset by this many pixels.
+    ///
+    /// A custom layout's root passes 0, because the author placed elements at
+    /// real pixels and moving one inwards would silently disagree with the
+    /// Studio. A preset dropped into a custom layout passes the presets' own
+    /// 6 px margin, which is what makes a preset filling the panel produce
+    /// byte-for-byte the boxes the preset slide produces.
+    public var clampInset: Int?
     public var children: [EInkNode] = []
 
     public init(
@@ -115,6 +147,8 @@ public struct EInkNode: Sendable, Equatable {
         gap: Int = 0,
         justify: EInkMainAlignment = .start,
         align: EInkCrossAlignment = .stretch,
+        origin: EInkPoint? = nil,
+        clampInset: Int? = nil,
         children: [EInkNode] = []
     ) {
         self.kind = kind
@@ -124,12 +158,15 @@ public struct EInkNode: Sendable, Equatable {
         self.gap = gap
         self.justify = justify
         self.align = align
+        self.origin = origin
+        self.clampInset = clampInset
         self.children = children
     }
 
     var isRow: Bool { if case .row = kind { return true }; return false }
     var isColumn: Bool { if case .column = kind { return true }; return false }
-    var isContainer: Bool { isRow || isColumn }
+    var isStack: Bool { if case .stack = kind { return true }; return false }
+    var isContainer: Bool { isRow || isColumn || isStack }
 }
 
 /// A resolved, absolutely positioned box. The encoder turns each of these
@@ -220,6 +257,9 @@ public enum EInkBoxLayout {
         case .column:
             let children = node.children.map(intrinsicWidth)
             return node.padding.horizontal + (children.max() ?? 0)
+        case .stack:
+            let extents = node.children.map { ($0.origin?.x ?? 0) + intrinsicWidth($0) }
+            return node.padding.horizontal + (extents.max() ?? 0)
         }
     }
 
@@ -236,6 +276,9 @@ public enum EInkBoxLayout {
         case .column:
             let children = node.children.map(intrinsicHeight)
             return node.padding.vertical + children.reduce(0, +) + node.gap * max(0, node.children.count - 1)
+        case .stack:
+            let extents = node.children.map { ($0.origin?.y ?? 0) + intrinsicHeight($0) }
+            return node.padding.vertical + (extents.max() ?? 0)
         }
     }
 
@@ -244,10 +287,11 @@ public enum EInkBoxLayout {
     private static func place(
         _ node: EInkNode,
         in unclampedRect: EInkRect,
-        bounds: EInkRect,
+        bounds outerBounds: EInkRect,
         into boxes: inout [EInkDrawBox]
     ) {
-        let rect = node.isContainer ? unclampedRect : clamp(unclampedRect, to: bounds)
+        let rect = node.isContainer ? unclampedRect : clamp(unclampedRect, to: outerBounds)
+        let bounds = node.clampInset.map { rect.inset(by: EInkInsets(all: $0)) } ?? outerBounds
         switch node.kind {
         case let .text(content, font, alignment):
             if !content.isEmpty {
@@ -304,6 +348,42 @@ public enum EInkBoxLayout {
             layoutChildren(node, in: rect, horizontal: true, bounds: bounds, into: &boxes)
         case .column:
             layoutChildren(node, in: rect, horizontal: false, bounds: bounds, into: &boxes)
+        case .stack:
+            layoutStack(node, in: rect, bounds: bounds, into: &boxes)
+        }
+    }
+
+    /// Every child at its own offset, sized by what it asks for: `.points`
+    /// exactly, `.auto` from its content, `.flex` to the rest of the row or
+    /// column it starts in.
+    private static func layoutStack(
+        _ node: EInkNode,
+        in rect: EInkRect,
+        bounds: EInkRect,
+        into boxes: inout [EInkDrawBox]
+    ) {
+        let content = rect.inset(by: node.padding)
+        for child in node.children {
+            let offsetX = child.origin?.x ?? 0
+            let offsetY = child.origin?.y ?? 0
+            let width: Int
+            switch child.width {
+            case let .points(value): width = max(0, value)
+            case .auto: width = intrinsicWidth(child)
+            case .flex: width = max(0, content.width - offsetX)
+            }
+            let height: Int
+            switch child.height {
+            case let .points(value): height = max(0, value)
+            case .auto: height = intrinsicHeight(child)
+            case .flex: height = max(0, content.height - offsetY)
+            }
+            place(
+                child,
+                in: EInkRect(x: content.x + offsetX, y: content.y + offsetY, width: width, height: height),
+                bounds: bounds,
+                into: &boxes
+            )
         }
     }
 

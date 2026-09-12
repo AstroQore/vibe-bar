@@ -64,6 +64,14 @@ struct LayoutStudioView: View {
     /// inspector, so the block picked on the stage is the block it edits.
     @State private var stripSelection: Set<UUID> = []
     @State private var canvasSelection: Set<UUID> = []
+    /// The e-ink stage's selection, its last checks, and the snapshot its
+    /// numbers come from. The snapshot is fetched on a task, never in `body`.
+    @State private var einkSelection: Set<UUID> = []
+    @State private var einkReport: EInkLayoutDiagnostics.Report?
+    @State private var einkSnapshot: EInkDataSnapshot?
+    @State private var einkSections: [EInkFieldSection] = []
+    @State private var einkPush: Task<Void, Never>?
+    @State private var isPushingEInk = false
     @State private var cardSelection: Set<String> = []
     /// The menu bar the strip is previewed on; the window's own until picked.
     @State private var stripScheme: ColorScheme?
@@ -78,6 +86,22 @@ struct LayoutStudioView: View {
     /// than per render — the same reason Settings caches it.
     @State private var fieldOptions: [MenuBarFieldOption] = []
     @Namespace private var pills
+
+    /// Non-empty only while an e-ink slide is on the stage; changing it
+    /// re-reads the snapshot for the new device.
+    private var einkSubjectKey: String {
+        guard case let .einkSlide(deviceID, slideID) = model.subject else { return "" }
+        // The buckets are part of the key: binding an element to a bucket the
+        // snapshot was not assembled for would otherwise leave that element
+        // blank on the stage for the rest of the session, while the device
+        // drew it fine.
+        let layoutID = einkLayoutID(deviceID: deviceID, slideID: slideID)
+        let buckets = (settingsStore.settings.einkCanvasLayouts[layoutID]?.elements ?? [])
+            .flatMap(\.quotaFieldIDs)
+            .sorted()
+            .joined(separator: ",")
+        return [deviceID, slideID, buckets].joined(separator: "|")
+    }
 
     /// Every frame the studio reasons in: the root of this view.
     static let space = "vibebar.studio"
@@ -113,8 +137,19 @@ struct LayoutStudioView: View {
             rebuildFieldOptions()
             showHint()
         }
+        .task(id: einkSubjectKey) {
+            guard !einkSubjectKey.isEmpty else { return }
+            await refreshEInkSnapshot()
+        }
         .onDisappear { model.keyHandler = nil }
-        .onChange(of: model.subject) { _, _ in
+        .onChange(of: model.subject) { old, new in
+            // Arriving at a panel from another subject brings the paper's own
+            // zoom with it; leaving one puts 1:1 back.
+            if case .einkSlide = new {
+                if case .einkSlide = old {} else { model.zoom = .scale(EInkStudioStage.defaultZoom) }
+            } else if case .einkSlide = old {
+                model.zoom = .scale(1)
+            }
             previewOnlyPage = nil
             editingLabel = nil
             headerHeight = 0
@@ -124,6 +159,8 @@ struct LayoutStudioView: View {
             settling = nil
             canvasSelection = []
             cardSelection = []
+            einkSelection = []
+            einkReport = nil
             // A page is drawn whole now, so the stage may be scrolled deep
             // into one when the subject changes; the next surface starts
             // at its top, not partway down where the last one was left.
@@ -222,6 +259,23 @@ struct LayoutStudioView: View {
                 }
                 .id(id)
             }
+        case let .einkSlide(deviceID, slideID):
+            // Paper is its own shell: no card, no shadow, no corner radius —
+            // see `EInkStudioStage`.
+            ScaledPreview(scale: scale, onNaturalSize: { naturalSize = $0 }, isInteractive: true) {
+                EInkStudioStage(
+                    layout: einkLayoutBinding(deviceID: deviceID, slideID: slideID),
+                    selection: $einkSelection,
+                    slide: einkSlide(deviceID: deviceID, slideID: slideID)
+                        ?? EInkSlide(id: slideID, kind: .custom(layoutID: slideID)),
+                    orientation: einkDevice(deviceID)?.orientation ?? .degrees0,
+                    profile: einkDevice(deviceID)?.profile ?? .quote0,
+                    snapshot: einkSnapshot,
+                    scale: scale,
+                    onReport: { einkReport = $0 }
+                )
+            }
+            .id(slideID)
         case let .menuBar(kind):
             // Not through `surfaceShell`: the strip is not a picture scaled
             // from outside but a live surface that draws itself at the
@@ -512,7 +566,12 @@ struct LayoutStudioView: View {
         let windows = settingsStore.settings.miniWindow.windows
             .map { LayoutStudioWindowController.Subject.miniWindow($0.id) }
         let strips = MenuBarItemKind.allCases.map(LayoutStudioWindowController.Subject.menuBar)
-        return pages + windows + strips
+        let slides = settingsStore.settings.einkSync.devices.flatMap { device in
+            device.slides
+                .filter { $0.kind.preset == nil }
+                .map { LayoutStudioWindowController.Subject.einkSlide(deviceID: device.deviceID, slideID: $0.id) }
+        }
+        return pages + windows + strips + slides
     }
 
     private func stepSubject(by offset: Int) {
@@ -533,6 +592,11 @@ struct LayoutStudioView: View {
             return settingsStore.settings.miniWindow.config(id: id)?.name ?? L10n.Popover.Header.mini
         case .menuBar:
             return L10n.Settings.Section.menuBar
+        case let .einkSlide(deviceID, slideID):
+            guard let slide = einkSlide(deviceID: deviceID, slideID: slideID) else {
+                return L10n.Settings.Eink.customLayout
+            }
+            return slide.title.isEmpty ? L10n.Settings.Eink.customLayout : slide.title
         }
     }
 
@@ -541,6 +605,7 @@ struct LayoutStudioView: View {
         case .popoverPage: return "rectangle.portrait.on.rectangle.portrait"
         case .miniWindow:  return "macwindow"
         case .menuBar:     return "menubar.rectangle"
+        case .einkSlide:   return "rectangle.dashed"
         }
     }
 
@@ -738,6 +803,91 @@ struct LayoutStudioView: View {
 
     private func rebuildFieldOptions() {
         fieldOptions = MenuBarFieldCatalog.mergedFields(registry: quotaService.fieldRegistry)
+        einkSections = EInkFieldSection.sections(registry: quotaService.fieldRegistry)
+    }
+
+    // MARK: - E-ink context
+
+    private func einkDevice(_ deviceID: String) -> EInkDeviceConfig? {
+        settingsStore.settings.einkSync.device(id: deviceID)
+    }
+
+    private func einkSlide(deviceID: String, slideID: String) -> EInkSlide? {
+        einkDevice(deviceID)?.slide(id: slideID)
+    }
+
+    /// The key the slide's layout is actually stored under.
+    ///
+    /// A slide the Studio created keys its layout by its own id, but the
+    /// slide is the one that says so: a settings file written by hand or by
+    /// the desktop client can point somewhere else, and editing
+    /// `einkCanvasLayouts[slide.id]` would then write a layout nothing draws
+    /// while the panel kept rendering the one the slide names.
+    private func einkLayoutID(deviceID: String, slideID: String) -> String {
+        einkSlide(deviceID: deviceID, slideID: slideID)?.kind.layoutID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? slideID
+    }
+
+    /// The layout, always shaped to the device it is going to.
+    ///
+    /// Refitting on read rather than on write is what makes turning a device
+    /// safe: the Studio shows the slide on the panel it will be pushed to from
+    /// the moment it opens, and the refit is only persisted once the author
+    /// edits something.
+    private func einkLayoutBinding(deviceID: String, slideID: String) -> Binding<EInkCanvasLayout> {
+        let device = einkDevice(deviceID)
+        let profile = device?.profile ?? .quote0
+        let orientation = device?.orientation ?? .degrees0
+        let layoutID = einkLayoutID(deviceID: deviceID, slideID: slideID)
+        return Binding(
+            get: {
+                let stored = settingsStore.settings.einkCanvasLayouts[layoutID]
+                    ?? EInkCanvasLayout(profile: profile, orientation: orientation)
+                return stored.fitted(profile: profile, orientation: orientation)
+            },
+            set: { settingsStore.settings.einkCanvasLayouts[layoutID] = $0.normalized() }
+        )
+    }
+
+    /// Reads the same preview snapshot the settings pane draws from, so the
+    /// Studio's numbers are the ones that would be pushed right now.
+    private func refreshEInkSnapshot() async {
+        guard let service = environment.einkSyncService else { return }
+        await service.refreshPreviewSnapshot(
+            includingFieldIDs: settingsStore.settings.einkSync.selectedQuotaFieldIDs(
+                layouts: settingsStore.settings.einkCanvasLayouts
+            )
+        )
+        einkSnapshot = service.previewSnapshot
+    }
+
+    /// The stage's "Push to device": one forced pass for this slide's panel.
+    private func pushEInk(deviceID: String) {
+        guard let service = environment.einkSyncService, !isPushingEInk else { return }
+        isPushingEInk = true
+        einkPush?.cancel()
+        einkPush = Task { @MainActor in
+            defer { isPushingEInk = false }
+            _ = await service.pushNow(
+                deviceID: deviceID,
+                applying: settingsStore.settings.einkSync,
+                layouts: settingsStore.settings.einkCanvasLayouts
+            )
+        }
+    }
+
+    /// Arrow-key nudging for the e-ink stage.
+    private func nudgeEInk(deviceID: String, slideID: String, dx: Int, dy: Int, major: Bool) -> Bool {
+        guard !einkSelection.isEmpty else { return false }
+        let binding = einkLayoutBinding(deviceID: deviceID, slideID: slideID)
+        binding.wrappedValue = EInkStudioStage.nudged(
+            binding.wrappedValue,
+            selection: einkSelection,
+            dx: dx,
+            dy: dy,
+            major: major
+        )
+        return true
     }
 
     private func fieldOption(_ id: String) -> MenuBarFieldOption? {
@@ -904,8 +1054,8 @@ struct LayoutStudioView: View {
             started.members = [item]
             started.axis = config.displayMode.stageAxis
             return started
-        case .menuBar:
-            // The strip owns its own gesture — see `MenuBarStageView`.
+        case .menuBar, .einkSlide:
+            // Both stages own their own gesture.
             return nil
         }
     }
@@ -1002,7 +1152,7 @@ struct LayoutStudioView: View {
             } else {
                 drag = current
             }
-        case .menuBar:
+        case .menuBar, .einkSlide:
             drag = current
         }
 
@@ -1059,7 +1209,7 @@ struct LayoutStudioView: View {
                 commitMini(current, id: id, order: order)
             }
             settle(current, to: target)
-        case .menuBar:
+        case .menuBar, .einkSlide:
             withAnimation(Self.reflow) { drag = nil }
         }
     }
@@ -1130,6 +1280,18 @@ struct LayoutStudioView: View {
                 subject: model.subject,
                 state: .menuBar(kind, settingsStore.settings.menuBarItem(kind))
             )
+        case let .einkSlide(deviceID, slideID):
+            return SavedState(
+                subject: model.subject,
+                state: .einkSlide(
+                    deviceID: deviceID,
+                    slideID: slideID,
+                    einkSlide(deviceID: deviceID, slideID: slideID),
+                    settingsStore.settings.einkCanvasLayouts[
+                        einkLayoutID(deviceID: deviceID, slideID: slideID)
+                    ]
+                )
+            )
         }
     }
 
@@ -1178,7 +1340,7 @@ struct LayoutStudioView: View {
         case let .miniWindow(id):
             guard let config = miniConfig(id) else { return }
             updateMini(id) { $0.fieldIds.removeAll { $0 == current.item } }
-        case .menuBar:
+        case .menuBar, .einkSlide:
             break
         }
     }
@@ -1209,6 +1371,23 @@ struct LayoutStudioView: View {
                 settingsStore.settings = settings
             case let .menuBar(_, item):
                 settingsStore.settings.setMenuBarItem(item)
+            case let .einkSlide(deviceID, slideID, slide, layout):
+                var settings = settingsStore.settings
+                // Through the slide's own key, not its id — see
+                // `einkLayoutID`. The slide is restored first so the key is
+                // the one the restored slide names.
+                let layoutID = slide?.kind.layoutID.flatMap { $0.isEmpty ? nil : $0 }
+                    ?? einkLayoutID(deviceID: deviceID, slideID: slideID)
+                settings.einkCanvasLayouts[layoutID] = layout
+                if let slide, let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }) {
+                    var device = settings.einkSync.devices[index]
+                    if let position = device.slides.firstIndex(where: { $0.id == slideID }) {
+                        device.slides[position] = slide
+                        settings.einkSync.devices[index] = device
+                    }
+                }
+                settingsStore.settings = settings
+                einkSelection = []
             }
         }
     }
@@ -1240,8 +1419,8 @@ struct LayoutStudioView: View {
             return notShownFields(config).map {
                 TrayItem(id: $0.id, label: $0.displayTitle, accent: Theme.providerAccent(for: $0.tool))
             }
-        case .menuBar:
-            // The palette in the inspector is the strip's tray.
+        case .menuBar, .einkSlide:
+            // The palette in the inspector is the tray for both.
             return []
         }
     }
@@ -1249,7 +1428,7 @@ struct LayoutStudioView: View {
     private var trayCaption: String {
         switch model.subject {
         case .popoverPage: return L10n.Settings.Layout.studioTrayHidden
-        case .miniWindow, .menuBar: return L10n.Settings.Layout.studioTrayNotShown
+        case .miniWindow, .menuBar, .einkSlide: return L10n.Settings.Layout.studioTrayNotShown
         }
     }
 
@@ -1263,7 +1442,7 @@ struct LayoutStudioView: View {
                 updateMini(id) { config in
                     if !config.fieldIds.contains(item.id) { config.fieldIds.append(item.id) }
                 }
-            case .menuBar:
+            case .menuBar, .einkSlide:
                 break
             }
         }
@@ -1339,6 +1518,18 @@ struct LayoutStudioView: View {
                     }
                 }
             }
+            let slides = subjects.filter { if case .einkSlide = $0 { return true } else { return false } }
+            if !slides.isEmpty {
+                Section(L10n.Settings.Section.einkDisplays) {
+                    ForEach(slides, id: \.self) { subject in
+                        Button {
+                            withAnimation(.smooth(duration: 0.28)) { model.subject = subject }
+                        } label: {
+                            Label(title(for: subject), systemImage: icon(for: subject))
+                        }
+                    }
+                }
+            }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: icon(for: model.subject))
@@ -1364,6 +1555,11 @@ struct LayoutStudioView: View {
     @ViewBuilder
     private var subjectControls: some View {
         switch model.subject {
+        // The panel's shape is the orientation, and it is a device setting
+        // rather than a layout one — turning it refits every slide on that
+        // device, so it stays in Settings beside the device it belongs to.
+        case .einkSlide:
+            EmptyView()
         case let .popoverPage(page):
             let context = pageContext(page)
             let mode = layoutModel.mode(for: page)
@@ -1673,7 +1869,7 @@ struct LayoutStudioView: View {
     private var trayHelp: String {
         switch model.subject {
         case .popoverPage: return L10n.Settings.Layout.studioTrayShowHelp
-        case .miniWindow, .menuBar: return L10n.Settings.Layout.studioTrayAddHelp
+        case .miniWindow, .menuBar, .einkSlide: return L10n.Settings.Layout.studioTrayAddHelp
         }
     }
 
@@ -1713,6 +1909,8 @@ struct LayoutStudioView: View {
         case let .menuBar(kind):
             guard settingsStore.settings.menuBarItem(kind).usesComposedStrip else { return nil }
             return L10n.Platform.Macos.MenuBar.composerCanvasHint
+        case .einkSlide:
+            return L10n.Settings.Eink.Studio.hint
         }
     }
 
@@ -1818,6 +2016,18 @@ struct LayoutStudioView: View {
                 case let .menuBar(kind):
                     menuBarInspector(kind)
                         .id(kind)
+                case let .einkSlide(deviceID, slideID):
+                    EInkStudioInspector(
+                        layout: einkLayoutBinding(deviceID: deviceID, slideID: slideID),
+                        selection: $einkSelection,
+                        sections: einkSections,
+                        orientation: einkDevice(deviceID)?.orientation ?? .degrees0,
+                        profile: einkDevice(deviceID)?.profile ?? .quote0,
+                        report: einkReport,
+                        isPushing: isPushingEInk,
+                        onPush: { pushEInk(deviceID: deviceID) }
+                    )
+                    .id(slideID)
                 }
             }
             .padding(16)
@@ -1878,6 +2088,14 @@ struct LayoutStudioView: View {
         model.keyHandler = { key in
             guard editingLabel == nil, previewOnlyPage == nil else { return false }
             switch key {
+            case let .nudge(dx, dy, major):
+                if case let .einkSlide(deviceID, slideID) = model.subject {
+                    return nudgeEInk(deviceID: deviceID, slideID: slideID, dx: dx, dy: dy, major: major)
+                }
+                // Everywhere else the horizontal arrows still step subjects,
+                // which is what they have always done.
+                guard dy == 0, drag == nil else { return false }
+                stepSubject(by: dx)
             case .selectAll:
                 guard case let .popoverPage(page) = model.subject else { return false }
                 cardSelection = Set(pageContext(page).displayed.flattened.moduleIDs.map(\.rawValue))
@@ -1899,6 +2117,14 @@ struct LayoutStudioView: View {
                     layout.elements.removeAll { members.contains($0.id) }
                     canvasBinding(id).wrappedValue = layout
                     canvasSelection = []
+                case let .einkSlide(deviceID, slideID):
+                    guard !einkSelection.isEmpty else { return false }
+                    let binding = einkLayoutBinding(deviceID: deviceID, slideID: slideID)
+                    var layout = binding.wrappedValue
+                    let members = layout.expandedSelection(einkSelection)
+                    layout.elements.removeAll { members.contains($0.id) }
+                    binding.wrappedValue = layout
+                    einkSelection = []
                 case let .menuBar(kind):
                     guard !stripSelection.isEmpty else { return false }
                     var item = settingsStore.settings.menuBarItem(kind)
@@ -1921,6 +2147,9 @@ struct LayoutStudioView: View {
                    miniConfig(id)?.displayMode == .custom, !canvasSelection.isEmpty {
                     return false
                 }
+                // The e-ink stage clears its own selection first, the same
+                // way the free mini canvas does.
+                if case .einkSlide = model.subject, !einkSelection.isEmpty { return false }
                 if drag != nil {
                     cancelDrag()
                 } else {
