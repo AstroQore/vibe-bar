@@ -1022,6 +1022,9 @@ struct LayoutStudioView: View {
         return Binding(
             get: { layout.wrappedValue.snapToGrid },
             set: { value in
+                // Belt and braces with the disabled control above: a gesture
+                // aid must never be the thing that first writes a layout.
+                guard einkLayout(deviceID: deviceID, slideID: slideID) != nil else { return }
                 var next = layout.wrappedValue
                 next.snapToGrid = value
                 layout.wrappedValue = next
@@ -1799,6 +1802,12 @@ struct LayoutStudioView: View {
                     let binding = einkSnapBinding(deviceID: deviceID, slideID: slideID)
                     binding.wrappedValue.toggle()
                 }
+                // Nothing to snap yet, and pressing it would *create* the
+                // missing layout: the binding synthesizes an empty one to read
+                // from, and writing that back stores a layout with no elements
+                // — which stops the stage offering Re-layout and, at the
+                // device's own orientation, pushes a blank panel.
+                .disabled(einkLayout(deviceID: deviceID, slideID: slideID) == nil)
 
                 glassIconButton(
                     systemImage: "arrow.triangle.2.circlepath",
