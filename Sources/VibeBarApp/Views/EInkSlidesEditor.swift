@@ -596,6 +596,16 @@ struct EInkSlidesEditor: View {
                     openInStudio(slide)
                     return
                 }
+                // Picking a preset on a custom slide is a reset, so it drops
+                // the layouts the same way the button does. Leaving them
+                // behind is worse than it sounds: the next Edit in Studio
+                // writes only the orientation it is on, and rotating the
+                // device would then find an old design under another key and
+                // draw it instead of the preset just chosen.
+                if slide.kind.preset == nil {
+                    resetToPreset(slide, preset: preset)
+                    return
+                }
                 updateSlide(slideID) { current in
                     current.kind = .preset(preset)
                     // Only the axis the new layout actually reads is trimmed.
@@ -861,7 +871,7 @@ struct EInkSlidesEditor: View {
     /// Keeping them would leave a slide that draws a preset while four
     /// orientations' worth of edits sat invisibly in `settings.json`, ready to
     /// reappear the next time somebody pressed Edit in Studio.
-    private func resetToPreset(_ slide: EInkSlide) {
+    private func resetToPreset(_ slide: EInkSlide, preset: EInkPreset? = nil) {
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == device.deviceID }),
               let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slide.id })
@@ -873,7 +883,7 @@ struct EInkSlidesEditor: View {
         // The preset it was exploded from, or the ledger for a slide that was
         // custom before this existed — which is also what a new slide draws.
         settings.einkSync.devices[index].slides[position].kind =
-            .preset(slide.options.sourcePreset ?? .quotaLedger)
+            .preset(preset ?? slide.options.sourcePreset ?? .quotaLedger)
         settings.einkSync.devices[index].slides[position].options.sourcePreset = nil
         settings.einkSync.devices[index].slides[position] =
             settings.einkSync.devices[index].slides[position].fitted(to: device.orientation)

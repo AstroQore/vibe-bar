@@ -46,6 +46,13 @@ struct EInkDisplaysSettingsSection: View {
     /// panel and leave the real one grinding through its retries.
     @State private var pushingDeviceID: String?
     @State private var renderImage: NSImage?
+    /// The read-back raster already turned upright.
+    ///
+    /// Turning it is a `lockFocus` and a redraw, and a settings write fans out
+    /// to every subscriber — so doing it in `body` would redraw the panel
+    /// raster on the main thread every time an unrelated control moved. It is
+    /// computed when the image or the orientation changes and never in `body`.
+    @State private var uprightRenderImage: NSImage?
     @State private var snapshot: EInkDataSnapshot?
     @State private var previews: [Int: EInkPreviewPlan] = [:]
     @State private var pickerSections: [EInkFieldSection] = []
@@ -87,9 +94,11 @@ struct EInkDisplaysSettingsSection: View {
         }
         .onChange(of: selectedDevice?.deviceID) { _, _ in
             renderImage = nil
+            uprightRenderImage = nil
             pushStatus = nil
             Task { await refreshDeviceStatus() }
         }
+        .onChange(of: selectedDevice?.orientation) { _, _ in rebuildUprightRender() }
         .onDisappear { cancelPush() }
     }
 
@@ -610,7 +619,7 @@ struct EInkDisplaysSettingsSection: View {
             Text(L10n.Settings.Eink.render)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            if let renderImage {
+            if let renderImage = uprightRenderImage {
                 // The device always reports its native 296 x 152 raster, so a
                 // portrait panel comes back on its side. It is turned upright
                 // here for the same reason the preview is: the thumbnail
@@ -622,7 +631,7 @@ struct EInkDisplaysSettingsSection: View {
                     paperWidth: CGFloat(size.width),
                     paperHeight: CGFloat(size.height)
                 ) {
-                    Image(nsImage: renderImage.turnedUpright(for: device.orientation))
+                    Image(nsImage: renderImage)
                         .resizable()
                         .interpolation(.none)
                         .antialiased(false)
@@ -750,6 +759,16 @@ struct EInkDisplaysSettingsSection: View {
         // "what the panel is showing now" — that is the one thing this
         // thumbnail claims.
         renderImage = data.flatMap(NSImage.init(data:))
+        rebuildUprightRender()
+    }
+
+    /// Turns the read-back raster once per (image, orientation).
+    private func rebuildUprightRender() {
+        guard let renderImage, let orientation = selectedDevice?.orientation else {
+            uprightRenderImage = nil
+            return
+        }
+        uprightRenderImage = renderImage.turnedUpright(for: orientation)
     }
 
     // MARK: - Actions
