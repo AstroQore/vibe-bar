@@ -223,6 +223,7 @@ public final class EInkSyncService: ObservableObject {
     )?
     private var cachedAPIKey: String?
     private var apiKeyLoaded = false
+    private var credentialGeneration = 0
     /// When the last request to the service went out, for *any* device.
     private var lastRequestAt: Date?
     private let writer: EInkSyncStateWriter
@@ -284,6 +285,7 @@ public final class EInkSyncService: ObservableObject {
     /// setting moved.
     public func credentialDidChange() {
         configurationGeneration += 1
+        credentialGeneration += 1
         cachedAPIKey = nil
         apiKeyLoaded = false
         credentialInvalid = false
@@ -324,12 +326,19 @@ public final class EInkSyncService: ObservableObject {
     /// detached and the answer is cached until `credentialDidChange()`.
     private func currentAPIKey() async -> String? {
         if apiKeyLoaded { return cachedAPIKey }
+        let generation = credentialGeneration
         let provider = apiKeyProvider
         let value = await Task.detached(priority: .utility) { provider() }.value
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        cachedAPIKey = (trimmed?.isEmpty == false) ? trimmed : nil
+        let resolved = (trimmed?.isEmpty == false) ? trimmed : nil
+        // The key may have been replaced while this read was out. Caching the
+        // superseded one would keep syncing with a credential the user has
+        // already thrown away, and the 401 that follows would stop the loops
+        // with a perfectly good key sitting in the Keychain.
+        guard generation == credentialGeneration else { return resolved }
+        cachedAPIKey = resolved
         apiKeyLoaded = true
-        return cachedAPIKey
+        return resolved
     }
 
     private var activeDevices: [EInkDeviceConfig] {
@@ -438,6 +447,11 @@ public final class EInkSyncService: ObservableObject {
 
     /// Moves the app-timer carousel on by one slide and pushes it.
     public func advanceCarousel(deviceID: String) async {
+        // Wait out the pass in flight before touching the index. That pass
+        // captured the old one and writes its whole state back at the end, so
+        // incrementing underneath it would be undone and the panel would show
+        // the same slide twice.
+        if let existing = activeRuns[deviceID] { _ = await existing.task.value }
         guard let device = settings.device(id: deviceID), !device.slides.isEmpty else { return }
         var state = self.state(for: deviceID)
         state.slideIndex = (state.slideIndex + 1) % device.slides.count
@@ -581,6 +595,9 @@ public final class EInkSyncService: ObservableObject {
         )
 
         guard generation == configurationGeneration else { return EInkPushOutcome() }
+        // The index belongs to the carousel timer, not to this pass: it may
+        // have moved while this one was in flight.
+        state.slideIndex = self.state(for: deviceID).slideIndex
         states[deviceID] = state
         persist()
         return EInkPushOutcome(pushed: pushed, skipped: skipped, failure: failure, errorDetail: detail)
@@ -679,8 +696,13 @@ public final class EInkSyncService: ObservableObject {
     /// limit it just tripped.
     private func withRetry(generation: Int, _ request: () async throws -> Void) async throws {
         for delay in retryDelays {
+            await paceRequest()
+            // The gate is a suspension, and a settings edit can land in it.
+            // Sending the payload rendered under the old configuration would
+            // cost a visible e-ink refresh that the replacement run then has
+            // to undo.
+            guard generation == configurationGeneration else { return }
             do {
-                await paceRequest()
                 try await request()
                 return
             } catch let error as DotDeviceError {
@@ -690,6 +712,7 @@ public final class EInkSyncService: ObservableObject {
             }
         }
         await paceRequest()
+        guard generation == configurationGeneration else { return }
         try await request()
     }
 

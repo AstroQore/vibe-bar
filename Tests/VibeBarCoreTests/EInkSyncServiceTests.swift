@@ -642,6 +642,26 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertNotNil(reloaded["panel-1"].lastPushAt)
     }
 
+    func testTheCarouselStillAdvancesWhenARefreshIsInFlight() async {
+        let client = FakeDotClient()
+        let sync = service(
+            client: client,
+            device: device(
+                slides: [slide("a"), slide("b"), slide("c")],
+                taskKeys: ["k1"],
+                playback: .carousel(driver: .appTimer, secondsPerSlide: 30)
+            )
+        )
+        // Start a scheduled pass and let the timer fire into it.
+        async let scheduled: Void = { _ = await sync.refresh(deviceID: "panel-1") }()
+        async let advanced: Void = sync.advanceCarousel(deviceID: "panel-1")
+        _ = await (scheduled, advanced)
+
+        XCTAssertEqual(sync.state(for: "panel-1").slideIndex, 1, "the timer's move must survive the overlap")
+        await sync.advanceCarousel(deviceID: "panel-1")
+        XCTAssertEqual(sync.state(for: "panel-1").slideIndex, 2)
+    }
+
     // MARK: - Cadence
 
     func testABatteryDeviceUsesTheSlowerCadence() async {
