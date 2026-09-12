@@ -224,8 +224,14 @@ public final class EInkSyncService: ObservableObject {
     private var cachedAPIKey: String?
     private var apiKeyLoaded = false
     private var credentialGeneration = 0
-    /// When the last request to the service went out, for *any* device.
-    private var lastRequestAt: Date?
+    /// The last slot handed out by the rate gate, for *any* device.
+    ///
+    /// A `ContinuousClock` instant, not a `Date`: a rate limit is a duration
+    /// between two events, and the wall clock is not one — an NTP step
+    /// between the claim and the send makes the gap the service sees bear no
+    /// relation to the one the gate computed. (CI caught this as two writes
+    /// 9 ms apart through a gate set to 150.)
+    private var lastRequestSlot: ContinuousClock.Instant?
     private let writer: EInkSyncStateWriter
     private var persistTask: Task<Void, Never>?
 
@@ -635,17 +641,18 @@ public final class EInkSyncService: ObservableObject {
     /// counting its own gap put two writes on the wire every 150 ms — over the
     /// documented ten per second once the status reads are added.
     private func paceRequest() async {
-        let spacing = Self.seconds(requestSpacing)
-        let now = clock()
-        let scheduled = max(now, (lastRequestAt ?? .distantPast).addingTimeInterval(spacing))
+        let now = ContinuousClock.now
+        let earliest = lastRequestSlot.map { $0.advanced(by: requestSpacing) } ?? now
+        let scheduled = earliest > now ? earliest : now
         // Claim the slot *before* suspending. Reading the stamp, sleeping, and
         // only then writing it lets two device passes wake into the same
         // instant and fire together; the claim and the read are one
         // uninterrupted step on the main actor, so every caller queues behind
         // the last slot handed out rather than behind the last send.
-        lastRequestAt = scheduled
-        let wait = scheduled.timeIntervalSince(now)
-        if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+        lastRequestSlot = scheduled
+        if scheduled > now {
+            try? await Task.sleep(until: scheduled, clock: ContinuousClock())
+        }
     }
 
     static func seconds(_ duration: Duration) -> TimeInterval {

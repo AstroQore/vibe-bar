@@ -13,6 +13,10 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
         let refreshNow: Bool
         let windowDataDigest: String
         let at: Date
+        /// Monotonic stamp: the gate the engine uses is a `ContinuousClock`,
+        /// and asserting a duration against the wall clock is what made this
+        /// suite flake on CI.
+        let elapsed: ContinuousClock.Instant
     }
 
     private let lock = NSLock()
@@ -73,7 +77,8 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
                 taskKey: payload.taskKey,
                 refreshNow: payload.refreshNow,
                 windowDataDigest: EInkSyncService.digest(of: payload),
-                at: Date()
+                at: Date(),
+                elapsed: ContinuousClock.now
             )
         )
         lock.unlock()
@@ -287,12 +292,12 @@ final class EInkSyncServiceTests: XCTestCase {
             )
         )
         _ = await sync.refresh(deviceID: "panel-1")
-        let stamps = client.pushes.map(\.at)
+        let stamps = client.pushes.map(\.elapsed)
         XCTAssertEqual(stamps.count, 3)
         for (previous, next) in zip(stamps, stamps.dropFirst()) {
             XCTAssertGreaterThanOrEqual(
-                next.timeIntervalSince(previous),
-                0.1,
+                previous.duration(to: next),
+                .milliseconds(100),
                 "pushes must be spaced by at least DotDeviceClient.minimumRequestInterval"
             )
         }
@@ -329,12 +334,12 @@ final class EInkSyncServiceTests: XCTestCase {
         async let second: Void = { _ = await sync.refresh(deviceID: "panel-2") }()
         _ = await (first, second)
 
-        let stamps = client.pushes.map(\.at).sorted()
+        let stamps = client.pushes.map(\.elapsed).sorted()
         XCTAssertEqual(stamps.count, 4)
         for (previous, next) in zip(stamps, stamps.dropFirst()) {
             XCTAssertGreaterThanOrEqual(
-                next.timeIntervalSince(previous),
-                0.1,
+                previous.duration(to: next),
+                .milliseconds(100),
                 "the rate limit is per account, not per device"
             )
         }
@@ -586,11 +591,11 @@ final class EInkSyncServiceTests: XCTestCase {
             retryDelays: [.milliseconds(1)]
         )
         _ = await sync.refresh(deviceID: "panel-1")
-        let stamps = client.pushes.map(\.at)
+        let stamps = client.pushes.map(\.elapsed)
         XCTAssertEqual(stamps.count, 2)
         XCTAssertGreaterThanOrEqual(
-            stamps[1].timeIntervalSince(stamps[0]),
-            0.1,
+            stamps[0].duration(to: stamps[1]),
+            .milliseconds(100),
             "a retry must queue behind the same gate as a first attempt"
         )
     }
