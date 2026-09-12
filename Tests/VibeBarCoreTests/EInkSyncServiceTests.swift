@@ -197,11 +197,17 @@ final class EInkSyncServiceTests: XCTestCase {
             taskKeys: ["k1", "k2"],
             playback: .carousel(driver: .appTimer, secondsPerSlide: 60)
         )
-        XCTAssertEqual(EInkPushPlan.make(for: config, slideIndex: 1).items.map(\.slideID), ["b"])
-        XCTAssertEqual(EInkPushPlan.make(for: config, slideIndex: 4).items.map(\.slideID), ["b"])
+        // The second key is a slot this driver does not use; it is claimed
+        // with a placeholder, which `testSingleAndAppTimerAlsoClaimTheLoops…`
+        // covers. What matters here is which slide the one live task gets.
+        func slides(_ plan: EInkPushPlan) -> [EInkPushPlan.Item] {
+            plan.items.filter { !$0.isUnusedSlot }
+        }
+        XCTAssertEqual(slides(EInkPushPlan.make(for: config, slideIndex: 1)).map(\.slideID), ["b"])
+        XCTAssertEqual(slides(EInkPushPlan.make(for: config, slideIndex: 4)).map(\.slideID), ["b"])
         let plan = EInkPushPlan.make(for: config, slideIndex: 2)
-        XCTAssertEqual(plan.items.map(\.taskKey), ["k1"])
-        XCTAssertEqual(plan.items.map(\.refreshNow), [true])
+        XCTAssertEqual(slides(plan).map(\.taskKey), ["k1"])
+        XCTAssertEqual(slides(plan).map(\.refreshNow), [true])
     }
 
     func testSingleUsesTheFirstTaskKeyAndTheNamedSlide() {
@@ -210,10 +216,10 @@ final class EInkSyncServiceTests: XCTestCase {
             taskKeys: ["k1", "k2"],
             playback: .single(slideID: "b")
         )
-        let plan = EInkPushPlan.make(for: config, slideIndex: 0)
-        XCTAssertEqual(plan.items.map(\.slideID), ["b"])
-        XCTAssertEqual(plan.items.map(\.taskKey), ["k1"])
-        XCTAssertEqual(plan.items.map(\.refreshNow), [true])
+        let live = EInkPushPlan.make(for: config, slideIndex: 0).items.filter { !$0.isUnusedSlot }
+        XCTAssertEqual(live.map(\.slideID), ["b"])
+        XCTAssertEqual(live.map(\.taskKey), ["k1"])
+        XCTAssertEqual(live.map(\.refreshNow), [true])
     }
 
     func testADeviceWithNoSlidesReportsItRatherThanPushingNothingQuietly() {
@@ -460,6 +466,62 @@ final class EInkSyncServiceTests: XCTestCase {
             XCTAssertTrue(json.contains("THIS SLOT IS UNUSED"), "\(orientation)")
             XCTAssertTrue(json.contains("VIBE BAR"), "\(orientation)")
         }
+    }
+
+    func testSingleAndAppTimerAlsoClaimTheLoopsOtherSlots() {
+        let slides = [slide("a"), slide("b")]
+        let keys = ["k1", "k2", "k3"]
+
+        let single = EInkPushPlan.make(
+            for: device(slides: slides, taskKeys: keys, playback: .single(slideID: "b")),
+            slideIndex: 0
+        )
+        XCTAssertEqual(single.items.map(\.taskKey), ["k1", "k2", "k3"])
+        XCTAssertEqual(single.items.map(\.isUnusedSlot), [false, true, true])
+        XCTAssertEqual(single.surplusTaskCount, 2)
+
+        let timer = EInkPushPlan.make(
+            for: device(
+                slides: slides,
+                taskKeys: keys,
+                playback: .carousel(driver: .appTimer, secondsPerSlide: 30)
+            ),
+            slideIndex: 1
+        )
+        XCTAssertEqual(timer.items.map(\.isUnusedSlot), [false, true, true])
+        XCTAssertEqual(timer.surplusTaskCount, 2)
+    }
+
+    func testAStatusWithoutAnAllowedImageForgetsTheOldRender() async {
+        let client = FakeDotClient()
+        client.status = DotDeviceStatus(
+            deviceID: "panel-1",
+            current: "USB",
+            currentImageURL: URL(string: "https://os-cdn.mindreset.tech/render/one.png")
+        )
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(
+            sync.state(for: "panel-1").renderImage?.absoluteString,
+            "https://os-cdn.mindreset.tech/render/one.png"
+        )
+
+        // The panel stops reporting a render (a reset, or a host the policy
+        // refuses). The old picture must not be served as the current one.
+        client.status = DotDeviceStatus(deviceID: "panel-1", current: "USB", currentImageURL: nil)
+        _ = await sync.refreshStatus(deviceID: "panel-1")
+        XCTAssertNil(sync.state(for: "panel-1").renderImage)
+
+        client.status = DotDeviceStatus(
+            deviceID: "panel-1",
+            current: "USB",
+            currentImageURL: URL(string: "https://example.com/render/two.png")
+        )
+        _ = await sync.refreshStatus(deviceID: "panel-1")
+        XCTAssertNil(sync.state(for: "panel-1").renderImage)
     }
 
     // MARK: - Usage is optional

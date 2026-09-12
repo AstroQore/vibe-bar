@@ -87,10 +87,18 @@ public struct EInkPushPlan: Equatable, Sendable {
 
         switch device.playback {
         case .single:
+            // One slide, one task — and every other task in the loop is a
+            // slot still showing whatever it was last sent. A device moved
+            // from a carousel to a single slide would otherwise keep the rest
+            // of the carousel on screen, which is the opposite of what the
+            // switch says it does.
             let slide = device.resolvedSingleSlide ?? slides[0]
-            return EInkPushPlan(items: [
-                Item(slideID: slide.id, taskKey: keys.first, refreshNow: true)
-            ])
+            let surplus = keys.dropFirst()
+            return EInkPushPlan(
+                items: [Item(slideID: slide.id, taskKey: keys.first, refreshNow: true)]
+                    + surplus.map { Item(content: .unusedSlot, taskKey: $0, refreshNow: false) },
+                surplusTaskCount: surplus.count
+            )
 
         case let .carousel(driver, _):
             switch driver {
@@ -128,9 +136,14 @@ public struct EInkPushPlan: Equatable, Sendable {
                 // full e-ink refresh, which is exactly the trade this driver
                 // exists to make.
                 let index = slides.isEmpty ? 0 : ((slideIndex % slides.count) + slides.count) % slides.count
-                return EInkPushPlan(items: [
-                    Item(slideID: slides[index].id, taskKey: keys.first, refreshNow: true)
-                ])
+                // Same as `single`: this driver uses one task, so any others
+                // in the loop are slots nobody is writing to any more.
+                let surplus = keys.dropFirst()
+                return EInkPushPlan(
+                    items: [Item(slideID: slides[index].id, taskKey: keys.first, refreshNow: true)]
+                        + surplus.map { Item(content: .unusedSlot, taskKey: $0, refreshNow: false) },
+                    surplusTaskCount: surplus.count
+                )
             }
         }
     }
@@ -915,8 +928,14 @@ private extension EInkDeviceSyncState {
         batteryLabel = status.battery
         wifiLabel = status.wifi
         onBattery = EInkPowerReading.isBattery(current: status.current, battery: status.battery)
+        // Cleared, not kept: a status with no allowed image means the panel is
+        // not reporting a render, and serving the previous one as "what the
+        // device is showing" would be a stale picture presented as current —
+        // it survives a factory reset otherwise.
         if let url = status.currentImageURL, DotRenderImagePolicy.isAllowed(url) {
             renderImageURL = url.absoluteString
+        } else {
+            renderImageURL = nil
         }
     }
 }

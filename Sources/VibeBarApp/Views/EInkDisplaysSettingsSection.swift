@@ -986,11 +986,17 @@ struct EInkDisplaysSettingsSection: View {
                 case let .carousel(driver, _): return driver == .deviceLoop ? .deviceLoop : .appTimer
                 }
             },
-            set: { [deviceID = device.deviceID] mode in
+            set: { [deviceID = device.deviceID, activeSlideID = selectedSlide?.id] mode in
                 updateDevice(deviceID) { current in
                     switch mode {
                     case .single:
-                        current.playback = .single(slideID: current.slides.first?.id ?? "")
+                        // The slide the editor and the preview are showing is
+                        // the one the user means; falling back to the first
+                        // would send a different panel than the one on screen.
+                        let chosen = activeSlideID.flatMap { id in
+                            current.slides.first { $0.id == id }?.id
+                        }
+                        current.playback = .single(slideID: chosen ?? current.slides.first?.id ?? "")
                     case .deviceLoop:
                         current.playback = .carousel(driver: .deviceLoop, secondsPerSlide: 300)
                     case .appTimer:
