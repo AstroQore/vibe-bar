@@ -257,6 +257,40 @@ final class EInkSlotLogoTests: XCTestCase {
         XCTAssertEqual(EInkCustomLayoutRenderer.text(for: words, snapshot: snapshot), "Weekly")
     }
 
+    /// No slot is ever drawn over the one above it.
+    ///
+    /// The briefing is a stack of slots, so a slot that told the column it was
+    /// shorter than its own children — a `.logoOnly` row claiming 15 px for a
+    /// 27 px mark and figures — puts the next slot's name through this one's
+    /// numbers.
+    func testNoBriefingSlotIsDrawnOverTheOneAboveIt() throws {
+        let snapshot = snapshot()
+        for style in EInkSlotLabelStyle.allCases {
+            for orientation in EInkOrientation.allCases {
+                let boxes = try drawn(
+                    .briefing,
+                    orientation,
+                    snapshot: snapshot,
+                    options: options(style),
+                    count: 4
+                )
+                let text = boxes.filter { if case .text = $0.content { return true } else { return false } }
+                for (index, box) in text.enumerated() {
+                    for other in text[(index + 1)...] {
+                        let apart = box.frame.maxY <= other.frame.y
+                            || other.frame.maxY <= box.frame.y
+                            || box.frame.maxX <= other.frame.x
+                            || other.frame.maxX <= box.frame.x
+                        XCTAssertTrue(
+                            apart,
+                            "\(style.rawValue)/\(orientation.rawValue)°: \(box.content) overlaps \(other.content)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     /// A style whose mark the snapshot could not rasterize falls back to the
     /// words. A slot nobody can identify is worse than a long name.
     func testAMissingMarkFallsBackToTheFullName() throws {

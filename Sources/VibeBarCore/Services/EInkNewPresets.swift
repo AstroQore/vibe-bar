@@ -95,8 +95,18 @@ extension EInkPresets {
             let footer = 1 + 2 * 13 + 3 * gap
             let budget = frame.height - 2 * margin - chrome.reserved - footer
             var kept = rows.count
+            /// Exactly what the slot's children add up to.
+            ///
+            /// A mark takes a row of its own height whether or not any words
+            /// came with it — a `.logoOnly` slot has no text lines at all and
+            /// still draws the mark and the figures — and the rows are 1 px
+            /// apart. Guessing this short is how a slot ends up printed over
+            /// the one above it.
             func height(_ index: Int) -> Int {
-                (lines[index].count + 1) * 12 + 1 + (styles[index].drawsLogo ? EInkLogo.rowSize - 12 : 0)
+                let mark = styles[index].drawsLogo
+                let labelRows = mark ? 1 + max(0, lines[index].count - 1) : lines[index].count
+                let rows = labelRows + 1
+                return (mark ? EInkLogo.rowSize : 12) + 13 * (rows - 1)
             }
             while kept > 1,
                   (0..<kept).map(height).reduce(0, +) + gap * (kept - 1) > budget { kept -= 1 }
