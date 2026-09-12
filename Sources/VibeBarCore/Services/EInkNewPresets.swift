@@ -81,16 +81,62 @@ extension EInkPresets {
 
         if portrait {
             // 140 px cannot hold a name and its figures on one line, so each
-            // slot gets two: the name, then what it is doing.
-            for quota in rows {
+            // slot gets two: the name, then what it is doing. A name that will
+            // not fit even a line of its own takes as many as it needs — round
+            // 1 drew it at 284 px inside a 140 px box and let the panel cut it.
+            let styles = rows.map { labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.rowSize) }
+            let lines = zip(rows, styles).map { quota, style in
+                style.drawsLogo
+                    ? labelFragments(
+                        // The mark shares the first line, so the words are
+                        // wrapped to what is left of it.
+                        EInkSlotLabel.wrapped(
+                            style.text(of: quota),
+                            width: content - EInkLogo.rowSize - 4,
+                            maxLines: 2
+                        ),
+                        quota: quota
+                    )
+                    : labelLines(quota, width: content, maxLines: 3)
+            }
+            // The two usage lines and the rule above them are the footer this
+            // layout builds by hand, and the slots only get what is left.
+            let footer = 1 + 2 * 13 + 3 * gap
+            let budget = frame.height - 2 * margin - chrome.reserved - footer
+            var kept = rows.count
+            func height(_ index: Int) -> Int {
+                (lines[index].count + 1) * 12 + 1 + (styles[index].drawsLogo ? EInkLogo.rowSize - 12 : 0)
+            }
+            while kept > 1,
+                  (0..<kept).map(height).reduce(0, +) + gap * (kept - 1) > budget { kept -= 1 }
+            for (index, quota) in rows.prefix(kept).enumerated() {
+                let named = lines[index].map {
+                    labelFragment(
+                        $0,
+                        fieldID: quota.fieldID,
+                        width: .flex(1),
+                        height: .points(12),
+                        font: pixelBold,
+                        clips: true
+                    )
+                }
+                let head: [EInkNode] = styles[index].drawsLogo
+                    ? [
+                        row(
+                            [logoNode(quota, snapshot: snapshot, size: EInkLogo.rowSize)].compactMap { $0 }
+                                + (named.first.map { [$0] } ?? []),
+                            height: .points(EInkLogo.rowSize),
+                            gap: 4,
+                            align: .center
+                        )
+                    ] + Array(named.dropFirst())
+                    : named
                 children.append(
                     column(
-                        [
-                            text(quota.slotLabel, pixelBold, width: .flex(1), height: .points(12))
-                                .bound(.quota(quota.fieldID, .label)),
+                        head + [
                             text(briefingStats(quota, detail: .terse), pixel, width: .flex(1), height: .points(12))
                         ],
-                        height: .points(25),
+                        height: .points(height(index)),
                         gap: 1
                     ).module(slotModule(quota.fieldID))
                 )
@@ -124,16 +170,25 @@ extension EInkPresets {
             let widestLabel = rows.map { EInkTextMetrics.width($0.slotLabel, font: pixelBold) }.max() ?? 0
             // Every name, not the median one: half the panel reading correctly
             // is still half a panel of cut names.
-            let detail = BriefingDetail.allCases.first { content - statsWidth($0) - 6 >= widestLabel }
+            let detail = BriefingDetail.allCases.first {
+                content - statsWidth($0) - 6 >= widestLabel + EInkSlotLabel.measurementSlack
+            }
             if let detail {
                 let statsColumn = statsWidth(detail)
                 let labelWidth = max(0, content - statsColumn - 6)
                 for quota in rows {
+                    let style = labelStyle(quota, snapshot: snapshot, options: options, size: EInkLogo.rowSize)
+                    let mark = style.drawsLogo ? logoNode(quota, snapshot: snapshot, size: EInkLogo.rowSize) : nil
+                    let words = style.drawsLogo ? style.text(of: quota) : quota.slotLabel
                     children.append(
                         row(
-                            [
-                                text(quota.slotLabel, pixelBold, width: .points(labelWidth), clips: false)
-                                    .bound(.quota(quota.fieldID, .label)),
+                            [mark].compactMap { $0 } + [
+                                text(
+                                    words,
+                                    pixelBold,
+                                    width: .points(labelWidth - (mark == nil ? 0 : EInkLogo.rowSize + 6)),
+                                    clips: false
+                                ).bound(.slotLabel(quota.fieldID, part: style.part ?? .whole)),
                                 text(
                                     briefingStats(quota, detail: detail),
                                     pixel,
@@ -151,41 +206,48 @@ extension EInkPresets {
             } else {
                 wrapped = true
                 // A name too long even for a whole row breaks where it reads —
-                // the same provider / group · window split the rings and the
-                // rail have always used — and the figures move up beside its
-                // second line. Two lines is the budget; a third would cost a
-                // slot. The figures give up their pace word first, because the
-                // alternative is the two halves of the second line printing
-                // through each other, which is what the first hardware push of
-                // this layout came back with.
-                let split = widestLabel > content
-                let detailWhenWrapped: BriefingDetail = split ? .figuresOnly : .terse
-                let statsColumn = statsWidth(detailWhenWrapped)
-                let secondWidth = max(0, content - statsColumn - 6)
+                // the same SubProvider / group · window split the rings and the
+                // rail have always used. The figures stay beside the first
+                // line, which leaves the whole width of the panel for the
+                // second: two lines is the budget, and nothing is cut.
+                let statsColumn = statsWidth(.terse)
+                let firstWidth = max(0, content - statsColumn - 6)
                 for quota in rows {
-                    let stats = briefingStats(quota, detail: detailWhenWrapped)
                     let parts = EInkSlotLabel.twoLines(quota.slotLabel)
-                    let first = split ? parts.first : quota.slotLabel
-                    let second: EInkNode = split
-                        ? row(
-                            [
-                                // The one place a name may still be cut: its
-                                // second tier, after the first tier has had a
-                                // whole line to itself. The provider is what
-                                // identifies the row, and it is intact.
-                                text(parts.second, pixel, width: .points(secondWidth), clips: true),
-                                text(stats, pixel, width: .points(statsColumn), align: .trailing, clips: false)
-                            ],
-                            height: .points(12),
-                            gap: 6
-                        )
-                        : text(stats, pixel, width: .flex(1), height: .points(12), clips: false)
+                    let first = row(
+                        [
+                            text(
+                                EInkSlotLabel.truncated(parts.first, width: firstWidth, font: pixelBold),
+                                pixelBold,
+                                width: .points(firstWidth),
+                                clips: true
+                            ).bound(.slotLabel(quota.fieldID, part: .name)),
+                            text(
+                                briefingStats(quota, detail: .terse),
+                                pixel,
+                                width: .points(statsColumn),
+                                align: .trailing,
+                                clips: false
+                            )
+                        ],
+                        height: .points(12),
+                        gap: 6
+                    )
                     children.append(
                         column(
                             [
-                                text(first, pixelBold, width: .flex(1), height: .points(12), clips: false)
-                                    .bound(split ? nil : .quota(quota.fieldID, .label)),
-                                second
+                                first,
+                                // The second fragment says which part of the
+                                // name it is, so exploding the slide into the
+                                // Studio leaves it following the bucket rather
+                                // than freezing it as text.
+                                text(
+                                    EInkSlotLabel.truncated(parts.second, width: content),
+                                    pixel,
+                                    width: .points(content),
+                                    height: .points(12),
+                                    clips: true
+                                ).bound(.slotLabel(quota.fieldID, part: .window))
                             ],
                             height: .points(24),
                             gap: 0
@@ -242,6 +304,41 @@ extension EInkPresets {
         return EInkNode(.stack, width: .points(width), height: .points(height), children: children)
     }
 
+    /// The slot's name on a forecast row: its mark and what the style left,
+    /// or the whole name truncated to the column it has.
+    static func forecastName(
+        _ quota: EInkQuotaRow,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions,
+        width: Int
+    ) -> EInkNode {
+        let style = labelStyle(quota, snapshot: snapshot, options: options, size: EInkLogo.rowSize)
+        guard style.drawsLogo, let mark = logoNode(quota, snapshot: snapshot, size: EInkLogo.rowSize) else {
+            return text(
+                EInkSlotLabel.truncated(quota.slotLabel, width: width, font: pixelBold),
+                pixelBold,
+                width: .points(width),
+                clips: true
+            ).bound(.quota(quota.fieldID, .label))
+        }
+        let words = max(0, width - EInkLogo.rowSize - 4)
+        return row(
+            [
+                mark,
+                text(
+                    EInkSlotLabel.truncated(style.text(of: quota), width: words, font: pixelBold),
+                    pixelBold,
+                    width: .points(words),
+                    clips: true
+                ).bound(style.part.map { .slotLabel(quota.fieldID, part: $0) })
+            ],
+            width: .points(width),
+            height: .points(EInkLogo.rowSize),
+            gap: 4,
+            align: .center
+        )
+    }
+
     static func forecastRunOutText(_ quota: EInkQuotaRow, calendar: Calendar) -> String {
         if let runOutAt = quota.forecast?.runOutAt {
             return "runs out \(EInkFormat.clockLabel(runOutAt, calendar: calendar))"
@@ -268,15 +365,29 @@ extension EInkPresets {
         )
         let barWidth = portrait ? 70 : 150
         let rowHeight = chrome.compact ? 28 : 25
+        let content = frame.width - 2 * margin
+        // The verdict word is the point of the layout, so it is measured first
+        // and the name takes what is left. Round 1 let an auto-width name push
+        // the flexed verdict to zero — "AT RISK" disappeared exactly when it
+        // mattered — and then printed itself off the panel.
+        let verdictColumn = (rows.map { EInkTextMetrics.width($0.forecast?.word ?? "LEARNING", font: pixel) }.max() ?? 0)
+            + EInkSlotLabel.measurementSlack
+        let nameColumn = max(0, content - verdictColumn - 4)
         let list = rows.map { quota in
             column(
                 [
                     row(
                         [
-                            text(quota.slotLabel, pixelBold).bound(.quota(quota.fieldID, .label)),
-                            text(quota.forecast?.word ?? "LEARNING", pixel, width: .flex(1), align: .trailing)
+                            forecastName(quota, snapshot: snapshot, options: options, width: nameColumn),
+                            text(
+                                quota.forecast?.word ?? "LEARNING",
+                                pixel,
+                                width: .points(verdictColumn),
+                                align: .trailing
+                            )
                         ],
                         height: .points(12),
+                        gap: 4,
                         align: .center
                     ),
                     row(
@@ -324,6 +435,41 @@ extension EInkPresets {
         return EInkNode(.stack, width: .points(width), height: .points(7), children: children)
     }
 
+    /// The slot's name on a resets line, with its mark when the slide asked
+    /// for one.
+    static func resetName(
+        _ quota: EInkQuotaRow,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions,
+        width: Int
+    ) -> EInkNode {
+        let style = labelStyle(quota, snapshot: snapshot, options: options, size: EInkLogo.rowSize)
+        guard style.drawsLogo, let mark = logoNode(quota, snapshot: snapshot, size: EInkLogo.rowSize) else {
+            return text(
+                EInkSlotLabel.truncated(quota.slotLabel, width: width),
+                pixel,
+                width: .points(width),
+                clips: true
+            ).bound(.quota(quota.fieldID, .label))
+        }
+        let words = max(0, width - EInkLogo.rowSize - 4)
+        return row(
+            [
+                mark,
+                text(
+                    EInkSlotLabel.truncated(style.text(of: quota), width: words),
+                    pixel,
+                    width: .points(words),
+                    clips: true
+                ).bound(style.part.map { .slotLabel(quota.fieldID, part: $0) })
+            ],
+            width: .points(width),
+            height: .points(EInkLogo.rowSize),
+            gap: 4,
+            align: .center
+        )
+    }
+
     static func resets(
         _ rows: [EInkQuotaRow],
         _ snapshot: EInkDataSnapshot,
@@ -351,7 +497,17 @@ extension EInkPresets {
             resetTimeline(sorted, now: snapshot.generatedAt, width: content),
             text("NEXT SEVEN DAYS", pixel, width: .flex(1), height: .points(12))
         ]
-        let countdownWidth = portrait ? 50 : 62
+        // Measured, not guessed: the portrait column was 50 px and "in 3h 00m"
+        // is 58, so the one figure this layout exists to print was the one it
+        // cut. A figure is never truncated — the name gives up the pixels.
+        let countdownWidth = min(
+            content / 2,
+            max(
+                portrait ? 50 : 62,
+                (sorted.map { EInkTextMetrics.width("in \($0.countdown)", font: pixelBold) }.max() ?? 0)
+                    + EInkSlotLabel.measurementSlack
+            )
+        )
         for quota in sorted {
             children.append(
                 row(
@@ -361,8 +517,15 @@ extension EInkPresets {
                             pixelBold,
                             width: .points(countdownWidth)
                         ).bound(.quota(quota.fieldID, .countdown)),
-                        text(quota.slotLabel, pixel, width: .flex(1))
-                            .bound(.quota(quota.fieldID, .label))
+                        // The list is one line per bucket and there is no
+                        // second line to give it, so a name wider than the rest
+                        // of the row is the one case the panel truncates.
+                        resetName(
+                            quota,
+                            snapshot: snapshot,
+                            options: options,
+                            width: content - countdownWidth - 4
+                        )
                     ],
                     height: .points(portrait ? 14 : 15),
                     gap: 4,

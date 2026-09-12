@@ -126,21 +126,32 @@ final class EInkSlotLabelTests: XCTestCase {
         })
         XCTAssertEqual(shortLabel.frame.width, 126)
 
-        // A longer name grows the column instead of clipping in it.
-        let long = try drawn([("AntiGravity", "Claude and GPT Models · Weekly"), ("Grok", "Weekly")])
-        let grown = try XCTUnwrap(long.first { box in
-            if case let .text(value, _, _) = box.content { return value.hasPrefix("AntiGravity") }
+        // A longer name grows the column instead of clipping in it — as far
+        // as it can while the bar keeps its minimum width.
+        let medium = try drawn([("AntiGravity", "5 Hours"), ("Grok", "Weekly")])
+        let grown = try XCTUnwrap(medium.first { box in
+            if case let .text(value, _, _) = box.content { return value == "AntiGravity · 5 Hours" }
             return false
         })
-        XCTAssertEqual(grown.frame.width, 153, "the column grows to everything the row can spare")
+        XCTAssertGreaterThan(grown.frame.width, 126, "the column grows to the name that needs it")
+        XCTAssertTrue(
+            EInkSlotLabel.fits("AntiGravity · 5 Hours", width: grown.frame.width),
+            "and grows far enough that the name is not clipped in it"
+        )
+        let mediumBar = try XCTUnwrap(medium.first { $0.content == .outline })
+        XCTAssertGreaterThanOrEqual(mediumBar.frame.width, EInkPresets.barMinimumWidth)
 
-        // Two rows leave enough height for the slot to take two lines.
-        let firstLines = long.compactMap { box -> String? in
+        // A name past that point splits instead: the SubProvider keeps the
+        // figures company and the rest takes a line of its own.
+        let long = try drawn([("AntiGravity", "Claude and GPT Models · Weekly"), ("Grok", "Weekly")])
+        let printed = long.compactMap { box -> String? in
             if case let .text(value, _, _) = box.content { return value }
             return nil
         }
-        XCTAssertTrue(firstLines.contains("AntiGravity"))
-        XCTAssertTrue(firstLines.contains("Claude and GPT Models · Weekly"))
+        XCTAssertTrue(printed.contains("AntiGravity"))
+        XCTAssertTrue(printed.contains("Claude and GPT Models · Weekly"))
+        let longBar = try XCTUnwrap(long.first { $0.content == .outline })
+        XCTAssertGreaterThanOrEqual(longBar.frame.width, EInkPresets.barMinimumWidth)
     }
 
     /// The panel never abbreviates, and the naming change is where an

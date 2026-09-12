@@ -111,11 +111,46 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
 
     /// How many rows the layout prints when nothing is selectable — the
     /// heatmap's weekdays, the top model list.
+    ///
+    /// This is the count for one-line slots. A ledger whose names need two
+    /// lines prints fewer, and `rowCount(for:labels:options:)` is the one that
+    /// knows it.
     public func rowCount(for orientation: EInkOrientation) -> Int {
         switch self {
         case .topModels: orientation.isPortrait ? 7 : 5
         default: capacity(for: orientation)
         }
+    }
+
+    /// How many slots the layout actually prints for *these* names.
+    ///
+    /// A two-line slot costs two rows, so a ledger of three-tier names holds
+    /// fewer buckets than the capacity the picker offers — and the settings UI
+    /// has to be able to say so rather than let the panel drop a row the user
+    /// selected without a word. Layouts whose slots are a fixed height report
+    /// their capacity unchanged.
+    public func rowCount(
+        for orientation: EInkOrientation,
+        labels: [String],
+        options: EInkSlideOptions = .default
+    ) -> Int {
+        let capacity = capacity(for: orientation)
+        let count = labels.isEmpty ? capacity : min(labels.count, capacity)
+        guard case .quotaLedger = self, !orientation.isPortrait, count > 0 else { return count }
+        let size = EInkDeviceProfile.quote0.frameSize(for: orientation)
+        return EInkPresets.ledgerRowCount(
+            Array(labels.prefix(count)).map(EInkQuotaRow.named),
+            frame: EInkRect(x: 0, y: 0, width: size.width, height: size.height),
+            snapshot: EInkDataSnapshot(
+                generatedAt: Date(timeIntervalSince1970: 0),
+                generatedAtLabel: "",
+                generatedAtISO: "",
+                quota: [],
+                usage: EInkUsageSet(),
+                trend: []
+            ),
+            options: options
+        )
     }
 
     /// Whether drawing this layout needs the usage ledger at all. The three
