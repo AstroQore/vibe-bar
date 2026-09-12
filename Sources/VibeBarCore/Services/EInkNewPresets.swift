@@ -87,16 +87,7 @@ extension EInkPresets {
             let styles = rows.map { labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.rowSize) }
             let lines = zip(rows, styles).map { quota, style in
                 style.drawsLogo
-                    ? labelFragments(
-                        // The mark shares the first line, so the words are
-                        // wrapped to what is left of it.
-                        EInkSlotLabel.wrapped(
-                            style.text(of: quota),
-                            width: content - EInkLogo.rowSize - 4,
-                            maxLines: 2
-                        ),
-                        quota: quota
-                    )
+                    ? styledFragments(quota, style: style, width: content - EInkLogo.rowSize - 4)
                     : labelLines(quota, width: content, maxLines: 3)
             }
             // The two usage lines and the rule above them are the footer this
@@ -290,6 +281,23 @@ extension EInkPresets {
             )
         }
         return screen(chrome.compose(children), frame: frame, gap: gap)
+    }
+
+    /// The words a marked slot still prints, wrapped to what the mark left.
+    ///
+    /// An unsplit value is exactly the style's own part — "Weekly" is the
+    /// window, no more and no less — so it keeps that binding and goes on
+    /// following the bucket after "Edit in Studio". Only a value the wrap had
+    /// to break is a fragment nothing can name.
+    static func styledFragments(
+        _ quota: EInkQuotaRow,
+        style: EInkSlotLabelStyle,
+        width: Int
+    ) -> [EInkSlotLineFragment] {
+        let text = style.text(of: quota)
+        guard !text.isEmpty else { return [] }
+        let lines = EInkSlotLabel.wrapped(text, width: width, maxLines: 2)
+        return lines.map { EInkSlotLineFragment($0, part: lines.count == 1 ? style.part : nil) }
     }
 
     // MARK: - Forecast
@@ -516,8 +524,13 @@ extension EInkPresets {
         // Measured, not guessed: the portrait column was 50 px and "in 3h 00m"
         // is 58, so the one figure this layout exists to print was the one it
         // cut. A figure is never truncated — the name gives up the pixels.
+        // The figure keeps its measured width *and* its slack; only the name
+        // gives pixels back. A yearly bucket's "in 364d 23h" is 70 px of a
+        // 140 px portrait row, and capping the column at half the row would
+        // hand the one figure this layout exists to print a box it does not
+        // fit in.
         let countdownWidth = min(
-            content / 2,
+            content - 40,
             max(
                 portrait ? 50 : 62,
                 (sorted.map { EInkTextMetrics.width("in \($0.countdown)", font: pixelBold) }.max() ?? 0)

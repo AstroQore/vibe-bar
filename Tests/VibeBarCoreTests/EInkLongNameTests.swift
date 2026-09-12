@@ -250,6 +250,46 @@ final class EInkLongNameTests: XCTestCase {
         }
     }
 
+    /// A figure is never cut, however long it gets: a yearly bucket's
+    /// countdown is 70 px of a 140 px portrait row, and the resets list is the
+    /// one layout whose whole point is that figure.
+    func testALongCountdownKeepsItsColumnInEveryOrientation() throws {
+        var snapshot = EInkFixtures.snapshot()
+        snapshot.quota = EInkFixtures.longNameRows(count: 3).map { row in
+            var copy = row
+            copy.resetAt = EInkFixtures.referenceDate.addingTimeInterval(364 * 86_400 + 23 * 3_600)
+            copy.countdown = EInkFormat.countdown(copy.resetAt, now: EInkFixtures.referenceDate)
+            return copy
+        }
+        XCTAssertEqual(snapshot.quota[0].countdown, "364d 23h")
+        for orientation in EInkOrientation.allCases {
+            var slide = EInkFixtures.slide(preset: .resets, fieldIDs: snapshot.quota.map(\.fieldID))
+            slide.options = .default
+            let size = EInkDeviceProfile.quote0.frameSize(for: orientation)
+            let boxes = EInkBoxLayout.resolve(
+                try EInkRenderer.tree(
+                    slide: slide,
+                    orientation: orientation,
+                    snapshot: snapshot,
+                    calendar: EInkFixtures.calendar()
+                ),
+                in: EInkRect(x: 0, y: 0, width: size.width, height: size.height)
+            )
+            let countdowns = boxes.filter {
+                if case let .text(value, _, _) = $0.content { return value.hasPrefix("in ") }
+                return false
+            }
+            XCTAssertFalse(countdowns.isEmpty, "\(orientation.rawValue)°")
+            for box in countdowns {
+                guard case let .text(value, font, _) = box.content else { continue }
+                XCTAssertTrue(
+                    EInkSlotLabel.fits(value, width: box.frame.width, font: font),
+                    "\(orientation.rawValue)°: \"\(value)\" has no room in its \(box.frame.width) px column"
+                )
+            }
+        }
+    }
+
     // MARK: - Fitting primitives
 
     func testAMeasurementIsOnlyTrustedWithAGlyphOfSlackOnIt() {

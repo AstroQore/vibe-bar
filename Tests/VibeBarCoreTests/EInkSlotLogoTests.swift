@@ -232,6 +232,31 @@ final class EInkSlotLogoTests: XCTestCase {
         }
     }
 
+    /// A marked slot whose words came through whole keeps its binding.
+    ///
+    /// "Weekly" under a mark *is* the window, exactly, so it goes on following
+    /// the bucket after "Edit in Studio" rather than freezing as text.
+    func testAnUnsplitStyledLabelKeepsItsPart() throws {
+        let snapshot = snapshot()
+        var slide = EInkFixtures.slide(
+            preset: .briefing,
+            fieldIDs: Array(snapshot.quota.prefix(3)).map(\.fieldID)
+        )
+        slide.options = options(.logoAndWindow)
+        let layout = EInkPresetExploder.explode(
+            slide: slide,
+            orientation: .degrees90,
+            snapshot: snapshot,
+            calendar: EInkFixtures.calendar()
+        )
+        let slot = layout.elements.filter { $0.moduleID == "slot:codex.spark_weekly" }
+        let words = try XCTUnwrap(
+            slot.first { $0.textBinding == .label && $0.labelPart == .period },
+            "the window under the mark lost its binding"
+        )
+        XCTAssertEqual(EInkCustomLayoutRenderer.text(for: words, snapshot: snapshot), "Weekly")
+    }
+
     /// A style whose mark the snapshot could not rasterize falls back to the
     /// words. A slot nobody can identify is worse than a long name.
     func testAMissingMarkFallsBackToTheFullName() throws {
