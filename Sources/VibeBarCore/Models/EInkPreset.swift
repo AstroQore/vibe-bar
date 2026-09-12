@@ -68,7 +68,13 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
         case .usageTable: return 5
         case .usageDual: return portrait ? 5 : 4
         case .usageTrend: return 1
-        case .briefing: return portrait ? 8 : 6
+        // Landscape briefing wraps a name that will not fit onto a second
+        // line rather than cutting it (`EInkPresets.briefing`), and a wrapped
+        // row is twice as tall. Six was the count for one-line rows only, so a
+        // panel showing three-tier names was choosing between a clipped name
+        // and a row pushed off the bottom; four is what the panel holds in
+        // either form.
+        case .briefing: return portrait ? 8 : 4
         case .forecast: return portrait ? 6 : 4
         case .resets: return portrait ? 7 : 5
         case .heatmap, .topModels, .alert: return 1

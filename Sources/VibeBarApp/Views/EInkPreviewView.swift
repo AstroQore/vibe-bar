@@ -29,8 +29,10 @@ struct EInkPreviewView: View {
     /// re-laying it out, so the pixel grid stays square.
     var scale: CGFloat = 1
 
-    private var paperWidth: CGFloat { CGFloat(plan.panelWidth) }
-    private var paperHeight: CGFloat { CGFloat(plan.panelHeight) }
+    /// The frame the reader sees, which is the frame the layout was authored
+    /// in: 296 x 152 landscape, 152 x 296 portrait.
+    private var paperWidth: CGFloat { CGFloat(plan.authoredWidth) }
+    private var paperHeight: CGFloat { CGFloat(plan.authoredHeight) }
 
     var body: some View {
         paper
@@ -44,25 +46,29 @@ struct EInkPreviewView: View {
             .accessibilityHidden(true)
     }
 
-    /// The authored canvas is **centred** in the paper and then turned about
-    /// its own centre. That centring is not cosmetic: a portrait layout is
-    /// authored 152 × 296 inside a 296 × 152 panel, and the encoder spends the
-    /// same `(panel − authored) / 2` offsets before its root `rotate()`.
-    /// Pinning the canvas to the top-left instead would rotate it out of the
-    /// paper and clip most of the slide away.
+    /// Upright, in the frame the panel is read in — **not** the encoder's
+    /// intermediate picture.
+    ///
+    /// Round 1 drew every orientation inside the same 296 x 152 rectangle with
+    /// the canvas turned, which is what the encoder does on the way to the
+    /// device and exactly what nobody sees: a panel at 90 degrees is hung
+    /// portrait, and the reader has a 152 x 296 page of upright words in front
+    /// of them. Previewing the rotation made the two portrait orientations
+    /// look broken in Settings while the device was fine — the owner's "the
+    /// per-orientation display looks odd".
+    ///
+    /// The authored canvas and the upright page are the same picture
+    /// (`EInkOrientation.physicalFrame`), so there is nothing left to rotate
+    /// here. Which way the device itself is turned is drawn *around* the
+    /// paper, by the notch on `EInkDeviceFrame`, where it belongs: it is a
+    /// fact about the hardware, not about the ink.
     private var paper: some View {
-        ZStack(alignment: .center) {
+        ZStack(alignment: .topLeading) {
             Color.white
-            canvas
-                .frame(width: CGFloat(plan.authoredWidth), height: CGFloat(plan.authoredHeight))
-                .rotationEffect(.degrees(plan.rotationDegrees))
+            EInkBoxCanvas(boxes: plan.boxes)
         }
         .frame(width: paperWidth, height: paperHeight)
         .clipped()
-    }
-
-    private var canvas: some View {
-        EInkBoxCanvas(boxes: plan.boxes)
     }
 }
 

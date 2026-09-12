@@ -34,13 +34,21 @@ final class EInkCanvasLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(placed.y + placed.height, normalized.height)
     }
 
-    func testMajorGridSnappingUsesEightPixelSteps() {
+    /// Snapping is a gesture aid, not a re-arrangement: it moves a drag in
+    /// eight-pixel steps and leaves a stored element exactly where it was put.
+    /// Normalizing to the grid is what silently re-laid-out an exploded preset
+    /// — whose boxes are at real device pixels — the moment the toggle moved.
+    func testMajorGridSnappingMovesInEightPixelStepsAndLeavesStoredPixelsAlone() {
         var canvas = layout()
         canvas.snapToGrid = true
-        canvas.add(.text, x: 13, y: 21)
-        let element = try! XCTUnwrap(canvas.normalized().elements.first)
-        XCTAssertEqual(element.x.truncatingRemainder(dividingBy: 8), 0)
-        XCTAssertEqual(element.y.truncatingRemainder(dividingBy: 8), 0)
+        let id = canvas.add(.text, x: 13, y: 21)
+        let placed = try! XCTUnwrap(canvas.normalized().elements.first)
+        XCTAssertEqual(placed.x, 13)
+        XCTAssertEqual(placed.y, 21)
+
+        let moved = canvas.moving([id], dx: 10, dy: -6, majorGrid: true)
+        XCTAssertEqual(moved.elements.first?.x, 21)
+        XCTAssertEqual(moved.elements.first?.y, 13)
     }
 
     func testMovingClampsTheSelectionAsAUnit() {
@@ -119,7 +127,9 @@ final class EInkCanvasLayoutTests: XCTestCase {
         let decoded = try JSONDecoder().decode(EInkCanvasLayout.self, from: Data(json.utf8))
         XCTAssertEqual(decoded.width, 296)
         XCTAssertEqual(decoded.height, 152)
-        XCTAssertFalse(decoded.snapToGrid)
+        // A layout with no readable flag snaps: it is the default the Studio
+        // opens with, and the toggle no longer rewrites anything.
+        XCTAssertTrue(decoded.snapToGrid)
         XCTAssertEqual(decoded.elements.first?.kind, .text)
         XCTAssertEqual(decoded.elements.first?.font, .sans(size: EInkFont.minimumSansSize, bold: false))
     }

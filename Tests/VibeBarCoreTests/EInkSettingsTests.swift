@@ -140,7 +140,7 @@ final class EInkSettingsTests: XCTestCase {
         XCTAssertEqual(EInkPreset.usageDual.capacity(for: landscape), 4)
         XCTAssertEqual(EInkPreset.usageDual.capacity(for: portrait), 5)
         XCTAssertEqual(EInkPreset.usageTrend.capacity(for: landscape), 1)
-        XCTAssertEqual(EInkPreset.briefing.capacity(for: landscape), 6)
+        XCTAssertEqual(EInkPreset.briefing.capacity(for: landscape), 4)
         XCTAssertEqual(EInkPreset.briefing.capacity(for: portrait), 8)
         XCTAssertEqual(EInkPreset.forecast.capacity(for: landscape), 4)
         XCTAssertEqual(EInkPreset.resets.capacity(for: portrait), 7)

@@ -76,6 +76,8 @@ extension EInkPresets {
         )
         let content = frame.width - 2 * margin
         var children: [EInkNode] = []
+        /// Landscape only: whether a name forced the two-line row.
+        var wrapped = false
 
         if portrait {
             // 140 px cannot hold a name and its figures on one line, so each
@@ -94,55 +96,102 @@ extension EInkPresets {
                 )
             }
         } else {
-            // One line per slot, with the figures in a column of their own.
+            // One line per slot, with the figures in a column of their own —
+            // until a name will not fit beside them, at which point the row
+            // wraps into the portrait form rather than cutting the name.
             //
             // Both halves are *fixed* width on purpose. An auto-width name
             // beside a right-aligned figure is exactly how the first hardware
             // push came back with "GPT-5.3 Codex Spark" printed through its
             // own percentage: the name outran the row and the flexed figure
-            // had nowhere left to start. A three-tier name is long, so the
-            // column that clips is the name — a truncated name still
-            // identifies its row, a truncated figure lies about the number.
-            // Plus slack, and the figures never clip. `EInkTextMetrics` is an
-            // estimate of the device's font, and the first hardware push came
-            // back with "67%" printed as "7%" — a clipped number is a wrong
-            // number, so the column that absorbs a mis-measurement is the
-            // name's, and a figure that outruns its box spills instead.
+            // had nowhere left to start. Plus slack, and the figures never
+            // clip: `EInkTextMetrics` is an estimate of the device's font, and
+            // the first hardware push came back with "67%" printed as "7%" — a
+            // clipped number is a wrong number, so a figure that outruns its
+            // box spills instead of being cut.
+            //
+            // What round 2 changes is the other column. Round 1 let the name
+            // clip once it outgrew its half of the row, which is what put
+            // "ChatGPT Agentic · GPT-5.3 Code…" on the owner's panel. A name
+            // that does not fit now takes a line of its own — the layout gives
+            // up a row, not a word.
             func statsWidth(_ detail: BriefingDetail) -> Int {
                 min(
                     content - 60,
                     (rows.map { EInkTextMetrics.width(briefingStats($0, detail: detail), font: pixel) }.max() ?? 0) + 10
                 )
             }
-            let labelWidths = rows.map { EInkTextMetrics.width($0.slotLabel, font: pixelBold) }
-            // The widest form at least half the names still fit beside. All or
-            // nothing would drop to the terse form over one long name; none at
-            // all would truncate every name to keep a figure nobody can read
-            // the row for.
-            let needed = labelWidths.sorted()[max(0, (labelWidths.count - 1) / 2)]
-            let detail = BriefingDetail.allCases.first { content - statsWidth($0) - 6 >= needed }
-                ?? .figuresOnly
-            let statsColumn = statsWidth(detail)
-            let labelWidth = max(0, content - statsColumn - 6)
-            for quota in rows {
-                children.append(
-                    row(
-                        [
-                            text(quota.slotLabel, pixelBold, width: .points(labelWidth))
-                                .bound(.quota(quota.fieldID, .label)),
-                            text(
-                                briefingStats(quota, detail: detail),
-                                pixel,
-                                width: .points(statsColumn),
-                                align: .trailing,
-                                clips: false
-                            )
-                        ],
-                        height: .points(13),
-                        gap: 6,
-                        align: .center
-                    ).module(slotModule(quota.fieldID))
-                )
+            let widestLabel = rows.map { EInkTextMetrics.width($0.slotLabel, font: pixelBold) }.max() ?? 0
+            // Every name, not the median one: half the panel reading correctly
+            // is still half a panel of cut names.
+            let detail = BriefingDetail.allCases.first { content - statsWidth($0) - 6 >= widestLabel }
+            if let detail {
+                let statsColumn = statsWidth(detail)
+                let labelWidth = max(0, content - statsColumn - 6)
+                for quota in rows {
+                    children.append(
+                        row(
+                            [
+                                text(quota.slotLabel, pixelBold, width: .points(labelWidth), clips: false)
+                                    .bound(.quota(quota.fieldID, .label)),
+                                text(
+                                    briefingStats(quota, detail: detail),
+                                    pixel,
+                                    width: .points(statsColumn),
+                                    align: .trailing,
+                                    clips: false
+                                )
+                            ],
+                            height: .points(13),
+                            gap: 6,
+                            align: .center
+                        ).module(slotModule(quota.fieldID))
+                    )
+                }
+            } else {
+                wrapped = true
+                // A name too long even for a whole row breaks where it reads —
+                // the same provider / group · window split the rings and the
+                // rail have always used — and the figures move up beside its
+                // second line. Two lines is the budget; a third would cost a
+                // slot. The figures give up their pace word first, because the
+                // alternative is the two halves of the second line printing
+                // through each other, which is what the first hardware push of
+                // this layout came back with.
+                let split = widestLabel > content
+                let detailWhenWrapped: BriefingDetail = split ? .figuresOnly : .terse
+                let statsColumn = statsWidth(detailWhenWrapped)
+                let secondWidth = max(0, content - statsColumn - 6)
+                for quota in rows {
+                    let stats = briefingStats(quota, detail: detailWhenWrapped)
+                    let parts = EInkSlotLabel.twoLines(quota.slotLabel)
+                    let first = split ? parts.first : quota.slotLabel
+                    let second: EInkNode = split
+                        ? row(
+                            [
+                                // The one place a name may still be cut: its
+                                // second tier, after the first tier has had a
+                                // whole line to itself. The provider is what
+                                // identifies the row, and it is intact.
+                                text(parts.second, pixel, width: .points(secondWidth), clips: true),
+                                text(stats, pixel, width: .points(statsColumn), align: .trailing, clips: false)
+                            ],
+                            height: .points(12),
+                            gap: 6
+                        )
+                        : text(stats, pixel, width: .flex(1), height: .points(12), clips: false)
+                    children.append(
+                        column(
+                            [
+                                text(first, pixelBold, width: .flex(1), height: .points(12), clips: false)
+                                    .bound(split ? nil : .quota(quota.fieldID, .label)),
+                                second
+                            ],
+                            height: .points(24),
+                            gap: 0
+                        ).module(slotModule(quota.fieldID))
+                    )
+                }
             }
         }
 
@@ -152,10 +201,16 @@ extension EInkPresets {
             text(briefingTodayLine(snapshot), pixel, width: .flex(1), height: .points(13))
                 .module(footerModule)
         )
-        children.append(
-            text(briefingWeekLine(snapshot), pixel, width: .flex(1), height: .points(13))
-                .module(footerModule)
-        )
+        // The week's line is the first thing the wrapped landscape form gives
+        // up: two 24 px rows cost exactly what it does, and four slots with
+        // their names intact is the panel the owner asked for. Portrait has
+        // the height for both.
+        if portrait || !wrapped {
+            children.append(
+                text(briefingWeekLine(snapshot), pixel, width: .flex(1), height: .points(13))
+                    .module(footerModule)
+            )
+        }
         return screen(chrome.compose(children), frame: frame, gap: gap)
     }
 

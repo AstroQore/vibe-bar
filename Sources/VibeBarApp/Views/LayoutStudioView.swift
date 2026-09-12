@@ -72,6 +72,12 @@ struct LayoutStudioView: View {
     @State private var einkSections: [EInkFieldSection] = []
     @State private var einkPush: Task<Void, Never>?
     @State private var isPushingEInk = false
+    /// The orientation the Studio is editing, which is the device's until the
+    /// toolbar's switcher moves it. A custom slide carries one layout per
+    /// orientation, and editing the panel you are not holding is the normal
+    /// case: you set the portrait one up while the device is still landscape.
+    @State private var einkEditingOrientation: EInkOrientation?
+    @State private var isConfirmingRelayout = false
     @State private var cardSelection: Set<String> = []
     /// The menu bar the strip is previewed on; the window's own until picked.
     @State private var stripScheme: ColorScheme?
@@ -95,12 +101,12 @@ struct LayoutStudioView: View {
         // snapshot was not assembled for would otherwise leave that element
         // blank on the stage for the rest of the session, while the device
         // drew it fine.
-        let layoutID = einkLayoutID(deviceID: deviceID, slideID: slideID)
-        let buckets = (settingsStore.settings.einkCanvasLayouts[layoutID]?.elements ?? [])
+        let orientation = einkOrientation(deviceID)
+        let buckets = (einkLayout(deviceID: deviceID, slideID: slideID)?.elements ?? [])
             .flatMap(\.quotaFieldIDs)
             .sorted()
             .joined(separator: ",")
-        return [deviceID, slideID, buckets].joined(separator: "|")
+        return [deviceID, slideID, String(orientation.rawValue), buckets].joined(separator: "|")
     }
 
     /// Every frame the studio reasons in: the root of this view.
@@ -161,6 +167,7 @@ struct LayoutStudioView: View {
             cardSelection = []
             einkSelection = []
             einkReport = nil
+            einkEditingOrientation = nil
             // A page is drawn whole now, so the stage may be scrolled deep
             // into one when the subject changes; the next surface starts
             // at its top, not partway down where the last one was left.
@@ -268,14 +275,15 @@ struct LayoutStudioView: View {
                     selection: $einkSelection,
                     slide: einkSlide(deviceID: deviceID, slideID: slideID)
                         ?? EInkSlide(id: slideID, kind: .custom(layoutID: slideID)),
-                    orientation: einkDevice(deviceID)?.orientation ?? .degrees0,
-                    profile: einkDevice(deviceID)?.profile ?? .quote0,
+                    orientation: einkOrientation(deviceID),
+                    profile: einkProfile(deviceID),
                     snapshot: einkSnapshot,
                     scale: scale,
                     onReport: { einkReport = $0 }
                 )
             }
-            .id(slideID)
+            .overlay { einkStageNotice(deviceID: deviceID, slideID: slideID) }
+            .id("\(slideID)/\(einkOrientation(deviceID).rawValue)")
         case let .menuBar(kind):
             // Not through `surfaceShell`: the strip is not a picture scaled
             // from outside but a live surface that draws itself at the
@@ -566,10 +574,15 @@ struct LayoutStudioView: View {
         let windows = settingsStore.settings.miniWindow.windows
             .map { LayoutStudioWindowController.Subject.miniWindow($0.id) }
         let strips = MenuBarItemKind.allCases.map(LayoutStudioWindowController.Subject.menuBar)
+        // Every slide, preset ones included. Round 1 listed only the custom
+        // slides, so a preset slide could be reached from Settings and nowhere
+        // else — and the Studio's own picker looked like it had lost them.
+        // Picking a preset slide shows what it draws, with one button to break
+        // it into modules.
         let slides = settingsStore.settings.einkSync.devices.flatMap { device in
-            device.slides
-                .filter { $0.kind.preset == nil }
-                .map { LayoutStudioWindowController.Subject.einkSlide(deviceID: device.deviceID, slideID: $0.id) }
+            device.slides.map {
+                LayoutStudioWindowController.Subject.einkSlide(deviceID: device.deviceID, slideID: $0.id)
+            }
         }
         return pages + windows + strips + slides
     }
@@ -596,7 +609,13 @@ struct LayoutStudioView: View {
             guard let slide = einkSlide(deviceID: deviceID, slideID: slideID) else {
                 return L10n.Settings.Eink.customLayout
             }
-            return slide.title.isEmpty ? L10n.Settings.Eink.customLayout : slide.title
+            // The device as well as the slide: two panels with a slide called
+            // "Quote 1" each are two identical rows in the picker otherwise.
+            let device = einkDevice(deviceID)
+            let panel = device?.alias.isEmpty == false ? device?.alias : deviceID
+            let layout = slide.kind.preset.map(EInkNaming.preset) ?? L10n.Settings.Eink.customLayout
+            let name = slide.title.isEmpty ? layout : slide.title
+            return [panel, name].compactMap { $0 }.joined(separator: EInkSlotLabel.separator)
         }
     }
 
@@ -808,6 +827,56 @@ struct LayoutStudioView: View {
 
     // MARK: - E-ink context
 
+    /// What the stage says when there is nothing to drag yet.
+    ///
+    /// Two cases, and both used to be silent. A preset slide drew its panel
+    /// with every gesture doing nothing, because the Studio only edits a
+    /// custom layout; and an orientation nobody had authored opened as blank
+    /// paper with no hint that "Re-layout" is what fills it.
+    @ViewBuilder
+    private func einkStageNotice(deviceID: String, slideID: String) -> some View {
+        let slide = einkSlide(deviceID: deviceID, slideID: slideID)
+        if slide?.kind.preset != nil {
+            einkNoticeCard(
+                message: L10n.Settings.Eink.Studio.presetSubject,
+                action: L10n.Settings.Eink.Studio.open,
+                systemImage: "rectangle.dashed"
+            ) {
+                explodeEInk(deviceID: deviceID, slideID: slideID)
+            }
+        } else if einkLayout(deviceID: deviceID, slideID: slideID) == nil {
+            einkNoticeCard(
+                message: L10n.Settings.Eink.Studio.relayoutMissing,
+                action: L10n.Settings.Eink.Studio.relayout,
+                systemImage: "arrow.triangle.2.circlepath"
+            ) {
+                relayoutEInk(deviceID: deviceID, slideID: slideID)
+            }
+        }
+    }
+
+    private func einkNoticeCard(
+        message: String,
+        action: String,
+        systemImage: String,
+        perform: @escaping () -> Void
+    ) -> some View {
+        VStack(spacing: 8) {
+            Text(message)
+                .font(.system(size: 12))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: perform) {
+                Label(action, systemImage: systemImage)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(14)
+        .frame(maxWidth: 320)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.22), radius: 16, y: 6)
+    }
+
     private func einkDevice(_ deviceID: String) -> EInkDeviceConfig? {
         settingsStore.settings.einkSync.device(id: deviceID)
     }
@@ -828,24 +897,125 @@ struct LayoutStudioView: View {
             ?? slideID
     }
 
-    /// The layout, always shaped to the device it is going to.
-    ///
-    /// Refitting on read rather than on write is what makes turning a device
-    /// safe: the Studio shows the slide on the panel it will be pushed to from
-    /// the moment it opens, and the refit is only persisted once the author
-    /// edits something.
-    private func einkLayoutBinding(deviceID: String, slideID: String) -> Binding<EInkCanvasLayout> {
-        let device = einkDevice(deviceID)
-        let profile = device?.profile ?? .quote0
-        let orientation = device?.orientation ?? .degrees0
+    /// The orientation being edited: the toolbar's choice, else the one the
+    /// device is actually on.
+    private func einkOrientation(_ deviceID: String) -> EInkOrientation {
+        einkEditingOrientation ?? einkDevice(deviceID)?.orientation ?? .degrees0
+    }
+
+    private func einkProfile(_ deviceID: String) -> EInkDeviceProfile {
+        einkDevice(deviceID)?.profile ?? .quote0
+    }
+
+    /// The stored layout for the orientation on the stage, or `nil` when
+    /// nobody has authored that one yet.
+    private func einkLayout(deviceID: String, slideID: String) -> EInkCanvasLayout? {
         let layoutID = einkLayoutID(deviceID: deviceID, slideID: slideID)
+        return settingsStore.settings.einkCanvasLayouts[
+            EInkRenderer.layoutKey(layoutID, orientation: einkOrientation(deviceID))
+        ]
+    }
+
+    /// The layout, always shaped to the panel it is going to.
+    ///
+    /// Keyed per orientation: a custom slide carries up to four, and round 1's
+    /// single key is what made a rotated device show a landscape design turned
+    /// on its side. Refitting on read rather than on write is what makes
+    /// turning a device safe — the Studio shows the slide on the panel it will
+    /// be pushed to from the moment it opens, and the refit is only persisted
+    /// once the author edits something.
+    private func einkLayoutBinding(deviceID: String, slideID: String) -> Binding<EInkCanvasLayout> {
+        let profile = einkProfile(deviceID)
+        let orientation = einkOrientation(deviceID)
+        let key = EInkRenderer.layoutKey(
+            einkLayoutID(deviceID: deviceID, slideID: slideID),
+            orientation: orientation
+        )
         return Binding(
             get: {
-                let stored = settingsStore.settings.einkCanvasLayouts[layoutID]
+                let stored = settingsStore.settings.einkCanvasLayouts[key]
                     ?? EInkCanvasLayout(profile: profile, orientation: orientation)
                 return stored.fitted(profile: profile, orientation: orientation)
             },
-            set: { settingsStore.settings.einkCanvasLayouts[layoutID] = $0.normalized() }
+            set: { settingsStore.settings.einkCanvasLayouts[key] = $0.normalized() }
+        )
+    }
+
+    /// "Re-layout": this orientation, arranged from the slide's preset again.
+    ///
+    /// A slide that is already custom remembers which preset it came from
+    /// through its exploded modules, but not as data — so the re-layout goes
+    /// through the preset the slide names, and a slide with none falls back to
+    /// the ledger, which is what a brand new slide draws.
+    private func relayoutEInk(deviceID: String, slideID: String) {
+        guard let snapshot = einkSnapshot,
+              let slide = einkSlide(deviceID: deviceID, slideID: slideID) else { return }
+        let orientation = einkOrientation(deviceID)
+        var source = slide
+        if source.kind.preset == nil { source.kind = .preset(.quotaLedger) }
+        let layout = EInkPresetExploder.explode(
+            slide: source.fitted(to: orientation),
+            orientation: orientation,
+            profile: einkProfile(deviceID),
+            snapshot: snapshot
+        )
+        einkLayoutBinding(deviceID: deviceID, slideID: slideID).wrappedValue = layout
+        einkSelection = []
+    }
+
+    /// Turns a preset slide into the layout it already draws, so the Studio
+    /// has something to edit. The settings pane does the same thing behind its
+    /// own "Edit in Studio" — this is the way in for somebody who reached the
+    /// Studio from the Layout section instead.
+    private func explodeEInk(deviceID: String, slideID: String) {
+        guard let snapshot = einkSnapshot,
+              let slide = einkSlide(deviceID: deviceID, slideID: slideID),
+              slide.kind.preset != nil else { return }
+        var settings = settingsStore.settings
+        guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }),
+              let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slideID })
+        else { return }
+        let orientation = einkOrientation(deviceID)
+        let layout = EInkPresetExploder.explode(
+            slide: slide,
+            orientation: orientation,
+            profile: einkProfile(deviceID),
+            snapshot: snapshot
+        )
+        settings.einkCanvasLayouts[EInkRenderer.layoutKey(slideID, orientation: orientation)] = layout
+        settings.einkSync.devices[index].slides[position].kind = .custom(layoutID: slideID)
+        settingsStore.settings = settings
+        einkSelection = []
+    }
+
+    /// Whether a drag on this orientation's layout snaps to the 8 px grid.
+    ///
+    /// Stored on the layout rather than in the window so it survives closing
+    /// the Studio, and per orientation because that is where the layout lives.
+    private func einkSnapBinding(deviceID: String, slideID: String) -> Binding<Bool> {
+        let layout = einkLayoutBinding(deviceID: deviceID, slideID: slideID)
+        return Binding(
+            get: { layout.wrappedValue.snapToGrid },
+            set: { value in
+                var next = layout.wrappedValue
+                next.snapToGrid = value
+                layout.wrappedValue = next
+            }
+        )
+    }
+
+    /// The slide's custom labels, edited in the inspector.
+    private func einkLabelsBinding(deviceID: String, slideID: String) -> Binding<[String: String]> {
+        Binding(
+            get: { einkSlide(deviceID: deviceID, slideID: slideID)?.options.customLabels ?? [:] },
+            set: { labels in
+                var settings = settingsStore.settings
+                guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }),
+                      let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slideID })
+                else { return }
+                settings.einkSync.devices[index].slides[position].options.customLabels = labels
+                settingsStore.settings = settings
+            }
         )
     }
 
@@ -1287,9 +1457,7 @@ struct LayoutStudioView: View {
                     deviceID: deviceID,
                     slideID: slideID,
                     einkSlide(deviceID: deviceID, slideID: slideID),
-                    settingsStore.settings.einkCanvasLayouts[
-                        einkLayoutID(deviceID: deviceID, slideID: slideID)
-                    ]
+                    einkLayout(deviceID: deviceID, slideID: slideID)
                 )
             )
         }
@@ -1378,7 +1546,9 @@ struct LayoutStudioView: View {
                 // the one the restored slide names.
                 let layoutID = slide?.kind.layoutID.flatMap { $0.isEmpty ? nil : $0 }
                     ?? einkLayoutID(deviceID: deviceID, slideID: slideID)
-                settings.einkCanvasLayouts[layoutID] = layout
+                settings.einkCanvasLayouts[
+                    EInkRenderer.layoutKey(layoutID, orientation: einkOrientation(deviceID))
+                ] = layout
                 if let slide, let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }) {
                     var device = settings.einkSync.devices[index]
                     if let position = device.slides.firstIndex(where: { $0.id == slideID }) {
@@ -1555,11 +1725,65 @@ struct LayoutStudioView: View {
     @ViewBuilder
     private var subjectControls: some View {
         switch model.subject {
-        // The panel's shape is the orientation, and it is a device setting
-        // rather than a layout one — turning it refits every slide on that
-        // device, so it stays in Settings beside the device it belongs to.
-        case .einkSlide:
-            EmptyView()
+        // Turning the *device* is still a Settings decision — it refits every
+        // slide on that panel. What lives here is which of a custom slide's
+        // four layouts is on the stage, whether a drag snaps, and the one
+        // button that fills an orientation in from the preset.
+        case let .einkSlide(deviceID, slideID):
+            HStack(spacing: 8) {
+                HStack(spacing: 2) {
+                    ForEach(EInkOrientation.allCases, id: \.rawValue) { candidate in
+                        pillButton(
+                            isSelected: candidate == einkOrientation(deviceID),
+                            systemImage: nil,
+                            title: nil,
+                            group: .mode,
+                            help: EInkNaming.orientation(candidate)
+                        ) {
+                            einkEditingOrientation = candidate
+                            einkSelection = []
+                        } custom: {
+                            EInkOrientationGlyph(orientation: candidate)
+                        }
+                    }
+                }
+                .padding(3)
+                .glassEffect(.regular, in: .capsule)
+
+                glassIconButton(
+                    systemImage: einkSnapBinding(deviceID: deviceID, slideID: slideID).wrappedValue
+                        ? "grid" : "grid.circle",
+                    help: L10n.Settings.Eink.Studio.snapHelp
+                ) {
+                    let binding = einkSnapBinding(deviceID: deviceID, slideID: slideID)
+                    binding.wrappedValue.toggle()
+                }
+
+                glassIconButton(
+                    systemImage: "arrow.triangle.2.circlepath",
+                    help: L10n.Settings.Eink.Studio.relayout
+                ) {
+                    // A layout nobody has touched has nothing to lose, so the
+                    // confirmation is only in the way when there is something
+                    // to discard.
+                    if einkLayout(deviceID: deviceID, slideID: slideID)?.elements.isEmpty ?? true {
+                        relayoutEInk(deviceID: deviceID, slideID: slideID)
+                    } else {
+                        isConfirmingRelayout = true
+                    }
+                }
+                .confirmationDialog(
+                    L10n.Settings.Eink.Studio.relayout,
+                    isPresented: $isConfirmingRelayout
+                ) {
+                    Button(L10n.Settings.Eink.Studio.relayout, role: .destructive) {
+                        relayoutEInk(deviceID: deviceID, slideID: slideID)
+                    }
+                    Button(L10n.Common.cancel, role: .cancel) {}
+                } message: {
+                    Text(L10n.Settings.Eink.Studio.relayoutConfirm)
+                }
+            }
         case let .popoverPage(page):
             let context = pageContext(page)
             let mode = layoutModel.mode(for: page)
@@ -2020,9 +2244,13 @@ struct LayoutStudioView: View {
                     EInkStudioInspector(
                         layout: einkLayoutBinding(deviceID: deviceID, slideID: slideID),
                         selection: $einkSelection,
+                        customLabels: einkLabelsBinding(deviceID: deviceID, slideID: slideID),
                         sections: einkSections,
-                        orientation: einkDevice(deviceID)?.orientation ?? .degrees0,
-                        profile: einkDevice(deviceID)?.profile ?? .quote0,
+                        slide: einkSlide(deviceID: deviceID, slideID: slideID)
+                            ?? EInkSlide(id: slideID, kind: .custom(layoutID: slideID)),
+                        orientation: einkOrientation(deviceID),
+                        profile: einkProfile(deviceID),
+                        snapshot: einkSnapshot,
                         report: einkReport,
                         isPushing: isPushingEInk,
                         onPush: { pushEInk(deviceID: deviceID) }

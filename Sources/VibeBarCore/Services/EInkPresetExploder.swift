@@ -70,9 +70,6 @@ public enum EInkPresetExploder {
         snapshot: EInkDataSnapshot
     ) -> EInkCanvasLayout {
         var layout = EInkCanvasLayout(profile: profile, orientation: orientation)
-        // Single-pixel snapping: the boxes are already whole device pixels and
-        // rounding them onto the 8 px grid would move every one of them.
-        layout.snapToGrid = false
         var groups: [String: UUID] = [:]
         var elements: [EInkCanvasElement] = []
 
