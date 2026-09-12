@@ -599,7 +599,11 @@ extension EInkPresets {
         }
         func plans(_ perRow: Int) -> (lines: Int, widest: Int, cell: Int) {
             let cell = content / max(1, perRow)
-            let drawn = rows.enumerated().map {
+            // A single-row layout only draws its first `perRow` slots, so a
+            // name in a slot it already dropped must not go on costing it
+            // columns.
+            let measured = singleRow ? Array(rows.prefix(perRow)) : rows
+            let drawn = measured.enumerated().map {
                 centredLabelLines($1, width: cell, rowWidth: content, maxLines: maxLines, style: style($0))
             }
             return (
