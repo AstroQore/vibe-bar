@@ -952,7 +952,9 @@ struct LayoutStudioView: View {
               let slide = einkSlide(deviceID: deviceID, slideID: slideID) else { return }
         let orientation = einkOrientation(deviceID)
         var source = slide
-        if source.kind.preset == nil { source.kind = .preset(.quotaLedger) }
+        if source.kind.preset == nil {
+            source.kind = .preset(slide.options.sourcePreset ?? .quotaLedger)
+        }
         let layout = EInkPresetExploder.explode(
             slide: source.fitted(to: orientation),
             orientation: orientation,
@@ -984,6 +986,7 @@ struct LayoutStudioView: View {
         )
         settings.einkCanvasLayouts[EInkRenderer.layoutKey(slideID, orientation: orientation)] = layout
         settings.einkSync.devices[index].slides[position].kind = .custom(layoutID: slideID)
+        settings.einkSync.devices[index].slides[position].options.sourcePreset = slide.kind.preset
         settingsStore.settings = settings
         einkSelection = []
     }

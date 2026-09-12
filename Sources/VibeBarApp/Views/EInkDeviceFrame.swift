@@ -88,6 +88,11 @@ struct EInkOrientationPicker: View {
                 }
                 .buttonStyle(.plain)
                 .help(EInkNaming.orientation(candidate))
+                // The panel inside is hidden from accessibility — it is a
+                // picture of the slide, not a control — so the button would
+                // otherwise have no name at all to read out.
+                .accessibilityLabel(EInkNaming.orientation(candidate))
+                .accessibilityAddTraits(candidate == orientation ? [.isSelected] : [])
             }
             Spacer(minLength: 0)
         }

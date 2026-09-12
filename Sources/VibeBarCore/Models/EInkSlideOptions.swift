@@ -164,19 +164,29 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
     public var customLabels: [String: String]
     /// Tighter rows so a slide with no header and no footer fills the panel.
     public var compact: Bool
+    /// The preset this slide drew before "Edit in Studio" exploded it.
+    ///
+    /// `nil` on a slide that was never converted. It exists so "Reset to
+    /// preset" restores the layout the author actually left: the conversion
+    /// replaces `kind` with `.custom`, and without this the only honest answer
+    /// afterwards is "some preset", which meant a Briefing came back as a
+    /// ledger.
+    public var sourcePreset: EInkPreset?
 
     public init(
         header: EInkBarConfig? = EInkBarConfig(),
         footer: EInkFooterConfig? = EInkFooterConfig(),
         slotOrder: [String] = [],
         customLabels: [String: String] = [:],
-        compact: Bool = false
+        compact: Bool = false,
+        sourcePreset: EInkPreset? = nil
     ) {
         self.header = header
         self.footer = footer
         self.slotOrder = slotOrder
         self.customLabels = customLabels
         self.compact = compact
+        self.sourcePreset = sourcePreset
     }
 
     /// Exactly what round 1 drew: a top header and the preset's own footer.
@@ -218,6 +228,7 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case header, footer, hasHeader, hasFooter, slotOrder, customLabels, compact
+        case sourcePreset
     }
 
     public init(from decoder: Decoder) throws {
@@ -232,7 +243,8 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
             footer: hasFooter ? c.lenient(EInkFooterConfig.self, .footer, EInkFooterConfig()) : nil,
             slotOrder: c.lenient([String].self, .slotOrder, []),
             customLabels: c.lenient([String: String].self, .customLabels, [:]),
-            compact: c.lenient(Bool.self, .compact, false)
+            compact: c.lenient(Bool.self, .compact, false),
+            sourcePreset: c.lenientOptional(EInkPreset.self, .sourcePreset)
         )
     }
 
@@ -245,5 +257,6 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
         try c.encode(slotOrder, forKey: .slotOrder)
         try c.encode(customLabels, forKey: .customLabels)
         try c.encode(compact, forKey: .compact)
+        try c.encodeIfPresent(sourcePreset, forKey: .sourcePreset)
     }
 }

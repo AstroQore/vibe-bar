@@ -850,6 +850,9 @@ struct EInkSlidesEditor: View {
         )
         settings.einkCanvasLayouts[EInkRenderer.layoutKey(slide.id, orientation: orientation)] = layout
         settings.einkSync.devices[index].slides[position].kind = .custom(layoutID: slide.id)
+        // Remembered so "Reset to preset" restores the one it came from. A
+        // Briefing exploded and reset came back a ledger without it.
+        settings.einkSync.devices[index].slides[position].options.sourcePreset = slide.kind.preset
         settingsStore.settings = settings
     }
 
@@ -867,7 +870,11 @@ struct EInkSlidesEditor: View {
         settings.einkCanvasLayouts = settings.einkCanvasLayouts.filter {
             $0.key != layoutID && !$0.key.hasPrefix(layoutID + "/")
         }
-        settings.einkSync.devices[index].slides[position].kind = .preset(.quotaLedger)
+        // The preset it was exploded from, or the ledger for a slide that was
+        // custom before this existed — which is also what a new slide draws.
+        settings.einkSync.devices[index].slides[position].kind =
+            .preset(slide.options.sourcePreset ?? .quotaLedger)
+        settings.einkSync.devices[index].slides[position].options.sourcePreset = nil
         settings.einkSync.devices[index].slides[position] =
             settings.einkSync.devices[index].slides[position].fitted(to: device.orientation)
         settingsStore.settings = settings

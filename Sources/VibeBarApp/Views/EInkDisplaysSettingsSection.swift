@@ -936,7 +936,15 @@ struct EInkDisplaysSettingsSection: View {
             },
             set: { [deviceID = device.deviceID] value in
                 tapLinkDrafts[deviceID] = value
-                updateDevice(deviceID) { $0.tapLink = .custom(value) }
+                updateDevice(deviceID) { current in
+                    // The field commits on a 400 ms idle and on the way out of
+                    // the view tree, so a keystroke followed quickly by None or
+                    // the dashboard would land *after* the picker and undo it.
+                    // The draft is kept either way; only the live value is
+                    // guarded.
+                    guard case .custom = current.tapLink else { return }
+                    current.tapLink = .custom(value)
+                }
             }
         )
     }

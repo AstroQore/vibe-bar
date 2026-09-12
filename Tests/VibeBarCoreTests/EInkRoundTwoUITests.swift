@@ -278,6 +278,29 @@ final class EInkRoundTwoUITests: XCTestCase {
         XCTAssertTrue(overflows(slide), "the slide's own name is what the panel draws")
     }
 
+    /// The preset a slide was exploded from survives the conversion, so
+    /// "Reset to preset" restores the layout the author left rather than the
+    /// ledger every custom slide would otherwise fall back to.
+    func testTheSourcePresetSurvivesTheConversionAndARoundTrip() throws {
+        var slide = EInkFixtures.slide(preset: .briefing, fieldIDs: ["claude.weekly"])
+        slide.options.sourcePreset = slide.kind.preset
+        slide.kind = .custom(layoutID: slide.id)
+
+        let data = try JSONEncoder().encode(slide)
+        let decoded = try JSONDecoder().decode(EInkSlide.self, from: data)
+        XCTAssertEqual(decoded.options.sourcePreset, .briefing)
+        XCTAssertNil(decoded.kind.preset)
+
+        // A round 1 slide has no such key and decodes without one, which is
+        // what makes the ledger fallback the right answer there.
+        let old = try JSONDecoder().decode(
+            EInkSlideOptions.self,
+            from: Data("{\"compact\": false}".utf8)
+        )
+        XCTAssertNil(old.sourcePreset)
+        XCTAssertEqual(old, .default)
+    }
+
     // MARK: - Briefing long names
 
     private func briefingBoxes(_ rows: [EInkQuotaRow]) -> [EInkDrawBox] {
