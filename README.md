@@ -326,13 +326,14 @@ feature is one file, `~/.vibebar/eink_state.json`, which holds what was last
 pushed and the panel's last reported status — never the key, never the key's
 prefix.
 
-**This is the one feature that sends your numbers somewhere.** The panel has
-no local API: each slide is posted to the Dot. cloud (`dot.mindreset.tech`)
-with your key, and the service renders it onto your device. So the quota
-percentages, reset times and token or cost figures on a slide leave this Mac
-and reach Dot.'s servers — nothing else does, and none of it happens until you
-add a key and switch the feature on. If that trade is not one you want, leave
-it off; every other surface in Vibe Bar works exactly the same without it.
+**Your quota and usage numbers go through Dot.'s servers.** The panel has no
+local API: the rendered slide — its quota percentages, reset times and token
+or cost figures, as JSON — is posted to `dot.mindreset.tech` with your Dot.
+API key, and the service draws it onto your device. None of that happens until
+you add a key and switch the feature on, and no other Vibe Bar feature sends
+your quota or usage anywhere (the privacy list below has the app's other
+outbound paths). If the trade is not one you want, leave it off; every other
+surface works exactly the same without it.
 
 **Cadence follows the panel's own power.** On USB power it refreshes every
 15 minutes; as soon as the device reports it is running on its battery, the
@@ -528,12 +529,17 @@ audit metadata only. Derived state stays under:
   config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
-- E-ink displays are the only feature that sends data off this Mac, and only
-  once you add a key and switch it on. The panel has no local API, so each
-  slide — the quota, reset and cost figures it draws — is posted to the Dot.
-  cloud, which renders it onto your device. The Dot. API key lives in the
+- E-ink displays are the only feature that sends your quota or usage figures
+  anywhere, and only once you add a key and switch it on. The panel has no
+  local API, so each rendered slide is posted to `dot.mindreset.tech` with
+  your Dot. API key and drawn onto the device there. The key lives in the
   Keychain Vault; `eink_state.json` holds a hash of what was last drawn and
   the panel's last reported status.
+- The other things Vibe Bar sends out are narrow and each is yours to start:
+  a Skills search sends your query to `skills.sh`; enrolling a remote machine
+  posts its name and public keys; remote sync posts acknowledgement cursors to
+  the Relay, which cannot read the payloads it carries. Provider refreshes
+  send your own credentials to the providers you configured, and nothing else.
 - Privacy Mode clears derived cost data and keeps cost history off disk while
   enabled. Retention is configurable, and Cost Data can be cleared manually.
 
@@ -541,8 +547,8 @@ Vibe Bar intentionally runs **without the App Sandbox**: browser-cookie
 import and the local AntiGravity language-server probe require capabilities
 the sandbox blocks. The app is open source and reads only the provider inputs
 it needs; local writes stay under `~/.vibebar/`, the Keychain Vault and the
-explicit Skills allowlist above, and the only outbound data it originates is
-an e-ink slide you asked it to draw. See
+explicit Skills allowlist above, and what it sends out is the short, itemized
+list above. See
 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox) for the
 full trade-off.
 

@@ -864,11 +864,13 @@ capture against § 8 before committing it — a screenshot is source content.
   other feature reads the network and writes the local disk; this one
   sends the user's numbers *out* — the panel has no local API, so every
   slide is posted to `dot.mindreset.tech` with the user's key and
-  rendered onto the device by the vendor's service. It is the only
-  outbound data Vibe Bar originates, it happens only after the user
-  adds a key and switches the feature on, and both READMEs say so in
-  those words; any change that widens what a slide carries widens that
-  disclosure too. The boundaries are therefore narrow and none of them
+  rendered onto the device by the vendor's service. It is the only path
+  that sends the user's quota or usage figures anywhere (Skills search,
+  remote enrollment and remote sync each send their own narrow payload,
+  and are listed separately in the READMEs' privacy section), it
+  happens only after the user adds a key and switches the feature on,
+  and both READMEs say so in those words; any change that widens what a
+  slide carries widens that disclosure too. The boundaries are therefore narrow and none of them
   is optional. The only code that reaches a panel is
   `EInkSyncService`, and it reaches it only through
   `DotDeviceClient` — no new call site talks to `dot.mindreset.tech`,
