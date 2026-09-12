@@ -179,7 +179,7 @@ public final class EInkSyncService: ObservableObject {
     private var refreshLoops: [String: Task<Void, Never>] = [:]
     private var carouselLoops: [String: Task<Void, Never>] = [:]
     private var activeRuns: [String: RefreshRun] = [:]
-    private var cachedSnapshot: (snapshot: EInkDataSnapshot, takenAt: Date)?
+    private var cachedSnapshot: (snapshot: EInkDataSnapshot, takenAt: Date, generation: Int, fieldIDs: [String])?
     private var cachedAPIKey: String?
     private var apiKeyLoaded = false
     /// When the last request to the service went out, for *any* device.
@@ -549,13 +549,29 @@ public final class EInkSyncService: ObservableObject {
         Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
-    private func assembleSnapshot() async throws -> EInkDataSnapshot {
-        if let cached = cachedSnapshot {
+    /// Assembles a snapshot, reusing the last one only when it answers the
+    /// same question.
+    ///
+    /// The cache is keyed by the configuration generation *and* the field ids
+    /// it was assembled for, and a result whose generation went stale while it
+    /// was in flight is dropped rather than stored. Without both, an assembly
+    /// that started before the user picked a new bucket could land in the
+    /// cache afterwards and the very next pass — the one that exists to carry
+    /// that bucket — would draw the panel without it, then sleep the interval.
+    private func assembleSnapshot(fieldIDs: [String]? = nil) async throws -> EInkDataSnapshot {
+        let requested = fieldIDs ?? settings.selectedQuotaFieldIDs
+        let generation = configurationGeneration
+        if let cached = cachedSnapshot,
+           cached.generation == generation,
+           cached.fieldIDs == requested
+        {
             let age = clock().timeIntervalSince(cached.takenAt)
             if age >= 0, age < Self.seconds(snapshotReuseWindow) { return cached.snapshot }
         }
-        let snapshot = try await snapshotProvider(settings.selectedQuotaFieldIDs)
-        cachedSnapshot = (snapshot, clock())
+        let snapshot = try await snapshotProvider(requested)
+        if generation == configurationGeneration {
+            cachedSnapshot = (snapshot, clock(), generation, requested)
+        }
         return snapshot
     }
 
@@ -628,8 +644,17 @@ public final class EInkSyncService: ObservableObject {
     /// ledger twice for the same numbers.
     @Published public private(set) var previewSnapshot: EInkDataSnapshot?
 
-    public func refreshPreviewSnapshot() async {
-        guard let snapshot = try? await assembleSnapshot() else { return }
+    /// `includingFieldIDs` exists because the settings pane is ahead of the
+    /// engine: the roster reaches `apply` through a 400 ms debounce, so a
+    /// bucket ticked a moment ago is not in `settings` yet and the preview
+    /// would draw the row the user just asked for as missing.
+    public func refreshPreviewSnapshot(includingFieldIDs: [String] = []) async {
+        var fieldIDs = settings.selectedQuotaFieldIDs
+        var seen = Set(fieldIDs)
+        for fieldID in includingFieldIDs where seen.insert(fieldID).inserted {
+            fieldIDs.append(fieldID)
+        }
+        guard let snapshot = try? await assembleSnapshot(fieldIDs: fieldIDs) else { return }
         previewSnapshot = snapshot
     }
 

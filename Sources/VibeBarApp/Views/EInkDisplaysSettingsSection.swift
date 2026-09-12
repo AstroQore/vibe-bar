@@ -74,7 +74,9 @@ struct EInkDisplaysSettingsSection: View {
             Task { await loadSnapshotAndPreviews() }
         }
         .onChange(of: quotaService.fieldRegistry) { _, _ in rebuildPickerSections() }
-        .onChange(of: previewSignature) { _, _ in rebuildPreviews() }
+        .onChange(of: previewSignature) { _, _ in
+            Task { await refreshPreview() }
+        }
         .onChange(of: selectedDevice?.deviceID) { _, _ in
             renderImage = nil
             pushStatus = nil
@@ -753,10 +755,23 @@ struct EInkDisplaysSettingsSection: View {
     }
 
     private func loadSnapshotAndPreviews() async {
-        await service.refreshPreviewSnapshot()
+        await refreshPreview()
+        await loadRenderImage()
+    }
+
+    /// Re-assembles the preview snapshot and redraws the plans.
+    ///
+    /// It re-assembles rather than reusing what is in hand because a bucket
+    /// the user just ticked is not in the snapshot taken when the pane opened,
+    /// and a preview that omits the row someone just asked for reads as a bug
+    /// in the layout. The engine's own five-second cache keeps a run of
+    /// orientation taps from walking the ledger once per tap.
+    private func refreshPreview() async {
+        await service.refreshPreviewSnapshot(
+            includingFieldIDs: settingsStore.settings.einkSync.selectedQuotaFieldIDs
+        )
         snapshot = service.previewSnapshot
         rebuildPreviews()
-        await loadRenderImage()
     }
 
     /// Fetches the read-back thumbnail for the device that was selected when

@@ -536,6 +536,33 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertNil(EInkDataAssembler.selector(fieldID: "notatool.weekly"))
     }
 
+    func testRotatingToASmallerFrameTrimsTheSelectionToWhatFits() {
+        var slide = EInkSlide(
+            id: "a",
+            kind: .preset(.quotaLedger),
+            quotaFieldIDs: ["f1", "f2", "f3", "f4", "f5", "f6"]
+        )
+        // Portrait holds six, landscape five.
+        XCTAssertEqual(slide.fitted(to: .degrees90).quotaFieldIDs.count, 6)
+        XCTAssertEqual(slide.fitted(to: .degrees0).quotaFieldIDs.count, 5)
+
+        slide = EInkSlide(id: "b", kind: .preset(.usageSplit), usagePeriods: EInkUsagePeriod.allCases)
+        XCTAssertEqual(slide.fitted(to: .degrees0).usagePeriods.count, 3)
+
+        // …and the device applies it, so a rotation cannot leave a slide
+        // counting rows the panel will never print.
+        let device = EInkDeviceConfig(
+            deviceID: "panel-1",
+            orientation: .degrees0,
+            slides: [EInkSlide(
+                id: "a",
+                kind: .preset(.quotaLedger),
+                quotaFieldIDs: ["f1", "f2", "f3", "f4", "f5", "f6"]
+            )]
+        ).sanitized
+        XCTAssertEqual(device.slides[0].quotaFieldIDs.count, 5)
+    }
+
     // MARK: - Digest
 
     func testTheDigestIgnoresTheGeneratedTimestampAndFollowsTheContent() throws {
