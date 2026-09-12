@@ -3,23 +3,23 @@
     <channel>
         <title>Vibe Bar</title>
         <item>
-            <title>1.6.4</title>
-            <pubDate>Wed, 09 Sep 2026 06:15:31 +0000</pubDate>
-            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.4-dev.80</link>
+            <title>1.7.0</title>
+            <pubDate>Sat, 12 Sep 2026 06:35:58 +0000</pubDate>
+            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.7.0-dev.81</link>
             <sparkle:channel>dev</sparkle:channel>
-            <sparkle:version>80</sparkle:version>
-            <sparkle:shortVersionString>1.6.4</sparkle:shortVersionString>
+            <sparkle:version>81</sparkle:version>
+            <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.6.4 (dev)
+            <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.7.0 (dev)
 
-See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.4-dev.80).
+See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.7.0-dev.81).
 ]]></description>
-            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.6.4-dev.80/Vibe-Bar-1.6.4-dev.80-macOS-arm64.zip" length="14769445" type="application/octet-stream" sparkle:edSignature="KTafcifbChMlt2mx/M7euJg6jwFn7BOfEJMeUIYeC/FKFMHhGybyHuaFeKIqzu9YemzeBR+K0VHOb+DlpIRXDQ=="/>
+            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.7.0-dev.81/Vibe-Bar-1.7.0-dev.81-macOS-arm64.zip" length="16696921" type="application/octet-stream" sparkle:edSignature="PKnA6J5VhppzAkaJBkZAEucB/bTRHMIsbQ4V9IfmY3EYt/z3fdkrZ0AlUfMc1MB23Ybk84twkHhfGpZ0swOiBQ=="/>
         </item>
         <item>
             <title>1.6.3</title>
-            <pubDate>Wed, 09 Sep 2026 06:15:30 +0000</pubDate>
+            <pubDate>Sat, 12 Sep 2026 06:35:57 +0000</pubDate>
             <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.6.3</link>
             <sparkle:version>75</sparkle:version>
             <sparkle:shortVersionString>1.6.3</sparkle:shortVersionString>
