@@ -443,6 +443,7 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | **Platform** |
 | MCP tools | ● 12 | ◐ 5 | Read-only subset |
 | Remote probe sync | ● | ○ | |
+| E-ink displays (Dot. Quote/0) | ● | ○ | Pushes quota and usage to a paired panel on a schedule |
 | Launch at login | ● | ○ | |
 | In-app updates | ● Sparkle | ○ | Planned on the Tauri updater |
 | App Sandbox | ○ by design | ○ for now | Neither ships sandboxed. Native **cannot**: reading browser cookies, probing AntiGravity with `ps`/`lsof`, and driving Terminal by Apple events are all blocked inside it, and the release script refuses a sandboxed bundle. Desktop needs none of that while it stays read-only, so it is the one that *could* — an option that closes as soon as it grows cookie providers |
