@@ -68,7 +68,9 @@ portions is included in this repository at the local license link above.
 
 Brand marks in `Resources/ProviderIcons/` remain the trademarks of their
 respective owners; Vibe Bar draws them to identify the service a quota belongs
-to, and the license above covers only the copied vector artwork.
+to — in the menu bar, in the app's own surfaces, and, thresholded to 1-bit at
+14–16 px, on an e-ink panel the user has configured — and the license above
+covers only the copied vector artwork.
 
 ### Fusion Pixel 12px (缝合怪像素字体)
 

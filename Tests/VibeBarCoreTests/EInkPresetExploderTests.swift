@@ -47,6 +47,89 @@ final class EInkPresetExploderTests: XCTestCase {
         }
     }
 
+    /// A name drawn as two fragments keeps both of them bound.
+    ///
+    /// The landscape briefing was the case round 2 part A left broken: the
+    /// row split into "ChatGPT Agentic" and "GPT-5.3 Codex Spark · Weekly",
+    /// and exploding it froze both halves as text, so the panel stopped
+    /// following the bucket's name the moment anyone opened the Studio.
+    func testATwoFragmentNameKeepsABindingForEachFragment() throws {
+        var snapshot = EInkFixtures.snapshot()
+        snapshot.quota = EInkFixtures.longNameRows(count: 3)
+        for preset in [EInkPreset.briefing, .quotaLedger] {
+            let slide = EInkFixtures.slide(preset: preset, fieldIDs: snapshot.quota.map(\.fieldID))
+            let layout = EInkPresetExploder.explode(
+                slide: slide,
+                orientation: .degrees0,
+                snapshot: snapshot,
+                calendar: calendar()
+            )
+            let slot = layout.elements.filter { $0.moduleID == "slot:codex.spark_weekly" }
+            let name = try XCTUnwrap(
+                slot.first { $0.textBinding == .label && $0.labelPart == .name },
+                "\(preset.rawValue) lost the SubProvider's binding"
+            )
+            let window = try XCTUnwrap(
+                slot.first { $0.textBinding == .label && $0.labelPart == .window },
+                "\(preset.rawValue) lost the group and window's binding"
+            )
+            XCTAssertEqual(name.fieldID, "codex.spark_weekly")
+            XCTAssertEqual(window.fieldID, "codex.spark_weekly")
+            XCTAssertEqual(
+                EInkCustomLayoutRenderer.text(for: name, snapshot: snapshot),
+                "ChatGPT Agentic"
+            )
+            XCTAssertEqual(
+                EInkCustomLayoutRenderer.text(for: window, snapshot: snapshot),
+                "GPT-5.3 Codex Spark · Weekly"
+            )
+
+            // And the exploded layout still draws exactly the preset's panel.
+            let presetTree = try EInkRenderer.tree(
+                slide: slide,
+                orientation: .degrees0,
+                snapshot: snapshot,
+                calendar: calendar()
+            )
+            let explodedTree = EInkCustomLayoutRenderer.tree(
+                layout: layout,
+                slide: slide,
+                orientation: .degrees0,
+                snapshot: snapshot
+            )
+            XCTAssertEqual(
+                boxes(explodedTree, orientation: .degrees0),
+                boxes(presetTree, orientation: .degrees0),
+                "\(preset.rawValue) does not survive being exploded"
+            )
+        }
+    }
+
+    /// A fragment renames itself when its bucket does, which is the whole
+    /// reason the part is stored rather than the string.
+    func testAnExplodedFragmentFollowsTheSlidesOwnNameForTheBucket() throws {
+        var snapshot = EInkFixtures.snapshot()
+        snapshot.quota = EInkFixtures.longNameRows(count: 2)
+        var element = EInkCanvasElement(kind: .text, fieldID: "codex.spark_weekly")
+        element.textBinding = .label
+        element.labelPart = .window
+        var options = EInkSlideOptions.default
+        options.customLabels = ["codex.spark_weekly": "ChatGPT Agentic · Codex Spark · Weekly"]
+        XCTAssertEqual(
+            EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot, options: options),
+            "Codex Spark · Weekly"
+        )
+
+        // And it round-trips through settings.json.
+        let data = try JSONEncoder().encode(element)
+        let decoded = try JSONDecoder().decode(EInkCanvasElement.self, from: data)
+        XCTAssertEqual(decoded.labelPart, .window)
+        XCTAssertEqual(decoded, element)
+        // A layout written before parts existed reads as the whole name.
+        let legacy = Data(#"{"kind":"text","textBinding":"label","fieldID":"codex.spark_weekly"}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(EInkCanvasElement.self, from: legacy).labelPart, .whole)
+    }
+
     /// A slot's elements come back as one group, and the group still follows
     /// its bucket — the difference between a layout and a screenshot.
     func testAQuotaSlotBecomesOneGroupThatKeepsItsBinding() {

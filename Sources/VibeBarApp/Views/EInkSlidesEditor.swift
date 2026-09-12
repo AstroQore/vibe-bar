@@ -334,6 +334,38 @@ struct EInkSlidesEditor: View {
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .disabled(slide.options.header != nil || slide.options.footer != nil)
+
+                labelStyleRow(slide)
+            }
+        }
+    }
+
+    /// How this slide's quota slots name their provider.
+    ///
+    /// Only for a layout that draws quota slots: a usage table has no
+    /// SubProvider to swap for a mark, and a picker that changes nothing is a
+    /// picker that teaches people the setting is broken.
+    @ViewBuilder
+    private func labelStyleRow(_ slide: EInkSlide) -> some View {
+        if slide.kind.preset?.isQuotaPreset == true {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(L10n.Settings.Eink.labelStyle)
+                        .font(.caption)
+                        .frame(width: 96, alignment: .leading)
+                    Picker(L10n.Settings.Eink.labelStyle, selection: labelStyleBinding(slide)) {
+                        ForEach(EInkSlotLabelStyle.allCases, id: \.self) { style in
+                            Text(EInkNaming.labelStyle(style)).tag(style)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 200, alignment: .leading)
+                    Spacer(minLength: 0)
+                }
+                Text(L10n.Settings.Eink.LabelStyle.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -503,6 +535,21 @@ struct EInkSlidesEditor: View {
             )
             .frame(maxWidth: 240)
             .id("label-\(slide.id)-\(fieldID)")
+
+            // One slot may disagree with the slide: the bucket with a
+            // three-tier name is the one that needs its mark, and the short
+            // ones can stay in words.
+            if slide.kind.preset?.isQuotaPreset == true {
+                Picker(L10n.Settings.Eink.labelStyle, selection: slotLabelStyleBinding(slide, fieldID: fieldID)) {
+                    Text(L10n.Settings.Eink.LabelStyle.slideDefault).tag(EInkSlotLabelStyle?.none)
+                    ForEach(EInkSlotLabelStyle.allCases, id: \.self) { style in
+                        Text(EInkNaming.labelStyle(style)).tag(EInkSlotLabelStyle?.some(style))
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 150)
+                .id("label-style-\(slide.id)-\(fieldID)")
+            }
             Spacer(minLength: 0)
         }
         .opacity(slotDrag?.engaged == true && slotDrag?.id == fieldID ? 0.3 : 1)
@@ -806,6 +853,31 @@ struct EInkSlidesEditor: View {
                 updateSlide(slideID) { current in
                     guard case .text = current.options.footer?.content else { return }
                     current.options.footer = EInkFooterConfig(content: .text(value))
+                }
+            }
+        )
+    }
+
+    private func labelStyleBinding(_ slide: EInkSlide) -> Binding<EInkSlotLabelStyle> {
+        Binding(
+            get: { slide.options.labelStyle },
+            set: { [slideID = slide.id] value in
+                updateSlide(slideID) { $0.options.labelStyle = value }
+            }
+        )
+    }
+
+    /// `nil` means "whatever the slide says", which is the default and the
+    /// only way back to it once a slot has been given its own.
+    private func slotLabelStyleBinding(
+        _ slide: EInkSlide,
+        fieldID: String
+    ) -> Binding<EInkSlotLabelStyle?> {
+        Binding(
+            get: { slide.options.labelStyles[fieldID] },
+            set: { [slideID = slide.id] value in
+                updateSlide(slideID) { current in
+                    current.options.labelStyles[fieldID] = value
                 }
             }
         )

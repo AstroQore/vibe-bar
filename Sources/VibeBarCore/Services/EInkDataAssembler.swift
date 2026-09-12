@@ -90,6 +90,9 @@ public struct EInkDataAssembler: Sendable {
     public var forecastLookup: @Sendable (ToolType, QuotaBucket) async -> QuotaPaceForecast?
     /// Provider health, for the header's provider-status option.
     public var serviceStatus: @Sendable () async -> [ServiceStatusSnapshot]
+    /// Where a provider's 1-bit mark comes from. `nil` draws monograms, which
+    /// is what a test or a headless refresh gets.
+    public var logos: (any EInkLogoProviding)?
     /// Resolves a slot's default name; discovered buckets need the registry.
     ///
     /// The snapshot carries the *default* name and nothing else. A slide's own
@@ -106,6 +109,7 @@ public struct EInkDataAssembler: Sendable {
         allTimeCostSnapshots: @escaping @Sendable () async -> [CostSnapshot],
         forecastLookup: @escaping @Sendable (ToolType, QuotaBucket) async -> QuotaPaceForecast? = { _, _ in nil },
         serviceStatus: @escaping @Sendable () async -> [ServiceStatusSnapshot] = { [] },
+        logos: (any EInkLogoProviding)? = nil,
         registry: QuotaFieldRegistry = .empty,
         quotaPriority: [QuotaSelector] = EInkDataAssembler.defaultQuotaPriority,
         calendar: Calendar = .current
@@ -115,6 +119,7 @@ public struct EInkDataAssembler: Sendable {
         self.allTimeCostSnapshots = allTimeCostSnapshots
         self.forecastLookup = forecastLookup
         self.serviceStatus = serviceStatus
+        self.logos = logos
         self.registry = registry
         self.quotaPriority = quotaPriority
         self.calendar = calendar
@@ -135,7 +140,8 @@ public struct EInkDataAssembler: Sendable {
             dateLabel: EInkFormat.dateLabel(now, calendar: calendar),
             heatmap: EInkHeatmap.summing(await allTimeCostSnapshots().map(\.heatmap)),
             topModels: (try? await modelRows(now: now)) ?? [],
-            providerStatusLine: EInkProviderStatusLine.compose(await serviceStatus())
+            providerStatusLine: EInkProviderStatusLine.compose(await serviceStatus()),
+            logos: marks(for: quota)
         )
     }
 
@@ -184,10 +190,33 @@ public struct EInkDataAssembler: Sendable {
                 dateLabel: EInkFormat.dateLabel(now, calendar: calendar),
                 heatmap: heatmap,
                 topModels: models,
-                providerStatusLine: EInkProviderStatusLine.compose(await serviceStatus())
+                providerStatusLine: EInkProviderStatusLine.compose(await serviceStatus()),
+                // The device's own path comes through here, not through
+                // `snapshot()`: a mark missing from this one is every logo
+                // style on every panel quietly reverting to words.
+                logos: marks(for: quota)
             ),
             usageUnavailable: usageUnavailable
         )
+    }
+
+    // MARK: - Marks
+
+    /// One mark per slot per drawn size, the provider's or a monogram.
+    func marks(for rows: [EInkQuotaRow]) -> [String: String] {
+        var result: [String: String] = [:]
+        for row in rows {
+            for size in EInkLogo.sizes {
+                guard let uri = EInkLogo.dataURI(
+                    fieldID: row.fieldID,
+                    subProvider: row.providerDisplayName,
+                    size: size,
+                    provider: logos
+                ) else { continue }
+                result[EInkLogo.key(fieldID: row.fieldID, size: size)] = uri
+            }
+        }
+        return result
     }
 
     // MARK: - Quota

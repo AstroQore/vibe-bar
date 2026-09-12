@@ -27,6 +27,14 @@ public struct EInkDataSnapshot: Sendable, Equatable {
     /// One line about provider health: "Anthropic: degraded" or
     /// "All providers operational". Empty when nothing was read.
     public var providerStatusLine: String
+    /// `data:image/png;base64,…` marks, keyed by `EInkLogo.key(fieldID:size:)`.
+    ///
+    /// Rasterized once per refresh rather than per slide: a carousel draws the
+    /// same five buckets on every panel it owns, and the threshold pass is the
+    /// expensive part. A slot whose mark is missing draws its name in words,
+    /// so a snapshot assembled without a logo provider is a panel that reads
+    /// exactly as it did before the marks existed.
+    public var logos: [String: String]
 
     public init(
         generatedAt: Date,
@@ -39,7 +47,8 @@ public struct EInkDataSnapshot: Sendable, Equatable {
         dateLabel: String = "",
         heatmap: EInkHeatmap = .empty,
         topModels: [EInkModelRow] = [],
-        providerStatusLine: String = ""
+        providerStatusLine: String = "",
+        logos: [String: String] = [:]
     ) {
         self.generatedAt = generatedAt
         self.generatedAtLabel = generatedAtLabel
@@ -52,6 +61,12 @@ public struct EInkDataSnapshot: Sendable, Equatable {
         self.heatmap = heatmap
         self.topModels = topModels
         self.providerStatusLine = providerStatusLine
+        self.logos = logos
+    }
+
+    /// The mark this slot draws at this size, if there is one.
+    public func logo(fieldID: String, size: Int) -> String? {
+        logos[EInkLogo.key(fieldID: fieldID, size: size)]
     }
 
     public func quotaRows(fieldIDs: [String], limit: Int) -> [EInkQuotaRow] {
@@ -112,6 +127,18 @@ public struct EInkQuotaRow: Sendable, Equatable {
     /// the round 2 naming change.
     public var slotLabel: String {
         windowTitle.isEmpty ? providerDisplayName : "\(providerDisplayName) · \(windowTitle)"
+    }
+
+    /// A row that is nothing but a name, for measuring a layout before there
+    /// is any data behind it.
+    public static func named(_ label: String) -> EInkQuotaRow {
+        let parts = label.components(separatedBy: EInkSlotLabel.separator)
+        return EInkQuotaRow(
+            fieldID: label,
+            providerDisplayName: parts.first ?? label,
+            windowTitle: parts.dropFirst().joined(separator: EInkSlotLabel.separator),
+            remainingPercent: 0
+        )
     }
 
     /// This row wearing one slide's own name for it.

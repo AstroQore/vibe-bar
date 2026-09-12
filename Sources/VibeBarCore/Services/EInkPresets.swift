@@ -207,7 +207,10 @@ public enum EInkPresets {
 
     /// The module id one quota slot's nodes carry, so the exploder can group
     /// them.
-    static func slotModule(_ fieldID: String) -> String { "slot:\(fieldID)" }
+    static func slotModule(_ fieldID: String) -> String { slotModulePrefix + fieldID }
+
+    /// What every quota slot's module id starts with.
+    static let slotModulePrefix = "slot:"
 
     static let headerModule = "header"
     static let footerModule = "footer"
@@ -344,15 +347,33 @@ public enum EInkPresets {
 
     // MARK: - Column ordering
 
-    /// Equal-width columns: the longest provider name takes the middle slot
-    /// and the two shortest sit beside it, so its overflow lands on their
-    /// slack instead of on the panel edge.
+    /// The widest line a centred cell will draw for this slot.
+    ///
+    /// In device pixels and over every tier of the name, because that is what
+    /// actually overhangs a cell: "AntiGravity" is eleven characters and 63 px
+    /// while "Claude and GPT Models" is twenty-one and 130, and it is the
+    /// second one that lands on a neighbour.
+    /// Ties go to the shorter whole name: two slots whose widest tier is
+    /// "Weekly" overhang a cell equally, and the narrower of the two is still
+    /// the better neighbour.
+    static func cellWidthKey(_ row: EInkQuotaRow) -> (Int, Int) {
+        let tiers = [row.providerDisplayName]
+            + row.windowTitle.components(separatedBy: EInkSlotLabel.separator)
+        return (
+            tiers.map { EInkTextMetrics.width($0, font: pixel) }.max() ?? 0,
+            EInkTextMetrics.width(row.slotLabel, font: pixel)
+        )
+    }
+
+    /// Equal-width columns: the widest name takes the middle slot and the two
+    /// narrowest sit beside it, so its overflow lands on their slack instead
+    /// of on the panel edge.
     public static func longestInMiddle(_ rows: [EInkQuotaRow]) -> [EInkQuotaRow] {
         guard rows.count >= 3 else { return rows }
         let byLength = rows.enumerated().sorted {
-            $0.element.providerDisplayName.count == $1.element.providerDisplayName.count
+            cellWidthKey($0.element) == cellWidthKey($1.element)
                 ? $0.offset < $1.offset
-                : $0.element.providerDisplayName.count < $1.element.providerDisplayName.count
+                : cellWidthKey($0.element) < cellWidthKey($1.element)
         }
         let longest = byLength[byLength.count - 1].offset
         let shortest = [byLength[0].offset, byLength[1].offset]
@@ -373,9 +394,9 @@ public enum EInkPresets {
     /// shortest second.
     public static func longestFirst(_ rows: [EInkQuotaRow]) -> [EInkQuotaRow] {
         let byLength = rows.enumerated().sorted {
-            $0.element.providerDisplayName.count == $1.element.providerDisplayName.count
+            cellWidthKey($0.element) == cellWidthKey($1.element)
                 ? $0.offset < $1.offset
-                : $0.element.providerDisplayName.count < $1.element.providerDisplayName.count
+                : cellWidthKey($0.element) < cellWidthKey($1.element)
         }
         guard rows.count >= 3 else { return byLength.reversed().map(\.element) }
         let longest = byLength[byLength.count - 1].offset

@@ -164,6 +164,13 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
     public var customLabels: [String: String]
     /// Tighter rows so a slide with no header and no footer fills the panel.
     public var compact: Bool
+    /// Whether this slide's slots name their provider in words or with its
+    /// mark. `.text` is what every slide drew before the marks existed.
+    public var labelStyle: EInkSlotLabelStyle
+    /// Field id → that one slot's style, overriding `labelStyle`. A panel is
+    /// allowed to be mixed: the two buckets with three-tier names are the
+    /// ones that need the pixels, and the others can stay in words.
+    public var labelStyles: [String: EInkSlotLabelStyle]
     /// The preset this slide drew before "Edit in Studio" exploded it.
     ///
     /// `nil` on a slide that was never converted. It exists so "Reset to
@@ -179,6 +186,8 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
         slotOrder: [String] = [],
         customLabels: [String: String] = [:],
         compact: Bool = false,
+        labelStyle: EInkSlotLabelStyle = .text,
+        labelStyles: [String: EInkSlotLabelStyle] = [:],
         sourcePreset: EInkPreset? = nil
     ) {
         self.header = header
@@ -186,6 +195,8 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
         self.slotOrder = slotOrder
         self.customLabels = customLabels
         self.compact = compact
+        self.labelStyle = labelStyle
+        self.labelStyles = labelStyles
         self.sourcePreset = sourcePreset
     }
 
@@ -196,12 +207,19 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
         var copy = self
         var seen = Set<String>()
         copy.slotOrder = slotOrder.filter { !$0.isEmpty && seen.insert($0).inserted }
+        copy.labelStyles = labelStyles.filter { !$0.key.isEmpty }
         copy.customLabels = customLabels.reduce(into: [:]) { result, entry in
             let trimmed = entry.value.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !entry.key.isEmpty, !trimmed.isEmpty else { return }
             result[entry.key] = EInkCanvasLayout.panelText(String(trimmed.prefix(96)))
         }
         return copy
+    }
+
+    /// How this slide names one slot: the slot's own style, else the
+    /// slide's.
+    public func labelStyle(for fieldID: String) -> EInkSlotLabelStyle {
+        labelStyles[fieldID] ?? labelStyle
     }
 
     /// The label this slide prints for a slot, or `nil` for the default.
@@ -228,7 +246,7 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case header, footer, hasHeader, hasFooter, slotOrder, customLabels, compact
-        case sourcePreset
+        case labelStyle, labelStyles, sourcePreset
     }
 
     public init(from decoder: Decoder) throws {
@@ -244,6 +262,8 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
             slotOrder: c.lenient([String].self, .slotOrder, []),
             customLabels: c.lenient([String: String].self, .customLabels, [:]),
             compact: c.lenient(Bool.self, .compact, false),
+            labelStyle: c.lenient(EInkSlotLabelStyle.self, .labelStyle, .text),
+            labelStyles: c.lenient([String: EInkSlotLabelStyle].self, .labelStyles, [:]),
             sourcePreset: c.lenientOptional(EInkPreset.self, .sourcePreset)
         )
     }
@@ -257,6 +277,8 @@ public struct EInkSlideOptions: Codable, Equatable, Hashable, Sendable {
         try c.encode(slotOrder, forKey: .slotOrder)
         try c.encode(customLabels, forKey: .customLabels)
         try c.encode(compact, forKey: .compact)
+        try c.encode(labelStyle, forKey: .labelStyle)
+        try c.encode(labelStyles, forKey: .labelStyles)
         try c.encodeIfPresent(sourcePreset, forKey: .sourcePreset)
     }
 }

@@ -597,6 +597,15 @@ final class AppEnvironment: ObservableObject {
         return quotaService.cachedQuota(for: account.id)
     }
 
+    /// The panel's brand marks, rasterized once.
+    ///
+    /// Held rather than rebuilt with the assembler: the art is static, the
+    /// threshold pass is the expensive part, and every refresh and every
+    /// preview wants the same handful of PNGs.
+    private static let sharedEInkLogos = EInkBrandLogos()
+
+    var einkLogos: EInkBrandLogos { Self.sharedEInkLogos }
+
     /// Builds the assembler the E-ink sync engine and its preview share.
     ///
     /// Rebuilt per pass rather than stored, because it captures the ledger and
@@ -636,6 +645,7 @@ final class AppEnvironment: ObservableObject {
                     return Array(self.serviceStatus.snapshotByTool.values)
                 }
             },
+            logos: einkLogos,
             registry: quotaService.fieldRegistry,
             quotaPriority: EInkDataAssembler.priority(includingSelected: selectedFieldIDs)
         )

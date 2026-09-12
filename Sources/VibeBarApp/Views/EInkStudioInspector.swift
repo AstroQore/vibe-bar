@@ -264,6 +264,39 @@ struct EInkStudioInspector: View {
         }
     }
 
+    /// Which part of the slot's name this element draws, and what the slide
+    /// asks that name to look like.
+    ///
+    /// Read-only on purpose: both belong to the slide, not to one element, and
+    /// an element that could disagree with the slot it came from would draw a
+    /// name the slide editor says it is not drawing. The part is the half that
+    /// matters — a name too long for one line arrives here as two boxes, and
+    /// "which half is this" is the question the author has — so it is named,
+    /// and the text it currently prints is shown beside it.
+    @ViewBuilder
+    private func labelStyleRow(_ e: EInkCanvasElement) -> some View {
+        let style = slide.options.labelStyle(for: e.fieldID ?? "")
+        if e.labelPart != .whole {
+            LabeledContent(EInkNaming.labelPart(e.labelPart)) {
+                // What it prints right now, when there is data behind it: the
+                // shortest possible answer to "which half is this".
+                Text(snapshot.map {
+                    EInkCustomLayoutRenderer.text(for: e, snapshot: $0, options: slide.options)
+                } ?? "")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+        }
+        if style != .text {
+            LabeledContent(L10n.Settings.Eink.labelStyle) {
+                Text(EInkNaming.labelStyle(style))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     @ViewBuilder
     private func bindingPicker(_ e: EInkCanvasElement) -> some View {
         Picker(L10n.MenuBar.Composer.Field.shows, selection: value(e, \.textBinding)) {
@@ -280,6 +313,7 @@ struct EInkStudioInspector: View {
         switch e.textBinding {
         case .percent, .label, .countdown:
             fieldPicker(e)
+            if e.textBinding == .label { labelStyleRow(e) }
         case .usageMetric:
             Picker(L10n.Settings.Eink.Studio.period, selection: value(e, \.usagePeriod)) {
                 ForEach(EInkUsagePeriod.allCases, id: \.self) { period in
@@ -624,6 +658,33 @@ struct EInkStudioInspector: View {
 /// One place that names an e-ink preset, window or element, so the settings
 /// pane and the Studio cannot disagree about what a thing is called.
 enum EInkNaming {
+    /// How a quota slot names its provider: in words, or with its mark.
+    ///
+    /// One list, so the slide editor's picker, the per-slot override and the
+    /// Studio inspector all call the same option by the same name.
+    static func labelStyle(_ style: EInkSlotLabelStyle) -> String {
+        switch style {
+        case .text: L10n.Settings.Eink.LabelStyle.text
+        case .logoAndGroup: L10n.Settings.Eink.LabelStyle.logoAndGroup
+        case .logoAndWindow: L10n.Settings.Eink.LabelStyle.logoAndWindow
+        case .logoOnly: L10n.Settings.Eink.LabelStyle.logoOnly
+        }
+    }
+
+    /// Which half of a slot's name one box draws.
+    ///
+    /// Three words the catalogue already has, because a name's tiers are the
+    /// same tiers everywhere else in the app: the provider, the quota group,
+    /// and the window.
+    static func labelPart(_ part: EInkSlotLabelPart) -> String {
+        switch part {
+        case .whole: L10n.Settings.Eink.LabelStyle.text
+        case .name: L10n.Common.provider
+        case .window: L10n.MenuBar.Composer.Group.bind
+        case .period: L10n.Settings.Eink.Studio.period
+        }
+    }
+
     static func preset(_ preset: EInkPreset) -> String {
         switch preset {
         case .quotaLedger: L10n.Settings.MiniWindow.Mode.ledger
