@@ -28,21 +28,30 @@ public struct EInkLedgerUsageSource: EInkUsageQuerying {
     }
 }
 
-/// Stands in when the ledger could not be opened.
+/// Stands in when the ledger could not be opened at all.
 ///
-/// A broken SQLite file costs the usage half of a slide, not the app: the
-/// quota rows still draw, and a panel with zeros on its usage line is a
-/// readable answer where a thrown error would be a blank screen.
+/// It **refuses** rather than answering zero. A quota-only device never asks
+/// it anything, so nothing is lost there; a usage slide, on the other hand,
+/// would print "TODAY $0 · 0 tokens" from a successful empty answer, and
+/// someone reading that across a desk has no way to tell it from a quiet day.
+/// Refusing routes it through the same `usageUnavailable` path an opened-but-
+/// failing ledger takes, which skips the slide and says why.
 public struct EInkEmptyUsageSource: EInkUsageQuerying {
+    public struct LedgerUnavailable: Error, Equatable, Sendable {
+        public init() {}
+    }
+
     public init() {}
 
     public func summary(_ filter: UsageQueryFilter) async throws -> UsageSummaryMetrics {
-        UsageSummaryMetrics.empty
+        throw LedgerUnavailable()
     }
 
-    public func harnessStats(_ filter: UsageQueryFilter) async throws -> [UsageHarnessStat] { [] }
+    public func harnessStats(_ filter: UsageQueryFilter) async throws -> [UsageHarnessStat] {
+        throw LedgerUnavailable()
+    }
 
     public func trend(_ filter: UsageQueryFilter, bucket: UsageTrendBucket) async throws -> UsageTrendSeries {
-        UsageTrendSeries(bucket: bucket, points: [])
+        throw LedgerUnavailable()
     }
 }

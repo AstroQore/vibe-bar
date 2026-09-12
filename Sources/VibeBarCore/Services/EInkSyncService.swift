@@ -534,7 +534,6 @@ public final class EInkSyncService: ObservableObject {
                 continue
             }
 
-            await paceRequest()
             guard generation == configurationGeneration else { break }
 
             do {
@@ -561,9 +560,13 @@ public final class EInkSyncService: ObservableObject {
         // One status read per pass, after the writes: it is what gives the UI
         // the power state (and therefore the next cadence), the Wi-Fi line,
         // and the render the device is actually showing.
-        if let status = await readStatus(deviceID: deviceID, key: key, generation: generation) {
+        let statusRead = await readStatus(deviceID: deviceID, key: key, generation: generation)
+        if let status = statusRead.status {
             state.apply(status)
             state.lastStatusAt = clock()
+        } else if let statusFailure = statusRead.failure, failure == nil {
+            failure = statusFailure
+            detail = statusRead.detail
         }
         state.lastFailure = failure
         state.lastError = detail
@@ -583,17 +586,27 @@ public final class EInkSyncService: ObservableObject {
         return EInkPushOutcome(pushed: pushed, skipped: skipped, failure: failure, errorDetail: detail)
     }
 
-    private func readStatus(deviceID: String, key: String, generation: Int) async -> DotDeviceStatus? {
+    /// A status read reports its own failure.
+    ///
+    /// Swallowing it meant a pass whose pushes were all skipped as unchanged
+    /// returned a clean outcome while the account no longer had the device at
+    /// all — so a panel someone unpaired months ago stayed in the list with
+    /// nothing ever wrong with it.
+    private func readStatus(
+        deviceID: String,
+        key: String,
+        generation: Int
+    ) async -> (status: DotDeviceStatus?, failure: EInkSyncFailure?, detail: String?) {
         await paceRequest()
         do {
             let status = try await client.status(deviceID: deviceID, apiKey: key)
-            guard generation == configurationGeneration else { return nil }
-            return status
+            guard generation == configurationGeneration else { return (nil, nil, nil) }
+            return (status, nil, nil)
         } catch let error as DotDeviceError {
             if error.invalidatesCredential { invalidateCredential() }
-            return nil
+            return (nil, Self.failure(for: error), error.description)
         } catch {
-            return nil
+            return (nil, .network, SafeLog.sanitize(String(describing: error)))
         }
     }
 
@@ -660,9 +673,14 @@ public final class EInkSyncService: ObservableObject {
     /// will very likely succeed a second later, a rejected key or a task that
     /// is not in the loop never will, and retrying them only delays the
     /// message the user needs.
+    /// Every *attempt* claims its own slot, retries included. A wave of
+    /// transient failures across several panels retries together, and a retry
+    /// that skipped the gate would put the account straight back over the
+    /// limit it just tripped.
     private func withRetry(generation: Int, _ request: () async throws -> Void) async throws {
         for delay in retryDelays {
             do {
+                await paceRequest()
                 try await request()
                 return
             } catch let error as DotDeviceError {
@@ -671,6 +689,7 @@ public final class EInkSyncService: ObservableObject {
                 guard generation == configurationGeneration else { return }
             }
         }
+        await paceRequest()
         try await request()
     }
 
@@ -813,7 +832,15 @@ public final class EInkSyncService: ObservableObject {
     @discardableResult
     public func refreshStatus(deviceID: String) async -> DotDeviceStatus? {
         guard let key = await currentAPIKey() else { return nil }
-        guard let status = await readStatus(deviceID: deviceID, key: key, generation: configurationGeneration) else {
+        let read = await readStatus(deviceID: deviceID, key: key, generation: configurationGeneration)
+        guard let status = read.status else {
+            if let statusFailure = read.failure {
+                var state = self.state(for: deviceID)
+                state.lastFailure = statusFailure
+                state.lastError = read.detail
+                states[deviceID] = state
+                persist()
+            }
             return nil
         }
         var state = self.state(for: deviceID)

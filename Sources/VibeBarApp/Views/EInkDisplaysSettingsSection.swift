@@ -500,6 +500,12 @@ struct EInkDisplaysSettingsSection: View {
 
             Button {
                 selectedSlideID = slide.id
+                // On a single-slide device the row *is* the active-slide
+                // control: there is no other one, and picking a row that the
+                // panel then ignores is a switch that does nothing.
+                if case .single = device.playback {
+                    updateDevice(device.deviceID) { $0.playback = .single(slideID: slide.id) }
+                }
             } label: {
                 HStack(spacing: 6) {
                     Text(slideDisplayName(slide))

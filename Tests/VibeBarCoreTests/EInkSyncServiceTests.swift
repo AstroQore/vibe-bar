@@ -26,6 +26,7 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
     /// list means every push succeeds.
     var sendErrors: [DotDeviceError] = []
     var listError: DotDeviceError?
+    var statusError: DotDeviceError?
 
     var pushes: [Push] {
         lock.lock(); defer { lock.unlock() }
@@ -51,7 +52,9 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
     func status(deviceID: String, apiKey: String) async throws -> DotDeviceStatus {
         lock.lock()
         statusCallCount += 1
+        let error = statusError
         lock.unlock()
+        if let error { throw error }
         return status
     }
 
@@ -553,6 +556,57 @@ final class EInkSyncServiceTests: XCTestCase {
         let quotaOnly = await assembler.assemble(now: EInkFixtures.referenceDate, includeUsage: false)
         XCTAssertFalse(quotaOnly.usageUnavailable)
         XCTAssertEqual(quotaOnly.snapshot.quota.count, 1)
+    }
+
+    func testAStatusFailureIsReportedEvenWhenEveryPushWasSkipped() async {
+        let client = FakeDotClient()
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertNil(sync.state(for: "panel-1").lastFailure)
+
+        // The account drops the device. Every push is skipped as unchanged, so
+        // only the status read can notice.
+        client.statusError = .deviceNotFound(deviceID: "panel-1")
+        let outcome = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(outcome.pushed, 0)
+        XCTAssertEqual(outcome.skipped, 1)
+        XCTAssertEqual(outcome.failure, .deviceMissing)
+        XCTAssertEqual(sync.state(for: "panel-1").lastFailure, .deviceMissing)
+    }
+
+    func testARetryClaimsItsOwnSlotInTheAccountBudget() async {
+        let client = FakeDotClient()
+        client.sendErrors = [.rateLimited]
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a")),
+            retryDelays: [.milliseconds(1)]
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        let stamps = client.pushes.map(\.at)
+        XCTAssertEqual(stamps.count, 2)
+        XCTAssertGreaterThanOrEqual(
+            stamps[1].timeIntervalSince(stamps[0]),
+            0.1,
+            "a retry must queue behind the same gate as a first attempt"
+        )
+    }
+
+    func testAMissingLedgerRefusesRatherThanReportingZeroUsage() async {
+        let assembler = EInkDataAssembler(
+            quotaLookup: { _ in nil },
+            usage: EInkEmptyUsageSource(),
+            allTimeCostSnapshots: { [] },
+            calendar: EInkFixtures.calendar()
+        )
+        let withUsage = await assembler.assemble(now: EInkFixtures.referenceDate, includeUsage: true)
+        XCTAssertTrue(withUsage.usageUnavailable, "a panel must not print $0 for a ledger that never opened")
+
+        let quotaOnly = await assembler.assemble(now: EInkFixtures.referenceDate, includeUsage: false)
+        XCTAssertFalse(quotaOnly.usageUnavailable)
     }
 
     // MARK: - Keep set

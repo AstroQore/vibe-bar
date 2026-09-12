@@ -22,6 +22,11 @@ struct EInkApiKeyField: View {
     @State private var hasStored = false
     @State private var saveError: String?
     @State private var isWorking = false
+    /// Bumped by every save or clear. The initial probe publishes only if it
+    /// is still the newest word on the subject — a slow "no key" read landing
+    /// after a successful save would otherwise set the mirror back to false
+    /// and disable syncing with the key sitting in the Keychain.
+    @State private var mutation = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -60,9 +65,11 @@ struct EInkApiKeyField: View {
         // pane that blocks its first frame on that is the stall AGENTS.md § 7
         // treats as a bug.
         .task {
+            let started = mutation
             let present = await Task.detached(priority: .userInitiated) {
                 EInkCredentialStore.hasAPIKey()
             }.value
+            guard started == mutation, !isWorking else { return }
             hasStored = present
             if present != mirroredPresence { onChange(present) }
         }
@@ -74,6 +81,7 @@ struct EInkApiKeyField: View {
     private func save() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isWorking else { return }
+        mutation += 1
         isWorking = true
         Task {
             let wrote = await Task.detached(priority: .userInitiated) {
@@ -93,6 +101,7 @@ struct EInkApiKeyField: View {
 
     private func clear() {
         guard !isWorking else { return }
+        mutation += 1
         isWorking = true
         Task {
             let present = await Task.detached(priority: .userInitiated) { () -> Bool in
