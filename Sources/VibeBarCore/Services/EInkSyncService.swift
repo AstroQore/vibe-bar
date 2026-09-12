@@ -413,8 +413,18 @@ public final class EInkSyncService: ObservableObject {
     private func cancelLoops() {
         for loop in refreshLoops.values { loop.cancel() }
         for loop in carouselLoops.values { loop.cancel() }
+        // A deadline outlives the loop that promised it otherwise. `restart`
+        // puts a new one back as soon as its first pass parks; when syncing or
+        // the device has just been switched off, no loop is coming and the
+        // pane should say nothing rather than name a time.
+        var cleared = false
+        for id in refreshLoops.keys where states[id]?.nextRefreshAt != nil {
+            states[id]?.nextRefreshAt = nil
+            cleared = true
+        }
         refreshLoops.removeAll()
         carouselLoops.removeAll()
+        if cleared { persist() }
     }
 
     private func restartLoops() {
@@ -434,6 +444,12 @@ public final class EInkSyncService: ObservableObject {
                         _ = await self.refresh(deviceID: id)
                     }
                     let interval = await self.refreshInterval(for: id)
+                    // The pass above is an await, and a settings change can
+                    // cancel this loop while it runs. Recording a deadline now
+                    // would publish a time for a sleep that throws on its
+                    // first instruction, and if nothing replaces this loop it
+                    // would sit in the pane forever.
+                    if Task.isCancelled { return }
                     await self.noteNextRefresh(deviceID: id, after: interval)
                     do {
                         try await Task.sleep(for: .seconds(interval))

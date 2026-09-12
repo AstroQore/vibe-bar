@@ -989,6 +989,32 @@ final class EInkSyncServiceTests: XCTestCase {
         )
     }
 
+    func testTurningSyncOffRetiresTheDeadlineItWillNotKeep() async {
+        let client = FakeDotClient()
+        let config = device(
+            slides: [slide("a")],
+            taskKeys: ["k1"],
+            playback: .single(slideID: "a")
+        )
+        let sync = service(client: client, device: config)
+        sync.start()
+        defer { sync.stop() }
+        for _ in 0..<200 {
+            if sync.state(for: "panel-1").nextRefreshAt != nil { break }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertNotNil(sync.state(for: "panel-1").nextRefreshAt)
+
+        sync.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: false, devices: [config]),
+            layouts: [:]
+        )
+        XCTAssertNil(
+            sync.state(for: "panel-1").nextRefreshAt,
+            "no loop is coming, so the pane must not name a time"
+        )
+    }
+
     func testTheCarouselDoesNotRedrawADeviceTurnedOffWhileItWaited() async {
         let client = FakeDotClient()
         var config = device(
