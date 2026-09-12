@@ -1084,6 +1084,33 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(resumed.skipped, 0)
     }
 
+    func testARejectedKeyDoesNotRollBackAStatusThatLandedMeanwhile() async {
+        let client = FakeDotClient()
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        client.sendDelay = .milliseconds(400)
+        client.sendErrors = [.unauthorized]
+        async let failing: Void = { _ = await sync.pushNow(deviceID: "panel-1") }()
+
+        // The pane's own status read finishes while the doomed write is still
+        // on the wire, so it owns the labels, the render URL and this stamp.
+        try? await Task.sleep(for: .milliseconds(60))
+        let status = await sync.refreshStatus(deviceID: "panel-1")
+        XCTAssertNotNil(status)
+        let stamped = sync.state(for: "panel-1").lastStatusAt
+        XCTAssertNotNil(stamped)
+
+        _ = await failing
+        XCTAssertTrue(sync.state(for: "panel-1").pushedDigests.isEmpty)
+        XCTAssertEqual(
+            sync.state(for: "panel-1").lastStatusAt,
+            stamped,
+            "the 401 knows about the digests and nothing else; its snapshot predates this read"
+        )
+    }
+
     func testACancelLandingAfterTheLastWriteSkipsTheStatusRead() async {
         let client = FakeDotClient()
         // The first paced request goes straight through, so the single canvas

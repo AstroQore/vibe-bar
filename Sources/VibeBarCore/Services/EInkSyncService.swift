@@ -747,16 +747,22 @@ public final class EInkSyncService: ObservableObject {
                 }
                 if error.invalidatesCredential {
                     guard credentialGeneration == credentialAtStart else { break }
-                    // Commit the cleared digests before `record`, which reads
-                    // `self.states` again and would otherwise hand the old
-                    // digests straight back. The panel's content is unknown
-                    // from here on — whatever the rejected key failed to write
-                    // may still have changed — so the next pass with a working
-                    // key has to redraw every slide rather than skip one as
-                    // unchanged.
-                    state.pushedDigests.removeAll()
+                    // Clear the digests on the *stored* state, not on this
+                    // pass's snapshot. `record` below reads `self.states`
+                    // again, so clearing only the local copy never landed —
+                    // but committing the whole snapshot over the stored one
+                    // would be worse, because a status read that finished
+                    // while the write was on the wire owns the power and
+                    // Wi-Fi labels, `lastStatusAt` and the render URL, and
+                    // this snapshot predates all of them. The digests are the
+                    // one field this pass has the newer answer for: the panel
+                    // is in an unknown state from here, so the next pass with
+                    // a working key redraws everything rather than skipping a
+                    // slide as unchanged.
                     if generation == configurationGeneration {
-                        states[deviceID] = state.committing(over: self.state(for: deviceID))
+                        var latest = self.state(for: deviceID)
+                        latest.pushedDigests.removeAll()
+                        states[deviceID] = latest
                     }
                     invalidateCredential(from: credentialAtStart)
                     return record(deviceID: deviceID, failure: .unauthorized, detail: nil, generation: generation)
