@@ -676,8 +676,7 @@ public final class EInkSyncService: ObservableObject {
         // the state remembers which bucket so a relaunch does not push the
         // same news again. `border: 1` rides on every payload while it stands,
         // which is what turns the screen's frame black.
-        let snapshotForAlert = assembly.snapshot
-        let alertingFieldID = EInkAlertEvaluator.offendingFieldID(device: device, snapshot: snapshotForAlert)
+        let alertingFieldID = EInkAlertEvaluator.offendingFieldID(device: device, snapshot: assembly.snapshot)
         let alertIsNew = alertingFieldID != nil && alertingFieldID != state.alertingFieldID
         state.alertingFieldID = alertingFieldID
         let border = alertingFieldID == nil ? 0 : 1
@@ -686,7 +685,7 @@ public final class EInkSyncService: ObservableObject {
         // behind the panel just jumped: redraw now rather than at the end of
         // the cadence.
         let boundaryPassed = EInkAlertEvaluator.resetBoundaryPassed(recorded: state.nextResetAt, now: clock())
-        state.nextResetAt = EInkAlertEvaluator.nextResetAt(snapshotForAlert, after: clock())
+        state.nextResetAt = EInkAlertEvaluator.nextResetAt(assembly.snapshot, after: clock())
 
         await writeQuietHours(device: device, key: key, state: &state, generation: generation)
 
