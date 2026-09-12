@@ -256,6 +256,35 @@ systemd 的 Linux 机器上受支持的 CLI 日志，无需开放入站端口。
 安装、纳管、更新、回滚和端到端加密模型见
 [远端探针指南](https://vibebar.aqor.io/docs/zh/guide/remote-probes)。
 
+## 墨水屏（Dot. Quote/0）
+
+Vibe Bar 可以把配额和用量画到 **Dot. Quote/0** 墨水屏上，并按计划保持更新。数据
+和 popover 里的是同一份，只是为一块隔着半张桌子去看的 296 × 152 电子墨水屏重新
+排版：一共八个预设——配额的 **Ledger**、**Rings**、**Rail**，用量的
+**Usage Tiles**、**Split**、**Table**、**Dual**、**Trend**——每个都支持四个方向，
+可以只显示**单张**，也可以用**轮播**在多张之间切换。设置页会按 1:1 预览每一张，
+真正推送之前你就能看到效果；而且只有内容确实变了才会推送，数字没变的面板不会被
+叫醒重画一遍。
+
+**有两件事必须先在 Dot. App 里做好**，这两件都不能从 Vibe Bar 这边创建：
+
+1. **一个 API Key**，在 Dot. App 的开发者设置里创建。
+2. **在设备的 LOOP 任务里，为每一张要轮播的幻灯片各加一个「Canvas API」条目。**
+   接口只能往已经存在的位置里写，建不出新的；**固定任务不行**，必须是 LOOP 任务，
+   即使只放一张也需要一个 Canvas API 条目。Vibe Bar 会扫描 loop 并告诉你找到了
+   几个，你补齐之后重新扫描即可。
+
+Key 直接存进 **macOS 钥匙串**，别的地方都没有：设置文件里只记录「有没有 key」这
+一件事。这个功能在本地只多出一个文件 `~/.vibebar/eink_state.json`，里面是上次推
+送了什么、面板上次报告的状态——不含 key，也不含 key 的前缀。
+
+**刷新节奏跟着面板自己的供电走。** 接着 USB 时每 15 分钟刷新一次；一旦设备报告
+自己在用电池，间隔就拉长到 60 分钟——一块靠电池的屏，一小时重画四次撑不过一周。
+两个数值都可以自己改，**Push now** 则完全不理会计划。
+
+屏幕上的文字是英文，而且写全——是 "5 Hours"，不是 "5h"。设备没有语言设置，让人
+隔着房间去猜一个缩写，比多占那几个像素更贵。
+
 ## Vibe Bar 会读取什么
 
 | 页面 | 配额与状态 | 成本与活动 |
@@ -400,6 +429,7 @@ Vibe Bar 没有遥测管线，也没有托管的明文分析后端。本地与�
 ├── remote_core.json
 ├── remote_usage.sqlite3
 ├── cost_history.json
+├── eink_state.json
 └── mcp.sock            （仅在应用运行时存在，权限 0600）
 ```
 
@@ -410,12 +440,16 @@ Vibe Bar 没有遥测管线，也没有托管的明文分析后端。本地与�
   `~/.vibebar/skill_backups/`。
 - Vibe Bar 自己的 Cookie 与服务商密钥保存在一个带版本的 Keychain Vault 里，而不是
   每个密钥一条、各自弹窗的 Keychain 条目。
+- 墨水屏是唯一会写到这台 Mac 之外的功能，而且只写你自己配对过的面板。Dot. API Key
+  存在 Keychain Vault 里；`eink_state.json` 只记录上次画了什么、面板上次报告的状态，
+  除此之外没有任何东西离开本机。
 - Privacy Mode 会清除衍生的成本数据，并在开启期间不把成本历史落盘。保留期可配置，
   Cost Data 也可以手动清除。
 
 Vibe Bar 有意**不启用 App Sandbox**：浏览器 Cookie 导入和本地 AntiGravity Language
 Server 探测需要沙盒禁止的能力。应用开源，只读取需要的服务商输入；写入范围限定在
-`~/.vibebar/`、Keychain Vault 和上面明确列出的 Skills allowlist。完整取舍见
+`~/.vibebar/`、Keychain Vault、上面明确列出的 Skills allowlist，以及一块你自己配对
+的墨水屏。完整取舍见
 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox)。
 
 ## 安装

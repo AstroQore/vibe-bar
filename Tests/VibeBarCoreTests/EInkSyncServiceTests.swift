@@ -955,6 +955,30 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(sync.state(for: "panel-1").pushedDigests.count, 3)
     }
 
+    func testACarouselTickLeavesTheNextRefreshDeadlineAlone() async {
+        let client = FakeDotClient()
+        let sync = service(
+            client: client,
+            device: device(
+                slides: [slide("a"), slide("b")],
+                taskKeys: ["k1"],
+                playback: .carousel(driver: .appTimer, secondsPerSlide: 30)
+            )
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        let scheduled = sync.state(for: "panel-1").nextRefreshAt
+        XCTAssertNotNil(scheduled, "a scheduled pass is what sets the deadline")
+
+        let before = client.pushes.count
+        await sync.advanceCarousel(deviceID: "panel-1")
+        XCTAssertGreaterThan(client.pushes.count, before, "the tick still has to draw the next slide")
+        XCTAssertEqual(
+            sync.state(for: "panel-1").nextRefreshAt,
+            scheduled,
+            "the data-refresh loop kept its original sleep, so the pane must not promise a later time"
+        )
+    }
+
     func testTheCarouselDoesNotRedrawADeviceTurnedOffWhileItWaited() async {
         let client = FakeDotClient()
         var config = device(
@@ -993,6 +1017,58 @@ final class EInkSyncServiceTests: XCTestCase {
         client.sendErrors = []
         _ = await sync.refresh(deviceID: "panel-1")
         XCTAssertEqual(client.pushes.count, 0, "a rejected key must stop pushing until it is replaced")
+    }
+
+    func testARejectedKeyForgetsWhatThePanelWasShowing() async {
+        let client = FakeDotClient()
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(sync.state(for: "panel-1").pushedDigests.count, 1)
+
+        client.sendErrors = [.unauthorized]
+        let rejected = await sync.pushNow(deviceID: "panel-1")
+        XCTAssertEqual(rejected.failure, .unauthorized)
+        XCTAssertTrue(
+            sync.state(for: "panel-1").pushedDigests.isEmpty,
+            "the cleared digests have to be committed before `record` reads the stored state again"
+        )
+
+        // And the consequence: with a working key the panel is redrawn rather
+        // than skipped as unchanged, because nothing here knows what it is
+        // showing after a pass that failed halfway.
+        client.reset()
+        client.devices = [DotDevice(id: "panel-1", alias: "Quote 1", model: "quote_0")]
+        _ = try? await sync.fetchDevices()
+        XCTAssertFalse(sync.credentialInvalid)
+        let resumed = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(resumed.pushed, 1)
+        XCTAssertEqual(resumed.skipped, 0)
+    }
+
+    func testACancelLandingAfterTheLastWriteSkipsTheStatusRead() async {
+        let client = FakeDotClient()
+        // The first paced request goes straight through, so the single canvas
+        // write lands at once and the run is then parked in `paceRequest`
+        // waiting for its turn to read status — the window this covers.
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a")),
+            requestSpacing: .milliseconds(600)
+        )
+        async let running: Void = { _ = await sync.refresh(deviceID: "panel-1") }()
+        try? await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(client.pushes.count, 1, "the write should already be through")
+        sync.cancelRun(deviceID: "panel-1")
+        _ = await running
+
+        XCTAssertEqual(client.statusReads, 0, "a cancelled run must not spend another request")
+        XCTAssertNil(
+            sync.state(for: "panel-1").lastFailure,
+            "the client folds a cancelled transfer into `.network`, so the read would commit a failure nobody caused"
+        )
     }
 
     func testATaskMissingFromTheLoopBecomesItsOwnGuidanceRatherThanANetworkError() async {
@@ -1302,6 +1378,24 @@ final class EInkSyncServiceTests: XCTestCase {
         )
         XCTAssertEqual(merged.map(\.deviceID), ["panel-1"])
         XCTAssertEqual(merged[0].slides.map(\.id), ["a"])
+    }
+
+    func testAStatusReadThatWorkedClearsTheWarningItDisproves() async {
+        let client = FakeDotClient()
+        client.sendErrors = [.taskNotInLoop]
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(sync.state(for: "panel-1").lastFailure, .taskMissing)
+
+        // A device with its switch off has no automatic pass coming, so the
+        // pane's own status read is the only thing that can retire the notice.
+        let status = await sync.refreshStatus(deviceID: "panel-1")
+        XCTAssertNotNil(status)
+        XCTAssertNil(sync.state(for: "panel-1").lastFailure)
+        XCTAssertNil(sync.state(for: "panel-1").lastError)
     }
 
     func testASuccessfulReadLiftsARejectionAndRestartsSyncing() async {

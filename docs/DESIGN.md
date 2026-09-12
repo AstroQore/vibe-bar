@@ -86,7 +86,55 @@ Do not remove either, do not copy them. No other view in the app may
 call `.glassEffect` or use `.regularMaterial` / `.ultraThinMaterial`. If
 you find one, it is a regression.
 
-## 4. Where the tokens live
+## 4. Paper surfaces
+
+The e-ink preview and the Layout Studio's canvas are the one place in
+the app that is not drawing Vibe Bar's own language. They are drawing a
+**panel**: a 296 × 152 electrophoretic display with two states per
+pixel and no backlight. The rule is simple — the preview shows what the
+device will show, and anything the device cannot do, the preview must
+not do either.
+
+- **White ground, black ink.** Two colours, no greys standing in for a
+  third. The panel has no alpha; a 40 %-opacity rule on screen becomes
+  either a line or nothing on glass, and guessing which one is how a
+  preview starts lying. Theme tokens do not apply here: paper is white
+  in dark mode too, because the panel is.
+- **Lines are 1 px.** Not `Theme.Card.hairlineWidth`, not a device
+  pixel at 2×, not a fraction — one panel pixel, drawn at whatever the
+  preview's scale multiplies it to. Rules, rings, and borders all.
+- **The pixel font is 12 px and only 12 px.** Fusion Pixel is a bitmap
+  design; at any other size it is resampled and stops being the face
+  the device draws. `EInkFonts.pixelPointSize` is the one value.
+- **The proportional sizes are a list, not a range.**
+  `EInkFonts.sansPointSizes` — 13, 14, 16, 18, 24, 32 — are the sizes
+  the device's `text-[Npx]-chillduansans` classes cover. A layout that
+  wants 15 px picks 14 or 16; it does not invent one, because the panel
+  would round it and the preview would not.
+- **No shadow, no blur, no glass, no gradient, no corner radius the
+  device does not have.** § 3's two exceptions are floating surfaces
+  over live content; paper is neither floating nor live. A rounded card
+  under a preview is fine — the preview itself is a rectangle.
+- **Selection is a dashed 1 px outline**, drawn *outside* the element's
+  own box so it never covers ink, and it lives only in the Studio. It
+  is editing chrome, not content: nothing dashed is ever encoded.
+- **Previews scale with nearest-neighbour.** 1×, 2× and 3× multiply
+  whole pixels (`.interpolation(.none)` on every raster, `scaleEffect`
+  on the tree). Smoothing a pixel font or a rasterized ring at 2×
+  produces a preview that looks *better* than the panel, which is the
+  one failure mode a preview cannot have.
+- **Portrait is authored sideways.** 90° and 270° layouts are built at
+  152 × 296 and rotated into the frame by the same wrapper the encoder
+  uses, so what the preview rotates is what the device rotates.
+
+**The chrome around the paper is still Vibe Bar.** The Settings section,
+the device rows, the orientation strip, the slide list and the Studio's
+inspector are the flat card system of § 2 with the normal density
+tokens and the normal theme colours. The break in language stops at the
+edge of the panel, and that edge is visible: the preview sits on a
+flat card like any other content.
+
+## 5. Where the tokens live
 
 | File | Owns |
 | --- | --- |
@@ -98,7 +146,7 @@ The `WorkbenchPorcelain` name is historical — it once meant a
 soft-shadowed "porcelain" direction. It is now just the Workbench's
 chrome namespace, and it deliberately owns no card tokens.
 
-## 5. How to add a card
+## 6. How to add a card
 
 ```swift
 CardShell(density: density) {
@@ -121,7 +169,7 @@ That is the whole recipe. Then:
 - Do not add `.shadow`, `.glassEffect`, or a material. Do not draw a
   second surface under a view the caller already wrapped in a card.
 
-## 6. Review checklist
+## 7. Review checklist
 
 - `grep -rln "glassEffect\|regularMaterial\|ultraThinMaterial" Sources/`
   returns exactly two files: `MiniQuotaWindowView` and

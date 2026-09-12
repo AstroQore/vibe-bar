@@ -715,7 +715,17 @@ public final class EInkSyncService: ObservableObject {
                 }
                 if error.invalidatesCredential {
                     guard credentialGeneration == credentialAtStart else { break }
+                    // Commit the cleared digests before `record`, which reads
+                    // `self.states` again and would otherwise hand the old
+                    // digests straight back. The panel's content is unknown
+                    // from here on — whatever the rejected key failed to write
+                    // may still have changed — so the next pass with a working
+                    // key has to redraw every slide rather than skip one as
+                    // unchanged.
                     state.pushedDigests.removeAll()
+                    if generation == configurationGeneration {
+                        states[deviceID] = state.committing(over: self.state(for: deviceID))
+                    }
                     invalidateCredential(from: credentialAtStart)
                     return record(deviceID: deviceID, failure: .unauthorized, detail: nil, generation: generation)
                 }
@@ -727,6 +737,30 @@ public final class EInkSyncService: ObservableObject {
             }
         }
 
+        // Cancel can also arrive once the last write is already through, with
+        // the loop finished and nothing left to break out of.
+        if !aborted, Task.isCancelled { aborted = true }
+
+        // One status read per pass, after the writes: it is what gives the UI
+        // the power state (and therefore the next cadence), the Wi-Fi line,
+        // and the render the device is actually showing.
+        var statusRead: (status: DotDeviceStatus?, failure: EInkSyncFailure?, detail: String?) = (nil, nil, nil)
+        if !aborted {
+            statusRead = await readStatus(
+                deviceID: deviceID,
+                key: key,
+                keyGeneration: credentialAtStart,
+                generation: generation
+            )
+            // The pacing gate ahead of that request is a wait like any other,
+            // and Cancel lands inside it far more often than anywhere else —
+            // it is where a pass spends most of its time. `paceRequest`
+            // returns rather than throwing, so ask again: the client folds a
+            // cancelled transfer into `.network`, and committing that would
+            // leave a network failure behind for a run the user stopped.
+            if Task.isCancelled { aborted = true }
+        }
+
         if aborted {
             guard generation == configurationGeneration else { return EInkPushOutcome() }
             // Whatever did go out keeps its digest; nothing else is claimed.
@@ -735,15 +769,6 @@ public final class EInkSyncService: ObservableObject {
             return EInkPushOutcome(pushed: pushed, skipped: skipped)
         }
 
-        // One status read per pass, after the writes: it is what gives the UI
-        // the power state (and therefore the next cadence), the Wi-Fi line,
-        // and the render the device is actually showing.
-        let statusRead = await readStatus(
-            deviceID: deviceID,
-            key: key,
-            keyGeneration: credentialAtStart,
-            generation: generation
-        )
         if let status = statusRead.status {
             state.apply(status)
             state.lastStatusAt = clock()
@@ -754,14 +779,22 @@ public final class EInkSyncService: ObservableObject {
         state.lastFailure = failure
         state.lastError = detail
         state.surplusTaskCount = plan.surplusTaskCount
-        state.nextRefreshAt = clock().addingTimeInterval(
-            TimeInterval(
-                max(
-                    EInkDeviceConfig.minimumDataRefreshMinutes,
-                    state.onBattery ? device.batteryRefreshMinutes : device.dataRefreshMinutes
-                ) * 60
+        // Only a scheduled pass moves the deadline, because only a scheduled
+        // pass is followed by a sleep. A forced push — the Push now button, a
+        // carousel tick — runs beside the data-refresh loop without resetting
+        // its timer, so writing a fresh deadline here made Settings promise a
+        // next refresh the loop was never going to honour: the loop was still
+        // sleeping out the interval it started before the button was pressed.
+        if !force {
+            state.nextRefreshAt = clock().addingTimeInterval(
+                TimeInterval(
+                    max(
+                        EInkDeviceConfig.minimumDataRefreshMinutes,
+                        state.onBattery ? device.batteryRefreshMinutes : device.dataRefreshMinutes
+                    ) * 60
+                )
             )
-        )
+        }
 
         guard generation == configurationGeneration else { return EInkPushOutcome() }
         // Merge, never replace. This snapshot was taken before the network
@@ -792,6 +825,10 @@ public final class EInkSyncService: ObservableObject {
         // must not stop the new one's loops.
         let credentialAtStart = keyGeneration
         await paceRequest()
+        // `paceRequest` returns on cancellation instead of throwing, so
+        // without this the request a cancelled run was queued for still went
+        // out — and the answer, cancelled in turn, came back as `.network`.
+        guard !Task.isCancelled else { return (nil, nil, nil) }
         do {
             let status = try await client.status(deviceID: deviceID, apiKey: key)
             guard generation == configurationGeneration else { return (nil, nil, nil) }
@@ -1117,8 +1154,20 @@ public final class EInkSyncService: ObservableObject {
         var state = self.state(for: deviceID)
         state.apply(status)
         state.lastStatusAt = clock()
+        // A status read that came back is proof the device is reachable and
+        // the key works, so the old warning goes with it. A disabled device
+        // has no automatic pass to clear one, and a stale "no route to the
+        // panel" sitting under a live status line is worse than no line at
+        // all — it is a warning about a condition that has already gone.
+        state.lastFailure = nil
+        state.lastError = nil
         states[deviceID] = state
         persist()
+        // Same reasoning as `fetchDevices` and `rescanTasks`: a call that
+        // worked proves the key does. Clearing the visible warning without
+        // this would leave the standing rejection in place with nothing left
+        // on screen to explain why nothing is syncing.
+        clearCredentialRejection(from: keyGeneration)
         return status
     }
 

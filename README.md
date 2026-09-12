@@ -290,6 +290,44 @@ See the [Remote Probe guide](https://vibebar.aqor.io/docs/guide/remote-probes)
 for installation, enrollment, updates, rollback and the end-to-end encryption
 model.
 
+## E-ink displays (Dot. Quote/0)
+
+Vibe Bar can draw your quota and usage on a **Dot. Quote/0** panel and keep it
+up to date on a schedule. It is the same data the popover shows, laid out for a
+296 × 152 electrophoretic display you read across a desk: eight presets —
+**Ledger**, **Rings**, **Rail** for quota; **Usage Tiles**, **Split**,
+**Table**, **Dual**, **Trend** for usage — each in any of the four
+orientations, shown as a **single** slide or as a **carousel** that rotates
+through several. Settings previews every slide at 1:1 before anything is sent,
+and only pushes when the panel's content has actually changed, so a panel
+showing the same numbers is not woken to redraw them.
+
+**Two things have to exist in the Dot. app first**, and neither can be created
+from here:
+
+1. **An API key**, from the Dot. app's developer settings.
+2. **One "Canvas API" item in the device's LOOP task, per slide you want in
+   the carousel.** The API writes into a slot that already exists; it cannot
+   add one. A *fixed* task will not work — it has to be the LOOP task — and a
+   single-slide setup still needs one Canvas API item. Vibe Bar scans the loop
+   and tells you how many it found, so you can add the rest and re-scan.
+
+The key goes straight into the **macOS Keychain** and nowhere else: the
+settings file records only that a key exists. Vibe Bar's own state for the
+feature is one file, `~/.vibebar/eink_state.json`, which holds what was last
+pushed and the panel's last reported status — never the key, never the key's
+prefix.
+
+**Cadence follows the panel's own power.** On USB power it refreshes every
+15 minutes; as soon as the device reports it is running on its battery, the
+interval stretches to 60 minutes, because a panel that redraws four times an
+hour on a cell does not last the week. Both numbers are yours to change, and
+**Push now** ignores the schedule entirely.
+
+Text on the panel is English and written out in full — "5 Hours", not "5h".
+The device has no language setting, and a word you have to decode from across
+the room costs more than the pixels it saves.
+
 ## What Vibe Bar reads
 
 | Surface | Quota and status | Cost and activity |
@@ -461,6 +499,7 @@ audit metadata only. Derived state stays under:
 ├── remote_core.json
 ├── remote_usage.sqlite3
 ├── cost_history.json
+├── eink_state.json
 └── mcp.sock            (only while the app runs, mode 0600)
 ```
 
@@ -472,14 +511,18 @@ audit metadata only. Derived state stays under:
   config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
+- E-ink displays are the only feature that writes anywhere other than this
+  Mac, and only to a panel you paired yourself. The Dot. API key lives in the
+  Keychain Vault; `eink_state.json` holds what was last drawn and the panel's
+  last reported status, and nothing else leaves.
 - Privacy Mode clears derived cost data and keeps cost history off disk while
   enabled. Retention is configurable, and Cost Data can be cleared manually.
 
 Vibe Bar intentionally runs **without the App Sandbox**: browser-cookie
 import and the local AntiGravity language-server probe require capabilities
 the sandbox blocks. The app is open source and reads only the provider inputs
-it needs; writes stay under `~/.vibebar/`, the Keychain Vault, and the explicit
-Skills allowlist above. See
+it needs; writes stay under `~/.vibebar/`, the Keychain Vault, the explicit
+Skills allowlist above, and a paired e-ink panel. See
 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox) for the
 full trade-off.
 

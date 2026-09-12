@@ -15,7 +15,7 @@ Humans are welcome here too. The shorter, human-focused version is
 | [AGENTS.md](AGENTS.md) (this file) | AI agents (and curious humans) | Comprehensive operating manual: orientation, build, conventions, home-directory rule, PR, release. |
 | [AGENT-DEPLOY.md](AGENT-DEPLOY.md) | AI agents | Focused "clone → build → smoke-test → optional install" walkthrough. |
 | [AGENT-PR.md](AGENT-PR.md) | AI agents | Focused "branch → verify → push → open PR" walkthrough. |
-| [docs/DESIGN.md](docs/DESIGN.md) | Anyone touching UI | The visual language: the one flat card recipe, density profiles, where the tokens live, and the two Liquid Glass exceptions (the mini window, the Layout Studio's chrome). |
+| [docs/DESIGN.md](docs/DESIGN.md) | Anyone touching UI | The visual language: the one flat card recipe, density profiles, where the tokens live, and the two Liquid Glass exceptions (the mini window, the Layout Studio's chrome), and the paper surfaces the e-ink preview draws. |
 | [RELEASING.md](RELEASING.md) | Maintainers | Tag → verified asset → draft GitHub Release, with optional Developer ID notarization. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Humans | Short version of this file's project rules. |
 | [SECURITY.md](SECURITY.md) | Anyone | Security disclosure policy and what not to paste in reports. |
@@ -79,19 +79,17 @@ Single SwiftPM package, two product targets and one test target:
 │       ├── Models/                # Plain data types (settings, quotas, cost)
 │       ├── Services/              # Cost scanner, quota refresh, status fetch
 │       ├── Storage/               # Local-store roots, caches, settings
-│       ├── Localization/          # L10n + the generated typed API (§ 7.2)
-│       ├── Resources/             # pricing.json + the <lang>.lproj catalogs
-│       ├── Utilities/             # Privacy helpers, formatters
+│       ├── Localization/          # Re-export of the pinned string package (§ 7.2)
+│       ├── Resources/             # pricing.json
+│       │   └── Fonts/             # E-ink preview faces (§ 7, THIRD_PARTY_NOTICES.md)
+│       ├── Utilities/             # Privacy helpers, formatters, canvas encoder
 │       └── Vendored/
 ├── Tests/
-│   └── VibeBarCoreTests/          # `swift test` target (~90 tests)
+│   └── VibeBarCoreTests/          # `swift test` target
 ├── Resources/
 │   ├── Info.plist                 # Bundle ID, version, LSUIElement, CFBundleLocalizations
 │   ├── VibeBar.entitlements       # Empty plist — vibe-bar runs unsandboxed (see § 6)
-│   ├── i18n/                      # Source of truth for every string (§ 7.2)
-│   │   ├── en.json / zh-Hans.json # Named placeholders, ICU plurals; no printf
-│   │   ├── _glossary.json         # The never-translate list, as data
-│   │   └── _schema.json           # What an entry may contain
+│   ├── ThirdPartyLicenses/        # Verbatim licenses for bundled art and fonts
 │   └── AppIcon.icns / AppIcon.png
 ├── Scripts/
 │   ├── build_app.sh               # App packaging + nested codesign
@@ -862,6 +860,59 @@ capture against § 8 before committing it — a screenshot is source content.
   discovery, SSOT copy, and materialization the Workbench uses. An agent
   can therefore reach no path a user could not, and the gate on it is a
   settings toggle, not a second implementation.
+- **E-ink displays are the one path that writes off this Mac.** Every
+  other feature reads the network and writes the local disk; this one
+  draws on hardware sitting on someone's desk, so the boundaries are
+  narrow and none of them is optional. The only code that reaches a
+  panel is `EInkSyncService`, and it reaches it only through
+  `DotDeviceClient` — no new call site talks to `dot.mindreset.tech`,
+  and nothing outside the service decides when a write happens. The API
+  key lives in the credential vault behind `EInkCredentialStore` and is
+  read through it every time; it is never copied into `AppSettings`,
+  never written to `~/.vibebar/`, and never logged, not even truncated.
+  The only new file on disk is `~/.vibebar/eink_state.json` through
+  `VibeBarLocalStore.einkStateURL` — pushed digests, the last status,
+  and the read-back render URL, nothing the panel drew. The read-back
+  thumbnail is fetched only over HTTPS from `os-cdn.mindreset.tech`,
+  bounded, and without the bearer token: the URL comes out of a
+  response body, and a body does not get to pick who receives the key.
+
+  **Text on the device is English and written out in full.** The panel
+  is not a localized surface — it has one owner, no language setting of
+  its own, and no way to ask what a glyph meant — so device-drawn
+  strings stay in English and out of the i18n catalog even while the
+  Settings chrome around them is fully localized. They are also never
+  abbreviated: `QuotaBucket.shortLabel` ("5h", "WK") is menu-bar
+  vocabulary, and a word the reader has to decode from across a desk
+  costs more than the pixels it saves. Write "5 Hours" and "Weekly".
+
+  **Fonts.** The preview bundles two faces, both under
+  `Sources/VibeBarCore/Resources/Fonts/` and both recorded in
+  `THIRD_PARTY_NOTICES.md`. Fusion Pixel 12px is pinned to upstream
+  release `2025.08.24` — not to the newest tag — because that is the
+  release whose glyphs match what the device firmware draws for its
+  unsuffixed `text-pixel-12` class; later releases redraw `1` and `y`,
+  so moving the pin means re-verifying against a real panel first (see
+  `EInkFonts.pixelFontRelease`). The proportional faces are subsets of
+  ChillDuanSans, renamed **Vibe Bar Paper Sans** because the OFL
+  reserves the name "Duan" and a subset is a Modified Version. zpix,
+  behind the device's `text-pixel-12-zpix` class, is deliberately
+  absent: its license does not allow redistribution, so presets use the
+  unsuffixed class. Do not add it, and do not un-pin either face to
+  "get the latest".
+
+  **The Canvas API's hard limits are enforced before anything is sent**,
+  by `DotCanvasEncoder.Limits`: 80 elements, nesting depth 16, any
+  single string 4 000 characters, `windowData` 128 KB (and `data`
+  64 KB). They were measured on a Dot. Quote/0; a payload over any of
+  them is rejected locally with the violation named, because the device
+  answers an oversized write with a blank panel rather than an error.
+  A preset that needs more elements gets simplified, not raised. The
+  panel is always the 296 × 152 frame: portrait orientations are
+  authored 152 × 296 and placed by the root's rotation wrapper, which
+  centres the taller subtree and spins it about its centre. Preview and
+  device share that one code path (`DotCanvasEncoder.rootElement`), so
+  a layout that looks right at 90° in Settings is right on glass.
 - **Performance.** Avoid `TimelineView(.periodic(...))` in deep view
   trees that may be eagerly instantiated; prefer scoping to the visible
   surface. The mini window's screen position is persisted to its own
@@ -1122,7 +1173,7 @@ AstroQore/vibe-bar-i18n                 ← the only place a string is written
   implementations/swift/                ← VibeBarLocalization: L10n + .lproj, generated, committed
           │  pinned by tag
           ▼
-Package.swift  .package(url: ".../vibe-bar-i18n.git", exact: "0.2.0")
+Package.swift  .package(url: ".../vibe-bar-i18n.git", exact: "0.13.0")
 Sources/VibeBarCore  imports and re-exports VibeBarLocalization (AppLocalization.swift)
 Scripts/build_app.sh copies vibe-bar-i18n_VibeBarLocalization.bundle into Vibe Bar.app
 ```
