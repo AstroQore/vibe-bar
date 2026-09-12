@@ -1456,6 +1456,7 @@ struct LayoutStudioView: View {
                 state: .einkSlide(
                     deviceID: deviceID,
                     slideID: slideID,
+                    orientation: einkOrientation(deviceID),
                     einkSlide(deviceID: deviceID, slideID: slideID),
                     einkLayout(deviceID: deviceID, slideID: slideID)
                 )
@@ -1539,7 +1540,7 @@ struct LayoutStudioView: View {
                 settingsStore.settings = settings
             case let .menuBar(_, item):
                 settingsStore.settings.setMenuBarItem(item)
-            case let .einkSlide(deviceID, slideID, slide, layout):
+            case let .einkSlide(deviceID, slideID, orientation, slide, layout):
                 var settings = settingsStore.settings
                 // Through the slide's own key, not its id — see
                 // `einkLayoutID`. The slide is restored first so the key is
@@ -1547,7 +1548,7 @@ struct LayoutStudioView: View {
                 let layoutID = slide?.kind.layoutID.flatMap { $0.isEmpty ? nil : $0 }
                     ?? einkLayoutID(deviceID: deviceID, slideID: slideID)
                 settings.einkCanvasLayouts[
-                    EInkRenderer.layoutKey(layoutID, orientation: einkOrientation(deviceID))
+                    EInkRenderer.layoutKey(layoutID, orientation: orientation)
                 ] = layout
                 if let slide, let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }) {
                     var device = settings.einkSync.devices[index]
@@ -1558,6 +1559,9 @@ struct LayoutStudioView: View {
                 }
                 settingsStore.settings = settings
                 einkSelection = []
+                // Put the stage back on the orientation the restored layout
+                // belongs to, so the undo is visible rather than silent.
+                einkEditingOrientation = orientation
             }
         }
     }
@@ -2253,6 +2257,10 @@ struct LayoutStudioView: View {
                         snapshot: einkSnapshot,
                         report: einkReport,
                         isPushing: isPushingEInk,
+                        // The engine renders the device's *own* orientation,
+                        // so pushing while the stage shows another one would
+                        // send a panel nobody is looking at.
+                        canPush: einkOrientation(deviceID) == einkDevice(deviceID)?.orientation,
                         onPush: { pushEInk(deviceID: deviceID) }
                     )
                     .id(slideID)

@@ -49,6 +49,12 @@ struct EInkDisplaysSettingsSection: View {
     @State private var snapshot: EInkDataSnapshot?
     @State private var previews: [Int: EInkPreviewPlan] = [:]
     @State private var pickerSections: [EInkFieldSection] = []
+    /// The last custom tap address typed for a device, per device.
+    ///
+    /// `EInkTapLink` carries the string inside its `.custom` case, so picking
+    /// None or the dashboard drops it. Keeping the draft here is what makes
+    /// flipping away and back the harmless act the picker implies.
+    @State private var tapLinkDrafts: [String: String] = [:]
 
     private var sync: EInkSyncSettings { settingsStore.settings.einkSync }
 
@@ -908,15 +914,14 @@ struct EInkDisplaysSettingsSection: View {
                 }
             },
             set: { [deviceID = device.deviceID] choice in
+                if case let .custom(raw) = device.tapLink, !raw.isEmpty { tapLinkDrafts[deviceID] = raw }
                 updateDevice(deviceID) { current in
                     switch choice {
                     case .none: current.tapLink = .none
                     case .remoteDashboard: current.tapLink = .remoteDashboard
                     case .custom:
-                        // Keep whatever was typed before, so flipping away and
-                        // back does not clear the address.
                         if case .custom = current.tapLink { return }
-                        current.tapLink = .custom("")
+                        current.tapLink = .custom(tapLinkDrafts[deviceID] ?? "")
                     }
                 }
             }
@@ -930,6 +935,7 @@ struct EInkDisplaysSettingsSection: View {
                 return ""
             },
             set: { [deviceID = device.deviceID] value in
+                tapLinkDrafts[deviceID] = value
                 updateDevice(deviceID) { $0.tapLink = .custom(value) }
             }
         )

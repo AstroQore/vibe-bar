@@ -46,7 +46,7 @@ final class EInkCanvasLayoutTests: XCTestCase {
         XCTAssertEqual(placed.x, 13)
         XCTAssertEqual(placed.y, 21)
 
-        let moved = canvas.moving([id], dx: 10, dy: -6, majorGrid: true)
+        let moved = canvas.moving([id], dx: 10, dy: -6, snapping: true)
         XCTAssertEqual(moved.elements.first?.x, 21)
         XCTAssertEqual(moved.elements.first?.y, 13)
     }

@@ -198,6 +198,55 @@ final class EInkRoundTwoUITests: XCTestCase {
         XCTAssertEqual(layout.expandedSelection([ids.first!]), ids)
     }
 
+    // MARK: - Custom labels reach a custom layout
+
+    /// The Studio inspector and the slide editor both write a per-bucket name
+    /// into the slide's options. A custom layout that read the bucket's own
+    /// name instead would take the edit, store it, and keep drawing the old
+    /// name on the panel — which is the failure a settings field that "works"
+    /// and changes nothing always is.
+    func testACustomLayoutDrawsTheSlideName() {
+        var slide = EInkSlide(id: "s", kind: .custom(layoutID: "s"), quotaFieldIDs: ["claude.weekly"])
+        slide.options.customLabels = ["claude.weekly": "Claude · Weekly, mine"]
+        var element = EInkCanvasElement(kind: .text, fieldID: "claude.weekly")
+        element.textBinding = .label
+
+        XCTAssertEqual(
+            EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot, options: slide.options),
+            "Claude · Weekly, mine"
+        )
+        let node = EInkCustomLayoutRenderer.node(
+            for: element,
+            slide: slide,
+            orientation: .degrees0,
+            snapshot: snapshot
+        )
+        guard case let .text(printed, _, _)? = node?.kind else {
+            return XCTFail("a label element draws text")
+        }
+        XCTAssertEqual(printed, "Claude · Weekly, mine")
+    }
+
+    /// And the explode keeps the binding on a renamed slot rather than
+    /// freezing it: the preset prints the slide's name, so the comparison that
+    /// decides "is this still live data" has to use the same name.
+    func testExplodingARenamedSlotKeepsItBound() {
+        var slide = EInkFixtures.slide(preset: .quotaLedger, fieldIDs: ["claude.weekly", "codex.weekly"])
+        slide.options.customLabels = ["claude.weekly": "My Claude week"]
+        let layout = EInkPresetExploder.explode(
+            slide: slide,
+            orientation: .degrees0,
+            snapshot: snapshot,
+            calendar: EInkFixtures.calendar()
+        )
+        let label = layout.elements.first { $0.textBinding == .label && $0.fieldID == "claude.weekly" }
+        XCTAssertNotNil(label, "the renamed slot's name is still bound to its bucket")
+        XCTAssertEqual(
+            EInkCustomLayoutRenderer.text(for: label!, snapshot: snapshot, options: slide.options),
+            "My Claude week"
+        )
+    }
+
     // MARK: - Briefing long names
 
     private func briefingBoxes(_ rows: [EInkQuotaRow]) -> [EInkDrawBox] {

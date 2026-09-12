@@ -336,14 +336,25 @@ enum StudioUndo: Equatable {
     case page(PageLayoutPageID, StoredPageLayout?, [[String]])
     case miniWindow(UUID, MiniWindowConfig?, MiniCanvasLayout?)
     case menuBar(MenuBarItemKind, MenuBarItemSettings)
-    case einkSlide(deviceID: String, slideID: String, EInkSlide?, EInkCanvasLayout?)
+    /// The orientation is part of the record, not read back from the toolbar
+    /// when the undo runs: switching orientations is itself an undo step, so
+    /// by the time Undo is pressed the toolbar is already showing a different
+    /// panel and restoring "the current one" would write the saved layout over
+    /// an unrelated orientation's.
+    case einkSlide(
+        deviceID: String,
+        slideID: String,
+        orientation: EInkOrientation,
+        EInkSlide?,
+        EInkCanvasLayout?
+    )
 
     var subject: LayoutStudioWindowController.Subject {
         switch self {
         case let .page(page, _, _): return .popoverPage(page)
         case let .miniWindow(id, _, _): return .miniWindow(id)
         case let .menuBar(kind, _): return .menuBar(kind)
-        case let .einkSlide(deviceID, slideID, _, _): return .einkSlide(deviceID: deviceID, slideID: slideID)
+        case let .einkSlide(deviceID, slideID, _, _, _): return .einkSlide(deviceID: deviceID, slideID: slideID)
         }
     }
 }

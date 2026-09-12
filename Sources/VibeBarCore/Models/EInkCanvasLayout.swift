@@ -100,7 +100,14 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
     }
 
     /// Clamp the selection as a unit, preserving relative positions at edges.
-    public func moving(_ ids: Set<UUID>, dx: Double, dy: Double, majorGrid: Bool = false) -> Self {
+    ///
+    /// `snapping` is three-valued on purpose: `nil` follows the layout's own
+    /// toggle, `true` forces the 8 px grid and `false` forces single pixels.
+    /// A two-valued flag could say "use the grid" but not "do not" — which is
+    /// exactly what an Option-drag means now that snapping is the default, and
+    /// why holding Option used to bypass snapping while resizing and not while
+    /// moving.
+    public func moving(_ ids: Set<UUID>, dx: Double, dy: Double, snapping: Bool? = nil) -> Self {
         var copy = normalized()
         let ids = copy.expandedSelection(ids)
         let selected = copy.elements.filter { ids.contains($0.id) }
@@ -108,7 +115,7 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
         let minX = selected.map(\.x).min()!, minY = selected.map(\.y).min()!
         let maxX = selected.map { $0.x + $0.width }.max()!
         let maxY = selected.map { $0.y + $0.height }.max()!
-        let grid = majorGrid ? Self.gridSpacing : copy.step
+        let grid = snapping.map { $0 ? Self.gridSpacing : Self.pixelSpacing } ?? copy.step
         let proposedX = (dx / grid).rounded() * grid
         let proposedY = (dy / grid).rounded() * grid
         let tx = min(max(proposedX, -minX), copy.width - maxX)

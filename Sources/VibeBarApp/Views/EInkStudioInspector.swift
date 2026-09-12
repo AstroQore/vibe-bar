@@ -23,6 +23,10 @@ struct EInkStudioInspector: View {
     let snapshot: EInkDataSnapshot?
     let report: EInkLayoutDiagnostics.Report?
     let isPushing: Bool
+    /// False while the stage is showing an orientation the device is not on.
+    /// The sync engine draws `device.orientation`, so the push would send a
+    /// different panel from the one being edited.
+    var canPush: Bool = true
     var onPush: () -> Void
 
     private var selected: EInkCanvasElement? {
@@ -84,7 +88,13 @@ struct EInkStudioInspector: View {
             Button(action: onPush) {
                 Label(L10n.Settings.Eink.Studio.push, systemImage: "arrow.up.circle")
             }
-            .disabled(isPushing)
+            .disabled(isPushing || !canPush)
+            if !canPush {
+                Text(L10n.Settings.Eink.Studio.pushOtherOrientation)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

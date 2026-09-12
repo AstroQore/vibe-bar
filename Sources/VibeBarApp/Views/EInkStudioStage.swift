@@ -324,7 +324,7 @@ struct EInkStudioStage: View {
                     )
                     withAnimation(Self.snapAnimation) { preview = next.normalized() }
                 } else {
-                    let moved = base.moving(selection, dx: dx, dy: dy, majorGrid: major)
+                    let moved = base.moving(selection, dx: dx, dy: dy, snapping: major)
                     if major { withAnimation(Self.snapAnimation) { preview = moved } } else { preview = moved }
                 }
                 NSCursor.closedHand.set()
@@ -410,12 +410,14 @@ struct EInkStudioStage: View {
         dy: Int,
         major: Bool
     ) -> EInkCanvasLayout {
+        // One pixel, eight with Shift, whatever the snap toggle says: an
+        // arrow key is a measured nudge and the modifier is the whole control.
         let step = major ? EInkCanvasLayout.gridSpacing : EInkCanvasLayout.pixelSpacing
         return layout.moving(
             selection,
             dx: Double(dx) * step,
             dy: Double(dy) * step,
-            majorGrid: major
+            snapping: major
         )
     }
 }
