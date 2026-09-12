@@ -904,10 +904,12 @@ capture against § 8 before committing it — a screenshot is source content.
   **The Canvas API's hard limits are enforced before anything is sent**,
   by `DotCanvasEncoder.Limits`: 80 elements, nesting depth 16, any
   single string 4 000 characters, `windowData` 128 KB (and `data`
-  64 KB). They were measured on a Dot. Quote/0; a payload over any of
-  them is rejected locally with the violation named, because the device
-  answers an oversized write with a blank panel rather than an error.
-  A preset that needs more elements gets simplified, not raised. The
+  64 KB), plus a refusal of any literal `{{`, which the device would
+  read as its own template syntax. They were verified on a Dot. Quote/0,
+  and a payload over any of them is rejected locally with the violation
+  named rather than sent and left to the panel to interpret. A preset
+  that needs more elements gets simplified; the numbers are not raised
+  to fit it, because they are the device's, not ours. The
   panel is always the 296 × 152 frame: portrait orientations are
   authored 152 × 296 and placed by the root's rotation wrapper, which
   centres the taller subtree and spins it about its centre. Preview and
