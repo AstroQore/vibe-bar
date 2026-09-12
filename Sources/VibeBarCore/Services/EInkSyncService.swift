@@ -1319,6 +1319,11 @@ public final class EInkSyncService: ObservableObject {
     /// and, on battery, real power — redrawing the same numbers under a new
     /// clock. A panel that skips keeps the timestamp of the data it is
     /// actually showing, which is the truer label anyway.
+    ///
+    /// `border` and `link` are folded in beside the drawing. Neither is a
+    /// pixel, but both are things the *device* does — a black frame, and where
+    /// a tap goes — and a change to either with the numbers unmoved would
+    /// otherwise be skipped as "nothing new" and never reach the panel at all.
     public nonisolated static func digest(of payload: DotCanvasPayload, ignoring label: String?) -> String {
         let encoder = DotCanvasPayload.jsonEncoder()
         guard let data = try? encoder.encode(payload.windowData) else { return UUID().uuidString }
@@ -1327,6 +1332,7 @@ public final class EInkSyncService: ObservableObject {
             text = text.replacingOccurrences(of: label, with: "")
             hashed = Data(text.utf8)
         }
+        hashed.append(Data("|border:\(payload.border)|link:\(payload.link ?? "")".utf8))
         return SHA256.hash(data: hashed).map { String(format: "%02x", $0) }.joined()
     }
 }

@@ -1937,6 +1937,29 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertFalse(client.sleepWrites.last?.enabled ?? true)
     }
 
+    /// Changing where a tap goes changes nothing on screen, so the digest has
+    /// to carry it or the new link never leaves the Mac.
+    func testChangingTheTapLinkAloneStillReachesThePanel() async {
+        let client = FakeDotClient()
+        let service = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 90))
+        await service.refresh(deviceID: "panel-1")
+        let pushedFirst = client.pushes.count
+        XCTAssertGreaterThan(pushedFirst, 0)
+
+        client.reset()
+        service.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [alertDevice(tapLink: .custom("https://example.com/panel"))]
+            ),
+            layouts: [:]
+        )
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.first?.link, "https://example.com/panel")
+        XCTAssertGreaterThan(client.pushes.count, 0, "a link-only change is still a change")
+    }
+
     /// A reset just happened, so the numbers behind the panel jumped: redraw
     /// rather than sitting on the old ones for the rest of the cadence.
     func testAResetBoundaryForcesAnImmediateRedrawOnTheNextPass() {
