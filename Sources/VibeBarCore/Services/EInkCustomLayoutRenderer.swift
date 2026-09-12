@@ -382,6 +382,27 @@ public extension EInkSyncSettings {
     /// The assembler only gathers the buckets it is asked for, so a bucket
     /// that exists only inside a Studio layout would arrive missing and the
     /// element bound to it would draw nothing at all.
+    /// `referencedQuotaFieldIDs` plus every bucket a custom layout names.
+    ///
+    /// This is the *keep* set the quota registry is pruned against. A bucket
+    /// chosen only inside a Studio layout has no mini window, no menu-bar
+    /// block and no slide-level selection behind it, so without this a
+    /// provider response that briefly omits it would drop it from the
+    /// registry — and the element bound to it would lose its option while
+    /// still pointing at it.
+    func referencedQuotaFieldIDs(layouts: [String: EInkCanvasLayout]) -> Set<String> {
+        var result = referencedQuotaFieldIDs
+        for device in devices {
+            for slide in device.slides {
+                guard let layoutID = slide.kind.layoutID, let layout = layouts[layoutID] else { continue }
+                for element in layout.elements {
+                    result.formUnion(element.quotaFieldIDs)
+                }
+            }
+        }
+        return result
+    }
+
     func selectedQuotaFieldIDs(layouts: [String: EInkCanvasLayout]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []

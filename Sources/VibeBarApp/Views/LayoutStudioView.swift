@@ -91,7 +91,16 @@ struct LayoutStudioView: View {
     /// re-reads the snapshot for the new device.
     private var einkSubjectKey: String {
         guard case let .einkSlide(deviceID, slideID) = model.subject else { return "" }
-        return deviceID + "|" + slideID
+        // The buckets are part of the key: binding an element to a bucket the
+        // snapshot was not assembled for would otherwise leave that element
+        // blank on the stage for the rest of the session, while the device
+        // drew it fine.
+        let layoutID = einkLayoutID(deviceID: deviceID, slideID: slideID)
+        let buckets = (settingsStore.settings.einkCanvasLayouts[layoutID]?.elements ?? [])
+            .flatMap(\.quotaFieldIDs)
+            .sorted()
+            .joined(separator: ",")
+        return [deviceID, slideID, buckets].joined(separator: "|")
     }
 
     /// Every frame the studio reasons in: the root of this view.
@@ -807,6 +816,18 @@ struct LayoutStudioView: View {
         einkDevice(deviceID)?.slide(id: slideID)
     }
 
+    /// The key the slide's layout is actually stored under.
+    ///
+    /// A slide the Studio created keys its layout by its own id, but the
+    /// slide is the one that says so: a settings file written by hand or by
+    /// the desktop client can point somewhere else, and editing
+    /// `einkCanvasLayouts[slide.id]` would then write a layout nothing draws
+    /// while the panel kept rendering the one the slide names.
+    private func einkLayoutID(deviceID: String, slideID: String) -> String {
+        einkSlide(deviceID: deviceID, slideID: slideID)?.kind.layoutID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? slideID
+    }
+
     /// The layout, always shaped to the device it is going to.
     ///
     /// Refitting on read rather than on write is what makes turning a device
@@ -817,13 +838,14 @@ struct LayoutStudioView: View {
         let device = einkDevice(deviceID)
         let profile = device?.profile ?? .quote0
         let orientation = device?.orientation ?? .degrees0
+        let layoutID = einkLayoutID(deviceID: deviceID, slideID: slideID)
         return Binding(
             get: {
-                let stored = settingsStore.settings.einkCanvasLayouts[slideID]
+                let stored = settingsStore.settings.einkCanvasLayouts[layoutID]
                     ?? EInkCanvasLayout(profile: profile, orientation: orientation)
                 return stored.fitted(profile: profile, orientation: orientation)
             },
-            set: { settingsStore.settings.einkCanvasLayouts[slideID] = $0.normalized() }
+            set: { settingsStore.settings.einkCanvasLayouts[layoutID] = $0.normalized() }
         )
     }
 
@@ -1265,7 +1287,9 @@ struct LayoutStudioView: View {
                     deviceID: deviceID,
                     slideID: slideID,
                     einkSlide(deviceID: deviceID, slideID: slideID),
-                    settingsStore.settings.einkCanvasLayouts[slideID]
+                    settingsStore.settings.einkCanvasLayouts[
+                        einkLayoutID(deviceID: deviceID, slideID: slideID)
+                    ]
                 )
             )
         }
@@ -1349,7 +1373,12 @@ struct LayoutStudioView: View {
                 settingsStore.settings.setMenuBarItem(item)
             case let .einkSlide(deviceID, slideID, slide, layout):
                 var settings = settingsStore.settings
-                settings.einkCanvasLayouts[slideID] = layout
+                // Through the slide's own key, not its id — see
+                // `einkLayoutID`. The slide is restored first so the key is
+                // the one the restored slide names.
+                let layoutID = slide?.kind.layoutID.flatMap { $0.isEmpty ? nil : $0 }
+                    ?? einkLayoutID(deviceID: deviceID, slideID: slideID)
+                settings.einkCanvasLayouts[layoutID] = layout
                 if let slide, let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }) {
                     var device = settings.einkSync.devices[index]
                     if let position = device.slides.firstIndex(where: { $0.id == slideID }) {

@@ -206,7 +206,9 @@ final class AppEnvironment: ObservableObject {
             // without this a provider response that briefly omits it would
             // drop it from the registry — and the slide would quietly stop
             // drawing that row.
-            fieldIds.formUnion(settings.einkSync.referencedQuotaFieldIDs)
+            fieldIds.formUnion(
+                settings.einkSync.referencedQuotaFieldIDs(layouts: settings.einkCanvasLayouts)
+            )
             return QuotaFieldKeepSet(fieldIds: fieldIds, groupKeys: groupKeys)
         }
 

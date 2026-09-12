@@ -356,6 +356,59 @@ final class EInkCustomLayoutRendererTests: XCTestCase {
         XCTAssertTrue(report(short).isEmpty, "41% in 40 px with short lines fits")
     }
 
+    /// The Canvas API rejects a payload containing its own template marker,
+    /// so a layout must not be able to hold one — otherwise the Studio calls
+    /// a slide clear that can never reach a panel.
+    func testFixedTextCannotCarryTheTemplateMarkerOrRunAwayInLength() throws {
+        var marker = element(.text, x: 8, y: 8, width: 120, height: 12)
+        marker.textBinding = .custom
+        marker.text = "{{quota}} {{{left}}}"
+        var long = element(.text, x: 8, y: 40, width: 120, height: 12)
+        long.textBinding = .custom
+        long.text = String(repeating: "A", count: 5_000)
+
+        let built = layout([marker, long])
+        let cleaned = try XCTUnwrap(built.elements.first { $0.id == marker.id })
+        XCTAssertFalse(cleaned.text.contains("{{"))
+        XCTAssertEqual(
+            built.elements.first { $0.id == long.id }?.text.count,
+            EInkCanvasLayout.maximumTextLength
+        )
+
+        // And the encoder, which is the authority, accepts what survived.
+        XCTAssertNoThrow(
+            try EInkRenderer.render(
+                slide: EInkSlide(id: "slide-1", kind: .custom(layoutID: "layout-1")),
+                device: EInkFixtures.device(orientation: .degrees0),
+                snapshot: snapshot,
+                layouts: ["layout-1": built]
+            )
+        )
+    }
+
+    /// The registry keeps a bucket a Studio layout names, even when nothing
+    /// else refers to it.
+    func testALayoutOnlyBucketStaysInTheKeepSet() {
+        var ring = EInkCanvasElement(kind: .ring, fieldID: "cursor.models")
+        var built = EInkCanvasLayout(profile: .quote0, orientation: .degrees0)
+        built.elements = [ring]
+        var device = EInkFixtures.device(orientation: .degrees0)
+        device.slides = [EInkSlide(id: "slide-1", kind: .custom(layoutID: "layout-1"))]
+        var settings = EInkSyncSettings()
+        settings.devices = [device]
+
+        XCTAssertFalse(settings.referencedQuotaFieldIDs.contains("cursor.models"))
+        XCTAssertTrue(
+            settings.referencedQuotaFieldIDs(layouts: ["layout-1": built]).contains("cursor.models")
+        )
+        ring.fieldID = nil
+        ring.fieldIDs = ["grok.weekly"]
+        built.elements = [ring]
+        XCTAssertTrue(
+            settings.referencedQuotaFieldIDs(layouts: ["layout-1": built]).contains("grok.weekly")
+        )
+    }
+
     // MARK: - Orientation
 
     /// Turning the device keeps every element's pixel and pulls back only

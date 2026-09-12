@@ -56,6 +56,8 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
             e.font = e.font.normalized
             e.thickness = Self.bound(e.thickness, 1...32, fallback: 6).rounded()
             e.percentOverride = e.percentOverride.map { Self.bound($0, 0...100, fallback: 0).rounded() }
+            e.text = Self.panelText(e.text)
+            e.subText = Self.panelText(e.subText)
             var seenFields = Set<String>()
             e.fieldIDs = e.fieldIDs.filter { !$0.isEmpty && seenFields.insert($0).inserted }
             var seenPeriods = Set<EInkUsagePeriod>()
@@ -202,6 +204,21 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
         guard layers.indices.contains(target) else { return }
         layers.swapAt(source, target)
         elements = layers.flatMap { $0 }
+    }
+
+    /// Fixed text the panel will actually accept.
+    ///
+    /// `{{` is the Canvas API's template marker: a payload containing one is
+    /// rejected outright, so a layout must not be able to hold it — the
+    /// Studio would otherwise report a slide clear that can never be pushed.
+    /// The length cap is well under the API's 4 000 for the same reason a
+    /// 296 px panel has: a string that long is not a label.
+    public static let maximumTextLength = 512
+
+    static func panelText(_ value: String) -> String {
+        var text = value
+        while text.contains("{{") { text = text.replacingOccurrences(of: "{{", with: "{") }
+        return text.count > maximumTextLength ? String(text.prefix(maximumTextLength)) : text
     }
 
     static func bound(_ value: Double, _ range: ClosedRange<Double>, fallback: Double) -> Double {
