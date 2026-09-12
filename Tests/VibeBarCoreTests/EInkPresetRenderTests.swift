@@ -110,7 +110,7 @@ final class EInkPresetRenderTests: XCTestCase {
         XCTAssertEqual(Set(ordered.map(\.fieldID)), Set(rows.map(\.fieldID)))
     }
 
-    func testACustomSlideThrowsInsteadOfDrawingQuotaContent() {
+    func testACustomSlideWithNoLayoutThrowsInsteadOfDrawingQuotaContent() throws {
         let snapshot = EInkFixtures.snapshot()
         let device = EInkFixtures.device(orientation: .degrees0)
         var slide = EInkFixtures.slide(preset: .quotaLedger)
@@ -120,16 +120,13 @@ final class EInkPresetRenderTests: XCTestCase {
             XCTAssertEqual(error as? EInkRenderError, .layoutMissing(layoutID: "layout-1"))
         }
 
+        // A layout that *is* there draws, and an empty one draws an empty
+        // panel rather than borrowing a preset's content.
         let layouts = ["layout-1": EInkCanvasLayout()]
-        XCTAssertThrowsError(
-            try EInkRenderer.render(slide: slide, device: device, snapshot: snapshot, layouts: layouts)
-        ) { error in
-            XCTAssertEqual(error as? EInkRenderError, .customLayoutUnsupported(layoutID: "layout-1"))
-        }
-
-        XCTAssertThrowsError(
-            try EInkRenderer.tree(slide: slide, orientation: .degrees0, snapshot: snapshot, layouts: layouts)
+        let payload = try EInkRenderer.render(
+            slide: slide, device: device, snapshot: snapshot, layouts: layouts
         )
+        XCTAssertEqual(payload.windowData.elementCount, 1)
     }
 
     /// A fixed-width text box clips, so any such box narrower than the string

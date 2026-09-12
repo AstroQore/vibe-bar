@@ -615,7 +615,7 @@ public final class EInkSyncService: ObservableObject {
         // Only walk the ledger when a slide on this pass actually draws usage.
         let needsUsage = plan.items.contains { item in
             guard case let .slide(slideID) = item.content else { return false }
-            return device.slide(id: slideID)?.kind.preset?.needsUsageData ?? false
+            return device.slide(id: slideID)?.needsUsageData(layouts: layouts) ?? false
         }
         let assembly: EInkAssemblyOutcome
         do {
@@ -666,7 +666,7 @@ public final class EInkSyncService: ObservableObject {
                     guard let slide = device.slide(id: slideID) else { continue }
                     // A usage slide drawn from an empty set would print "$0
                     // today" and be believed. Skip it and say why instead.
-                    if assembly.usageUnavailable, slide.kind.preset?.needsUsageData ?? false { continue }
+                    if assembly.usageUnavailable, slide.needsUsageData(layouts: layouts) { continue }
                     payload = try EInkRenderer.render(
                         slide: slide,
                         device: device,
@@ -869,7 +869,7 @@ public final class EInkSyncService: ObservableObject {
         fieldIDs: [String]? = nil,
         includesUsage: Bool
     ) async throws -> EInkAssemblyOutcome {
-        let requested = fieldIDs ?? settings.selectedQuotaFieldIDs
+        let requested = fieldIDs ?? settings.selectedQuotaFieldIDs(layouts: layouts)
         let generation = configurationGeneration
         if let cached = cachedSnapshot,
            cached.generation == generation,

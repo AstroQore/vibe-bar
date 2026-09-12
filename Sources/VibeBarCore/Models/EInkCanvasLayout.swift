@@ -56,9 +56,30 @@ public struct EInkCanvasLayout: Codable, Equatable, Sendable {
             e.font = e.font.normalized
             e.thickness = Self.bound(e.thickness, 1...32, fallback: 6).rounded()
             e.percentOverride = e.percentOverride.map { Self.bound($0, 0...100, fallback: 0).rounded() }
+            var seenFields = Set<String>()
+            e.fieldIDs = e.fieldIDs.filter { !$0.isEmpty && seenFields.insert($0).inserted }
+            var seenPeriods = Set<EInkUsagePeriod>()
+            e.periods = EInkUsagePeriod.allCases.filter { e.periods.contains($0) && seenPeriods.insert($0).inserted }
             return e
         }
         return copy
+    }
+
+    /// The same layout on a differently shaped panel.
+    ///
+    /// Turning a device is not a re-design: an element keeps the pixel it was
+    /// placed on. What changes is the room around it, so `normalized` does the
+    /// rest — an element wider or taller than the new panel is shrunk to it,
+    /// and one whose far edge now falls outside is pulled back in by exactly
+    /// the overhang, keeping its size. A portrait layout turned landscape
+    /// therefore ends up with its lower rows stacked against the bottom edge
+    /// rather than scattered, and the Studio's diagnostics say what collided.
+    public func fitted(profile: EInkDeviceProfile, orientation: EInkOrientation) -> Self {
+        let size = profile.frameSize(for: orientation)
+        var copy = self
+        copy.width = Double(size.width)
+        copy.height = Double(size.height)
+        return copy.normalized()
     }
 
     public func expandedSelection(_ ids: Set<UUID>) -> Set<UUID> {
@@ -328,6 +349,12 @@ public struct EInkCanvasElement: Codable, Equatable, Identifiable, Sendable {
     public var kind: Kind
     /// `MenuBarFieldCatalog` field ID for quota-bound elements.
     public var fieldID: String?
+    /// A whole-preset element's own bucket selection. Empty means "whatever
+    /// the slide picked, else Vibe Bar's own order" — the same reading the
+    /// preset slides give an empty selection.
+    public var fieldIDs: [String] = []
+    /// A whole-preset element's own usage windows, read the same way.
+    public var periods: [EInkUsagePeriod] = []
     public var x: Double = 6
     public var y: Double = 6
     public var width: Double = 48
@@ -336,6 +363,17 @@ public struct EInkCanvasElement: Codable, Equatable, Identifiable, Sendable {
     public var alignment: EInkTextAlignment = .leading
     public var textBinding: TextBinding = .percent
     public var text = ""
+    /// A stat tile's bottom line. Empty draws the binding's own second
+    /// figure — a quota countdown, or the tokens behind a cost.
+    public var subText = ""
+    /// Whether the drawn box is measured from the text (`true`) or kept at
+    /// the author's `width`, clipping anything longer (`false`).
+    ///
+    /// Measured is the default because a text element dropped on the paper
+    /// arrives at a width nobody chose, and clipping it there would read as
+    /// the Studio losing characters. Fixing the width is the deliberate act —
+    /// it is what a column needs, and the Studio says so.
+    public var autoWidth = true
     public var usagePeriod: EInkUsagePeriod = .today
     public var usageMetric: UsageMetric = .cost
     /// Ring / bar stroke in device pixels.
@@ -362,14 +400,16 @@ public struct EInkCanvasElement: Codable, Equatable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, fieldID, x, y, width, height, font, alignment
-        case textBinding, text, usagePeriod, usageMetric, thickness, percentOverride, groupID
+        case id, kind, fieldID, fieldIDs, periods, x, y, width, height, font, alignment
+        case textBinding, text, subText, autoWidth, usagePeriod, usageMetric, thickness, percentOverride, groupID
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(kind: c.lenient(Kind.self, .kind, .text), fieldID: c.lenientOptional(String.self, .fieldID))
         id = c.lenient(UUID.self, .id, UUID())
+        fieldIDs = c.lenient([String].self, .fieldIDs, [])
+        periods = c.lenient([EInkUsagePeriod].self, .periods, [])
         x = c.lenient(Double.self, .x, x)
         y = c.lenient(Double.self, .y, y)
         width = c.lenient(Double.self, .width, width)
@@ -378,6 +418,8 @@ public struct EInkCanvasElement: Codable, Equatable, Identifiable, Sendable {
         alignment = c.lenient(EInkTextAlignment.self, .alignment, .leading)
         textBinding = c.lenient(TextBinding.self, .textBinding, .percent)
         text = c.lenient(String.self, .text, "")
+        subText = c.lenient(String.self, .subText, "")
+        autoWidth = c.lenient(Bool.self, .autoWidth, true)
         usagePeriod = c.lenient(EInkUsagePeriod.self, .usagePeriod, .today)
         usageMetric = c.lenient(UsageMetric.self, .usageMetric, .cost)
         thickness = c.lenient(Double.self, .thickness, thickness)
@@ -390,6 +432,8 @@ public struct EInkCanvasElement: Codable, Equatable, Identifiable, Sendable {
         try c.encode(id, forKey: .id)
         try c.encode(kind, forKey: .kind)
         try c.encodeIfPresent(fieldID, forKey: .fieldID)
+        try c.encode(fieldIDs, forKey: .fieldIDs)
+        try c.encode(periods, forKey: .periods)
         try c.encode(x, forKey: .x)
         try c.encode(y, forKey: .y)
         try c.encode(width, forKey: .width)
@@ -398,6 +442,8 @@ public struct EInkCanvasElement: Codable, Equatable, Identifiable, Sendable {
         try c.encode(alignment, forKey: .alignment)
         try c.encode(textBinding, forKey: .textBinding)
         try c.encode(text, forKey: .text)
+        try c.encode(subText, forKey: .subText)
+        try c.encode(autoWidth, forKey: .autoWidth)
         try c.encode(usagePeriod, forKey: .usagePeriod)
         try c.encode(usageMetric, forKey: .usageMetric)
         try c.encode(thickness, forKey: .thickness)

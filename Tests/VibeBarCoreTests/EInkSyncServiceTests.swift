@@ -1524,16 +1524,15 @@ final class EInkSyncServiceTests: XCTestCase {
         }
     }
 
-    func testACustomLayoutPreviewRefusesRatherThanDrawingAPresetInstead() {
+    func testACustomLayoutPreviewRefusesWhenTheLayoutIsGone() {
         let slide = EInkSlide(id: "custom", kind: .custom(layoutID: "layout-1"))
-        let layouts = ["layout-1": EInkCanvasLayout()]
         let plan = EInkPreviewPlanner.plan(
             slide: slide,
             orientation: .degrees0,
             snapshot: EInkFixtures.snapshot(),
-            layouts: layouts
+            layouts: [:]
         )
         XCTAssertTrue(plan.boxes.isEmpty)
-        XCTAssertEqual(plan.failure, EInkRenderError.customLayoutUnsupported(layoutID: "layout-1"))
+        XCTAssertEqual(plan.failure, EInkRenderError.layoutMissing(layoutID: "layout-1"))
     }
 }

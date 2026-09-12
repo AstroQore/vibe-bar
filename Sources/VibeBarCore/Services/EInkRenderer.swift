@@ -2,15 +2,12 @@ import Foundation
 
 /// Why a render can fail before it reaches the device's own limits.
 ///
-/// Both cases exist so the renderer never *substitutes* content. A panel is a
+/// It exists so the renderer never *substitutes* content. A panel is a
 /// glanceable surface: someone reading "Claude 41%" across a desk has no way
 /// to tell that the slide they configured was a custom layout and that the
 /// quota ledger in front of them is a stand-in. Refusing to draw is the
 /// honest failure, and it is the one the sync engine can surface.
 public enum EInkRenderError: Error, Equatable, Sendable {
-    /// The slide names a layout that exists, but the custom-layout renderer
-    /// has not shipped yet. Removed once the Studio renderer lands.
-    case customLayoutUnsupported(layoutID: String)
     /// The slide names a layout that is not in the passed table at all —
     /// deleted in the Studio, or a settings file edited by hand.
     case layoutMissing(layoutID: String)
@@ -37,10 +34,16 @@ public enum EInkRenderer {
         let frame = EInkRect(x: 0, y: 0, width: size.width, height: size.height)
         guard let preset = slide.kind.preset else {
             let layoutID = slide.kind.layoutID ?? ""
-            guard layouts[layoutID] != nil else {
+            guard let layout = layouts[layoutID] else {
                 throw EInkRenderError.layoutMissing(layoutID: layoutID)
             }
-            throw EInkRenderError.customLayoutUnsupported(layoutID: layoutID)
+            return EInkCustomLayoutRenderer.tree(
+                layout: layout,
+                slide: slide,
+                orientation: orientation,
+                profile: profile,
+                snapshot: snapshot
+            )
         }
         let capacity = preset.capacity(for: orientation)
         let portrait = orientation.isPortrait
