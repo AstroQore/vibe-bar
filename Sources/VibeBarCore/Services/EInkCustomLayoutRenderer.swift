@@ -82,7 +82,8 @@ public enum EInkCustomLayoutRenderer {
                 .text(content, font: element.font, alignment: element.alignment),
                 width: element.autoWidth ? .auto : .points(width),
                 height: .points(height),
-                origin: origin
+                origin: origin,
+                clipsText: element.autoWidth ? false : element.clipsOverflow
             )
         case .ring:
             guard let percent = percent(for: element, snapshot: snapshot) else { return nil }
@@ -114,6 +115,21 @@ public enum EInkCustomLayoutRenderer {
             )
         case .statTile:
             return statTile(element, snapshot: snapshot, width: width, height: height, origin: origin)
+        case .image:
+            guard !element.imageSource.isEmpty else { return nil }
+            return EInkNode(
+                .image(element.imageSource),
+                width: .points(width),
+                height: .points(height),
+                origin: origin
+            )
+        case .fill:
+            return EInkNode(
+                .fill,
+                width: .points(width),
+                height: .points(height),
+                origin: origin
+            )
         case .divider:
             // One pixel of ink whatever the handle says: the box is the grab
             // target, the rule is the drawing, and it sits in the middle of
@@ -126,7 +142,8 @@ public enum EInkCustomLayoutRenderer {
                 origin: EInkPoint(x: x, y: y + (height - 1) / 2)
             )
         case .quotaLedger, .quotaRings, .quotaRail,
-             .usageTiles, .usageSplit, .usageTable, .usageDual, .usageTrend:
+             .usageTiles, .usageSplit, .usageTable, .usageDual, .usageTrend,
+             .briefing, .forecast, .resets, .heatmap, .topModels:
             return nil  // Handled above.
         }
     }
@@ -190,48 +207,17 @@ public enum EInkCustomLayoutRenderer {
         frame: EInkRect
     ) -> EInkNode {
         let capacity = preset.capacity(for: orientation)
-        let portrait = orientation.isPortrait
-        let fieldIDs = element.fieldIDs.isEmpty ? slide.quotaFieldIDs : element.fieldIDs
-        var node: EInkNode
-        switch preset {
-        case .quotaLedger:
-            let rows = snapshot.quotaRows(fieldIDs: fieldIDs, limit: capacity)
-            node = portrait
-                ? EInkPresets.ledgerPortrait(rows, snapshot, frame: frame)
-                : EInkPresets.ledgerLandscape(rows, snapshot, frame: frame)
-        case .quotaRings:
-            let rows = snapshot.quotaRows(fieldIDs: fieldIDs, limit: capacity)
-            node = portrait
-                ? EInkPresets.ringsPortrait(rows, snapshot, frame: frame)
-                : EInkPresets.ringsLandscape(rows, snapshot, frame: frame)
-        case .quotaRail:
-            let rows = snapshot.quotaRows(fieldIDs: fieldIDs, limit: capacity)
-            node = portrait
-                ? EInkPresets.railPortrait(rows, snapshot, frame: frame)
-                : EInkPresets.railLandscape(rows, snapshot, frame: frame)
-        case .usageTiles:
-            let periods = resolvedPeriods(element: element, slide: slide, capacity: capacity)
-            node = portrait
-                ? EInkPresets.tilesPortrait(periods, snapshot, frame: frame)
-                : EInkPresets.tilesLandscape(periods, snapshot, frame: frame)
-        case .usageSplit:
-            let periods = resolvedPeriods(element: element, slide: slide, capacity: capacity)
-            node = portrait
-                ? EInkPresets.splitPortrait(periods, snapshot, frame: frame)
-                : EInkPresets.splitLandscape(periods, snapshot, frame: frame)
-        case .usageTable:
-            node = portrait
-                ? EInkPresets.tablePortrait(capacity, snapshot, frame: frame)
-                : EInkPresets.tableLandscape(capacity, snapshot, frame: frame)
-        case .usageDual:
-            node = portrait
-                ? EInkPresets.dualPortrait(capacity, snapshot, frame: frame)
-                : EInkPresets.dualLandscape(capacity, snapshot, frame: frame)
-        case .usageTrend:
-            node = portrait
-                ? EInkPresets.trendPortrait(snapshot, frame: frame)
-                : EInkPresets.trendLandscape(snapshot, frame: frame)
-        }
+        // One path through `EInkRenderer.presetTree` for the preset slide, the
+        // whole-preset element and the exploder, so the three cannot drift.
+        var node = EInkRenderer.presetTree(
+            preset,
+            slide: slide,
+            orientation: orientation,
+            snapshot: snapshot,
+            frame: frame,
+            fieldIDs: element.fieldIDs.isEmpty ? slide.orderedQuotaFieldIDs : element.fieldIDs,
+            periods: resolvedPeriods(element: element, slide: slide, capacity: capacity)
+        )
         node.origin = EInkPoint(x: frame.x, y: frame.y)
         node.clampInset = presetMargin
         return node
@@ -280,8 +266,19 @@ public enum EInkCustomLayoutRenderer {
     }
 
     /// `nil` when nothing is bound — the caller then draws nothing at all.
+    ///
+    /// A bar with a bucket behind it reads that bucket, and reads nothing when
+    /// the bucket is missing: a stand-in percentage on a glanceable surface is
+    /// indistinguishable from a reading. An *unbound* bar falls back to its
+    /// author's fixed percentage, which is what the exploded usage layouts
+    /// carry — a "share of the biggest harness" bar is a real number, it is
+    /// just not a quota bucket.
     public static func percent(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> Int? {
-        quotaRow(for: element, snapshot: snapshot)?.remainingPercent
+        if let fieldID = element.fieldID, !fieldID.isEmpty {
+            return snapshot.quota.first { $0.fieldID == fieldID }?.remainingPercent
+        }
+        guard let override = element.percentOverride else { return nil }
+        return max(0, min(100, Int(override.rounded())))
     }
 
     /// What one text-carrying element prints. Empty means "draw no box".
@@ -292,15 +289,19 @@ public enum EInkCustomLayoutRenderer {
             return "\(row.remainingPercent)%"
         case .label:
             guard let row = quotaRow(for: element, snapshot: snapshot) else { return "" }
-            // Written out, never abbreviated: "Claude · Weekly", the same two
-            // parts the ledger prints, because a panel read from a metre away
-            // has no tooltip to expand a short form.
-            return "\(row.providerDisplayName) · \(row.windowTitle)"
+            // Written out, never abbreviated: the SubProvider, the quota group
+            // and the window, because a panel read from a metre away has no
+            // tooltip to expand a short form.
+            return row.slotLabel
         case .countdown:
             guard let row = quotaRow(for: element, snapshot: snapshot) else { return "" }
             return row.countdown
         case .usageMetric:
             return usageFigure(element, snapshot: snapshot)
+        case .clock:
+            return snapshot.clockLabel
+        case .date:
+            return snapshot.dateLabel
         case .custom:
             return element.text
         }
@@ -319,7 +320,7 @@ public enum EInkCustomLayoutRenderer {
         switch element.textBinding {
         case .usageMetric:
             return element.usagePeriod.caption
-        case .custom:
+        case .custom, .clock, .date:
             return ""
         case .percent, .label, .countdown:
             return quotaRow(for: element, snapshot: snapshot)?.providerDisplayName ?? ""
@@ -333,7 +334,7 @@ public enum EInkCustomLayoutRenderer {
             return element.usageMetric == .cost
                 ? "\(EInkFormat.tokens(totals.tokens)) tokens"
                 : EInkFormat.money(totals.costUSD)
-        case .custom:
+        case .custom, .clock, .date:
             return ""
         case .percent, .label, .countdown:
             return quotaRow(for: element, snapshot: snapshot)?.countdown ?? ""
@@ -363,6 +364,23 @@ public extension EInkCanvasElement {
 }
 
 public extension EInkSlide {
+    /// Every layout this slide has, across orientations.
+    ///
+    /// A custom slide carries up to four, keyed `"<layoutID>/<degrees>"`, and
+    /// a scan that asks only for `layouts[layoutID]` finds none of them. That
+    /// matters for more than tidiness: these scans decide whether the pass
+    /// walks the ledger and which quota buckets it gathers, so missing them
+    /// draws a bound element from data nobody fetched — `$0.00` on a panel, or
+    /// a blank where a percentage should be.
+    func allLayouts(in layouts: [String: EInkCanvasLayout]) -> [EInkCanvasLayout] {
+        guard let layoutID = kind.layoutID, !layoutID.isEmpty else { return [] }
+        let prefix = layoutID + "/"
+        return layouts
+            .filter { $0.key == layoutID || $0.key.hasPrefix(prefix) }
+            .sorted { $0.key < $1.key }
+            .map(\.value)
+    }
+
     /// Whether this slide needs the usage ledger, custom layouts included.
     ///
     /// A custom slide that prints today's spend and is drawn from an empty
@@ -371,8 +389,9 @@ public extension EInkSlide {
     /// layout, not only at the preset.
     func needsUsageData(layouts: [String: EInkCanvasLayout]) -> Bool {
         if let preset = kind.preset { return preset.needsUsageData }
-        guard let layoutID = kind.layoutID, let layout = layouts[layoutID] else { return false }
-        return layout.elements.contains { $0.readsUsage }
+        return allLayouts(in: layouts).contains { layout in
+            layout.elements.contains { $0.readsUsage }
+        }
     }
 }
 
@@ -394,9 +413,10 @@ public extension EInkSyncSettings {
         var result = referencedQuotaFieldIDs
         for device in devices {
             for slide in device.slides {
-                guard let layoutID = slide.kind.layoutID, let layout = layouts[layoutID] else { continue }
-                for element in layout.elements {
-                    result.formUnion(element.quotaFieldIDs)
+                for layout in slide.allLayouts(in: layouts) {
+                    for element in layout.elements {
+                        result.formUnion(element.quotaFieldIDs)
+                    }
                 }
             }
         }
@@ -411,20 +431,21 @@ public extension EInkSyncSettings {
         }
         for device in devices {
             for slide in device.slides {
-                guard let layoutID = slide.kind.layoutID, let layout = layouts[layoutID] else { continue }
-                for element in layout.elements {
-                    for fieldID in element.quotaFieldIDs where seen.insert(fieldID).inserted {
-                        result.append(fieldID)
-                    }
-                    // A quota block with no selection of its own draws the
-                    // slide's buckets, and those are not in
-                    // `selectedQuotaFieldIDs`, which only looks at preset
-                    // slides. Without this, a slide converted from a preset
-                    // keeps buckets the assembler is never asked for and the
-                    // block silently drops those rows.
-                    guard element.kind.preset?.isQuotaPreset == true, element.fieldIDs.isEmpty else { continue }
-                    for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
-                        result.append(fieldID)
+                for layout in slide.allLayouts(in: layouts) {
+                    for element in layout.elements {
+                        for fieldID in element.quotaFieldIDs where seen.insert(fieldID).inserted {
+                            result.append(fieldID)
+                        }
+                        // A quota block with no selection of its own draws the
+                        // slide's buckets, and those are not in
+                        // `selectedQuotaFieldIDs`, which only looks at preset
+                        // slides. Without this, a slide converted from a preset
+                        // keeps buckets the assembler is never asked for and the
+                        // block silently drops those rows.
+                        guard element.kind.preset?.isQuotaPreset == true, element.fieldIDs.isEmpty else { continue }
+                        for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
+                            result.append(fieldID)
+                        }
                     }
                 }
             }

@@ -182,6 +182,9 @@ struct EInkStudioInspector: View {
                 DebouncedSettingsTextField(prompt: L10n.MenuBar.Composer.Block.text, value: value(e, \.text))
                     .id("text-\(e.id)")
             }
+        case .clock, .date:
+            // Both draw the assembly time; there is nothing else to choose.
+            EmptyView()
         }
     }
 
@@ -517,6 +520,9 @@ enum EInkNaming {
         case .usageTable: L10n.Settings.Eink.Preset.table
         case .usageDual: L10n.Settings.Eink.Preset.dual
         case .usageTrend: L10n.Settings.Eink.Preset.trend
+        // Round 2's layouts keep their English identifiers until the round 2
+        // settings redesign gives them localized names.
+        case .briefing, .forecast, .resets, .heatmap, .topModels, .alert: preset.identifierName
         }
     }
 

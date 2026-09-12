@@ -85,22 +85,47 @@ final class EInkDataAssemblerTests: XCTestCase {
         XCTAssertEqual(rows[2].countdown, "")
     }
 
-    /// Deliberately short, and deliberately not `ToolType.hierarchy` — see
-    /// the doc comment on `EInkProviderLabel`.
-    func testProviderLabelsAreTheShortPanelForms() {
-        XCTAssertEqual(EInkProviderLabel.short(for: .codex), "Codex")
-        XCTAssertEqual(EInkProviderLabel.short(for: .claude), "Claude")
-        XCTAssertEqual(EInkProviderLabel.short(for: .grok), "Grok")
-        XCTAssertEqual(EInkProviderLabel.short(for: .antigravity), "AntiGravity")
-        XCTAssertEqual(EInkProviderLabel.short(for: .gemini), "Gemini")
-        XCTAssertEqual(EInkProviderLabel.short(for: .cursor), "Cursor")
-        for tool in ToolType.allCases {
-            XCTAssertLessThanOrEqual(
-                EInkTextMetrics.width(EInkProviderLabel.short(for: tool), font: .pixel12(bold: false)),
-                126,
-                "\(tool.rawValue) does not fit the ledger's provider column"
-            )
-        }
+    /// A row's two halves are the naming tiers, which is what lets a one-line
+    /// slot print "Claude · Fable · Weekly" and a two-line one split it in the
+    /// right place.
+    func testQuotaRowsCarryTheNamingTiersSplitForTwoLineSlots() async {
+        let accounts: [ToolType: AccountQuota] = [
+            .claude: account(tool: .claude, buckets: [
+                QuotaBucket(id: "weekly_fable", title: "Weekly", shortLabel: "7d", usedPercent: 33, resetAt: nil)
+            ])
+        ]
+        let ledger = FakeUsageLedger(summaries: [.empty], harnessRows: [], trendPoints: [])
+        var assembler = assembler(accounts: accounts, ledger: ledger)
+        assembler.quotaPriority = [.init(tool: .claude, bucketID: "weekly_fable")]
+        let rows = await assembler.quotaRows(now: now)
+        XCTAssertEqual(rows.first?.providerDisplayName, "Claude")
+        XCTAssertEqual(rows.first?.windowTitle, "Fable · Weekly")
+        XCTAssertEqual(rows.first?.slotLabel, "Claude · Fable · Weekly")
+    }
+
+    /// The snapshot carries the default name. A slide's own override is
+    /// applied while *that slide* draws, because the snapshot is shared — two
+    /// slides naming the same bucket differently must not both get the first
+    /// one's name.
+    func testTheSnapshotCarriesTheDefaultNameAndNotAnySlidesOverride() async {
+        let accounts: [ToolType: AccountQuota] = [
+            .claude: account(tool: .claude, buckets: [
+                QuotaBucket(id: "weekly_fable", title: "Weekly", shortLabel: "7d", usedPercent: 33, resetAt: nil)
+            ])
+        ]
+        let ledger = FakeUsageLedger(summaries: [.empty], harnessRows: [], trendPoints: [])
+        var assembler = assembler(accounts: accounts, ledger: ledger)
+        assembler.quotaPriority = [.init(tool: .claude, bucketID: "weekly_fable")]
+        let row = await assembler.quotaRows(now: now).first
+        XCTAssertEqual(row?.slotLabel, "Claude · Fable · Weekly")
+
+        var options = EInkSlideOptions.default
+        options.customLabels = ["claude.weekly_fable": "Story · Weekly"]
+        let relabeled = row?.relabeled(with: options)
+        XCTAssertEqual(relabeled?.providerDisplayName, "Story")
+        XCTAssertEqual(relabeled?.windowTitle, "Weekly")
+        // A slide with no override of its own still sees the default.
+        XCTAssertEqual(row?.relabeled(with: .default).slotLabel, "Claude · Fable · Weekly")
     }
 
     func testUsageWindowsAreTodayFromLocalMidnightPlusRollingSevenAndThirtyDays() async throws {
@@ -239,7 +264,10 @@ extension EInkDataAssemblerTests {
         ]
         let ledger = FakeUsageLedger(summaries: [.empty], harnessRows: [], trendPoints: [])
         let rows = await assembler(accounts: accounts, ledger: ledger).quotaRows(now: now)
-        XCTAssertEqual(rows.map(\.windowTitle), ["5 Hours", "Weekly", ""])
+        // The last bucket reports no title and no group at all, so the name
+        // comes from the catalog — written out in full, and still never the
+        // provider's own "WK".
+        XCTAssertEqual(rows.map(\.windowTitle), ["5 Hours", "Weekly", "Weekly"])
         for row in rows {
             XCTAssertFalse(row.windowTitle == "5h" || row.windowTitle == "WK")
         }

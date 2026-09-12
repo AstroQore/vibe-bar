@@ -92,7 +92,11 @@ final class EInkCanvasLayoutTests: XCTestCase {
         }
         XCTAssertEqual(EInkCanvasElement.Kind.usageTrend.preset, .usageTrend)
         XCTAssertNil(EInkCanvasElement.Kind.text.preset)
-        XCTAssertEqual(EInkCanvasElement.Kind.allCases.count, 6 + EInkPreset.allCases.count)
+        // Eight primitives — the six the Studio's palette offers plus the
+        // two only the exploder produces (`fill`, `image`) — and one
+        // whole-preset block per user-selectable preset. `alert` is the
+        // engine's, so it has no block.
+        XCTAssertEqual(EInkCanvasElement.Kind.allCases.count, 8 + EInkPreset.userSelectable.count)
     }
 
     func testCodableRoundTrip() throws {

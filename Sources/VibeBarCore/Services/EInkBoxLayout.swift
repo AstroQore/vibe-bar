@@ -137,6 +137,22 @@ public struct EInkNode: Sendable, Equatable {
     /// 6 px margin, which is what makes a preset filling the panel produce
     /// byte-for-byte the boxes the preset slide produces.
     public var clampInset: Int?
+    /// What live value this node draws, when it draws one.
+    ///
+    /// Layout ignores it entirely — it exists so `EInkPresetExploder` can turn
+    /// a preset into a Studio layout whose elements still follow the data,
+    /// instead of a frozen picture of one refresh.
+    public var binding: EInkNodeBinding?
+    /// The module this node belongs to ("header", "slot:claude.weekly",
+    /// "footer"). The exploder turns each one into a group.
+    public var moduleID: String?
+    /// Overrides the "a fixed width clips" rule for one text node.
+    ///
+    /// A preset has three kinds of text box — measured, flexed, and fixed —
+    /// and only the last one clips. An exploded element has to state the
+    /// width it was given *and* whether that width clips, or a flexed header
+    /// would come back from the Studio truncated to its measured width.
+    public var clipsText: Bool?
     public var children: [EInkNode] = []
 
     public init(
@@ -149,6 +165,9 @@ public struct EInkNode: Sendable, Equatable {
         align: EInkCrossAlignment = .stretch,
         origin: EInkPoint? = nil,
         clampInset: Int? = nil,
+        binding: EInkNodeBinding? = nil,
+        moduleID: String? = nil,
+        clipsText: Bool? = nil,
         children: [EInkNode] = []
     ) {
         self.kind = kind
@@ -160,7 +179,24 @@ public struct EInkNode: Sendable, Equatable {
         self.align = align
         self.origin = origin
         self.clampInset = clampInset
+        self.binding = binding
+        self.moduleID = moduleID
+        self.clipsText = clipsText
         self.children = children
+    }
+
+    /// This node tagged with a binding, for the exploder.
+    public func bound(_ binding: EInkNodeBinding?) -> EInkNode {
+        var copy = self
+        copy.binding = binding
+        return copy
+    }
+
+    /// This node and everything under it tagged as one module.
+    public func module(_ id: String) -> EInkNode {
+        var copy = self
+        copy.moduleID = id
+        return copy
     }
 
     var isRow: Bool { if case .row = kind { return true }; return false }
@@ -201,6 +237,43 @@ public struct EInkDrawBox: Sendable, Equatable {
     }
 }
 
+/// One resolved box plus what produced it.
+///
+/// `source` is what lets the exploder put a bar back together: a
+/// `horizontalBar` node emits a track box and a fill box, and turning both
+/// into elements would freeze the fill at the percentage it had when the
+/// preset was exploded.
+public struct EInkPlacedBox: Sendable, Equatable {
+    public enum Source: Sendable, Equatable {
+        case plain
+        /// The outlined track of a bar, with everything needed to rebuild it.
+        case barTrack(percent: Int, vertical: Bool)
+        /// The filled part of the bar above; the exploder skips it.
+        case barFill
+        /// A ring's arc. Its label follows as `ringLabel` and is skipped too,
+        /// because one `ring` element draws both.
+        case ringArc(percent: Int, stroke: Int, labelFont: EInkFont)
+        case ringLabel
+    }
+
+    public var box: EInkDrawBox
+    public var binding: EInkNodeBinding?
+    public var moduleID: String?
+    public var source: Source
+
+    public init(
+        box: EInkDrawBox,
+        binding: EInkNodeBinding? = nil,
+        moduleID: String? = nil,
+        source: Source = .plain
+    ) {
+        self.box = box
+        self.binding = binding
+        self.moduleID = moduleID
+        self.source = source
+    }
+}
+
 /// Resolves an `EInkNode` tree to absolute integer boxes.
 public enum EInkBoxLayout {
     /// `bounds` is the safe area every emitted box is kept inside — the frame
@@ -217,7 +290,17 @@ public enum EInkBoxLayout {
         in frame: EInkRect,
         bounds: EInkRect? = nil
     ) -> [EInkDrawBox] {
-        var boxes: [EInkDrawBox] = []
+        resolveAnnotated(root, in: frame, bounds: bounds).map(\.box)
+    }
+
+    /// The same boxes, each carrying the binding and module of the node it
+    /// came from. `resolve` is this, projected.
+    public static func resolveAnnotated(
+        _ root: EInkNode,
+        in frame: EInkRect,
+        bounds: EInkRect? = nil
+    ) -> [EInkPlacedBox] {
+        var boxes: [EInkPlacedBox] = []
         let safe = bounds ?? frame.inset(by: EInkInsets(all: Int(EInkCanvasLayout.safeMargin)))
         // A root that states its own size keeps it (clamped to the panel), so
         // a preset authored at 152 × 296 lays out at 152 × 296 even when the
@@ -288,53 +371,64 @@ public enum EInkBoxLayout {
         _ node: EInkNode,
         in unclampedRect: EInkRect,
         bounds outerBounds: EInkRect,
-        into boxes: inout [EInkDrawBox]
+        into boxes: inout [EInkPlacedBox],
+        module inheritedModule: String? = nil
     ) {
         let rect = node.isContainer ? unclampedRect : clamp(unclampedRect, to: outerBounds)
         let bounds = node.clampInset.map { rect.inset(by: EInkInsets(all: $0)) } ?? outerBounds
+        let module = node.moduleID ?? inheritedModule
+        let binding = node.binding
+        func emit(_ box: EInkDrawBox, _ source: EInkPlacedBox.Source = .plain) {
+            boxes.append(EInkPlacedBox(box: box, binding: binding, moduleID: module, source: source))
+        }
         switch node.kind {
         case let .text(content, font, alignment):
             if !content.isEmpty {
                 let fixedWidth: Bool
                 if case .points = node.width { fixedWidth = true } else { fixedWidth = false }
-                boxes.append(
+                emit(
                     EInkDrawBox(
                         frame: rect,
                         content: .text(content, font: font, alignment: alignment),
-                        clipsContent: fixedWidth
+                        clipsContent: node.clipsText ?? fixedWidth
                     )
                 )
             }
         case let .image(source):
-            boxes.append(EInkDrawBox(frame: rect, content: .image(source)))
+            emit(EInkDrawBox(frame: rect, content: .image(source)))
         case .fill:
-            boxes.append(EInkDrawBox(frame: rect, content: .fill))
+            emit(EInkDrawBox(frame: rect, content: .fill))
         case let .horizontalBar(percent):
-            boxes.append(EInkDrawBox(frame: rect, content: .outline))
+            emit(EInkDrawBox(frame: rect, content: .outline), .barTrack(percent: percent, vertical: false))
             let inner = EInkRect(x: rect.x + 1, y: rect.y + 1, width: rect.width - 2, height: rect.height - 2)
             let filled = fillLength(inner.width, percent: percent)
             if filled > 0, inner.height > 0 {
-                boxes.append(
+                emit(
                     EInkDrawBox(
                         frame: EInkRect(x: inner.x, y: inner.y, width: filled, height: inner.height),
                         content: .fill
-                    )
+                    ),
+                    .barFill
                 )
             }
         case let .verticalBar(percent):
-            boxes.append(EInkDrawBox(frame: rect, content: .outline))
+            emit(EInkDrawBox(frame: rect, content: .outline), .barTrack(percent: percent, vertical: true))
             let inner = EInkRect(x: rect.x + 1, y: rect.y + 1, width: rect.width - 2, height: rect.height - 2)
             let filled = fillLength(inner.height, percent: percent)
             if filled > 0, inner.width > 0 {
-                boxes.append(
+                emit(
                     EInkDrawBox(
                         frame: EInkRect(x: inner.x, y: inner.maxY - filled, width: inner.width, height: filled),
                         content: .fill
-                    )
+                    ),
+                    .barFill
                 )
             }
         case let .ring(percent, stroke, labelFont):
-            boxes.append(EInkDrawBox(frame: rect, content: .ring(percent: percent, stroke: stroke)))
+            emit(
+                EInkDrawBox(frame: rect, content: .ring(percent: percent, stroke: stroke)),
+                .ringArc(percent: percent, stroke: stroke, labelFont: labelFont)
+            )
             let label = String(percent)
             let labelHeight = min(rect.height, labelFont.lineHeight)
             let labelRect = EInkRect(
@@ -343,13 +437,16 @@ public enum EInkBoxLayout {
                 width: rect.width,
                 height: labelHeight
             )
-            boxes.append(EInkDrawBox(frame: labelRect, content: .text(label, font: labelFont, alignment: .center)))
+            emit(
+                EInkDrawBox(frame: labelRect, content: .text(label, font: labelFont, alignment: .center)),
+                .ringLabel
+            )
         case .row:
-            layoutChildren(node, in: rect, horizontal: true, bounds: bounds, into: &boxes)
+            layoutChildren(node, in: rect, horizontal: true, bounds: bounds, into: &boxes, module: module)
         case .column:
-            layoutChildren(node, in: rect, horizontal: false, bounds: bounds, into: &boxes)
+            layoutChildren(node, in: rect, horizontal: false, bounds: bounds, into: &boxes, module: module)
         case .stack:
-            layoutStack(node, in: rect, bounds: bounds, into: &boxes)
+            layoutStack(node, in: rect, bounds: bounds, into: &boxes, module: module)
         }
     }
 
@@ -360,7 +457,8 @@ public enum EInkBoxLayout {
         _ node: EInkNode,
         in rect: EInkRect,
         bounds: EInkRect,
-        into boxes: inout [EInkDrawBox]
+        into boxes: inout [EInkPlacedBox],
+        module: String?
     ) {
         let content = rect.inset(by: node.padding)
         for child in node.children {
@@ -382,7 +480,8 @@ public enum EInkBoxLayout {
                 child,
                 in: EInkRect(x: content.x + offsetX, y: content.y + offsetY, width: width, height: height),
                 bounds: bounds,
-                into: &boxes
+                into: &boxes,
+                module: module
             )
         }
     }
@@ -400,7 +499,8 @@ public enum EInkBoxLayout {
         in rect: EInkRect,
         horizontal: Bool,
         bounds: EInkRect,
-        into boxes: inout [EInkDrawBox]
+        into boxes: inout [EInkPlacedBox],
+        module: String?
     ) {
         let content = rect.inset(by: node.padding)
         let children = node.children
@@ -480,7 +580,7 @@ public enum EInkBoxLayout {
             let childRect = horizontal
                 ? EInkRect(x: offset, y: crossOffset, width: mainSize, height: crossSize)
                 : EInkRect(x: crossOffset, y: offset, width: crossSize, height: mainSize)
-            place(child, in: childRect, bounds: bounds, into: &boxes)
+            place(child, in: childRect, bounds: bounds, into: &boxes, module: module)
             offset += mainSize + node.gap + extraGap
         }
     }

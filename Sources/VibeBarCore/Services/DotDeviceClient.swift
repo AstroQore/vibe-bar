@@ -162,6 +162,39 @@ public struct DotDeviceClient: Sendable {
         return DotResponseParser.message(data)
     }
 
+    /// The device's own sleep window. `start` and `end` are local `HH:mm` in
+    /// the *device's* timezone, and an end earlier than the start means the
+    /// next day — which is what a night-time quiet window always is.
+    ///
+    /// The API rejects a window whose two ends are the same time, so that one
+    /// is refused here rather than sent and reported as a server error.
+    @discardableResult
+    public func updateSleep(
+        deviceID: String,
+        enabled: Bool,
+        start: String,
+        end: String,
+        apiKey: String
+    ) async throws -> String {
+        guard let start = EInkQuietHours.normalized(start),
+              let end = EInkQuietHours.normalized(end),
+              start != end
+        else { throw DotDeviceError.decoding("sleep window is not a pair of distinct HH:mm times") }
+        let body = try? JSONSerialization.data(
+            withJSONObject: ["sleep": ["enabled": enabled, "start": start, "end": end]],
+            options: [.sortedKeys]
+        )
+        guard let body else { throw DotDeviceError.decoding("sleep encoding failed") }
+        let data = try await send(
+            method: "POST",
+            path: "/api/authV2/open/device/\(encoded(deviceID))/settings",
+            apiKey: apiKey,
+            body: body,
+            notFound: .deviceNotFound(deviceID: deviceID)
+        )
+        return DotResponseParser.message(data)
+    }
+
     static func roundedInterval(_ milliseconds: Int) -> Int {
         let minute = 60_000
         let clamped = min(43_200_000, max(minute, milliseconds))
@@ -273,6 +306,18 @@ public protocol DotDeviceClienting: Sendable {
     @discardableResult
     func sendCanvas(deviceID: String, payload: DotCanvasPayload, apiKey: String) async throws -> String
     func fetchRenderImage(url: URL) async throws -> Data
+    @discardableResult
+    func updateSleep(deviceID: String, enabled: Bool, start: String, end: String, apiKey: String) async throws -> String
+}
+
+public extension DotDeviceClienting {
+    /// Defaulted so a fake in a test that never touches quiet hours does not
+    /// have to answer it. A no-op is the right stand-in: nothing else in the
+    /// engine reads the result.
+    @discardableResult
+    func updateSleep(deviceID: String, enabled: Bool, start: String, end: String, apiKey: String) async throws -> String {
+        ""
+    }
 }
 
 extension DotDeviceClient: DotDeviceClienting {}

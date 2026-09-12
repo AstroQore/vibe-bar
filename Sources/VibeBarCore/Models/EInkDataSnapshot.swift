@@ -16,6 +16,17 @@ public struct EInkDataSnapshot: Sendable, Equatable {
     public var usage: EInkUsageSet
     /// Seven daily points, oldest first.
     public var trend: [EInkTrendPoint]
+    /// `HH:mm` at assembly time, for a header or footer bound to the clock.
+    public var clockLabel: String
+    /// `MM-dd` at assembly time.
+    public var dateLabel: String
+    /// The 7 × 24 activity grid, summed over every provider.
+    public var heatmap: EInkHeatmap
+    /// Today's heaviest models by spend, heaviest first.
+    public var topModels: [EInkModelRow]
+    /// One line about provider health: "Anthropic: degraded" or
+    /// "All providers operational". Empty when nothing was read.
+    public var providerStatusLine: String
 
     public init(
         generatedAt: Date,
@@ -23,7 +34,12 @@ public struct EInkDataSnapshot: Sendable, Equatable {
         generatedAtISO: String,
         quota: [EInkQuotaRow],
         usage: EInkUsageSet,
-        trend: [EInkTrendPoint]
+        trend: [EInkTrendPoint],
+        clockLabel: String = "",
+        dateLabel: String = "",
+        heatmap: EInkHeatmap = .empty,
+        topModels: [EInkModelRow] = [],
+        providerStatusLine: String = ""
     ) {
         self.generatedAt = generatedAt
         self.generatedAtLabel = generatedAtLabel
@@ -31,6 +47,11 @@ public struct EInkDataSnapshot: Sendable, Equatable {
         self.quota = quota
         self.usage = usage
         self.trend = trend
+        self.clockLabel = clockLabel
+        self.dateLabel = dateLabel
+        self.heatmap = heatmap
+        self.topModels = topModels
+        self.providerStatusLine = providerStatusLine
     }
 
     public func quotaRows(fieldIDs: [String], limit: Int) -> [EInkQuotaRow] {
@@ -59,6 +80,9 @@ public struct EInkQuotaRow: Sendable, Equatable {
     /// `EInkFormat.countdown(resetAt, now)`, e.g. "5d 23h".
     public var countdown: String
     public var plan: String
+    /// What the pace model says about this bucket, when there is enough
+    /// history for one.
+    public var forecast: EInkQuotaForecast?
 
     public init(
         fieldID: String,
@@ -67,7 +91,8 @@ public struct EInkQuotaRow: Sendable, Equatable {
         remainingPercent: Int,
         resetAt: Date? = nil,
         countdown: String = "",
-        plan: String = ""
+        plan: String = "",
+        forecast: EInkQuotaForecast? = nil
     ) {
         self.fieldID = fieldID
         self.providerDisplayName = providerDisplayName
@@ -76,7 +101,147 @@ public struct EInkQuotaRow: Sendable, Equatable {
         self.resetAt = resetAt
         self.countdown = countdown
         self.plan = plan
+        self.forecast = forecast
     }
+
+    /// The slot's label as the panel prints it: SubProvider, quota group and
+    /// window, already resolved by `EInkSlotLabel`.
+    ///
+    /// `providerDisplayName` is the first tier only, and every preset that
+    /// names a bucket should print this instead — that is the whole point of
+    /// the round 2 naming change.
+    public var slotLabel: String {
+        windowTitle.isEmpty ? providerDisplayName : "\(providerDisplayName) · \(windowTitle)"
+    }
+
+    /// This row wearing one slide's own name for it.
+    ///
+    /// The assembler already resolves a default (and honours the merged
+    /// override map, which is what the shared snapshot can carry), but two
+    /// slides may name the same bucket differently — a wide landscape ledger
+    /// and a 140 px portrait rail want different lengths. The slide's own
+    /// label therefore wins at draw time, split on the same separator so the
+    /// two-line slots still break where the name reads.
+    public func relabeled(with options: EInkSlideOptions) -> EInkQuotaRow {
+        guard let label = options.customLabel(for: fieldID) else { return self }
+        var copy = self
+        let parts = label.components(separatedBy: EInkSlotLabel.separator)
+        copy.providerDisplayName = parts.first ?? label
+        copy.windowTitle = parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+        return copy
+    }
+}
+
+/// The pace verdict for one bucket, reduced to what the panel prints.
+public struct EInkQuotaForecast: Sendable, Equatable {
+    public var verdict: QuotaPaceForecast.Verdict
+    /// Median projected demand at reset; may exceed 100.
+    public var projectedUsedPercent: Double
+    public var runOutAt: Date?
+
+    public init(verdict: QuotaPaceForecast.Verdict, projectedUsedPercent: Double, runOutAt: Date? = nil) {
+        self.verdict = verdict
+        self.projectedUsedPercent = projectedUsedPercent
+        self.runOutAt = runOutAt
+    }
+
+    public init(_ forecast: QuotaPaceForecast) {
+        self.init(
+            verdict: forecast.verdict,
+            projectedUsedPercent: forecast.projectedUsedPercent,
+            runOutAt: forecast.runOutAt
+        )
+    }
+
+    /// The verdict in English, in full. Never `Verdict.label`: that one is
+    /// localized, and the panel is English by contract.
+    public var word: String {
+        switch verdict {
+        case .surplus: "SURPLUS"
+        case .enough: "ENOUGH"
+        case .watch: "WATCH"
+        case .atRisk: "AT RISK"
+        case .learning: "LEARNING"
+        }
+    }
+
+    /// Projected use at reset, clamped to a bar percentage.
+    public var projectedTickPercent: Int {
+        max(0, min(100, Int(projectedUsedPercent.rounded())))
+    }
+}
+
+/// One model's share of today's spend.
+public struct EInkModelRow: Sendable, Equatable {
+    public var model: String
+    public var costUSD: Double
+    public var tokens: Int64
+    public var requests: Int
+
+    public init(model: String, costUSD: Double, tokens: Int64, requests: Int) {
+        self.model = model
+        self.costUSD = costUSD
+        self.tokens = tokens
+        self.requests = requests
+    }
+}
+
+/// The 7 × 24 activity grid the heatmap preset draws, summed over providers.
+public struct EInkHeatmap: Sendable, Equatable {
+    /// `[weekday 0 = Sunday][hour 0...23]` token counts.
+    public var cells: [[Int]]
+    public var totalTokens: Int
+
+    public init(cells: [[Int]], totalTokens: Int) {
+        let normalized = (0..<7).map { row -> [Int] in
+            let source = row < cells.count ? cells[row] : []
+            return (0..<24).map { column in column < source.count ? max(0, source[column]) : 0 }
+        }
+        self.cells = normalized
+        self.totalTokens = max(0, totalTokens)
+    }
+
+    public static let empty = EInkHeatmap(cells: [], totalTokens: 0)
+
+    public var isEmpty: Bool { totalTokens == 0 || cells.allSatisfy { $0.allSatisfy { $0 == 0 } } }
+
+    /// Sum of every provider's grid, so the panel shows when *this Mac* works
+    /// rather than when one vendor does.
+    public static func summing(_ maps: [UsageHeatmap]) -> EInkHeatmap {
+        var cells = Array(repeating: Array(repeating: 0, count: 24), count: 7)
+        var total = 0
+        for map in maps {
+            for (row, hours) in map.cells.enumerated() where row < 7 {
+                for (hour, value) in hours.enumerated() where hour < 24 {
+                    cells[row][hour] += max(0, value)
+                    total += max(0, value)
+                }
+            }
+        }
+        return EInkHeatmap(cells: cells, totalTokens: total)
+    }
+
+    /// `(weekday, hour)` of the heaviest cell, or `nil` when the grid is flat
+    /// empty — a busiest hour claimed over no data is a lie on a panel.
+    public var busiest: (weekday: Int, hour: Int)? {
+        var best: (weekday: Int, hour: Int, value: Int)?
+        for (row, hours) in cells.enumerated() {
+            for (hour, value) in hours.enumerated() where value > 0 {
+                if best == nil || value > best!.value { best = (row, hour, value) }
+            }
+        }
+        guard let best else { return nil }
+        return (best.weekday, best.hour)
+    }
+
+    /// "busiest Tue 21:00", written out. Empty when there is no busiest hour.
+    public var busiestLabel: String {
+        guard let busiest else { return "" }
+        return "busiest \(Self.weekdayNames[busiest.weekday]) \(String(format: "%02d:00", busiest.hour))"
+    }
+
+    /// Sunday first, matching `UsageHeatmap.cells`.
+    public static let weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 }
 
 public struct EInkUsageTotals: Sendable, Equatable {
@@ -230,6 +395,25 @@ public enum EInkFormat {
         return "\(minutes)m"
     }
 
+    /// `HH:mm` in the given calendar's time zone.
+    public static func clockLabel(_ date: Date, calendar: Calendar) -> String {
+        formatted(date, calendar: calendar, format: "HH:mm")
+    }
+
+    /// `MM-dd` in the given calendar's time zone.
+    public static func dateLabel(_ date: Date, calendar: Calendar) -> String {
+        formatted(date, calendar: calendar, format: "MM-dd")
+    }
+
+    static func formatted(_ date: Date, calendar: Calendar, format: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = format
+        return formatter.string(from: date)
+    }
+
     /// `MM-dd HH:mm` in the given calendar's time zone.
     public static func timestampLabel(_ date: Date, calendar: Calendar) -> String {
         let formatter = DateFormatter()
@@ -238,5 +422,33 @@ public enum EInkFormat {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "MM-dd HH:mm"
         return formatter.string(from: date)
+    }
+}
+
+
+/// The one-line provider health summary a header can carry.
+///
+/// English and unabbreviated like everything else the panel prints, and
+/// deliberately *not* `StatusIndicator.summaryDescription`, which is copy and
+/// is translated. The worst provider is named because that is the one the
+/// reader can do something about; a clean board says so in one phrase.
+public enum EInkProviderStatusLine {
+    public static func compose(_ snapshots: [ServiceStatusSnapshot]) -> String {
+        guard !snapshots.isEmpty else { return "" }
+        let worst = snapshots
+            .filter { $0.effectiveIndicator != .none }
+            .max { $0.effectiveIndicator.severity < $1.effectiveIndicator.severity }
+        guard let worst else { return "All providers operational" }
+        return "\(worst.tool.vendorName): \(word(for: worst.effectiveIndicator))"
+    }
+
+    static func word(for indicator: StatusIndicator) -> String {
+        switch indicator {
+        case .none: "operational"
+        case .maintenance: "under maintenance"
+        case .minor: "degraded"
+        case .major: "partial outage"
+        case .critical: "major outage"
+        }
     }
 }

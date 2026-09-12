@@ -71,6 +71,20 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
     /// Tasks in the loop that no slide claims, as of the last pass.
     public var surplusTaskCount: Int
     public var lastStatusAt: Date?
+    /// The bucket whose alert is currently on screen, or `nil`.
+    ///
+    /// Persisted for one reason: an alert is an *edge*. Relaunching the app
+    /// with the same bucket still under its threshold must not push the panel
+    /// again — the reader has already seen it, and an e-ink refresh at every
+    /// launch is exactly the noise that makes people turn a feature off.
+    public var alertingFieldID: String?
+    /// The soonest bucket reset this device knows about. When the clock passes
+    /// it, the next pass redraws immediately instead of waiting out the
+    /// cadence: the numbers behind the panel have just jumped.
+    public var nextResetAt: Date?
+    /// `enabled|start|end` of the sleep window last written to the device, so
+    /// a window that has not changed is not written every refresh.
+    public var quietHoursSignature: String?
 
     public init(
         deviceID: String,
@@ -88,7 +102,10 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
         slideIndex: Int = 0,
         canvasTaskCount: Int? = nil,
         surplusTaskCount: Int = 0,
-        lastStatusAt: Date? = nil
+        lastStatusAt: Date? = nil,
+        alertingFieldID: String? = nil,
+        nextResetAt: Date? = nil,
+        quietHoursSignature: String? = nil
     ) {
         self.deviceID = deviceID
         self.pushedDigests = pushedDigests
@@ -106,6 +123,9 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
         self.canvasTaskCount = canvasTaskCount
         self.surplusTaskCount = surplusTaskCount
         self.lastStatusAt = lastStatusAt
+        self.alertingFieldID = alertingFieldID
+        self.nextResetAt = nextResetAt
+        self.quietHoursSignature = quietHoursSignature
     }
 
     /// The read-back thumbnail, only when the service handed us one of its own
@@ -137,6 +157,7 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
         case deviceID, pushedDigests, lastPushAt, lastAttemptAt, lastError, lastFailure
         case renderImageURL, onBattery, powerLabel, batteryLabel, wifiLabel
         case nextRefreshAt, slideIndex, canvasTaskCount, surplusTaskCount, lastStatusAt
+        case alertingFieldID, nextResetAt, quietHoursSignature
     }
 
     public init(from decoder: Decoder) throws {
@@ -157,7 +178,10 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
             slideIndex: max(0, c.lenient(Int.self, .slideIndex, 0)),
             canvasTaskCount: c.lenientOptional(Int.self, .canvasTaskCount),
             surplusTaskCount: max(0, c.lenient(Int.self, .surplusTaskCount, 0)),
-            lastStatusAt: c.lenientOptional(Date.self, .lastStatusAt)
+            lastStatusAt: c.lenientOptional(Date.self, .lastStatusAt),
+            alertingFieldID: c.lenientOptional(String.self, .alertingFieldID),
+            nextResetAt: c.lenientOptional(Date.self, .nextResetAt),
+            quietHoursSignature: c.lenientOptional(String.self, .quietHoursSignature)
         )
     }
 }

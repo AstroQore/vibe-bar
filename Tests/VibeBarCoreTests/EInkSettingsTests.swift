@@ -66,6 +66,8 @@ final class EInkSettingsTests: XCTestCase {
             Set(device.keys),
             [
                 "deviceID", "alias", "profile", "enabled", "orientation", "playback",
+                "playbackMode", "secondsPerSlide", "singleSlideID",
+                "alerts", "tapLink", "quietHours",
                 "dataRefreshMinutes", "batteryRefreshMinutes", "taskKeys", "slides"
             ]
         )
@@ -138,7 +140,15 @@ final class EInkSettingsTests: XCTestCase {
         XCTAssertEqual(EInkPreset.usageDual.capacity(for: landscape), 4)
         XCTAssertEqual(EInkPreset.usageDual.capacity(for: portrait), 5)
         XCTAssertEqual(EInkPreset.usageTrend.capacity(for: landscape), 1)
-        XCTAssertEqual(EInkPreset.allCases.count, 8)
+        XCTAssertEqual(EInkPreset.briefing.capacity(for: landscape), 6)
+        XCTAssertEqual(EInkPreset.briefing.capacity(for: portrait), 8)
+        XCTAssertEqual(EInkPreset.forecast.capacity(for: landscape), 4)
+        XCTAssertEqual(EInkPreset.resets.capacity(for: portrait), 7)
+        XCTAssertEqual(EInkPreset.heatmap.capacity(for: landscape), 1)
+        XCTAssertEqual(EInkPreset.topModels.rowCount(for: portrait), 7)
+        XCTAssertEqual(EInkPreset.allCases.count, 14)
+        XCTAssertEqual(EInkPreset.userSelectable.count, 13)
+        XCTAssertFalse(EInkPreset.userSelectable.contains(.alert))
     }
 
     func testOrientationRotationAngles() {

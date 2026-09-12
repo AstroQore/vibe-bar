@@ -617,6 +617,26 @@ final class AppEnvironment: ObservableObject {
                     return ToolType.allCases.compactMap { self.costService.snapshot(for: $0) }
                 }
             },
+            forecastLookup: { [weak self] tool, bucket in
+                await MainActor.run {
+                    guard let self, let account = self.account(for: tool) else { return nil }
+                    let snapshot = self.costService.snapshot(for: tool)
+                    return self.quotaService.paceForecast(
+                        accountId: account.id,
+                        bucket: bucket,
+                        activityHeatmap: snapshot?.heatmap,
+                        dailyActivity: snapshot?.dailyHistory ?? [],
+                        allowsPostResetGrace: true
+                    )
+                }
+            },
+            serviceStatus: { [weak self] in
+                await MainActor.run {
+                    guard let self else { return [] }
+                    return Array(self.serviceStatus.snapshotByTool.values)
+                }
+            },
+            registry: quotaService.fieldRegistry,
             quotaPriority: EInkDataAssembler.priority(includingSelected: selectedFieldIDs)
         )
     }

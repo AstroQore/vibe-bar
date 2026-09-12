@@ -151,11 +151,13 @@ public enum EInkLayoutDiagnostics {
         switch element.kind {
         case .text, .statTile:
             switch element.textBinding {
-            case .usageMetric, .custom: return false
+            case .usageMetric, .custom, .clock, .date: return false
             case .percent, .label, .countdown: break
             }
         case .ring, .horizontalBar, .verticalBar:
-            break
+            // A bar carrying its own percentage is bound to a figure, just not
+            // to a bucket: the exploded usage layouts are full of them.
+            if element.percentOverride != nil { return false }
         default:
             return false
         }
