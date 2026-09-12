@@ -62,9 +62,23 @@ struct EInkPreviewView: View {
     }
 
     private var canvas: some View {
+        EInkBoxCanvas(boxes: plan.boxes)
+    }
+}
+
+/// The boxes of one resolved layout, drawn at device scale in the authored
+/// frame's own coordinates.
+///
+/// Shared by the settings preview and the Studio stage so there is exactly one
+/// answer to "what does a box look like": the Studio is not allowed to draw
+/// the panel differently from the pane that shows what will be pushed.
+struct EInkBoxCanvas: View {
+    let boxes: [EInkDrawBox]
+
+    var body: some View {
         ZStack(alignment: .topLeading) {
             Color.white
-            ForEach(Array(plan.boxes.enumerated()), id: \.offset) { entry in
+            ForEach(Array(boxes.enumerated()), id: \.offset) { entry in
                 box(entry.element)
             }
         }

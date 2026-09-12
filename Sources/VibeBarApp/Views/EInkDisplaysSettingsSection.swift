@@ -272,7 +272,7 @@ struct EInkDisplaysSettingsSection: View {
         HStack(spacing: 8) {
             ForEach(EInkOrientation.allCases, id: \.rawValue) { orientation in
                 Button {
-                    updateDevice(device.deviceID) { $0.orientation = orientation }
+                    setOrientation(orientation, deviceID: device.deviceID)
                 } label: {
                     EInkOrientationGlyph(orientation: orientation)
                 }
@@ -590,7 +590,7 @@ struct EInkDisplaysSettingsSection: View {
                         Text(presetName(preset)).tag(preset.rawValue)
                     }
                 }
-                Text(L10n.Settings.Eink.customSlide).tag(Self.customTag)
+                Text(L10n.Settings.Eink.customLayout).tag(Self.customTag)
             }
             .labelsHidden()
             .frame(maxWidth: 240, alignment: .leading)
@@ -599,19 +599,28 @@ struct EInkDisplaysSettingsSection: View {
         }
     }
 
-    /// Sentinel tag for the Studio option. Selecting it does nothing — the
-    /// custom renderer has not shipped — but the option is shown so a slide
-    /// already pointing at a layout reads correctly instead of silently
-    /// appearing as a preset it is not.
+    /// Sentinel tag for the Studio option. Picking it hands the slide to the
+    /// Studio: a layout sized to the device's current panel is created under
+    /// the slide's own id, and the slide starts pointing at it.
     private static let customTag = "\u{0}custom"
 
     @ViewBuilder
     private func selectionEditor(_ device: EInkDeviceConfig, slide: EInkSlide) -> some View {
         if slide.kind.preset == nil {
-            Text(L10n.Settings.Eink.customSlideDetail)
-                .font(.caption2)
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L10n.Settings.Eink.customLayoutDetail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    LayoutStudioWindowController.shared.open(
+                        subject: .einkSlide(deviceID: device.deviceID, slideID: slide.id),
+                        environment: environment
+                    )
+                } label: {
+                    Label(L10n.Settings.Eink.Studio.open, systemImage: "rectangle.dashed")
+                }
+            }
         } else if let preset = slide.kind.preset {
             let capacity = preset.capacity(for: device.orientation)
             switch preset.selectionAxis {
@@ -791,15 +800,7 @@ struct EInkDisplaysSettingsSection: View {
     }
 
     private func rebuildPickerSections() {
-        let registry = quotaService.fieldRegistry
-        var sections = MiniWindowFieldProviderSection.all.map {
-            EInkFieldSection(tool: $0.tool, title: $0.title, options: $0.fields)
-        }
-        for discovered in registry.fields where MenuBarFieldCatalog.field(id: discovered.id) == nil {
-            guard let index = sections.firstIndex(where: { $0.tool == discovered.tool }) else { continue }
-            sections[index].options.append(MenuBarFieldCatalog.option(for: discovered))
-        }
-        pickerSections = sections.filter { !$0.options.isEmpty }
+        pickerSections = EInkFieldSection.sections(registry: quotaService.fieldRegistry)
     }
 
     private func loadSnapshotAndPreviews() async {
@@ -987,7 +988,11 @@ struct EInkDisplaysSettingsSection: View {
         Binding(
             get: { slide.kind.preset?.rawValue ?? Self.customTag },
             set: { [deviceID = device.deviceID, slideID = slide.id] value in
-                guard let preset = EInkPreset(rawValue: value) else { return }
+                guard let preset = EInkPreset(rawValue: value) else {
+                    guard value == Self.customTag else { return }
+                    makeCustom(deviceID: deviceID, slideID: slideID)
+                    return
+                }
                 updateSlide(deviceID, slideID: slideID) { current in
                     current.kind = .preset(preset)
                     // Only the axis the new layout actually reads is trimmed.
@@ -1087,6 +1092,47 @@ struct EInkDisplaysSettingsSection: View {
 
     /// Read-modify-write of the whole settings value, exactly as
     /// `MiniWindowsSettingsSection` does it: one write, one fan-out.
+    /// Turning the panel refits every custom layout on it in the same write.
+    ///
+    /// Doing it here rather than lazily is what keeps the settings preview,
+    /// the Studio and the device agreeing: the stored layout is the one the
+    /// new orientation will be drawn from, and an element that no longer fits
+    /// has already been pulled inside the panel — see
+    /// `EInkCanvasLayout.fitted`.
+    private func setOrientation(_ orientation: EInkOrientation, deviceID: String) {
+        var settings = settingsStore.settings
+        guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }) else { return }
+        settings.einkSync.devices[index].orientation = orientation
+        let profile = settings.einkSync.devices[index].profile
+        for slide in settings.einkSync.devices[index].slides {
+            guard let layoutID = slide.kind.layoutID, let layout = settings.einkCanvasLayouts[layoutID] else { continue }
+            settings.einkCanvasLayouts[layoutID] = layout.fitted(profile: profile, orientation: orientation)
+        }
+        settings.einkSync.devices[index] = settings.einkSync.devices[index].sanitized
+        settingsStore.settings = settings
+    }
+
+    /// Hands a slide to the Studio: a layout sized to the panel it is on,
+    /// stored under the slide's own id so the two cannot come apart.
+    private func makeCustom(deviceID: String, slideID: String) {
+        var settings = settingsStore.settings
+        guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }),
+              let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slideID })
+        else { return }
+        let device = settings.einkSync.devices[index]
+        settings.einkSync.devices[index].slides[position].kind = .custom(layoutID: slideID)
+        if settings.einkCanvasLayouts[slideID] == nil {
+            settings.einkCanvasLayouts[slideID] = EInkCanvasLayout(
+                profile: device.profile,
+                orientation: device.orientation
+            )
+        } else {
+            settings.einkCanvasLayouts[slideID] = settings.einkCanvasLayouts[slideID]?
+                .fitted(profile: device.profile, orientation: device.orientation)
+        }
+        settingsStore.settings = settings
+    }
+
     private func updateDevice(_ deviceID: String, _ mutate: (inout EInkDeviceConfig) -> Void) {
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }) else { return }
@@ -1167,27 +1213,9 @@ struct EInkDisplaysSettingsSection: View {
         return presetName(preset)
     }
 
-    private func presetName(_ preset: EInkPreset) -> String {
-        switch preset {
-        case .quotaLedger: L10n.Settings.MiniWindow.Mode.ledger
-        case .quotaRings: L10n.Settings.Eink.Preset.rings
-        case .quotaRail: L10n.Settings.MiniWindow.Mode.rail
-        case .usageTiles: L10n.Settings.MiniWindow.Mode.tiles
-        case .usageSplit: L10n.Settings.Eink.Preset.split
-        case .usageTable: L10n.Settings.Eink.Preset.table
-        case .usageDual: L10n.Settings.Eink.Preset.dual
-        case .usageTrend: L10n.Settings.Eink.Preset.trend
-        }
-    }
+    private func presetName(_ preset: EInkPreset) -> String { EInkNaming.preset(preset) }
 
-    private func periodName(_ period: EInkUsagePeriod) -> String {
-        switch period {
-        case .today: L10n.Cost.Timeframe.today
-        case .week: L10n.Cost.Timeframe.week
-        case .month: L10n.Cost.Timeframe.month
-        case .allTime: L10n.Cost.ModelRanking.allTime
-        }
-    }
+    private func periodName(_ period: EInkUsagePeriod) -> String { EInkNaming.period(period) }
 
     private func orientationHelp(_ orientation: EInkOrientation) -> String {
         switch orientation {
@@ -1246,6 +1274,20 @@ struct EInkFieldSection: Identifiable {
     let title: String
     var options: [MenuBarFieldOption]
     var id: String { title }
+
+    /// The mini window's own provider sections, plus whatever the live
+    /// registry has discovered since. Shared with the Studio so both pickers
+    /// offer the same buckets under the same headings.
+    static func sections(registry: QuotaFieldRegistry) -> [EInkFieldSection] {
+        var sections = MiniWindowFieldProviderSection.all.map {
+            EInkFieldSection(tool: $0.tool, title: $0.title, options: $0.fields)
+        }
+        for discovered in registry.fields where MenuBarFieldCatalog.field(id: discovered.id) == nil {
+            guard let index = sections.firstIndex(where: { $0.tool == discovered.tool }) else { continue }
+            sections[index].options.append(MenuBarFieldCatalog.option(for: discovered))
+        }
+        return sections.filter { !$0.options.isEmpty }
+    }
 }
 
 /// The panel outline with its top edge marked, so the four orientations read

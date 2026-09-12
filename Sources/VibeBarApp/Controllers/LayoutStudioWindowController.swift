@@ -25,6 +25,11 @@ final class LayoutStudioWindowController: NSObject {
         case miniWindow(UUID)
         /// The composed menu bar strip of one status item.
         case menuBar(MenuBarItemKind)
+        /// One custom slide of one e-ink device. The slide's own id is the
+        /// key of its layout in `AppSettings.einkCanvasLayouts`, and it is a
+        /// string rather than a UUID because `EInkSlide.id` is what the
+        /// device's task mapping is keyed by.
+        case einkSlide(deviceID: String, slideID: String)
     }
 
     private var window: NSWindow?
@@ -38,12 +43,21 @@ final class LayoutStudioWindowController: NSObject {
            environment.settingsStore.settings.miniWindow.config(id: id)?.displayMode == .custom {
             model.isInspectorShown = true
         }
+        // A blank panel with no palette beside it is not an editor — and a
+        // 296 x 152 panel at 1:1 is a postage stamp on a 1240 pt window, so
+        // the paper opens at 3x, where a device pixel is a thing the pointer
+        // can actually land on.
+        if case .einkSlide = subject {
+            model.isInspectorShown = true
+            model.zoom = .scale(EInkStudioStage.defaultZoom)
+        }
         // Before the window exists: switching activation policy reorders the
         // app's windows, and doing it afterwards can drop the new one behind.
         DockActivationController.shared.acquire(.layoutStudio)
 
         if let window {
             if window.isMiniaturized { window.deminiaturize(nil) }
+            widenForPaper(window, subject: subject)
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -123,6 +137,7 @@ final class LayoutStudioWindowController: NSObject {
         if !DemoMode.isEnabled {
             win.setFrameAutosaveName(Self.frameAutosaveName)
         }
+        widenForPaper(win, subject: subject)
         self.window = win
         self.hostingView = hosting.view
         installKeyMonitor()
@@ -135,6 +150,32 @@ final class LayoutStudioWindowController: NSObject {
     func close() {
         window?.close()
     }
+
+    /// Grows the window — never shrinks it — so a panel opened at 3x fits
+    /// beside the inspector.
+    ///
+    /// A 296 px panel is 888 pt of paper, which is wider than the stage a
+    /// 1240 pt window leaves once the inspector has its 520. Opening an
+    /// editor onto a subject that is already cut off at both edges reads as
+    /// broken, and the alternative — dropping the zoom — would put the
+    /// device's pixels below the size a pointer can aim at.
+    private func widenForPaper(_ window: NSWindow, subject: Subject) {
+        guard case .einkSlide = subject else { return }
+        let visible = (DemoMode.isEnabled ? DemoPresenter.targetScreen : window.screen ?? NSScreen.main)?
+            .visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let paper = EInkDeviceProfile.quote0.width * Int(EInkStudioStage.defaultZoom)
+        let wanted = min(visible.width - 40, CGFloat(paper) + Self.stageChrome)
+        var frame = window.frame
+        guard wanted > frame.width else { return }
+        frame.origin.x = max(visible.minX, frame.midX - wanted / 2)
+        frame.size.width = wanted
+        if frame.maxX > visible.maxX { frame.origin.x = max(visible.minX, visible.maxX - wanted) }
+        window.setFrame(frame, display: true)
+    }
+
+    /// The stage's padding plus the inspector's width — what the window needs
+    /// on top of the paper itself.
+    private static let stageChrome: CGFloat = 632
 
     /// A picture of one region of the studio, in the hosting view's
     /// coordinates (origin top-left, as SwiftUI's `.global` space reports).
@@ -204,6 +245,9 @@ final class LayoutStudioModel: ObservableObject {
     /// A key the studio answers. The view installs the handler; the window's
     /// event monitor asks.
     enum Key {
+        /// One arrow press. `major` is the Shift form — eight device pixels
+        /// on an e-ink panel, and nothing anywhere else.
+        case nudge(dx: Int, dy: Int, major: Bool)
         case escape
         case close
         case zoomIn
@@ -256,8 +300,10 @@ final class LayoutStudioModel: ObservableObject {
         switch event.keyCode {
         case 53:  return command || option ? nil : .escape
         case 51, 117: return command || option ? nil : .removeSelection
-        case 123: return command || option ? nil : .previousSubject
-        case 124: return command || option ? nil : .nextSubject
+        case 123: return command || option ? nil : .nudge(dx: -1, dy: 0, major: shift)
+        case 124: return command || option ? nil : .nudge(dx: 1, dy: 0, major: shift)
+        case 125: return command || option ? nil : .nudge(dx: 0, dy: 1, major: shift)
+        case 126: return command || option ? nil : .nudge(dx: 0, dy: -1, major: shift)
         default: break
         }
         guard command, let characters = event.charactersIgnoringModifiers?.lowercased() else { return nil }
@@ -290,12 +336,14 @@ enum StudioUndo: Equatable {
     case page(PageLayoutPageID, StoredPageLayout?, [[String]])
     case miniWindow(UUID, MiniWindowConfig?, MiniCanvasLayout?)
     case menuBar(MenuBarItemKind, MenuBarItemSettings)
+    case einkSlide(deviceID: String, slideID: String, EInkSlide?, EInkCanvasLayout?)
 
     var subject: LayoutStudioWindowController.Subject {
         switch self {
         case let .page(page, _, _): return .popoverPage(page)
         case let .miniWindow(id, _, _): return .miniWindow(id)
         case let .menuBar(kind, _): return .menuBar(kind)
+        case let .einkSlide(deviceID, slideID, _, _): return .einkSlide(deviceID: deviceID, slideID: slideID)
         }
     }
 }
