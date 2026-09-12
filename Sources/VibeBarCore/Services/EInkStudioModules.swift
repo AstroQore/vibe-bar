@@ -146,10 +146,16 @@ public enum EInkStudioModules {
             rule.groupID = group
             rule.moduleID = moduleID
             result.append(rule)
-            make(.text, .usageMetric, dx: 0, dy: 3, w: width / 2, h: 12)
-            make(.text, .usageMetric, dx: width / 2, dy: 3, w: width / 2, h: 12, align: .trailing)
-            result[1].usagePeriod = .today
-            result[2].usagePeriod = .week
+            // A caption beside each figure, as `EInkPresets.usageSummaryFooter`
+            // prints them. Two bare amounts on a panel read from across a room
+            // are two numbers nobody can tell apart.
+            let half = width / 2
+            make(.text, .custom, dx: 0, dy: 3, w: 46, h: 12, text: EInkUsagePeriod.today.caption, bold: true)
+            make(.text, .usageMetric, dx: 48, dy: 3, w: half - 52, h: 12)
+            make(.text, .custom, dx: half, dy: 3, w: 48, h: 12, text: EInkUsagePeriod.week.caption, bold: true)
+            make(.text, .usageMetric, dx: half + 50, dy: 3, w: half - 50, h: 12, align: .trailing)
+            result[2].usagePeriod = .today
+            result[4].usagePeriod = .week
         }
         return result
     }

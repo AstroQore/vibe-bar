@@ -748,6 +748,12 @@ struct EInkSlidesEditor: View {
             },
             set: { [slideID = slide.id] value in
                 updateSlide(slideID) { current in
+                    // The field commits on an idle timer and again on its way
+                    // out of the view tree, so a keystroke followed quickly by
+                    // Clock or Nothing would land after the picker and put the
+                    // side back to fixed text.
+                    let side = isLeft ? current.options.header?.left : current.options.header?.right
+                    guard case .text = side else { return }
                     if isLeft {
                         current.options.header?.left = .text(value)
                     } else {
@@ -797,7 +803,10 @@ struct EInkSlidesEditor: View {
                 return ""
             },
             set: { [slideID = slide.id] value in
-                updateSlide(slideID) { $0.options.footer = EInkFooterConfig(content: .text(value)) }
+                updateSlide(slideID) { current in
+                    guard case .text = current.options.footer?.content else { return }
+                    current.options.footer = EInkFooterConfig(content: .text(value))
+                }
             }
         )
     }
