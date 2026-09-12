@@ -965,9 +965,19 @@ final class EInkSyncServiceTests: XCTestCase {
                 playback: .carousel(driver: .appTimer, secondsPerSlide: 30)
             )
         )
-        _ = await sync.refresh(deviceID: "panel-1")
-        let scheduled = sync.state(for: "panel-1").nextRefreshAt
-        XCTAssertNotNil(scheduled, "a scheduled pass is what sets the deadline")
+        // Only the loop writes the deadline, and only where it starts
+        // sleeping, so this needs the real scheduler rather than one pass.
+        sync.start()
+        defer { sync.stop() }
+        var scheduled: Date?
+        for _ in 0..<200 {
+            if let at = sync.state(for: "panel-1").nextRefreshAt {
+                scheduled = at
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertNotNil(scheduled, "the loop records it when it parks")
 
         let before = client.pushes.count
         await sync.advanceCarousel(deviceID: "panel-1")
@@ -1382,6 +1392,24 @@ final class EInkSyncServiceTests: XCTestCase {
 
     func testAStatusReadThatWorkedClearsTheWarningItDisproves() async {
         let client = FakeDotClient()
+        client.sendErrors = [.network("synthetic transport failure")]
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(sync.state(for: "panel-1").lastFailure, .network)
+
+        // A device with its switch off has no automatic pass coming, so the
+        // pane's own status read is the only thing that can retire the notice.
+        let status = await sync.refreshStatus(deviceID: "panel-1")
+        XCTAssertNotNil(status)
+        XCTAssertNil(sync.state(for: "panel-1").lastFailure)
+        XCTAssertNil(sync.state(for: "panel-1").lastError)
+    }
+
+    func testAStatusReadDoesNotRetireAWarningAboutTheWritePath() async {
+        let client = FakeDotClient()
         client.sendErrors = [.taskNotInLoop]
         let sync = service(
             client: client,
@@ -1390,12 +1418,11 @@ final class EInkSyncServiceTests: XCTestCase {
         _ = await sync.refresh(deviceID: "panel-1")
         XCTAssertEqual(sync.state(for: "panel-1").lastFailure, .taskMissing)
 
-        // A device with its switch off has no automatic pass coming, so the
-        // pane's own status read is the only thing that can retire the notice.
+        // The panel answers, and the Canvas API task is still not in its loop.
+        // Clearing the notice would retire the one line that says what to fix.
         let status = await sync.refreshStatus(deviceID: "panel-1")
         XCTAssertNotNil(status)
-        XCTAssertNil(sync.state(for: "panel-1").lastFailure)
-        XCTAssertNil(sync.state(for: "panel-1").lastError)
+        XCTAssertEqual(sync.state(for: "panel-1").lastFailure, .taskMissing)
     }
 
     func testASuccessfulReadLiftsARejectionAndRestartsSyncing() async {

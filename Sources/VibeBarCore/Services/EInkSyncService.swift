@@ -434,6 +434,7 @@ public final class EInkSyncService: ObservableObject {
                         _ = await self.refresh(deviceID: id)
                     }
                     let interval = await self.refreshInterval(for: id)
+                    await self.noteNextRefresh(deviceID: id, after: interval)
                     do {
                         try await Task.sleep(for: .seconds(interval))
                     } catch {
@@ -462,6 +463,21 @@ public final class EInkSyncService: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Records when the refresh loop will next wake for this device.
+    ///
+    /// Called from the loop, immediately before it sleeps, because that is the
+    /// only moment the answer is true. A pass cannot know it: `Push now` and a
+    /// carousel tick run beside the loop without touching its timer, and a
+    /// scheduled trigger can join a pass already in flight instead of being
+    /// the one that sleeps next. Settings shows this value, so a deadline
+    /// written anywhere else is a promise the loop does not keep.
+    private func noteNextRefresh(deviceID: String, after interval: TimeInterval) {
+        var state = self.state(for: deviceID)
+        state.nextRefreshAt = clock().addingTimeInterval(interval)
+        states[deviceID] = state
+        persist()
     }
 
     /// Seconds between two data refreshes for this device, which is where the
@@ -779,22 +795,13 @@ public final class EInkSyncService: ObservableObject {
         state.lastFailure = failure
         state.lastError = detail
         state.surplusTaskCount = plan.surplusTaskCount
-        // Only a scheduled pass moves the deadline, because only a scheduled
-        // pass is followed by a sleep. A forced push — the Push now button, a
-        // carousel tick — runs beside the data-refresh loop without resetting
-        // its timer, so writing a fresh deadline here made Settings promise a
-        // next refresh the loop was never going to honour: the loop was still
-        // sleeping out the interval it started before the button was pressed.
-        if !force {
-            state.nextRefreshAt = clock().addingTimeInterval(
-                TimeInterval(
-                    max(
-                        EInkDeviceConfig.minimumDataRefreshMinutes,
-                        state.onBattery ? device.batteryRefreshMinutes : device.dataRefreshMinutes
-                    ) * 60
-                )
-            )
-        }
+        // `nextRefreshAt` is deliberately not written here. No pass owns the
+        // deadline: a forced push runs beside the loop without resetting its
+        // timer, and a scheduled trigger may join a pass in flight rather than
+        // be the one that sleeps afterwards. `noteNextRefresh` records it
+        // where the loop actually starts sleeping, which is the only moment it
+        // is true; `committing(over:)` therefore takes it from the stored
+        // state rather than from this snapshot.
 
         guard generation == configurationGeneration else { return EInkPushOutcome() }
         // Merge, never replace. This snapshot was taken before the network
@@ -1155,12 +1162,16 @@ public final class EInkSyncService: ObservableObject {
         state.apply(status)
         state.lastStatusAt = clock()
         // A status read that came back is proof the device is reachable and
-        // the key works, so the old warning goes with it. A disabled device
-        // has no automatic pass to clear one, and a stale "no route to the
-        // panel" sitting under a live status line is worse than no line at
-        // all — it is a warning about a condition that has already gone.
-        state.lastFailure = nil
-        state.lastError = nil
+        // the key works, so the warnings that claimed otherwise go with it: a
+        // disabled device has no automatic pass to clear one, and a stale "no
+        // route to the panel" under a live status line is a warning about a
+        // condition that has already gone. Only those, though — a status read
+        // disproves nothing about the write path, and `.taskMissing` names the
+        // one thing the user has to go and fix.
+        if state.lastFailure?.isDisprovedByStatus ?? false {
+            state.lastFailure = nil
+            state.lastError = nil
+        }
         states[deviceID] = state
         persist()
         // Same reasoning as `fetchDevices` and `rescanTasks`: a call that

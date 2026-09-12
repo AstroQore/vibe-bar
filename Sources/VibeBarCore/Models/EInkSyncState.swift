@@ -19,6 +19,22 @@ public enum EInkSyncFailure: String, Codable, Equatable, Sendable {
     /// the usage ones were skipped rather than drawn as zeros, because a panel
     /// reading "$0 today" is a wrong answer, not a missing one.
     case usageUnavailable
+
+    /// True when a status read that came back disproves this failure.
+    ///
+    /// Only the ones about *reaching* the device are: a panel that answers is
+    /// online, with a credential the service accepted. Everything else is
+    /// about the write path — a Canvas API task that is not in the loop, a
+    /// payload that would not encode, a ledger that would not open — and a
+    /// status read says nothing about any of them. Clearing those on a
+    /// successful status would retire the one line telling the user what to
+    /// fix, while the next push failed in exactly the same way.
+    public var isDisprovedByStatus: Bool {
+        switch self {
+        case .unauthorized, .deviceMissing, .rateLimited, .network: true
+        case .taskMissing, .render, .noTaskKeys, .noSlides, .usageUnavailable: false
+        }
+    }
 }
 
 /// What the sync engine remembers about one device between launches.
@@ -110,6 +126,10 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
         var merged = self
         merged.slideIndex = latest.slideIndex
         merged.canvasTaskCount = latest.canvasTaskCount
+        // The refresh loop owns the deadline and writes it where it starts
+        // sleeping, so a pass carrying a snapshot taken before that must not
+        // put the old one back.
+        merged.nextRefreshAt = latest.nextRefreshAt
         return merged
     }
 
