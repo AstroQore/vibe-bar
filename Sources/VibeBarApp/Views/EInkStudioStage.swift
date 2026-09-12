@@ -47,6 +47,12 @@ struct EInkStudioStage: View {
         var layout: EInkCanvasLayout
         var generatedAtISO: String
         var orientation: Int
+        /// The slide's composition options, because a label-bound element
+        /// draws the *slide's* name for its bucket: renaming a slot in the
+        /// inspector changes no layout and no snapshot, and a cache keyed on
+        /// those two alone would keep drawing the old name until something
+        /// else moved.
+        var options: EInkSlideOptions
         var boxes: [EInkDrawBox]
         var report: EInkLayoutDiagnostics.Report
     }
@@ -90,6 +96,7 @@ struct EInkStudioStage: View {
         .onChange(of: shown) { _, value in rebuild(value) }
         .onChange(of: snapshot?.generatedAtISO ?? "") { _, _ in rebuild(shown) }
         .onChange(of: orientation) { _, _ in rebuild(shown) }
+        .onChange(of: slide.options) { _, _ in rebuild(shown) }
         .onChange(of: layout) { _, _ in
             // An Undo or a Settings edit wins over a gesture still in flight.
             if gestureBase != nil { cancelled = true; preview = nil; gestureBase = nil }
@@ -149,14 +156,7 @@ struct EInkStudioStage: View {
                     .offset(x: rect.minX, y: rect.minY)
                     .allowsHitTesting(false)
             } else if drawsNothing(element) {
-                Rectangle()
-                    .strokeBorder(
-                        Color.black.opacity(0.35),
-                        style: StrokeStyle(lineWidth: hairline, dash: [2, 2])
-                    )
-                    .frame(width: rect.width, height: rect.height)
-                    .offset(x: rect.minX, y: rect.minY)
-                    .allowsHitTesting(false)
+                placeholder(element, rect: rect, hairline: hairline)
             }
             if hovered == element.id, !selection.contains(element.id) {
                 Rectangle()
@@ -181,6 +181,34 @@ struct EInkStudioStage: View {
                 }
                 .allowsHitTesting(false)
         }
+    }
+
+    /// Where an element the panel will not draw is, and what it is.
+    ///
+    /// A dashed hairline and the element's own name — never ink. An unbound
+    /// bar used to be indistinguishable from a bound one at 100 %, and a
+    /// `.fill` dropped from the palette was a solid black rectangle nobody
+    /// could account for; both now read as "nothing to draw, and here is what
+    /// this is". The name matters as much as the dashes: "there is something
+    /// invisible here" without saying *what* is a hunt, not a diagnosis.
+    private func placeholder(_ element: EInkCanvasElement, rect: CGRect, hairline: CGFloat) -> some View {
+        Rectangle()
+            .strokeBorder(
+                Color.black.opacity(0.35),
+                style: StrokeStyle(lineWidth: hairline, dash: [2, 2])
+            )
+            .overlay(alignment: .topLeading) {
+                Text(EInkNaming.kind(element.kind))
+                    .font(.system(size: 7))
+                    .foregroundStyle(Color.black.opacity(0.45))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .padding(.horizontal, 1)
+                    .help(L10n.Settings.Eink.Studio.nothingToDraw)
+            }
+            .frame(width: rect.width, height: rect.height)
+            .offset(x: rect.minX, y: rect.minY)
+            .allowsHitTesting(false)
     }
 
     /// Whether this element contributes no box at all — an unbound gauge, or
@@ -217,13 +245,15 @@ struct EInkStudioStage: View {
             layout: candidate,
             generatedAtISO: snapshot.generatedAtISO,
             orientation: orientation.rawValue,
+            options: slide.options,
             boxes: [],
             report: EInkLayoutDiagnostics.Report(issues: [], elementCount: 0, elementLimit: 0)
         )
         if let render,
            render.layout == key.layout,
            render.generatedAtISO == key.generatedAtISO,
-           render.orientation == key.orientation {
+           render.orientation == key.orientation,
+           render.options == key.options {
             return
         }
         let size = profile.frameSize(for: orientation)
@@ -284,7 +314,11 @@ struct EInkStudioStage: View {
                 let dx = value.translation.width
                 let dy = value.translation.height
                 guard hypot(dx, dy) >= 2 else { return }
-                let major = NSEvent.modifierFlags.contains(.option)
+                // Snapping is on by default and Option bypasses it, which is
+                // the round 2 inversion: round 1 had a pixel drag with Option
+                // as the *only* way to reach the grid, so a layout built by
+                // hand never lined up with the presets it sat beside.
+                let major = NSEvent.modifierFlags.contains(.option) != shown.snapToGrid
                 if let resizing, let index = base.elements.firstIndex(where: { $0.id == resizing }) {
                     var next = base
                     let e = base.elements[index]
@@ -299,7 +333,7 @@ struct EInkStudioStage: View {
                     )
                     withAnimation(Self.snapAnimation) { preview = next.normalized() }
                 } else {
-                    let moved = base.moving(selection, dx: dx, dy: dy, majorGrid: major)
+                    let moved = base.moving(selection, dx: dx, dy: dy, snapping: major)
                     if major { withAnimation(Self.snapAnimation) { preview = moved } } else { preview = moved }
                 }
                 NSCursor.closedHand.set()
@@ -385,12 +419,14 @@ struct EInkStudioStage: View {
         dy: Int,
         major: Bool
     ) -> EInkCanvasLayout {
+        // One pixel, eight with Shift, whatever the snap toggle says: an
+        // arrow key is a measured nudge and the modifier is the whole control.
         let step = major ? EInkCanvasLayout.gridSpacing : EInkCanvasLayout.pixelSpacing
         return layout.moving(
             selection,
             dx: Double(dx) * step,
             dy: Double(dy) * step,
-            majorGrid: major
+            snapping: major
         )
     }
 }

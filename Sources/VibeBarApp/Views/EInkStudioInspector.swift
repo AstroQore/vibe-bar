@@ -12,11 +12,21 @@ import VibeBarCore
 struct EInkStudioInspector: View {
     @Binding var layout: EInkCanvasLayout
     @Binding var selection: Set<UUID>
+    /// The names this slide prints for its buckets, edited here as well as in
+    /// the settings pane: a label is a property of the slide, not of the
+    /// element, so two elements bound to one bucket cannot disagree.
+    @Binding var customLabels: [String: String]
     let sections: [EInkFieldSection]
+    let slide: EInkSlide
     let orientation: EInkOrientation
     let profile: EInkDeviceProfile
+    let snapshot: EInkDataSnapshot?
     let report: EInkLayoutDiagnostics.Report?
     let isPushing: Bool
+    /// False while the stage is showing an orientation the device is not on.
+    /// The sync engine draws `device.orientation`, so the push would send a
+    /// different panel from the one being edited.
+    var canPush: Bool = true
     var onPush: () -> Void
 
     private var selected: EInkCanvasElement? {
@@ -45,12 +55,12 @@ struct EInkStudioInspector: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             Text(L10n.Common.add).font(.headline)
-            Text(L10n.Settings.MiniCanvas.primitives).font(.caption).foregroundStyle(.secondary)
-            palette(EInkCanvasElement.Kind.allCases.filter { $0.preset == nil })
-            Text(L10n.Settings.Eink.Group.quota).font(.caption).foregroundStyle(.secondary)
-            palette(EInkCanvasElement.Kind.allCases.filter { $0.preset?.isQuotaPreset == true })
-            Text(L10n.Settings.Eink.Group.usage).font(.caption).foregroundStyle(.secondary)
-            palette(EInkCanvasElement.Kind.allCases.filter { $0.preset.map { !$0.isQuotaPreset } ?? false })
+            Text(L10n.Settings.Eink.Studio.modules).font(.caption).foregroundStyle(.secondary)
+            modulePalette
+            Text(L10n.Settings.Eink.Studio.elements).font(.caption).foregroundStyle(.secondary)
+            palette(EInkStudioModules.authorPlaceable)
+            Text(L10n.Settings.Eink.Studio.wholeLayouts).font(.caption).foregroundStyle(.secondary)
+            presetPalette
             Divider()
             if let selected { properties(selected) }
             if !selection.isEmpty { actions }
@@ -78,10 +88,22 @@ struct EInkStudioInspector: View {
             Button(action: onPush) {
                 Label(L10n.Settings.Eink.Studio.push, systemImage: "arrow.up.circle")
             }
-            .disabled(isPushing)
+            .disabled(isPushing || !canPush)
+            if !canPush {
+                Text(L10n.Settings.Eink.Studio.pushOtherOrientation)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
+    /// The primitives an author can draw.
+    ///
+    /// `EInkStudioModules.authorPlaceable` is a written list, not a filter
+    /// over `Kind.allCases`: the filter is how `.fill` — a solid black
+    /// rectangle with no binding and no controls — reached this grid under the
+    /// name "Element" and ended up on the owner's panel.
     private func palette(_ kinds: [EInkCanvasElement.Kind]) -> some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], alignment: .leading) {
             ForEach(kinds, id: \.self) { kind in
@@ -96,6 +118,67 @@ struct EInkStudioInspector: View {
                 }
             }
         }
+    }
+
+    /// The ready-made groups: a header bar, one quota slot, one usage slot, a
+    /// footer. Each arrives bound and grouped, exactly as an exploded preset's
+    /// own modules do, so Ungroup splits either one.
+    private var modulePalette: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], alignment: .leading) {
+            ForEach(EInkStudioModule.allCases) { module in
+                Button {
+                    var next = layout
+                    let ids = next.insert(
+                        EInkStudioModules.elements(
+                            module,
+                            fieldID: module == .quotaSlot ? preferredFieldID : nil,
+                            width: max(48, layout.width - 2 * EInkCanvasLayout.safeMargin),
+                            origin: next.nextModuleOrigin
+                        )
+                    )
+                    layout = next
+                    selection = ids
+                } label: {
+                    Label(EInkNaming.module(module), systemImage: EInkNaming.symbol(module))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    /// A whole preset, dropped as the groups it is made of rather than as one
+    /// opaque block — the same explode "Edit in Studio" performs.
+    private var presetPalette: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], alignment: .leading) {
+            ForEach(EInkPreset.userSelectable, id: \.rawValue) { preset in
+                Button {
+                    guard let snapshot else { return }
+                    var next = layout
+                    let ids = next.insert(
+                        EInkStudioModules.presetElements(
+                            preset,
+                            slide: slide,
+                            orientation: orientation,
+                            profile: profile,
+                            snapshot: snapshot
+                        )
+                    )
+                    layout = next
+                    selection = ids
+                } label: {
+                    Label(EInkNaming.preset(preset), systemImage: "rectangle.on.rectangle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .disabled(snapshot == nil)
+            }
+        }
+    }
+
+    /// The bucket a new quota slot binds to: the one the slide already draws,
+    /// else the first the account offers. A slot bound to nothing is a dashed
+    /// placeholder, which is a worse first impression than a bound one.
+    private var preferredFieldID: String? {
+        slide.orderedQuotaFieldIDs.first ?? options.first?.id
     }
 
     // MARK: - Properties
@@ -147,6 +230,37 @@ struct EInkStudioInspector: View {
             default:
                 EmptyView()
             }
+        }
+        if let fieldID = e.fieldID, !fieldID.isEmpty, e.kind.preset == nil {
+            customLabelField(fieldID)
+        }
+    }
+
+    /// The name this slide prints for the bucket the selected element is bound
+    /// to.
+    ///
+    /// It writes the *slide's* label map rather than anything on the element,
+    /// which is what keeps a slot's name, its bar and its countdown agreeing
+    /// after one of them is edited — and what makes the same field in Settings
+    /// and the same field here one control.
+    private func customLabelField(_ fieldID: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(L10n.Settings.Eink.slotLabel).font(.caption).foregroundStyle(.secondary)
+            DebouncedSettingsTextField(
+                prompt: L10n.Settings.Eink.slotLabel,
+                value: Binding(
+                    get: { customLabels[fieldID] ?? "" },
+                    set: { value in
+                        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                        customLabels[fieldID] = trimmed.isEmpty ? nil : trimmed
+                    }
+                )
+            )
+            .id("studio-label-\(fieldID)")
+            Text(L10n.Settings.Eink.slotLabelDetail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -520,9 +634,64 @@ enum EInkNaming {
         case .usageTable: L10n.Settings.Eink.Preset.table
         case .usageDual: L10n.Settings.Eink.Preset.dual
         case .usageTrend: L10n.Settings.Eink.Preset.trend
-        // Round 2's layouts keep their English identifiers until the round 2
-        // settings redesign gives them localized names.
-        case .briefing, .forecast, .resets, .heatmap, .topModels, .alert: preset.identifierName
+        case .briefing: L10n.Settings.Eink.Preset.briefing
+        // Two of round 2's layouts are words the catalogue already had; a
+        // second key saying "Forecast" is a second key to retranslate.
+        case .forecast: L10n.MenuBar.Composer.Colour.forecast
+        case .resets: L10n.Workbench.Page.Resets.title
+        case .heatmap: L10n.Settings.Eink.Preset.heatmap
+        case .topModels: L10n.Settings.Eink.Preset.topModels
+        // Never in a picker — the engine places it — but it is named in a
+        // slide list and in the Studio's layer list all the same.
+        case .alert: L10n.Settings.Eink.alerts
+        }
+    }
+
+    /// The three groups the layout picker offers, so the settings pane and the
+    /// Studio palette cut the list the same way.
+    static func isUsage(_ preset: EInkPreset) -> Bool {
+        switch preset {
+        case .usageTiles, .usageSplit, .usageTable, .usageDual, .usageTrend: true
+        default: false
+        }
+    }
+
+    static func isInsight(_ preset: EInkPreset) -> Bool {
+        !preset.isQuotaPreset && !isUsage(preset) && preset != .alert
+    }
+
+    /// Which way the device is turned, in the words the existing catalogue
+    /// already has for it.
+    ///
+    /// 90° reads as *turned left*: the encoder rotates the canvas clockwise
+    /// into the panel, so reading it upright means turning the device the
+    /// other way and the hardware's top edge ends up on the left. Round 1 had
+    /// these two the wrong way round, which is visible the moment a panel is
+    /// picked up — see `EInkOrientation.uprightDeviceEdge`.
+    static func orientation(_ orientation: EInkOrientation) -> String {
+        switch orientation {
+        case .degrees0: L10n.Settings.Eink.Orientation.upright
+        case .degrees90: L10n.Settings.Eink.Orientation.left
+        case .degrees180: L10n.Settings.Eink.Orientation.inverted
+        case .degrees270: L10n.Settings.Eink.Orientation.right
+        }
+    }
+
+    static func module(_ module: EInkStudioModule) -> String {
+        switch module {
+        case .headerBar: L10n.Settings.Eink.header
+        case .quotaSlot: L10n.Settings.Eink.Studio.Module.quotaSlot
+        case .usageSlot: L10n.Settings.Eink.Studio.Module.usageSlot
+        case .footer: L10n.Settings.Eink.footer
+        }
+    }
+
+    static func symbol(_ module: EInkStudioModule) -> String {
+        switch module {
+        case .headerBar: "rectangle.topthird.inset.filled"
+        case .quotaSlot: "chart.bar.xaxis"
+        case .usageSlot: "square.text.square"
+        case .footer: "rectangle.bottomthird.inset.filled"
         }
     }
 
@@ -544,6 +713,12 @@ enum EInkNaming {
         case .verticalBar: return L10n.Settings.MiniCanvas.verticalBar
         case .statTile: return L10n.Settings.Eink.Studio.statTile
         case .divider: return L10n.Settings.Eink.Studio.divider
+        // `.fill` and `.image` are never offered in the palette — they are the
+        // far side of an explode — but a layout can hold them, and a layer
+        // called "Element" is what let an unexplained black rectangle sit on
+        // the owner's paper with nothing to click on.
+        case .fill: return L10n.Settings.Eink.Studio.fill
+        case .image: return L10n.Settings.Eink.Studio.image
         default: return L10n.Settings.MiniCanvas.element
         }
     }
@@ -557,6 +732,8 @@ enum EInkNaming {
         case .verticalBar: return "chart.bar.fill"
         case .statTile: return "square.text.square"
         case .divider: return "minus"
+        case .fill: return "square.fill"
+        case .image: return "photo"
         default: return "square"
         }
     }

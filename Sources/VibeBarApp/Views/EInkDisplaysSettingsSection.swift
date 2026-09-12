@@ -4,20 +4,28 @@ import VibeBarCore
 
 /// Settings › E-ink Displays.
 ///
-/// Three flat cards, in the order the work happens: get in (key, devices),
-/// set the device up (orientation, cadence, playback, loop tasks, push), then
-/// author what it shows (slides). The chrome is the ordinary
-/// `SettingsSectionCard` recipe — no glass — and only the preview and the
-/// read-back thumbnail are drawn as paper, because those two *are* the device.
+/// Three flat cards, in the order the work happens: get in (key, devices), set
+/// the device up (which way it hangs, how often it redraws, what it plays,
+/// when it is quiet, what a tap opens), then author what it shows (slides).
+/// The chrome is the ordinary `SettingsSectionCard` recipe — no glass — and
+/// only the previews and the read-back thumbnail are drawn as paper, because
+/// those are the device.
 ///
-/// Fluency notes, since this pane does more derivation than most:
-/// - The preview plans (one for the selected orientation, four for the strip)
-///   are rebuilt in `onAppear` / `onChange`, never in `body`.
-/// - The bucket picker's sections are cached the same way
-///   `MiniWindowsSettingsSection` caches them, because they are derived from
-///   the runtime quota registry.
-/// - Free text goes through `DebouncedSettingsTextField`; nothing here writes
-///   `AppSettings` per keystroke.
+/// Round 2 rebuilt the middle card around one idea: **everything is drawn the
+/// way it is read.** The orientation picker is four upright panels in a device
+/// outline whose notch marks the hardware's top edge, the read-back PNG is
+/// turned upright before it is shown, and the "every orientation" grid of
+/// sideways slides is gone — it was the source of the owner's "the
+/// per-orientation display looks odd".
+///
+/// Fluency notes, since this pane derives more than most:
+/// - The preview plans (one per orientation) are rebuilt in `onAppear` /
+///   `onChange`, never in `body`, and they are what the picker draws too.
+/// - The bucket picker's sections are cached the way
+///   `MiniWindowsSettingsSection` caches them.
+/// - Every free-text and numeric field goes through
+///   `DebouncedSettingsTextField`; nothing here writes `AppSettings` per
+///   keystroke.
 struct EInkDisplaysSettingsSection: View {
     let density: Theme.Density
     @ObservedObject var service: EInkSyncService
@@ -38,20 +46,22 @@ struct EInkDisplaysSettingsSection: View {
     /// panel and leave the real one grinding through its retries.
     @State private var pushingDeviceID: String?
     @State private var renderImage: NSImage?
+    /// The read-back raster already turned upright.
+    ///
+    /// Turning it is a `lockFocus` and a redraw, and a settings write fans out
+    /// to every subscriber — so doing it in `body` would redraw the panel
+    /// raster on the main thread every time an unrelated control moved. It is
+    /// computed when the image or the orientation changes and never in `body`.
+    @State private var uprightRenderImage: NSImage?
     @State private var snapshot: EInkDataSnapshot?
     @State private var previews: [Int: EInkPreviewPlan] = [:]
     @State private var pickerSections: [EInkFieldSection] = []
-    @State private var slideDrag: SlideDrag?
-    @State private var slideFrames: [String: CGRect] = [:]
-
-    private static let slideSpace = "vibebar.eink.slides"
-    private static let dragThreshold: CGFloat = 5
-
-    private struct SlideDrag {
-        let slideID: String
-        var location: CGPoint
-        var engaged: Bool
-    }
+    /// The last custom tap address typed for a device, per device.
+    ///
+    /// `EInkTapLink` carries the string inside its `.custom` case, so picking
+    /// None or the dashboard drops it. Keeping the draft here is what makes
+    /// flipping away and back the harmless act the picker implies.
+    @State private var tapLinkDrafts: [String: String] = [:]
 
     private var sync: EInkSyncSettings { settingsStore.settings.einkSync }
 
@@ -84,9 +94,11 @@ struct EInkDisplaysSettingsSection: View {
         }
         .onChange(of: selectedDevice?.deviceID) { _, _ in
             renderImage = nil
+            uprightRenderImage = nil
             pushStatus = nil
             Task { await refreshDeviceStatus() }
         }
+        .onChange(of: selectedDevice?.orientation) { _, _ in rebuildUprightRender() }
         .onDisappear { cancelPush() }
     }
 
@@ -207,25 +219,44 @@ struct EInkDisplaysSettingsSection: View {
             title: device.alias.isEmpty ? device.deviceID : device.alias,
             density: density
         ) {
-            statusGrid(state)
+            statusStrip(state)
             Divider().padding(.vertical, 2)
 
             Text(L10n.Settings.Eink.orientation)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            orientationPicker(device)
+            EInkOrientationPicker(
+                orientation: device.orientation,
+                plans: previews,
+                profile: device.profile
+            ) { orientation in
+                setOrientation(orientation, deviceID: device.deviceID)
+            }
+            Text(L10n.Settings.Eink.orientationNote)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Divider().padding(.vertical, 2)
 
-            refreshSteppers(device)
+            cadenceFields(device)
 
             Divider().padding(.vertical, 2)
 
             playbackControls(device)
+            loopTasks(device, state: state)
 
             Divider().padding(.vertical, 2)
 
-            loopTasks(device, state: state)
+            alertControls(device)
+
+            Divider().padding(.vertical, 2)
+
+            tapLinkControls(device)
+
+            Divider().padding(.vertical, 2)
+
+            quietHoursControls(device)
 
             Divider().padding(.vertical, 2)
 
@@ -233,19 +264,20 @@ struct EInkDisplaysSettingsSection: View {
         }
     }
 
-    /// Kept narrow on purpose. The settings pane is as wide as the Workbench,
-    /// and a label-Spacer-value row stretched across it puts a reading three
-    /// hundred points away from the word that names it.
-    private static let statusColumnWidth: CGFloat = 320
-
+    /// One line, not a five-row grid: everything here is a single word or a
+    /// single time, and stacking them put the reading three hundred points
+    /// away from the word that names it.
     @ViewBuilder
-    private func statusGrid(_ state: EInkDeviceSyncState) -> some View {
+    private func statusStrip(_ state: EInkDeviceSyncState) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            infoRow(L10n.Settings.Eink.Status.power, state.powerLabel)
-            infoRow(L10n.Settings.Eink.Status.battery, state.batteryLabel)
-            infoRow(L10n.Settings.Eink.Status.wifi, state.wifiLabel)
-            infoRow(L10n.Settings.Eink.Status.nextRefresh, state.nextRefreshAt.map(timeLabel) ?? "")
-            infoRow(L10n.Settings.Eink.Status.lastPush, state.lastPushAt.map(timeLabel) ?? "")
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                statusItem(L10n.Settings.Eink.Status.power, state.powerLabel)
+                statusItem(L10n.Settings.Eink.Status.battery, state.batteryLabel)
+                statusItem(L10n.Settings.Eink.Status.wifi, state.wifiLabel)
+                statusItem(L10n.Settings.Eink.Status.nextRefresh, state.nextRefreshAt.map(timeLabel) ?? "")
+                statusItem(L10n.Settings.Eink.Status.lastPush, state.lastPushAt.map(timeLabel) ?? "")
+                Spacer(minLength: 0)
+            }
             if let failure = state.lastFailure {
                 Text(message(for: failure))
                     .font(.caption2)
@@ -253,81 +285,114 @@ struct EInkDisplaysSettingsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(maxWidth: Self.statusColumnWidth, alignment: .leading)
     }
 
-    private func infoRow(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+    private func statusItem(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
             Text(value.isEmpty ? L10n.Settings.Eink.Status.pending : value)
-                .font(.caption2)
+                .font(.caption2.monospacedDigit())
                 .foregroundStyle(value.isEmpty ? .tertiary : .primary)
+                .lineLimit(1)
+        }
+        .fixedSize()
+    }
+
+    // MARK: - Cadence
+
+    private func cadenceFields(_ device: EInkDeviceConfig) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.Settings.Eink.cadence)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            cadenceRow(
+                device,
+                field: .dataRefreshMinutes,
+                title: L10n.Settings.Eink.dataRefresh,
+                unit: L10n.Settings.Eink.Unit.minutes,
+                detail: L10n.Settings.Eink.dataRefreshDetail
+            )
+            cadenceRow(
+                device,
+                field: .batteryRefreshMinutes,
+                title: L10n.Settings.Eink.batteryRefresh,
+                unit: L10n.Settings.Eink.Unit.minutes,
+                detail: L10n.Settings.Eink.batteryRefreshDetail
+            )
+            cadenceRow(
+                device,
+                field: .secondsPerSlide,
+                title: L10n.Settings.Eink.secondsPerSlide,
+                unit: L10n.Settings.Eink.Unit.seconds,
+                detail: L10n.Settings.Eink.secondsPerSlideDetail
+            )
         }
     }
 
-    private func orientationPicker(_ device: EInkDeviceConfig) -> some View {
-        HStack(spacing: 8) {
-            ForEach(EInkOrientation.allCases, id: \.rawValue) { orientation in
-                Button {
-                    setOrientation(orientation, deviceID: device.deviceID)
-                } label: {
-                    EInkOrientationGlyph(orientation: orientation)
-                }
-                .buttonStyle(.vibeBar(cornerRadius: 8))
-                .help(orientationHelp(orientation))
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(device.orientation == orientation ? Color.accentColor.opacity(0.20) : Color.clear)
+    /// A typed field with a stepper beside it.
+    ///
+    /// Typed, because the owner's review found "every four hours" to be twelve
+    /// stepper clicks and "once a day" ninety-six. `EInkCadence` decides what
+    /// a typed value means — it is clamped to the field's range on commit, and
+    /// the range is printed underneath so a clamp is never a surprise.
+    ///
+    /// Seconds per slide is shown whatever the playback mode is. Round 1 hid
+    /// it behind the app carousel, so switching to "One slide" and back looked
+    /// like it had thrown the number away; it is a stored field of its own now
+    /// (part A) and the control follows it.
+    private func cadenceRow(
+        _ device: EInkDeviceConfig,
+        field: EInkCadence,
+        title: String,
+        unit: String,
+        detail: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.caption)
+                    .frame(width: 132, alignment: .leading)
+                DebouncedSettingsTextField(
+                    prompt: title,
+                    value: cadenceBinding(device, field: field)
                 )
+                .frame(width: 72)
+                .id("\(device.deviceID)-\(field.rawValue)")
+                Text(unit)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Stepper(
+                    title,
+                    value: Binding(
+                        get: { field.value(in: device) },
+                        set: { [deviceID = device.deviceID] value in
+                            updateDevice(deviceID) { field.apply(value, to: &$0) }
+                        }
+                    ),
+                    in: field.range,
+                    step: field.step
+                )
+                .labelsHidden()
+                Text(
+                    L10n.Usage.ChartNavigator.range(
+                        start: AppLocale.number(field.range.lowerBound),
+                        end: AppLocale.number(field.range.upperBound)
+                    )
+                )
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func refreshSteppers(_ device: EInkDeviceConfig) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Stepper(
-                value: Binding(
-                    get: { device.dataRefreshMinutes },
-                    set: { value in updateDevice(device.deviceID) { $0.dataRefreshMinutes = value } }
-                ),
-                in: EInkDeviceConfig.minimumDataRefreshMinutes...(24 * 60)
-            ) {
-                HStack(spacing: 6) {
-                    Text(L10n.Settings.Eink.dataRefresh).font(.caption)
-                    Text(L10n.Common.Duration.Full.minutes(count: device.dataRefreshMinutes))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Text(L10n.Settings.Eink.dataRefreshDetail)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Stepper(
-                value: Binding(
-                    get: { device.batteryRefreshMinutes },
-                    set: { value in updateDevice(device.deviceID) { $0.batteryRefreshMinutes = value } }
-                ),
-                in: EInkDeviceConfig.minimumBatteryRefreshMinutes...(24 * 60)
-            ) {
-                HStack(spacing: 6) {
-                    Text(L10n.Settings.Eink.batteryRefresh).font(.caption)
-                    Text(L10n.Common.Duration.Full.minutes(count: device.batteryRefreshMinutes))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Text(L10n.Settings.Eink.batteryRefreshDetail)
+            Text(detail)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
+
+    // MARK: - Playback
 
     private func playbackControls(_ device: EInkDeviceConfig) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -343,28 +408,6 @@ struct EInkDisplaysSettingsSection: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if case let .carousel(driver, seconds) = device.playback, driver == .appTimer {
-                Stepper(
-                    value: Binding(
-                        get: { seconds },
-                        set: { value in
-                            updateDevice(device.deviceID) {
-                                $0.playback = .carousel(driver: .appTimer, secondsPerSlide: value)
-                            }
-                        }
-                    ),
-                    in: EInkPlayback.minimumSecondsPerSlide...EInkPlayback.maximumSecondsPerSlide,
-                    step: 30
-                ) {
-                    HStack(spacing: 6) {
-                        Text(L10n.Settings.Eink.secondsPerSlide).font(.caption)
-                        Text(AppLocale.number(seconds))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
         }
     }
 
@@ -404,6 +447,144 @@ struct EInkDisplaysSettingsSection: View {
         }
     }
 
+    // MARK: - Alerts, tap link, quiet hours
+
+    private func alertControls(_ device: EInkDeviceConfig) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Toggle(
+                    L10n.Settings.Eink.alerts,
+                    isOn: Binding(
+                        get: { device.alerts.enabled },
+                        set: { [deviceID = device.deviceID] value in
+                            updateDevice(deviceID) { $0.alerts.enabled = value }
+                        }
+                    )
+                )
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
+                Text(L10n.Settings.Eink.alertThreshold)
+                    .font(.caption)
+                    .foregroundStyle(device.alerts.enabled ? .primary : .secondary)
+                Stepper(
+                    value: Binding(
+                        get: { device.alerts.thresholdPercent },
+                        set: { [deviceID = device.deviceID] value in
+                            updateDevice(deviceID) { $0.alerts.thresholdPercent = value }
+                        }
+                    ),
+                    in: EInkAlertConfig.minimumThresholdPercent...EInkAlertConfig.maximumThresholdPercent
+                ) {
+                    Text(AppLocale.percent(Double(device.alerts.thresholdPercent) / 100))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                .disabled(!device.alerts.enabled)
+                Spacer(minLength: 0)
+            }
+            Text(L10n.Settings.Eink.alertsDetail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func tapLinkControls(_ device: EInkDeviceConfig) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(L10n.Settings.Eink.tapLink)
+                    .font(.caption)
+                    .frame(width: 132, alignment: .leading)
+                Picker(L10n.Settings.Eink.tapLink, selection: tapLinkChoiceBinding(device)) {
+                    Text(L10n.Workbench.Filter.none).tag(TapLinkChoice.none)
+                    Text(L10n.Settings.Eink.TapLink.remote).tag(TapLinkChoice.remoteDashboard)
+                    Text(L10n.Settings.Eink.TapLink.custom).tag(TapLinkChoice.custom)
+                }
+                .labelsHidden()
+                .frame(width: 200, alignment: .leading)
+                Spacer(minLength: 0)
+            }
+            if case .custom = device.tapLink {
+                HStack(spacing: 8) {
+                    Spacer().frame(width: 132)
+                    DebouncedSettingsTextField(
+                        prompt: L10n.Settings.Eink.TapLink.prompt,
+                        value: tapLinkTextBinding(device)
+                    )
+                    .frame(maxWidth: 320)
+                    .id("\(device.deviceID)-tapLink")
+                    Spacer(minLength: 0)
+                }
+                if !tapLinkIsUsable(device) {
+                    Text(L10n.Settings.Eink.TapLink.invalid)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+            if device.tapLink == .remoteDashboard, EInkRemoteDashboard.current() == nil {
+                Text(L10n.Settings.Eink.TapLink.remoteMissing)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(L10n.Settings.Eink.tapLinkDetail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func quietHoursControls(_ device: EInkDeviceConfig) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Toggle(
+                    L10n.Settings.Eink.quietHours,
+                    isOn: Binding(
+                        get: { device.quietHours.enabled },
+                        set: { [deviceID = device.deviceID] value in
+                            updateDevice(deviceID) { $0.quietHours.enabled = value }
+                        }
+                    )
+                )
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
+                Text(L10n.Usage.Filters.customRangeFrom)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                DebouncedSettingsTextField(
+                    prompt: L10n.Usage.Filters.customRangeFrom,
+                    value: quietHoursBinding(device, isStart: true)
+                )
+                .frame(width: 72)
+                .id("\(device.deviceID)-quiet-start")
+                .disabled(!device.quietHours.enabled)
+
+                Text(L10n.Settings.Eink.QuietHours.until)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                DebouncedSettingsTextField(
+                    prompt: L10n.Settings.Eink.QuietHours.until,
+                    value: quietHoursBinding(device, isStart: false)
+                )
+                .frame(width: 72)
+                .id("\(device.deviceID)-quiet-end")
+                .disabled(!device.quietHours.enabled)
+                Text(L10n.Settings.Eink.QuietHours.format)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            Text(L10n.Settings.Eink.quietHoursDetail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Push
+
     @ViewBuilder
     private func pushRow(_ device: EInkDeviceConfig) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -438,17 +619,25 @@ struct EInkDisplaysSettingsSection: View {
             Text(L10n.Settings.Eink.render)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            if let renderImage {
-                Image(nsImage: renderImage)
-                    .resizable()
-                    .interpolation(.none)
-                    .antialiased(false)
-                    .frame(
-                        width: CGFloat(device.profile.width) * 2,
-                        height: CGFloat(device.profile.height) * 2
-                    )
-                    .background(Color.white)
-                    .overlay(Rectangle().strokeBorder(Color.primary.opacity(0.22), lineWidth: 1))
+            if let renderImage = uprightRenderImage {
+                // The device always reports its native 296 x 152 raster, so a
+                // portrait panel comes back on its side. It is turned upright
+                // here for the same reason the preview is: the thumbnail
+                // claims to be what is on the panel, and what is on the panel
+                // is a page somebody can read.
+                let size = device.orientation.physicalFrame(device.profile)
+                EInkDeviceFrame(
+                    orientation: device.orientation,
+                    paperWidth: CGFloat(size.width),
+                    paperHeight: CGFloat(size.height)
+                ) {
+                    Image(nsImage: renderImage)
+                        .resizable()
+                        .interpolation(.none)
+                        .antialiased(false)
+                        .frame(width: CGFloat(size.width), height: CGFloat(size.height))
+                        .background(Color.white)
+                }
                 Text(L10n.Settings.Eink.renderDetail)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -464,303 +653,13 @@ struct EInkDisplaysSettingsSection: View {
 
     private func slidesCard(_ device: EInkDeviceConfig) -> some View {
         SettingsSectionCard(title: L10n.Settings.Eink.slides, density: density) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    slideList(device)
-                    if let slide = selectedSlide {
-                        Divider().padding(.vertical, 2)
-                        slideEditor(device, slide: slide)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                previewColumn
-            }
-        }
-    }
-
-    private func slideList(_ device: EInkDeviceConfig) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ForEach(device.slides) { slide in
-                slideRow(device, slide: slide)
-            }
-            HStack(spacing: 8) {
-                Button(action: { addSlide(device.deviceID) }) {
-                    Label(L10n.Settings.Eink.addSlide, systemImage: "plus")
-                }
-                .buttonStyle(.vibeBar)
-                Spacer(minLength: 0)
-            }
-            .padding(.top, 2)
-        }
-        .coordinateSpace(.named(Self.slideSpace))
-        .overlay(alignment: .topLeading) {
-            if let insertion = slideInsertionIndex(device), let offset = slideInsertionOffset(device, at: insertion) {
-                Capsule(style: .continuous)
-                    .fill(Color.accentColor)
-                    .frame(height: 2.5)
-                    .offset(y: offset)
-                    .allowsHitTesting(false)
-            }
-        }
-    }
-
-    private func slideRow(_ device: EInkDeviceConfig, slide: EInkSlide) -> some View {
-        let isSelected = selectedSlide?.id == slide.id
-        return HStack(spacing: 6) {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .frame(width: 16, height: 20)
-                .contentShape(Rectangle())
-                .gesture(slideDragGesture(device, slideID: slide.id))
-                .help(L10n.Common.dragToReorder)
-
-            Button {
-                selectedSlideID = slide.id
-                // On a single-slide device the row *is* the active-slide
-                // control: there is no other one, and picking a row that the
-                // panel then ignores is a switch that does nothing.
-                if case .single = device.playback {
-                    updateDevice(device.deviceID) { $0.playback = .single(slideID: slide.id) }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Text(slideDisplayName(slide))
-                        .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text(layoutName(for: slide.kind))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-            .buttonStyle(.vibeBar(cornerRadius: 6))
-
-            BorderlessIconButton(
-                systemImage: "xmark",
-                help: device.slides.count > 1 ? L10n.Settings.Eink.removeSlide : L10n.Settings.Eink.lastSlide
-            ) {
-                removeSlide(device.deviceID, slideID: slide.id)
-            }
-            .disabled(device.slides.count <= 1)
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
-        )
-        .opacity(slideDrag?.engaged == true && slideDrag?.slideID == slide.id ? 0.3 : 1)
-        .onGeometryChange(for: CGRect.self) { proxy in
-            proxy.frame(in: .named(Self.slideSpace))
-        } action: { frame in
-            slideFrames[slide.id] = frame
-        }
-    }
-
-    @ViewBuilder
-    private func slideEditor(_ device: EInkDeviceConfig, slide: EInkSlide) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(L10n.Common.name)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                DebouncedSettingsTextField(
-                    prompt: L10n.Settings.Eink.slideName,
-                    value: Binding(
-                        get: { slide.title },
-                        set: { [deviceID = device.deviceID, slideID = slide.id] value in
-                            updateSlide(deviceID, slideID: slideID) { $0.title = value }
-                        }
-                    )
-                )
-                .frame(width: 160)
-            }
-
-            Picker(L10n.Settings.Eink.layout, selection: layoutBinding(device, slide: slide)) {
-                Section(L10n.Settings.Eink.Group.quota) {
-                    ForEach(EInkPreset.allCases.filter(\.isQuotaPreset), id: \.rawValue) { preset in
-                        Text(presetName(preset)).tag(preset.rawValue)
-                    }
-                }
-                Section(L10n.Settings.Eink.Group.usage) {
-                    ForEach(EInkPreset.allCases.filter { !$0.isQuotaPreset }, id: \.rawValue) { preset in
-                        Text(presetName(preset)).tag(preset.rawValue)
-                    }
-                }
-                Text(L10n.Settings.Eink.customLayout).tag(Self.customTag)
-            }
-            .labelsHidden()
-            .frame(maxWidth: 240, alignment: .leading)
-
-            selectionEditor(device, slide: slide)
-        }
-    }
-
-    /// Sentinel tag for the Studio option. Picking it hands the slide to the
-    /// Studio: a layout sized to the device's current panel is created under
-    /// the slide's own id, and the slide starts pointing at it.
-    private static let customTag = "\u{0}custom"
-
-    @ViewBuilder
-    private func selectionEditor(_ device: EInkDeviceConfig, slide: EInkSlide) -> some View {
-        if slide.kind.preset == nil {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.Settings.Eink.customLayoutDetail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button {
-                    LayoutStudioWindowController.shared.open(
-                        subject: .einkSlide(deviceID: device.deviceID, slideID: slide.id),
-                        environment: environment
-                    )
-                } label: {
-                    Label(L10n.Settings.Eink.Studio.open, systemImage: "rectangle.dashed")
-                }
-            }
-        } else if let preset = slide.kind.preset {
-            let capacity = preset.capacity(for: device.orientation)
-            switch preset.selectionAxis {
-            case .quotaFields:
-                bucketPicker(device, slide: slide, capacity: capacity)
-            case .usagePeriods:
-                periodPicker(device, slide: slide, capacity: capacity)
-            case .harnessRows:
-                Text(L10n.Settings.Eink.noSelection)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            case .none:
-                Text(L10n.Settings.Eink.fixedContent)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private func bucketPicker(_ device: EInkDeviceConfig, slide: EInkSlide, capacity: Int) -> some View {
-        let selected = slide.quotaFieldIDs
-        let isFull = selected.count >= capacity
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(L10n.Settings.Eink.buckets)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                Text(L10n.Quota.History.curvesSome(shown: selected.count, total: capacity))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
-            if selected.isEmpty {
-                Text(L10n.Settings.Eink.noSelection)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if isFull {
-                Text(L10n.Settings.Eink.capacityFull(count: capacity))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            ForEach(pickerSections) { section in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(section.title)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.tertiary)
-                    ForEach(section.options) { option in
-                        Toggle(
-                            QuotaGroupLabelLocalizer.display(option.displayTitle),
-                            isOn: bucketBinding(device, slide: slide, fieldID: option.id, capacity: capacity)
-                        )
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
-                        .disabled(
-                            (isFull && !selected.contains(option.id))
-                                || (selected.count == 1 && selected.contains(option.id))
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private func periodPicker(_ device: EInkDeviceConfig, slide: EInkSlide, capacity: Int) -> some View {
-        let selected = slide.usagePeriods
-        let isFull = selected.count >= capacity
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(L10n.Usage.Breakdown.periods)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                Text(L10n.Quota.History.curvesSome(shown: selected.count, total: capacity))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
-            ForEach(EInkUsagePeriod.allCases, id: \.rawValue) { period in
-                Toggle(
-                    periodName(period),
-                    isOn: periodBinding(device, slide: slide, period: period, capacity: capacity)
-                )
-                .toggleStyle(.checkbox)
-                .controlSize(.small)
-                .disabled(
-                    (isFull && !selected.contains(period))
-                        || (selected.count == 1 && selected.contains(period))
-                )
-            }
-        }
-    }
-
-    // MARK: - Preview column
-
-    private var previewColumn: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.MenuBar.Composer.preview)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            if let plan = previews[selectedDevice?.orientation.rawValue ?? 0] {
-                // 2x is 592 pt wide, which a narrow window cannot hold; fall
-                // back to device pixels rather than clipping the panel.
-                ViewThatFits(in: .horizontal) {
-                    EInkPreviewView(plan: plan, scale: 2)
-                    EInkPreviewView(plan: plan, scale: 1)
-                }
-            } else {
-                Rectangle()
-                    .fill(Color.white)
-                    .frame(width: 296 * 2, height: 152 * 2)
-                    .overlay(Rectangle().strokeBorder(Color.primary.opacity(0.22), lineWidth: 1))
-            }
-
-            Text(L10n.Settings.Eink.allOrientations)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            // Four 296 pt panels plus their gaps are wider than the detail
-            // pane at the default Workbench width, and a clipped preview of a
-            // rotation is worse than a wrapped one.
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 296), spacing: 8, alignment: .topLeading)],
-                alignment: .leading,
-                spacing: 8
-            ) {
-                ForEach(EInkOrientation.allCases, id: \.rawValue) { orientation in
-                    if let plan = previews[orientation.rawValue] {
-                        EInkPreviewView(plan: plan, scale: 1)
-                    }
-                }
-            }
-
-            Text(L10n.Settings.Eink.panelTextNote)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: 296 * 2, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            EInkSlidesEditor(
+                device: device,
+                selectedSlideID: $selectedSlideID,
+                sections: pickerSections,
+                plan: previews[device.orientation.rawValue],
+                availableQuotaFieldIDs: availableQuotaFieldIDs
+            )
         }
     }
 
@@ -777,11 +676,13 @@ struct EInkDisplaysSettingsSection: View {
             slide.kind.preset?.rawValue ?? slide.kind.layoutID ?? "",
             slide.quotaFieldIDs.joined(separator: ","),
             slide.usagePeriods.map(\.rawValue).joined(separator: ","),
-            // The layout itself, not only its id: the Studio edits it in
-            // another window, and a preview that kept redrawing the shape it
-            // had when the pane opened would be a picture of the wrong panel.
-            slide.kind.layoutID.flatMap { settingsStore.settings.einkCanvasLayouts[$0] }
-                .map { String($0.hashValue) } ?? "",
+            // The composition options are part of the picture too: a header
+            // turned off or a slot renamed changes every one of the four.
+            String(slide.options.hashValue),
+            // The layouts themselves, not only their id: the Studio edits them
+            // in another window, and a preview that kept redrawing the shape
+            // it had when the pane opened would picture the wrong panel.
+            String(slide.allLayouts(in: settingsStore.settings.einkCanvasLayouts).hashValue),
             snapshot?.generatedAtISO ?? ""
         ].joined(separator: "|")
     }
@@ -794,7 +695,7 @@ struct EInkDisplaysSettingsSection: View {
         var plans: [Int: EInkPreviewPlan] = [:]
         for orientation in EInkOrientation.allCases {
             plans[orientation.rawValue] = EInkPreviewPlanner.plan(
-                slide: slide,
+                slide: slide.fitted(to: orientation),
                 orientation: orientation,
                 profile: device.profile,
                 snapshot: snapshot,
@@ -835,7 +736,9 @@ struct EInkDisplaysSettingsSection: View {
     /// orientation taps from walking the ledger once per tap.
     private func refreshPreview() async {
         await service.refreshPreviewSnapshot(
-            includingFieldIDs: settingsStore.settings.einkSync.selectedQuotaFieldIDs
+            includingFieldIDs: settingsStore.settings.einkSync.selectedQuotaFieldIDs(
+                layouts: settingsStore.settings.einkCanvasLayouts
+            )
         )
         snapshot = service.previewSnapshot
         rebuildPreviews()
@@ -856,6 +759,16 @@ struct EInkDisplaysSettingsSection: View {
         // "what the panel is showing now" — that is the one thing this
         // thumbnail claims.
         renderImage = data.flatMap(NSImage.init(data:))
+        rebuildUprightRender()
+    }
+
+    /// Turns the read-back raster once per (image, orientation).
+    private func rebuildUprightRender() {
+        guard let renderImage, let orientation = selectedDevice?.orientation else {
+            uprightRenderImage = nil
+            return
+        }
+        uprightRenderImage = renderImage.turnedUpright(for: orientation)
     }
 
     // MARK: - Actions
@@ -934,16 +847,6 @@ struct EInkDisplaysSettingsSection: View {
         }
     }
 
-    private func addSlide(_ deviceID: String) {
-        let orientation = sync.device(id: deviceID)?.orientation ?? .degrees0
-        let slide = EInkSlide.defaultQuotaSlide(
-            orientation: orientation,
-            available: availableQuotaFieldIDs
-        )
-        updateDevice(deviceID) { $0.slides.append(slide) }
-        selectedSlideID = slide.id
-    }
-
     /// The buckets this account is actually returning right now.
     ///
     /// Read from the cached quotas rather than from the picker, which starts
@@ -959,14 +862,6 @@ struct EInkDisplaysSettingsSection: View {
             }
         }
         return EInkSlide.defaultQuotaFieldIDs(live: live)
-    }
-
-    private func removeSlide(_ deviceID: String, slideID: String) {
-        updateDevice(deviceID) { device in
-            guard device.slides.count > 1 else { return }
-            device.slides.removeAll { $0.id == slideID }
-        }
-        if selectedSlideID == slideID { selectedSlideID = selectedDevice?.slides.first?.id }
     }
 
     // MARK: - Bindings
@@ -989,105 +884,109 @@ struct EInkDisplaysSettingsSection: View {
         )
     }
 
-    private func layoutBinding(_ device: EInkDeviceConfig, slide: EInkSlide) -> Binding<String> {
+    private func cadenceBinding(_ device: EInkDeviceConfig, field: EInkCadence) -> Binding<String> {
         Binding(
-            get: { slide.kind.preset?.rawValue ?? Self.customTag },
-            set: { [deviceID = device.deviceID, slideID = slide.id] value in
-                guard let preset = EInkPreset(rawValue: value) else {
-                    guard value == Self.customTag else { return }
-                    makeCustom(deviceID: deviceID, slideID: slideID)
-                    return
-                }
-                updateSlide(deviceID, slideID: slideID) { current in
-                    current.kind = .preset(preset)
-                    // Only the axis the new layout actually reads is trimmed.
-                    // A quota slide switched to Usage Trend still holds its
-                    // buckets, and truncating them to *that* layout's capacity
-                    // would quietly throw away four choices the user gets back
-                    // the moment they switch the layout again.
-                    current = current.fitted(to: device.orientation)
-                }
+            get: { AppLocale.number(field.value(in: device)) },
+            set: { [deviceID = device.deviceID] text in
+                let current = field.value(in: device)
+                let parsed = field.parse(text, current: current)
+                guard parsed != current else { return }
+                updateDevice(deviceID) { field.apply(parsed, to: &$0) }
             }
         )
     }
 
-    private func bucketBinding(
-        _ device: EInkDeviceConfig,
-        slide: EInkSlide,
-        fieldID: String,
-        capacity: Int
-    ) -> Binding<Bool> {
-        Binding(
-            get: { slide.quotaFieldIDs.contains(fieldID) },
-            set: { [deviceID = device.deviceID, slideID = slide.id] value in
-                updateSlide(deviceID, slideID: slideID) { current in
-                    if value {
-                        guard current.quotaFieldIDs.count < capacity,
-                              !current.quotaFieldIDs.contains(fieldID) else { return }
-                        current.quotaFieldIDs.append(fieldID)
-                    } else {
-                        // An empty list means "Vibe Bar's own order" to the
-                        // renderer, so clearing the last box would put back
-                        // the very buckets the user removed. One stays on, as
-                        // with the usage periods.
-                        guard current.quotaFieldIDs.count > 1 else { return }
-                        current.quotaFieldIDs.removeAll { $0 == fieldID }
-                    }
-                }
-            }
-        )
-    }
-
-    private func periodBinding(
-        _ device: EInkDeviceConfig,
-        slide: EInkSlide,
-        period: EInkUsagePeriod,
-        capacity: Int
-    ) -> Binding<Bool> {
-        Binding(
-            get: { slide.usagePeriods.contains(period) },
-            set: { [deviceID = device.deviceID, slideID = slide.id] value in
-                updateSlide(deviceID, slideID: slideID) { current in
-                    if value {
-                        guard current.usagePeriods.count < capacity,
-                              !current.usagePeriods.contains(period) else { return }
-                        current.usagePeriods.append(period)
-                    } else {
-                        // The renderer reads an empty selection as "all four",
-                        // so clearing the last box would show every period
-                        // while the picker showed none. One always stays on.
-                        guard current.usagePeriods.count > 1 else { return }
-                        current.usagePeriods.removeAll { $0 == period }
-                    }
-                }
-            }
-        )
-    }
-
+    /// The playback segmented control writes only the mode.
+    ///
+    /// Round 1 wrote a whole `EInkPlayback` value, which is why picking "One
+    /// slide" threw the seconds away and picking a carousel put 300 back: the
+    /// enum carried the seconds and the mode together. They are separate
+    /// stored fields now, and this touches one of them.
     private func playbackModeBinding(_ device: EInkDeviceConfig) -> Binding<EInkPlaybackMode> {
         Binding(
-            get: {
-                switch device.playback {
-                case .single: return .single
-                case let .carousel(driver, _): return driver == .deviceLoop ? .deviceLoop : .appTimer
-                }
-            },
+            get: { device.playbackMode },
             set: { [deviceID = device.deviceID, activeSlideID = selectedSlide?.id] mode in
                 updateDevice(deviceID) { current in
-                    switch mode {
-                    case .single:
-                        // The slide the editor and the preview are showing is
-                        // the one the user means; falling back to the first
-                        // would send a different panel than the one on screen.
-                        let chosen = activeSlideID.flatMap { id in
-                            current.slides.first { $0.id == id }?.id
-                        }
-                        current.playback = .single(slideID: chosen ?? current.slides.first?.id ?? "")
-                    case .deviceLoop:
-                        current.playback = .carousel(driver: .deviceLoop, secondsPerSlide: 300)
-                    case .appTimer:
-                        current.playback = .carousel(driver: .appTimer, secondsPerSlide: 300)
+                    current.playbackMode = mode
+                    guard mode == .single else { return }
+                    // The slide the editor and the preview are showing is the
+                    // one the user means; falling back to the first would send
+                    // a different panel than the one on screen.
+                    let chosen = activeSlideID.flatMap { id in
+                        current.slides.first { $0.id == id }?.id
                     }
+                    current.singleSlideID = chosen ?? current.slides.first?.id ?? ""
+                }
+            }
+        )
+    }
+
+    enum TapLinkChoice: Hashable { case none, remoteDashboard, custom }
+
+    private func tapLinkChoiceBinding(_ device: EInkDeviceConfig) -> Binding<TapLinkChoice> {
+        Binding(
+            get: {
+                switch device.tapLink {
+                case .none: .none
+                case .remoteDashboard: .remoteDashboard
+                case .custom: .custom
+                }
+            },
+            set: { [deviceID = device.deviceID] choice in
+                if case let .custom(raw) = device.tapLink, !raw.isEmpty { tapLinkDrafts[deviceID] = raw }
+                updateDevice(deviceID) { current in
+                    switch choice {
+                    case .none: current.tapLink = .none
+                    case .remoteDashboard: current.tapLink = .remoteDashboard
+                    case .custom:
+                        if case .custom = current.tapLink { return }
+                        current.tapLink = .custom(tapLinkDrafts[deviceID] ?? "")
+                    }
+                }
+            }
+        )
+    }
+
+    private func tapLinkTextBinding(_ device: EInkDeviceConfig) -> Binding<String> {
+        Binding(
+            get: {
+                if case let .custom(raw) = device.tapLink { return raw }
+                return ""
+            },
+            set: { [deviceID = device.deviceID] value in
+                tapLinkDrafts[deviceID] = value
+                updateDevice(deviceID) { current in
+                    // The field commits on a 400 ms idle and on the way out of
+                    // the view tree, so a keystroke followed quickly by None or
+                    // the dashboard would land *after* the picker and undo it.
+                    // The draft is kept either way; only the live value is
+                    // guarded.
+                    guard case .custom = current.tapLink else { return }
+                    current.tapLink = .custom(value)
+                }
+            }
+        )
+    }
+
+    /// Whether the typed address is one the device will actually be sent.
+    /// `EInkTapLink` drops anything that is not http(s) on the way to the
+    /// payload, and a field that silently sends nothing is a field that lies.
+    private func tapLinkIsUsable(_ device: EInkDeviceConfig) -> Bool {
+        guard case let .custom(raw) = device.tapLink else { return true }
+        if raw.trimmingCharacters(in: .whitespaces).isEmpty { return true }
+        return device.tapLink.url(remoteDashboard: nil) != nil
+    }
+
+    private func quietHoursBinding(_ device: EInkDeviceConfig, isStart: Bool) -> Binding<String> {
+        Binding(
+            get: { isStart ? device.quietHours.start : device.quietHours.end },
+            set: { [deviceID = device.deviceID] value in
+                // `EInkQuietHours.normalized` is the judge of what an HH:mm is;
+                // text it refuses leaves the stored window alone rather than
+                // writing a time the device would reject.
+                guard let normalized = EInkQuietHours.normalized(value) else { return }
+                updateDevice(deviceID) {
+                    if isStart { $0.quietHours.start = normalized } else { $0.quietHours.end = normalized }
                 }
             }
         )
@@ -1110,31 +1009,12 @@ struct EInkDisplaysSettingsSection: View {
         settings.einkSync.devices[index].orientation = orientation
         let profile = settings.einkSync.devices[index].profile
         for slide in settings.einkSync.devices[index].slides {
-            guard let layoutID = slide.kind.layoutID, let layout = settings.einkCanvasLayouts[layoutID] else { continue }
-            settings.einkCanvasLayouts[layoutID] = layout.fitted(profile: profile, orientation: orientation)
+            guard let layoutID = slide.kind.layoutID else { continue }
+            let key = EInkRenderer.layoutKey(layoutID, orientation: orientation)
+            guard let layout = settings.einkCanvasLayouts[key] else { continue }
+            settings.einkCanvasLayouts[key] = layout.fitted(profile: profile, orientation: orientation)
         }
         settings.einkSync.devices[index] = settings.einkSync.devices[index].sanitized
-        settingsStore.settings = settings
-    }
-
-    /// Hands a slide to the Studio: a layout sized to the panel it is on,
-    /// stored under the slide's own id so the two cannot come apart.
-    private func makeCustom(deviceID: String, slideID: String) {
-        var settings = settingsStore.settings
-        guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == deviceID }),
-              let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slideID })
-        else { return }
-        let device = settings.einkSync.devices[index]
-        settings.einkSync.devices[index].slides[position].kind = .custom(layoutID: slideID)
-        if settings.einkCanvasLayouts[slideID] == nil {
-            settings.einkCanvasLayouts[slideID] = EInkCanvasLayout(
-                profile: device.profile,
-                orientation: device.orientation
-            )
-        } else {
-            settings.einkCanvasLayouts[slideID] = settings.einkCanvasLayouts[slideID]?
-                .fitted(profile: device.profile, orientation: device.orientation)
-        }
         settingsStore.settings = settings
     }
 
@@ -1146,98 +1026,13 @@ struct EInkDisplaysSettingsSection: View {
         settingsStore.settings = settings
     }
 
-    private func updateSlide(_ deviceID: String, slideID: String, _ mutate: (inout EInkSlide) -> Void) {
-        updateDevice(deviceID) { device in
-            guard let index = device.slides.firstIndex(where: { $0.id == slideID }) else { return }
-            mutate(&device.slides[index])
-        }
-    }
-
-    // MARK: - Slide drag
-
-    private func slideDragGesture(_ device: EInkDeviceConfig, slideID: String) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.slideSpace))
-            .onChanged { value in
-                var state = slideDrag ?? SlideDrag(slideID: slideID, location: value.location, engaged: false)
-                guard state.slideID == slideID else { return }
-                state.location = value.location
-                if !state.engaged,
-                   hypot(value.translation.width, value.translation.height) >= Self.dragThreshold {
-                    state.engaged = true
-                }
-                slideDrag = state
-            }
-            .onEnded { _ in
-                defer { slideDrag = nil }
-                guard let state = slideDrag, state.slideID == slideID, state.engaged,
-                      let target = slideInsertionIndex(device)
-                else { return }
-                applySlideMove(device.deviceID, slideID: slideID, to: target, order: device.slides.map(\.id))
-            }
-    }
-
-    private func slideInsertionIndex(_ device: EInkDeviceConfig) -> Int? {
-        guard let state = slideDrag, state.engaged else { return nil }
-        var index = 0
-        for slide in device.slides {
-            guard let frame = slideFrames[slide.id] else { continue }
-            if state.location.y > frame.midY { index += 1 }
-        }
-        return min(index, device.slides.count)
-    }
-
-    private func slideInsertionOffset(_ device: EInkDeviceConfig, at index: Int) -> CGFloat? {
-        let ids = device.slides.map(\.id)
-        if index < ids.count, let frame = slideFrames[ids[index]] { return frame.minY - 1.5 }
-        if let last = ids.last, let frame = slideFrames[last] { return frame.maxY - 1.5 }
-        return nil
-    }
-
-    private func applySlideMove(_ deviceID: String, slideID: String, to index: Int, order: [String]) {
-        var ordered = order.filter { $0 != slideID }
-        // The caret index counts the dragged row, and the row is gone from
-        // `ordered`. Dragging the first of three between the other two would
-        // otherwise land it at the end.
-        var target = index
-        if let source = order.firstIndex(of: slideID), source < index { target -= 1 }
-        ordered.insert(slideID, at: min(max(0, target), ordered.count))
-        updateDevice(deviceID) { device in
-            let byID = Dictionary(device.slides.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            device.slides = ordered.compactMap { byID[$0] }
-        }
-    }
-
     // MARK: - Naming
 
-    private func slideDisplayName(_ slide: EInkSlide) -> String {
-        slide.title.isEmpty ? layoutName(for: slide.kind) : slide.title
-    }
-
-    private func layoutName(for kind: EInkSlide.Kind) -> String {
-        guard let preset = kind.preset else { return L10n.Settings.Eink.customSlide }
-        return presetName(preset)
-    }
-
-    private func presetName(_ preset: EInkPreset) -> String { EInkNaming.preset(preset) }
-
-    private func periodName(_ period: EInkUsagePeriod) -> String { EInkNaming.period(period) }
-
-    private func orientationHelp(_ orientation: EInkOrientation) -> String {
-        switch orientation {
-        case .degrees0: L10n.Settings.Eink.Orientation.upright
-        case .degrees90: L10n.Settings.Eink.Orientation.right
-        case .degrees180: L10n.Settings.Eink.Orientation.inverted
-        case .degrees270: L10n.Settings.Eink.Orientation.left
-        }
-    }
-
     private func playbackDetail(_ device: EInkDeviceConfig) -> String {
-        switch device.playback {
+        switch device.playbackMode {
         case .single: L10n.Settings.Eink.Playback.singleDetail
-        case let .carousel(driver, _):
-            driver == .deviceLoop
-                ? L10n.Settings.Eink.Playback.deviceLoopDetail
-                : L10n.Settings.Eink.Playback.appTimerDetail
+        case .deviceLoop: L10n.Settings.Eink.Playback.deviceLoopDetail
+        case .appTimer: L10n.Settings.Eink.Playback.appTimerDetail
         }
     }
 
@@ -1264,14 +1059,6 @@ struct EInkDisplaysSettingsSection: View {
     }
 }
 
-/// Segmented value for the three playback choices, which the model spells as
-/// an enum with an associated value the picker cannot tag with.
-enum EInkPlaybackMode: Hashable {
-    case single
-    case deviceLoop
-    case appTimer
-}
-
 /// One provider's worth of quota buckets, exactly as the mini-window picker
 /// groups them.
 struct EInkFieldSection: Identifiable {
@@ -1295,37 +1082,32 @@ struct EInkFieldSection: Identifiable {
     }
 }
 
-/// The panel outline with its top edge marked, so the four orientations read
-/// as "which way up is the device" rather than as four numbers.
-private struct EInkOrientationGlyph: View {
-    let orientation: EInkOrientation
-
-    var body: some View {
-        let portrait = orientation.isPortrait
-        let width: CGFloat = portrait ? 13 : 22
-        let height: CGFloat = portrait ? 22 : 13
-        ZStack(alignment: topEdge) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.55), lineWidth: 1)
-            Rectangle()
-                .fill(Color.accentColor)
-                .frame(
-                    width: orientation.isPortrait ? 2.5 : width - 6,
-                    height: orientation.isPortrait ? height - 6 : 2.5
-                )
-                .padding(2)
+extension NSImage {
+    /// The device's own raster, turned so it reads upright.
+    ///
+    /// The panel always reports 296 x 152 whichever way it is hung, so a
+    /// portrait device reports a picture on its side; this undoes exactly the
+    /// rotation the encoder applied (`EInkOrientation.uprightImageDegrees`).
+    /// Nearest-neighbour and whole right angles only, so a 1-bit panel raster
+    /// comes back a 1-bit panel raster.
+    func turnedUpright(for orientation: EInkOrientation) -> NSImage {
+        let degrees = orientation.uprightImageDegrees
+        guard degrees != 0, let source = cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return self
         }
-        .frame(width: width, height: height)
-        .padding(3)
-    }
-
-    /// Which side of the outline the "top of the drawing" ends up on.
-    private var topEdge: Alignment {
-        switch orientation {
-        case .degrees0: .top
-        case .degrees90: .trailing
-        case .degrees180: .bottom
-        case .degrees270: .leading
-        }
+        let width = CGFloat(source.width)
+        let height = CGFloat(source.height)
+        let turned = degrees == 180 ? CGSize(width: width, height: height) : CGSize(width: height, height: width)
+        let image = NSImage(size: turned)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+        guard let context = NSGraphicsContext.current?.cgContext else { return self }
+        context.interpolationQuality = .none
+        context.translateBy(x: turned.width / 2, y: turned.height / 2)
+        // CoreGraphics turns counter-clockwise and the panel raster has to be
+        // turned back by the encoder's clockwise angle, so the sign flips.
+        context.rotate(by: -CGFloat(degrees) * .pi / 180)
+        context.draw(source, in: CGRect(x: -width / 2, y: -height / 2, width: width, height: height))
+        return image
     }
 }

@@ -22,7 +22,12 @@ public enum EInkPresetExploder {
         snapshot: EInkDataSnapshot,
         calendar: Calendar = .current
     ) -> EInkCanvasLayout {
-        let preset = slide.kind.preset ?? .quotaLedger
+        // The slide's own preset, then the one it was exploded from, then the
+        // ledger. That middle step is what `EInkRenderer.tree` leans on when a
+        // custom slide is rotated onto an orientation nobody has authored: it
+        // explodes on the fly, and without the memory a Briefing would come
+        // back as a quota ledger on the panel.
+        let preset = slide.kind.preset ?? slide.options.sourcePreset ?? .quotaLedger
         let size = profile.frameSize(for: orientation)
         let frame = EInkRect(x: 0, y: 0, width: size.width, height: size.height)
         let tree = EInkRenderer.presetTree(
@@ -37,7 +42,8 @@ public enum EInkPresetExploder {
             from: EInkBoxLayout.resolveAnnotated(tree, in: frame),
             profile: profile,
             orientation: orientation,
-            snapshot: snapshot
+            snapshot: snapshot,
+            options: slide.options
         )
     }
 
@@ -67,12 +73,10 @@ public enum EInkPresetExploder {
         from placed: [EInkPlacedBox],
         profile: EInkDeviceProfile,
         orientation: EInkOrientation,
-        snapshot: EInkDataSnapshot
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
     ) -> EInkCanvasLayout {
         var layout = EInkCanvasLayout(profile: profile, orientation: orientation)
-        // Single-pixel snapping: the boxes are already whole device pixels and
-        // rounding them onto the 8 px grid would move every one of them.
-        layout.snapToGrid = false
         var groups: [String: UUID] = [:]
         var elements: [EInkCanvasElement] = []
 
@@ -87,7 +91,7 @@ public enum EInkPresetExploder {
             case .plain, .barTrack, .ringArc:
                 break
             }
-            guard var element = element(for: entry, snapshot: snapshot) else { continue }
+            guard var element = element(for: entry, snapshot: snapshot, options: options) else { continue }
             if let moduleID = entry.moduleID {
                 let group = groups[moduleID] ?? UUID()
                 groups[moduleID] = group
@@ -100,7 +104,11 @@ public enum EInkPresetExploder {
         return layout.normalized()
     }
 
-    static func element(for placed: EInkPlacedBox, snapshot: EInkDataSnapshot) -> EInkCanvasElement? {
+    static func element(
+        for placed: EInkPlacedBox,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
+    ) -> EInkCanvasElement? {
         let frame = placed.box.frame
         guard frame.width > 0, frame.height > 0 else { return nil }
 
@@ -147,7 +155,11 @@ public enum EInkPresetExploder {
                 // as the undecorated figure the moment the layout was edited.
                 // Those become fixed text, which is honest: the author can
                 // rebind them in the inspector and see what they get.
-                let rendered = EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot)
+                // Through the slide's own names: a preset prints the label
+                // the slide gave the bucket, so comparing against the bucket's
+                // default would drop the binding on every renamed slot and
+                // freeze it as text.
+                let rendered = EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot, options: options)
                 if placed.binding == nil || rendered != content {
                     element.textBinding = .custom
                     element.fieldID = nil

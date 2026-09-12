@@ -76,7 +76,7 @@ public enum EInkCustomLayoutRenderer {
 
         switch element.kind {
         case .text:
-            let content = text(for: element, snapshot: snapshot)
+            let content = text(for: element, snapshot: snapshot, options: slide.options)
             guard !content.isEmpty else { return nil }
             return EInkNode(
                 .text(content, font: element.font, alignment: element.alignment),
@@ -114,7 +114,14 @@ public enum EInkCustomLayoutRenderer {
                 origin: origin
             )
         case .statTile:
-            return statTile(element, snapshot: snapshot, width: width, height: height, origin: origin)
+            return statTile(
+                element,
+                snapshot: snapshot,
+                options: slide.options,
+                width: width,
+                height: height,
+                origin: origin
+            )
         case .image:
             guard !element.imageSource.isEmpty else { return nil }
             return EInkNode(
@@ -151,13 +158,14 @@ public enum EInkCustomLayoutRenderer {
     private static func statTile(
         _ element: EInkCanvasElement,
         snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions,
         width: Int,
         height: Int,
         origin: EInkPoint
     ) -> EInkNode? {
-        let value = statValue(for: element, snapshot: snapshot)
-        let caption = caption(for: element, snapshot: snapshot)
-        let sub = subValue(for: element, snapshot: snapshot)
+        let value = statValue(for: element, snapshot: snapshot, options: options)
+        let caption = caption(for: element, snapshot: snapshot, options: options)
+        let sub = subValue(for: element, snapshot: snapshot, options: options)
         guard !value.isEmpty || !caption.isEmpty else { return nil }
         var children: [EInkNode] = []
         if !caption.isEmpty {
@@ -245,24 +253,46 @@ public enum EInkCustomLayoutRenderer {
     /// nothing left to put on the big line — printing `text` there would draw
     /// the same string twice and tie the two controls together. A fixed
     /// string is what a text element is for; a tile's big line is a figure.
-    public static func statValue(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
-        element.textBinding == .custom ? "" : text(for: element, snapshot: snapshot)
+    public static func statValue(
+        for element: EInkCanvasElement,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
+    ) -> String {
+        element.textBinding == .custom ? "" : text(for: element, snapshot: snapshot, options: options)
     }
 
     /// A stat tile's top line: the author's, else the binding's own name.
-    public static func caption(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
-        element.text.isEmpty ? defaultCaption(for: element, snapshot: snapshot) : element.text
+    public static func caption(
+        for element: EInkCanvasElement,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
+    ) -> String {
+        element.text.isEmpty ? defaultCaption(for: element, snapshot: snapshot, options: options) : element.text
     }
 
     /// A stat tile's bottom line: the author's, else the binding's second
     /// figure.
-    public static func subValue(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
-        element.subText.isEmpty ? defaultSubValue(for: element, snapshot: snapshot) : element.subText
+    public static func subValue(
+        for element: EInkCanvasElement,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
+    ) -> String {
+        element.subText.isEmpty ? defaultSubValue(for: element, snapshot: snapshot, options: options) : element.subText
     }
 
-    static func quotaRow(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> EInkQuotaRow? {
+    /// The bucket behind an element, wearing the name the slide gives it.
+    ///
+    /// `options` is not optional decoration: the slide editor and the Studio
+    /// inspector both write a per-bucket name into `EInkSlideOptions`, and a
+    /// custom layout that read the bucket's own name instead would accept the
+    /// edit, store it, and keep drawing the old name on the panel.
+    static func quotaRow(
+        for element: EInkCanvasElement,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
+    ) -> EInkQuotaRow? {
         guard let fieldID = element.fieldID, !fieldID.isEmpty else { return nil }
-        return snapshot.quota.first { $0.fieldID == fieldID }
+        return snapshot.quota.first { $0.fieldID == fieldID }?.relabeled(with: options)
     }
 
     /// `nil` when nothing is bound — the caller then draws nothing at all.
@@ -277,24 +307,29 @@ public enum EInkCustomLayoutRenderer {
         if let fieldID = element.fieldID, !fieldID.isEmpty {
             return snapshot.quota.first { $0.fieldID == fieldID }?.remainingPercent
         }
+
         guard let override = element.percentOverride else { return nil }
         return max(0, min(100, Int(override.rounded())))
     }
 
     /// What one text-carrying element prints. Empty means "draw no box".
-    public static func text(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
+    public static func text(
+        for element: EInkCanvasElement,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
+    ) -> String {
         switch element.textBinding {
         case .percent:
-            guard let row = quotaRow(for: element, snapshot: snapshot) else { return "" }
+            guard let row = quotaRow(for: element, snapshot: snapshot, options: options) else { return "" }
             return "\(row.remainingPercent)%"
         case .label:
-            guard let row = quotaRow(for: element, snapshot: snapshot) else { return "" }
+            guard let row = quotaRow(for: element, snapshot: snapshot, options: options) else { return "" }
             // Written out, never abbreviated: the SubProvider, the quota group
             // and the window, because a panel read from a metre away has no
             // tooltip to expand a short form.
             return row.slotLabel
         case .countdown:
-            guard let row = quotaRow(for: element, snapshot: snapshot) else { return "" }
+            guard let row = quotaRow(for: element, snapshot: snapshot, options: options) else { return "" }
             return row.countdown
         case .usageMetric:
             return usageFigure(element, snapshot: snapshot)
@@ -316,18 +351,26 @@ public enum EInkCustomLayoutRenderer {
         }
     }
 
-    static func defaultCaption(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
+    static func defaultCaption(
+        for element: EInkCanvasElement,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
+    ) -> String {
         switch element.textBinding {
         case .usageMetric:
             return element.usagePeriod.caption
         case .custom, .clock, .date:
             return ""
         case .percent, .label, .countdown:
-            return quotaRow(for: element, snapshot: snapshot)?.providerDisplayName ?? ""
+            return quotaRow(for: element, snapshot: snapshot, options: options)?.providerDisplayName ?? ""
         }
     }
 
-    static func defaultSubValue(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
+    static func defaultSubValue(
+        for element: EInkCanvasElement,
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions = .default
+    ) -> String {
         switch element.textBinding {
         case .usageMetric:
             let totals = snapshot.usage[element.usagePeriod]
@@ -337,7 +380,7 @@ public enum EInkCustomLayoutRenderer {
         case .custom, .clock, .date:
             return ""
         case .percent, .label, .countdown:
-            return quotaRow(for: element, snapshot: snapshot)?.countdown ?? ""
+            return quotaRow(for: element, snapshot: snapshot, options: options)?.countdown ?? ""
         }
     }
 }

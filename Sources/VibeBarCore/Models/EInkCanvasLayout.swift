@@ -16,9 +16,16 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
     /// renders when its device is offline or has been removed.
     public var width: Double = 296
     public var height: Double = 152
-    /// `true` snaps to the 8 px major grid, `false` to single pixels. Either
-    /// way coordinates stay integral.
-    public var snapToGrid = false
+    /// Whether a *drag* snaps to the 8 px major grid. `false` moves by single
+    /// pixels. Either way coordinates stay integral, and either way a stored
+    /// layout is left where it was put.
+    ///
+    /// It is a gesture aid and nothing more — `normalized()` deliberately does
+    /// not round to it. It used to: turning snapping on then re-normalized
+    /// every element onto the 8 px grid, which silently re-arranged an
+    /// exploded preset (whose boxes are at real device pixels) the moment the
+    /// toggle was touched. A toggle that rewrites the drawing is not a toggle.
+    public var snapToGrid = true
     public static let gridSpacing: Double = 8
     /// The device draws whole pixels; nothing is ever placed on a half pixel.
     public static let pixelSpacing: Double = 1
@@ -41,7 +48,9 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
         var copy = self
         copy.width = Self.bound(width, 32...4096, fallback: 296).rounded()
         copy.height = Self.bound(height, 32...4096, fallback: 152).rounded()
-        let grid = copy.step
+        // Single device pixels, whatever the snap toggle says: normalizing is
+        // "make this drawable", not "re-arrange this".
+        let grid = Self.pixelSpacing
         var seen = Set<UUID>()
         copy.elements = elements.filter { seen.insert($0.id).inserted }.map { element in
             var e = element
@@ -91,7 +100,14 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
     }
 
     /// Clamp the selection as a unit, preserving relative positions at edges.
-    public func moving(_ ids: Set<UUID>, dx: Double, dy: Double, majorGrid: Bool = false) -> Self {
+    ///
+    /// `snapping` is three-valued on purpose: `nil` follows the layout's own
+    /// toggle, `true` forces the 8 px grid and `false` forces single pixels.
+    /// A two-valued flag could say "use the grid" but not "do not" — which is
+    /// exactly what an Option-drag means now that snapping is the default, and
+    /// why holding Option used to bypass snapping while resizing and not while
+    /// moving.
+    public func moving(_ ids: Set<UUID>, dx: Double, dy: Double, snapping: Bool? = nil) -> Self {
         var copy = normalized()
         let ids = copy.expandedSelection(ids)
         let selected = copy.elements.filter { ids.contains($0.id) }
@@ -99,7 +115,7 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
         let minX = selected.map(\.x).min()!, minY = selected.map(\.y).min()!
         let maxX = selected.map { $0.x + $0.width }.max()!
         let maxY = selected.map { $0.y + $0.height }.max()!
-        let grid = majorGrid ? Self.gridSpacing : copy.step
+        let grid = snapping.map { $0 ? Self.gridSpacing : Self.pixelSpacing } ?? copy.step
         let proposedX = (dx / grid).rounded() * grid
         let proposedY = (dy / grid).rounded() * grid
         let tx = min(max(proposedX, -minX), copy.width - maxX)
@@ -239,7 +255,7 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
         self.init()
         width = c.lenient(Double.self, .width, 296)
         height = c.lenient(Double.self, .height, 152)
-        snapToGrid = c.lenient(Bool.self, .snapToGrid, false)
+        snapToGrid = c.lenient(Bool.self, .snapToGrid, true)
         elements = c.lenient([EInkCanvasElement].self, .elements, [])
     }
 
