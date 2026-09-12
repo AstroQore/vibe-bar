@@ -144,7 +144,7 @@ extension EInkPresets {
         } else {
             // One line per slot, with the figures in a column of their own —
             // until a name will not fit beside them, at which point the row
-            // wraps into the portrait form rather than cutting the name.
+            // wraps rather than cutting the name.
             //
             // Both halves are *fixed* width on purpose. An auto-width name
             // beside a right-aligned figure is exactly how the first hardware
@@ -160,35 +160,46 @@ extension EInkPresets {
             // clip once it outgrew its half of the row, which is what put
             // "ChatGPT Agentic · GPT-5.3 Code…" on the owner's panel. A name
             // that does not fit now takes a line of its own — the layout gives
-            // up a row, not a word.
+            // up a row, not a word — and a slot wearing its provider's mark is
+            // measured as what it actually draws, not as the name it replaced.
+            let styles = rows.map { labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.rowSize) }
+            let markWidth = styles.contains(where: \.drawsLogo) ? EInkLogo.rowSize + 6 : 0
+            func words(_ index: Int) -> String {
+                styles[index].drawsLogo ? styles[index].text(of: rows[index]) : rows[index].slotLabel
+            }
+            func mark(_ index: Int) -> EInkNode? {
+                guard styles[index].drawsLogo else { return nil }
+                return logoNode(rows[index], snapshot: snapshot, size: EInkLogo.rowSize)
+            }
+            /// Every row reserves the mark's width, drawn or not, so a mixed
+            /// panel still has one column of figures.
+            func head(_ index: Int) -> [EInkNode] {
+                guard markWidth > 0 else { return [] }
+                return [mark(index) ?? spacer(.points(EInkLogo.rowSize))]
+            }
             func statsWidth(_ detail: BriefingDetail) -> Int {
                 min(
                     content - 60,
                     (rows.map { EInkTextMetrics.width(briefingStats($0, detail: detail), font: pixel) }.max() ?? 0) + 10
                 )
             }
-            let widestLabel = rows.map { EInkTextMetrics.width($0.slotLabel, font: pixelBold) }.max() ?? 0
+            let widestLabel = rows.indices
+                .map { EInkTextMetrics.width(words($0), font: pixelBold) }
+                .max() ?? 0
             // Every name, not the median one: half the panel reading correctly
             // is still half a panel of cut names.
             let detail = BriefingDetail.allCases.first {
-                content - statsWidth($0) - 6 >= widestLabel + EInkSlotLabel.measurementSlack
+                content - statsWidth($0) - 6 - markWidth >= widestLabel + EInkSlotLabel.measurementSlack
             }
             if let detail {
                 let statsColumn = statsWidth(detail)
-                let labelWidth = max(0, content - statsColumn - 6)
-                for quota in rows {
-                    let style = labelStyle(quota, snapshot: snapshot, options: options, size: EInkLogo.rowSize)
-                    let mark = style.drawsLogo ? logoNode(quota, snapshot: snapshot, size: EInkLogo.rowSize) : nil
-                    let words = style.drawsLogo ? style.text(of: quota) : quota.slotLabel
+                let labelWidth = max(0, content - statsColumn - 6 - markWidth)
+                for (index, quota) in rows.enumerated() {
                     children.append(
                         row(
-                            [mark].compactMap { $0 } + [
-                                text(
-                                    words,
-                                    pixelBold,
-                                    width: .points(labelWidth - (mark == nil ? 0 : EInkLogo.rowSize + 6)),
-                                    clips: false
-                                ).bound(.slotLabel(quota.fieldID, part: style.part ?? .whole)),
+                            head(index) + [
+                                text(words(index), pixelBold, width: .points(labelWidth), clips: false)
+                                    .bound(.slotLabel(quota.fieldID, part: styles[index].part ?? .whole)),
                                 text(
                                     briefingStats(quota, detail: detail),
                                     pixel,
@@ -197,7 +208,7 @@ extension EInkPresets {
                                     clips: false
                                 )
                             ],
-                            height: .points(13),
+                            height: .points(markWidth > 0 ? EInkLogo.rowSize : 13),
                             gap: 6,
                             align: .center
                         ).module(slotModule(quota.fieldID))
@@ -211,17 +222,25 @@ extension EInkPresets {
                 // line, which leaves the whole width of the panel for the
                 // second: two lines is the budget, and nothing is cut.
                 let statsColumn = statsWidth(.terse)
-                let firstWidth = max(0, content - statsColumn - 6)
-                for quota in rows {
-                    let parts = EInkSlotLabel.twoLines(quota.slotLabel)
+                let firstWidth = max(0, content - statsColumn - 6 - markWidth)
+                for (index, quota) in rows.enumerated() {
+                    let parts = EInkSlotLabel.twoLines(words(index))
+                    // Only a split at a tier boundary of the *whole* name is a
+                    // part anything can bind to; a slot showing its mark has
+                    // already given its first tier away, so its two halves are
+                    // fragments and say so.
+                    let firstPart: EInkSlotLabelPart? = styles[index].drawsLogo
+                        ? (parts.second.isEmpty ? styles[index].part : nil)
+                        : .name
+                    let secondPart: EInkSlotLabelPart? = styles[index].drawsLogo ? nil : .window
                     let first = row(
-                        [
+                        head(index) + [
                             text(
                                 EInkSlotLabel.truncated(parts.first, width: firstWidth, font: pixelBold),
                                 pixelBold,
                                 width: .points(firstWidth),
                                 clips: true
-                            ).bound(.slotLabel(quota.fieldID, part: .name)),
+                            ).bound(firstPart.map { .slotLabel(quota.fieldID, part: $0) }),
                             text(
                                 briefingStats(quota, detail: .terse),
                                 pixel,
@@ -230,26 +249,23 @@ extension EInkPresets {
                                 clips: false
                             )
                         ],
-                        height: .points(12),
-                        gap: 6
+                        height: .points(markWidth > 0 ? EInkLogo.rowSize : 12),
+                        gap: 6,
+                        align: .center
                     )
                     children.append(
                         column(
                             [
                                 first,
-                                // The second fragment says which part of the
-                                // name it is, so exploding the slide into the
-                                // Studio leaves it following the bucket rather
-                                // than freezing it as text.
                                 text(
                                     EInkSlotLabel.truncated(parts.second, width: content),
                                     pixel,
                                     width: .points(content),
                                     height: .points(12),
                                     clips: true
-                                ).bound(.slotLabel(quota.fieldID, part: .window))
+                                ).bound(secondPart.map { .slotLabel(quota.fieldID, part: $0) })
                             ],
-                            height: .points(24),
+                            height: .points((markWidth > 0 ? EInkLogo.rowSize : 12) + 12),
                             gap: 0
                         ).module(slotModule(quota.fieldID))
                     )

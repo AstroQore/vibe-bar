@@ -195,6 +195,43 @@ final class EInkSlotLogoTests: XCTestCase {
         }
     }
 
+    /// The briefing's wrapped fallback honours the style too.
+    ///
+    /// Landscape Briefing has two arrangements — one line per slot, and a
+    /// wrapped row for names that will not fit beside their figures — and the
+    /// second one was measuring and printing the whole name whatever the slide
+    /// asked for. That is exactly the panel the marks exist for.
+    func testTheBriefingAppliesTheStyleBeforeItDecidesToWrap() throws {
+        let snapshot = snapshot()
+        for orientation in [EInkOrientation.degrees0, .degrees90] {
+            let boxes = try drawn(
+                .briefing,
+                orientation,
+                snapshot: snapshot,
+                options: options(.logoAndWindow),
+                count: 4
+            )
+            let printed = boxes.compactMap { box -> String? in
+                if case let .text(value, _, _) = box.content { return value }
+                return nil
+            }
+            XCTAssertFalse(
+                printed.contains { $0.contains("ChatGPT Agentic") },
+                "\(orientation.rawValue)°: the mark says the provider"
+            )
+            XCTAssertFalse(
+                printed.contains { $0.contains("GPT-5.3 Codex Spark") },
+                "\(orientation.rawValue)°: this style asked for the window alone"
+            )
+            XCTAssertTrue(printed.contains("Weekly"), "\(orientation.rawValue)°")
+            XCTAssertGreaterThanOrEqual(
+                boxes.filter { if case .image = $0.content { return true } else { return false } }.count,
+                4,
+                "\(orientation.rawValue)°: one mark per slot"
+            )
+        }
+    }
+
     /// A style whose mark the snapshot could not rasterize falls back to the
     /// words. A slot nobody can identify is worse than a long name.
     func testAMissingMarkFallsBackToTheFullName() throws {
