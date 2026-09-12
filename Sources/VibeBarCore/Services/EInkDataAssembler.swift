@@ -190,7 +190,11 @@ public struct EInkDataAssembler: Sendable {
                 dateLabel: EInkFormat.dateLabel(now, calendar: calendar),
                 heatmap: heatmap,
                 topModels: models,
-                providerStatusLine: EInkProviderStatusLine.compose(await serviceStatus())
+                providerStatusLine: EInkProviderStatusLine.compose(await serviceStatus()),
+                // The device's own path comes through here, not through
+                // `snapshot()`: a mark missing from this one is every logo
+                // style on every panel quietly reverting to words.
+                logos: marks(for: quota)
             ),
             usageUnavailable: usageUnavailable
         )

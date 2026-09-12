@@ -223,6 +223,50 @@ final class EInkSlotLogoTests: XCTestCase {
         XCTAssertEqual(boxes.filter { if case .image = $0.content { return true } else { return false } }.count, 1)
     }
 
+    /// Both snapshot builders carry the marks.
+    ///
+    /// The device's own refresh goes through `assemble`, not `snapshot()`, and
+    /// a mark missing from that one is every configured logo style silently
+    /// reverting to words on the panel — which looks exactly like the feature
+    /// not existing.
+    func testEverySnapshotBuilderCarriesTheMarks() async {
+        let sources = EInkDataAssembler(
+            quotaLookup: { tool in
+                guard tool == .claude else { return nil }
+                return AccountQuota(
+                    accountId: "synthetic-account",
+                    tool: .claude,
+                    buckets: [
+                        QuotaBucket(
+                            id: "weekly",
+                            title: "Weekly",
+                            shortLabel: "7d",
+                            usedPercent: 30,
+                            resetAt: EInkFixtures.referenceDate.addingTimeInterval(3_600)
+                        )
+                    ],
+                    plan: "Test Plan"
+                )
+            },
+            usage: EInkEmptyUsageSource(),
+            allTimeCostSnapshots: { [] },
+            calendar: EInkFixtures.calendar()
+        )
+        // `includeUsage: false` is the quota-only refresh a panel of ledger
+        // slides actually performs, and the one that was dropping the marks.
+        let assembled = await sources.assemble(now: EInkFixtures.referenceDate, includeUsage: false).snapshot
+        XCTAssertFalse(assembled.quota.isEmpty)
+        XCTAssertEqual(assembled.logos, sources.marks(for: assembled.quota))
+        for row in assembled.quota {
+            for size in EInkLogo.sizes {
+                XCTAssertNotNil(
+                    assembled.logo(fieldID: row.fieldID, size: size),
+                    "\(row.fieldID) has no mark at \(size) px"
+                )
+            }
+        }
+    }
+
     // MARK: - Persistence and the Studio
 
     func testTheStyleRoundTripsAndARoundOneSlideStillReadsAsWords() throws {
