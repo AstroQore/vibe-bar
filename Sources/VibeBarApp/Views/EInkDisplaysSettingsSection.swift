@@ -866,16 +866,17 @@ struct EInkDisplaysSettingsSection: View {
     private func pushNow(_ deviceID: String) {
         pushStatus = nil
         // The roster reaches the engine through a 400 ms debounce, so a slide
-        // or orientation edited a moment ago may not be there yet. Applying it
-        // here is a no-op when nothing changed, and the difference between
-        // pushing what the user is looking at and pushing what they saw half a
-        // second ago when it is not.
-        service.apply(
-            settings: settingsStore.settings.einkSync,
-            layouts: settingsStore.settings.einkCanvasLayouts
-        )
+        // or orientation edited a moment ago may not be there yet. The service
+        // applies it and forces the push as one step — applying separately
+        // restarts the loops, and the restarted loop's own first pass would
+        // race this one into two identical panel refreshes.
+        let pending = settingsStore.settings
         Task {
-            let outcome = await service.pushNow(deviceID: deviceID)
+            let outcome = await service.pushNow(
+                deviceID: deviceID,
+                applying: pending.einkSync,
+                layouts: pending.einkCanvasLayouts
+            )
             guard selectedDevice?.deviceID == deviceID else { return }
             if let failure = outcome.failure {
                 pushStatus = message(for: failure)

@@ -247,6 +247,9 @@ public final class EInkSyncService: ObservableObject {
     private var lastRequestSlot: ContinuousClock.Instant?
     private let writer: EInkSyncStateWriter
     private var persistTask: Task<Void, Never>?
+    /// Devices whose restarted loop must sleep before its first pass, because
+    /// a forced push is about to cover it.
+    private var deferredFirstPass: Set<String> = []
 
     // MARK: - Init
 
@@ -376,10 +379,16 @@ public final class EInkSyncService: ObservableObject {
         guard canSync else { return }
         for device in activeDevices {
             let id = device.deviceID
+            let deferFirst = deferredFirstPass.contains(id)
             refreshLoops[id] = Task { [weak self] in
+                var skipFirst = deferFirst
                 while !Task.isCancelled {
                     guard let self else { return }
-                    _ = await self.refresh(deviceID: id)
+                    if skipFirst {
+                        skipFirst = false
+                    } else {
+                        _ = await self.refresh(deviceID: id)
+                    }
                     let interval = await self.refreshInterval(for: id)
                     do {
                         try await Task.sleep(for: .seconds(interval))
@@ -435,6 +444,25 @@ public final class EInkSyncService: ObservableObject {
             }
         }
         return await startRun(deviceID: deviceID, force: false)
+    }
+
+    /// Applies the configuration the caller is looking at and then forces a
+    /// push, without letting the restart fire an automatic pass first.
+    ///
+    /// `apply` restarts the loops, and a restarted loop's first act is a
+    /// normal refresh. Racing that against the forced pass produced two
+    /// identical canvas writes — and two visible e-ink refreshes — for one
+    /// button press.
+    @discardableResult
+    public func pushNow(
+        deviceID: String,
+        applying settings: EInkSyncSettings,
+        layouts: [String: EInkCanvasLayout]
+    ) async -> EInkPushOutcome {
+        deferredFirstPass.insert(deviceID)
+        apply(settings: settings, layouts: layouts)
+        defer { deferredFirstPass.remove(deviceID) }
+        return await pushNow(deviceID: deviceID)
     }
 
     /// The settings pane's "Push now": the same pass, except the digest check
@@ -754,6 +782,16 @@ public final class EInkSyncService: ObservableObject {
         }
     }
 
+    /// A call that succeeded proves the key works, so it lifts the stop — and
+    /// lifting it has to restart what `invalidateCredential` cancelled.
+    /// Clearing the flag alone left syncing silently off until some unrelated
+    /// edit happened to move the roster.
+    private func clearCredentialRejection() {
+        guard credentialInvalid else { return }
+        credentialInvalid = false
+        restartLoops()
+    }
+
     private func invalidateCredential() {
         credentialInvalid = true
         cancelLoops()
@@ -835,7 +873,7 @@ public final class EInkSyncService: ObservableObject {
         await paceRequest()
         do {
             let devices = try await client.listDevices(apiKey: key)
-            credentialInvalid = false
+            clearCredentialRejection()
             return devices
         } catch let error as DotDeviceError {
             if error.invalidatesCredential { invalidateCredential() }
@@ -856,7 +894,7 @@ public final class EInkSyncService: ObservableObject {
             state.canvasTaskCount = tasks.filter(\.isCanvasAPI).count
             states[deviceID] = state
             persist()
-            credentialInvalid = false
+            clearCredentialRejection()
             return tasks
         } catch let error as DotDeviceError {
             if error.invalidatesCredential { invalidateCredential() }

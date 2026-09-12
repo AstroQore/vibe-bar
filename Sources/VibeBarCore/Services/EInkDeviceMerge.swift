@@ -16,12 +16,25 @@ public enum EInkDeviceMerge {
         var order: [String] = []
 
         for device in discovered where !device.id.isEmpty {
+            guard let profile = device.profile else {
+                // A model this build has never been measured against. Every
+                // layout here is authored for a 296 x 152 1-bit panel, and the
+                // encoder's rotation offsets are that panel's; adopting an
+                // unknown one as a Quote/0 would send it a payload sized for a
+                // screen it does not have. A device already configured is left
+                // alone — it was set up under a build that knew its model.
+                if let existing = byID[device.id] {
+                    byID[device.id] = existing
+                    order.append(device.id)
+                }
+                continue
+            }
             var config = byID[device.id] ?? EInkDeviceConfig(
                 deviceID: device.id,
                 slides: [EInkSlide(kind: .preset(.quotaLedger))]
             )
             config.alias = device.alias
-            if let profile = device.profile { config.profile = profile }
+            config.profile = profile
             byID[device.id] = config
             order.append(device.id)
         }

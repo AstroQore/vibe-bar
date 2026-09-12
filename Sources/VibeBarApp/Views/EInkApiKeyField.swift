@@ -99,20 +99,34 @@ struct EInkApiKeyField: View {
         }
     }
 
+    /// A refused deletion is reported, not assumed away.
+    ///
+    /// Swallowing it and then asking a non-throwing presence check meant a
+    /// locked Keychain read back as "no key", so the pane cleared its error,
+    /// told the engine the credential was gone and restarted syncing — with
+    /// the rejected key still stored.
     private func clear() {
         guard !isWorking else { return }
         mutation += 1
         isWorking = true
         Task {
-            let present = await Task.detached(priority: .userInitiated) { () -> Bool in
-                try? EInkCredentialStore.deleteAPIKey()
-                return EInkCredentialStore.hasAPIKey()
+            let removed = await Task.detached(priority: .userInitiated) { () -> Bool in
+                do {
+                    try EInkCredentialStore.deleteAPIKey()
+                    return true
+                } catch {
+                    return false
+                }
             }.value
             isWorking = false
+            guard removed else {
+                saveError = L10n.Error.keychainSave
+                return
+            }
             draft = ""
-            hasStored = present
+            hasStored = false
             saveError = nil
-            onChange(present)
+            onChange(false)
         }
     }
 }

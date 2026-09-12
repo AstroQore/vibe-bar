@@ -340,15 +340,18 @@ final class EInkSyncServiceTests: XCTestCase {
         async let second: Void = { _ = await sync.refresh(deviceID: "panel-2") }()
         _ = await (first, second)
 
+        // The span, not each gap: the gate hands out slots 150 ms apart, but
+        // when several passes wake at once the main actor decides which
+        // resumes first, and an individual arrival can drift off its slot.
+        // Four writes spread over at least two spacings is what proves they
+        // queued behind one budget; without any gate the span is ~0.
         let stamps = client.pushes.map(\.elapsed).sorted()
         XCTAssertEqual(stamps.count, 4)
-        for (previous, next) in zip(stamps, stamps.dropFirst()) {
-            XCTAssertGreaterThanOrEqual(
-                previous.duration(to: next),
-                .milliseconds(100),
-                "the rate limit is per account, not per device"
-            )
-        }
+        XCTAssertGreaterThanOrEqual(
+            stamps[0].duration(to: stamps[3]),
+            .milliseconds(300),
+            "the rate limit is per account, not per device"
+        )
     }
 
     func testAdvancingTheCarouselMovesToTheNextSlideAndWrapsAround() async {
@@ -957,6 +960,49 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertFalse(
             DotRenderImagePolicy.isAllowed(URL(string: "https://os-cdn.mindreset.tech.example.com/a.png")!)
         )
+    }
+
+    func testAnUnknownPanelModelIsNotAdoptedAsAQuoteZero() {
+        let merged = EInkDeviceMerge.merge(
+            discovered: [
+                DotDevice(id: "panel-1", alias: "Quote 1", model: "quote_0"),
+                DotDevice(id: "panel-future", alias: "Something New", model: "quote_9")
+            ],
+            into: []
+        )
+        XCTAssertEqual(
+            merged.map(\.deviceID),
+            ["panel-1"],
+            "a model this build has never been measured against must not be sent a Quote/0 payload"
+        )
+    }
+
+    func testAConfiguredDeviceSurvivesAModelThisBuildDoesNotKnow() {
+        let existing = [EInkDeviceConfig(deviceID: "panel-1", alias: "Quote 1", slides: [slide("a")])]
+        let merged = EInkDeviceMerge.merge(
+            discovered: [DotDevice(id: "panel-1", alias: "Renamed", model: "quote_9")],
+            into: existing
+        )
+        XCTAssertEqual(merged.map(\.deviceID), ["panel-1"])
+        XCTAssertEqual(merged[0].slides.map(\.id), ["a"])
+    }
+
+    func testASuccessfulReadLiftsARejectionAndRestartsSyncing() async {
+        let client = FakeDotClient()
+        client.sendErrors = [.unauthorized]
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertTrue(sync.credentialInvalid)
+
+        client.reset()
+        client.devices = [DotDevice(id: "panel-1", alias: "Quote 1", model: "quote_0")]
+        _ = try? await sync.fetchDevices()
+        XCTAssertFalse(sync.credentialInvalid, "a call that worked proves the key does")
+        let outcome = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(outcome.pushed, 1)
     }
 
     // MARK: - Roster merge
