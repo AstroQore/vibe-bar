@@ -113,7 +113,7 @@ public enum EInkRenderer {
         let options = slide.options
         let selected = fieldIDs ?? slide.orderedQuotaFieldIDs
         func quotaRows() -> [EInkQuotaRow] {
-            snapshot.quotaRows(fieldIDs: selected, limit: capacity)
+            snapshot.quotaRows(fieldIDs: selected, limit: capacity).map { $0.relabeled(with: options) }
         }
         func resolved() -> [EInkUsagePeriod] {
             periods ?? resolvedPeriods(slide, capacity: capacity)

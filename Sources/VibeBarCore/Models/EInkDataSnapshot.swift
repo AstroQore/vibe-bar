@@ -113,6 +113,23 @@ public struct EInkQuotaRow: Sendable, Equatable {
     public var slotLabel: String {
         windowTitle.isEmpty ? providerDisplayName : "\(providerDisplayName) · \(windowTitle)"
     }
+
+    /// This row wearing one slide's own name for it.
+    ///
+    /// The assembler already resolves a default (and honours the merged
+    /// override map, which is what the shared snapshot can carry), but two
+    /// slides may name the same bucket differently — a wide landscape ledger
+    /// and a 140 px portrait rail want different lengths. The slide's own
+    /// label therefore wins at draw time, split on the same separator so the
+    /// two-line slots still break where the name reads.
+    public func relabeled(with options: EInkSlideOptions) -> EInkQuotaRow {
+        guard let label = options.customLabel(for: fieldID) else { return self }
+        var copy = self
+        let parts = label.components(separatedBy: EInkSlotLabel.separator)
+        copy.providerDisplayName = parts.first ?? label
+        copy.windowTitle = parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+        return copy
+    }
 }
 
 /// The pace verdict for one bucket, reduced to what the panel prints.

@@ -193,6 +193,19 @@ final class EInkSlideOptionsTests: XCTestCase {
         XCTAssertEqual(slide.orderedQuotaFieldIDs, ["codex.weekly", "claude.weekly", "claude.five_hour"])
     }
 
+    /// Two slides may want different names for the same bucket — a wide
+    /// landscape ledger and a 140 px portrait rail are not the same column.
+    func testASlidesOwnLabelWinsAtDrawTimeOverTheSharedDefault() throws {
+        var slide = EInkFixtures.slide(preset: .quotaLedger, fieldIDs: ["claude.five_hour"])
+        slide.customLabels = ["claude.five_hour": "Desk · 5 Hours"]
+        let drawn = EInkBoxLayout.resolve(
+            try EInkRenderer.tree(slide: slide, orientation: .degrees0, snapshot: snapshot),
+            in: EInkRect(x: 0, y: 0, width: 296, height: 152)
+        )
+        XCTAssertTrue(strings(drawn).contains("Desk · 5 Hours"))
+        XCTAssertFalse(strings(drawn).contains("Claude · 5 Hours"))
+    }
+
     /// A saved order predates whatever the user ticked a moment ago, so it may
     /// never be the thing that hides it.
     func testAnOrderNeverDropsASlotItDoesNotMention() {
