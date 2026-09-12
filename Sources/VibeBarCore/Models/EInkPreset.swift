@@ -69,4 +69,9 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
     }
 
     public var isQuotaPreset: Bool { selectionAxis == .quotaFields }
+
+    /// Whether drawing this layout needs the usage ledger at all. The three
+    /// quota layouts do not, which is what lets a quota-only device keep
+    /// pushing when the ledger is unreadable.
+    public var needsUsageData: Bool { !isQuotaPreset }
 }

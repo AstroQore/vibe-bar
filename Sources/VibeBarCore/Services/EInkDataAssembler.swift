@@ -77,6 +77,34 @@ public struct EInkDataAssembler: Sendable {
         QuotaSelector(tool: .cursor, bucketID: "models")
     ]
 
+    /// The selector a `MenuBarFieldCatalog` field id names, or `nil` when the
+    /// id is not a `<tool>.<bucket>` pair this build knows a tool for.
+    public static func selector(fieldID: String) -> QuotaSelector? {
+        guard let dot = fieldID.firstIndex(of: ".") else { return nil }
+        let rawTool = String(fieldID[fieldID.startIndex..<dot])
+        let bucketID = String(fieldID[fieldID.index(after: dot)...])
+        guard !bucketID.isEmpty, let tool = ToolType(rawValue: rawTool) else { return nil }
+        return QuotaSelector(tool: tool, bucketID: bucketID)
+    }
+
+    /// The verified priority order, followed by anything a slide picked that
+    /// the order does not already cover.
+    ///
+    /// Without this the picker would be a trap: it lists every bucket the
+    /// catalog and the runtime registry know, while the snapshot only ever
+    /// carried the seven in `defaultQuotaPriority` — so choosing, say, Codex's
+    /// 5 Hours drew an empty row on a panel across the room, which is the one
+    /// failure mode a glanceable surface cannot afford.
+    public static func priority(includingSelected fieldIDs: [String]) -> [QuotaSelector] {
+        var seen = Set(defaultQuotaPriority.map(\.fieldID))
+        var result = defaultQuotaPriority
+        for fieldID in fieldIDs {
+            guard seen.insert(fieldID).inserted, let selector = selector(fieldID: fieldID) else { continue }
+            result.append(selector)
+        }
+        return result
+    }
+
     public var quotaLookup: @Sendable (ToolType) async -> AccountQuota?
     public var usage: any EInkUsageQuerying
     /// Per-tool cost snapshots; only their all-time columns are read.
@@ -112,6 +140,46 @@ public struct EInkDataAssembler: Sendable {
         )
     }
 
+    /// Assembles what the pass actually needs, and never throws.
+    ///
+    /// Two rules, both about not losing the half that works:
+    ///
+    /// - The ledger is queried only when a slide draws usage. A device showing
+    ///   nothing but quota rows has no business walking a SQLite index every
+    ///   fifteen minutes, and a broken ledger must not stop it.
+    /// - A usage query that fails leaves the usage columns empty and says so.
+    ///   The caller pushes the quota slides and reports the gap; refusing the
+    ///   whole pass would blank a panel over data half its slides never
+    ///   touched.
+    public func assemble(now: Date = Date(), includeUsage: Bool) async -> EInkAssemblyOutcome {
+        let quota = await quotaRows(now: now)
+        var usage = EInkUsageSet()
+        var trend: [EInkTrendPoint] = []
+        var usageUnavailable = false
+        if includeUsage {
+            do {
+                usage = try await usageSet(now: now)
+                trend = try await trendPoints(now: now)
+            } catch {
+                usage = EInkUsageSet()
+                trend = []
+                usageUnavailable = true
+                SafeLog.warn("eink usage assembly failed: \(SafeLog.sanitize(String(describing: error)))")
+            }
+        }
+        return EInkAssemblyOutcome(
+            snapshot: EInkDataSnapshot(
+                generatedAt: now,
+                generatedAtLabel: EInkFormat.timestampLabel(now, calendar: calendar),
+                generatedAtISO: Self.iso8601.string(from: now),
+                quota: quota,
+                usage: usage,
+                trend: trend
+            ),
+            usageUnavailable: usageUnavailable
+        )
+    }
+
     // MARK: - Quota
 
     func quotaRows(now: Date) async -> [EInkQuotaRow] {
@@ -131,7 +199,7 @@ public struct EInkDataAssembler: Sendable {
                 EInkQuotaRow(
                     fieldID: selector.fieldID,
                     providerDisplayName: EInkProviderLabel.short(for: selector.tool),
-                    windowTitle: bucket.title.isEmpty ? bucket.shortLabel : bucket.title,
+                    windowTitle: Self.windowTitle(for: bucket),
                     remainingPercent: remaining,
                     resetAt: bucket.resetAt,
                     countdown: EInkFormat.countdown(bucket.resetAt, now: now),
@@ -140,6 +208,19 @@ public struct EInkDataAssembler: Sendable {
             )
         }
         return rows
+    }
+
+    /// The window as the panel prints it, written out in full.
+    ///
+    /// Never `shortLabel`. That field exists for the menu bar, where "5h" and
+    /// "WK" buy back pixels that matter; a panel across a desk has 296 of them
+    /// and an abbreviation there is just a word the reader has to decode. The
+    /// group title is the only fallback, because it is written out too — a
+    /// bucket with neither draws no window word at all rather than an
+    /// abbreviation nobody asked for.
+    static func windowTitle(for bucket: QuotaBucket) -> String {
+        if !bucket.title.isEmpty { return bucket.title }
+        return bucket.groupTitle ?? ""
     }
 
     // MARK: - Usage
@@ -223,5 +304,30 @@ public struct EInkDataAssembler: Sendable {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "EEE"
         return formatter.string(from: date)
+    }
+}
+
+
+/// What one assembly produced, and whether the usage half of it is missing.
+public struct EInkAssemblyOutcome: Sendable, Equatable {
+    public var snapshot: EInkDataSnapshot
+    public var usageUnavailable: Bool
+
+    public init(snapshot: EInkDataSnapshot, usageUnavailable: Bool = false) {
+        self.snapshot = snapshot
+        self.usageUnavailable = usageUnavailable
+    }
+}
+
+/// What the engine asks an assembly for.
+public struct EInkSnapshotRequest: Sendable, Equatable {
+    /// Quota buckets any slide picked, on top of the default priority order.
+    public var quotaFieldIDs: [String]
+    /// False when no slide on this pass draws usage.
+    public var includesUsage: Bool
+
+    public init(quotaFieldIDs: [String], includesUsage: Bool) {
+        self.quotaFieldIDs = quotaFieldIDs
+        self.includesUsage = includesUsage
     }
 }

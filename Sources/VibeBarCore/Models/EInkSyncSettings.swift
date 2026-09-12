@@ -28,6 +28,38 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
 
     public static let `default` = EInkSyncSettings()
 
+    /// Every quota bucket any slide on any device has picked, in first-seen
+    /// order. The assembler needs it so a chosen bucket is actually gathered.
+    public var selectedQuotaFieldIDs: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for device in devices {
+            for slide in device.slides where slide.kind.preset?.isQuotaPreset ?? false {
+                for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
+                    result.append(fieldID)
+                }
+            }
+        }
+        return result
+    }
+
+    /// Every quota field id any slide holds, whatever preset it currently
+    /// draws.
+    ///
+    /// This is the *keep* set, not the *draw* set, and the difference matters:
+    /// a slide switched to a usage layout still carries the buckets it had, and
+    /// pruning them from `QuotaFieldRegistry` because nothing is drawing them
+    /// today would empty the picker the moment the user switched back.
+    public var referencedQuotaFieldIDs: Set<String> {
+        var result = Set<String>()
+        for device in devices {
+            for slide in device.slides {
+                result.formUnion(slide.quotaFieldIDs)
+            }
+        }
+        return result
+    }
+
     public func device(id: String) -> EInkDeviceConfig? {
         devices.first { $0.deviceID == id }
     }
@@ -277,7 +309,7 @@ public struct EInkDeviceConfig: Codable, Equatable, Identifiable, Sendable {
         var seenSlides = Set<String>()
         copy.slides = slides
             .filter { !$0.id.isEmpty && seenSlides.insert($0.id).inserted }
-            .map(\.sanitized)
+            .map { $0.sanitized.fitted(to: copy.orientation) }
         copy.playback = playback.sanitized
         return copy
     }
@@ -392,6 +424,71 @@ public struct EInkSlide: Codable, Equatable, Identifiable, Sendable {
         copy.quotaFieldIDs = quotaFieldIDs.filter { !$0.isEmpty && seenFields.insert($0).inserted }
         var seenPeriods = Set<EInkUsagePeriod>()
         copy.usagePeriods = usagePeriods.filter { seenPeriods.insert($0).inserted }
+        return copy
+    }
+
+    /// The buckets a new slide should start with, given what the account
+    /// actually exposes.
+    ///
+    /// The verified priority order first, narrowed to what is live, then
+    /// anything else the account has. The narrowing is the point: on a
+    /// Gemini-only account the global order's first five are all absent, so a
+    /// slide seeded from the catalog fills to capacity with rows
+    /// `EInkDataSnapshot.quotaRows` then filters out — a blank panel the user
+    /// has to repair by deselecting providers they never chose.
+    public static func defaultQuotaFieldIDs(live: [String]) -> [String] {
+        let priority = EInkDataAssembler.defaultQuotaPriority.map(\.fieldID)
+        guard !live.isEmpty else { return priority }
+        let liveSet = Set(live)
+        var seen = Set<String>()
+        var ordered = priority.filter { liveSet.contains($0) && seen.insert($0).inserted }
+        ordered += live.filter { seen.insert($0).inserted }
+        return ordered
+    }
+
+    /// A ready-to-draw quota slide.
+    ///
+    /// Seeded with the buckets the renderer would have fallen back to anyway,
+    /// because an empty selection means "Vibe Bar's own order" there while the
+    /// picker reads it as "nothing chosen" — every box off above a panel
+    /// showing five rows. Writing the defaults down makes the two agree, and
+    /// makes the first thing the user does *edit* a selection rather than
+    /// discover one.
+    public static func defaultQuotaSlide(
+        preset: EInkPreset = .quotaLedger,
+        orientation: EInkOrientation = .degrees0,
+        available: [String] = EInkDataAssembler.defaultQuotaPriority.map(\.fieldID)
+    ) -> EInkSlide {
+        EInkSlide(
+            kind: .preset(preset),
+            quotaFieldIDs: Array(
+                EInkSlide.defaultQuotaFieldIDs(live: available)
+                    .prefix(preset.capacity(for: orientation))
+            )
+        )
+    }
+
+    /// Trims the selection to what the layout has room for at this
+    /// orientation.
+    ///
+    /// Capacity is orientation-dependent — the quota layouts hold six in
+    /// portrait and five in landscape — so a rotation can leave a slide
+    /// carrying more than it can draw. The renderer already takes a prefix, so
+    /// the extra rows were invisible; what they were not is *honest*, because
+    /// the picker kept counting them and the reader kept looking for a row the
+    /// panel was never going to print.
+    public func fitted(to orientation: EInkOrientation) -> EInkSlide {
+        guard let preset = kind.preset else { return self }
+        let capacity = max(0, preset.capacity(for: orientation))
+        var copy = self
+        switch preset.selectionAxis {
+        case .quotaFields:
+            copy.quotaFieldIDs = Array(quotaFieldIDs.prefix(capacity))
+        case .usagePeriods:
+            copy.usagePeriods = Array(usagePeriods.prefix(capacity))
+        case .harnessRows, .none:
+            break
+        }
         return copy
     }
 

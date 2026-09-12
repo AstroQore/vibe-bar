@@ -168,6 +168,43 @@ public struct DotDeviceClient: Sendable {
         return max(minute, (clamped / minute) * minute)
     }
 
+    /// Downloads the panel render the status endpoint pointed at, so the
+    /// settings pane can show what the device is actually displaying.
+    ///
+    /// The URL arrives inside an API response, which makes it untrusted input:
+    /// only the service's own CDN over HTTPS is fetched, and the response is
+    /// bounded to 2 MB. No credential is sent — the render links are
+    /// pre-signed, and attaching the bearer token to a host chosen by a
+    /// response body is exactly the mistake this avoids.
+    public func fetchRenderImage(url: URL) async throws -> Data {
+        guard DotRenderImagePolicy.isAllowed(url) else { throw DotDeviceError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = Self.timeout
+        request.setValue("image/png,image/*", forHTTPHeaderField: "Accept")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await HTTPResponseLimit.boundedData(
+                from: session,
+                for: request,
+                maxBytes: DotRenderImagePolicy.maxBytes
+            )
+        } catch let error as HTTPResponseLimit.BoundedError {
+            throw DotDeviceError.network(String(describing: error))
+        } catch {
+            throw DotDeviceError.network(SafeLog.sanitize(String(describing: error)))
+        }
+        guard let http = response as? HTTPURLResponse else { throw DotDeviceError.network("no HTTP response") }
+        switch http.statusCode {
+        case 200...299: return data
+        case 401, 403: throw DotDeviceError.unauthorized
+        case 429: throw DotDeviceError.rateLimited
+        default: throw DotDeviceError.http(code: http.statusCode)
+        }
+    }
+
     // MARK: - Transport
 
     private func encoded(_ component: String) -> String {
@@ -226,3 +263,16 @@ public struct DotDeviceClient: Sendable {
         }
     }
 }
+
+/// The slice of the Dot. API the sync engine uses, so a test can stand in for
+/// the network without a `URLProtocol` stub for every case.
+public protocol DotDeviceClienting: Sendable {
+    func listDevices(apiKey: String) async throws -> [DotDevice]
+    func status(deviceID: String, apiKey: String) async throws -> DotDeviceStatus
+    func listTasks(deviceID: String, type: DotTaskType, apiKey: String) async throws -> [DotTask]
+    @discardableResult
+    func sendCanvas(deviceID: String, payload: DotCanvasPayload, apiKey: String) async throws -> String
+    func fetchRenderImage(url: URL) async throws -> Data
+}
+
+extension DotDeviceClient: DotDeviceClienting {}

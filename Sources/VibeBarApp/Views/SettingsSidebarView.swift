@@ -33,6 +33,7 @@ struct SettingsSidebarView: View {
         .menuBarHealth,
         .miniWindow,
         .layout,
+        .einkDisplays,
     ]
 
     var body: some View {

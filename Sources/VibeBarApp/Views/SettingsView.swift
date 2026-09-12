@@ -6,6 +6,7 @@ enum SettingsSectionID: String {
     case menuBarHealth
     case miniWindow
     case layout
+    case einkDisplays
     case openAI
     case anthropic
     case googleAI
@@ -27,6 +28,7 @@ enum SettingsSectionID: String {
         case .menuBarHealth: L10n.Settings.Section.menuBarHealth
         case .miniWindow: L10n.Settings.Section.miniWindows
         case .layout: L10n.Settings.Section.layout
+        case .einkDisplays: L10n.Settings.Section.einkDisplays
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
         case .googleAI: "Google AI"
@@ -48,6 +50,7 @@ enum SettingsSectionID: String {
         case .menuBarHealth: "stethoscope"
         case .miniWindow: "rectangle.on.rectangle"
         case .layout: "rectangle.split.2x1"
+        case .einkDisplays: "rectangle.dashed.badge.record"
         case .openAI: "brain.head.profile"
         case .anthropic: "sparkles"
         case .googleAI: "diamond"
@@ -685,6 +688,11 @@ struct SettingsView: View {
                     if selectedSection == .mcp, let mcp = environment.mcp {
                     MCPSettingsSection(density: density, controller: mcp)
                         .id(SettingsSectionID.mcp.id)
+                    }
+
+                    if selectedSection == .einkDisplays, let eink = environment.einkSyncService {
+                    EInkDisplaysSettingsSection(density: density, service: eink)
+                        .id(SettingsSectionID.einkDisplays.id)
                     }
 
                     if selectedSection == .permissions {
