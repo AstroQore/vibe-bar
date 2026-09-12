@@ -404,7 +404,14 @@ public final class EInkSyncService: ObservableObject {
     // MARK: - One pass
 
     private func performRun(deviceID: String, generation: Int, force: Bool) async -> EInkPushOutcome {
-        guard let device = settings.device(id: deviceID), device.enabled else { return EInkPushOutcome() }
+        // `force` is the Push now button, and it works on a device whose
+        // per-device switch is still off. A freshly fetched panel starts
+        // disabled, so requiring the switch here made the button report
+        // "pushed 0, skipped 0" without ever contacting the panel — the worst
+        // kind of answer, because it looks like a successful no-op.
+        guard let device = settings.device(id: deviceID), device.enabled || force else {
+            return EInkPushOutcome()
+        }
         guard !credentialInvalid, let key = await currentAPIKey() else {
             return record(deviceID: deviceID, failure: .unauthorized, detail: nil, generation: generation)
         }
@@ -654,9 +661,17 @@ public final class EInkSyncService: ObservableObject {
         for fieldID in includingFieldIDs where seen.insert(fieldID).inserted {
             fieldIDs.append(fieldID)
         }
+        // Ticking two buckets quickly starts two assemblies; the first can
+        // finish last, and publishing it would drop the row the second one was
+        // asked for until the user edited something else.
+        previewRequest += 1
+        let request = previewRequest
         guard let snapshot = try? await assembleSnapshot(fieldIDs: fieldIDs) else { return }
+        guard request == previewRequest else { return }
         previewSnapshot = snapshot
     }
+
+    private var previewRequest = 0
 
     // MARK: - One-shot API calls for the settings pane
 

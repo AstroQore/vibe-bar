@@ -399,6 +399,24 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(client.pushes.count, 1)
     }
 
+    func testPushNowReachesADeviceWhoseSwitchIsStillOff() async {
+        let client = FakeDotClient()
+        var config = device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        config.enabled = false
+        let sync = service(client: client, device: config)
+
+        // The scheduled path stays off — that is what the switch means.
+        let scheduled = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(scheduled.pushed, 0)
+        XCTAssertEqual(client.pushes.count, 0)
+
+        // The button does not: a freshly fetched panel starts disabled, and
+        // "try it now" is how someone checks their setup.
+        let forced = await sync.pushNow(deviceID: "panel-1")
+        XCTAssertEqual(forced.pushed, 1)
+        XCTAssertEqual(client.pushes.count, 1)
+    }
+
     // MARK: - Cadence
 
     func testABatteryDeviceUsesTheSlowerCadence() async {

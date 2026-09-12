@@ -80,7 +80,7 @@ struct EInkDisplaysSettingsSection: View {
         .onChange(of: selectedDevice?.deviceID) { _, _ in
             renderImage = nil
             pushStatus = nil
-            Task { await loadRenderImage() }
+            Task { await refreshDeviceStatus() }
         }
     }
 
@@ -756,6 +756,19 @@ struct EInkDisplaysSettingsSection: View {
 
     private func loadSnapshotAndPreviews() async {
         await refreshPreview()
+        await refreshDeviceStatus()
+    }
+
+    /// Reads the device's status, then its render.
+    ///
+    /// A device the user has only just fetched is disabled and has never been
+    /// pushed to, so nothing has ever written its power, Wi-Fi or render URL.
+    /// Without this the status line would read "Not yet" forever on exactly
+    /// the panel someone is trying to set up.
+    private func refreshDeviceStatus() async {
+        guard let deviceID = selectedDevice?.deviceID else { return }
+        _ = await service.refreshStatus(deviceID: deviceID)
+        guard selectedDevice?.deviceID == deviceID else { return }
         await loadRenderImage()
     }
 
