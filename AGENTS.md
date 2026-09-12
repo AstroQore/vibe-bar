@@ -862,9 +862,15 @@ capture against § 8 before committing it — a screenshot is source content.
   settings toggle, not a second implementation.
 - **E-ink displays are the one path that writes off this Mac.** Every
   other feature reads the network and writes the local disk; this one
-  draws on hardware sitting on someone's desk, so the boundaries are
-  narrow and none of them is optional. The only code that reaches a
-  panel is `EInkSyncService`, and it reaches it only through
+  sends the user's numbers *out* — the panel has no local API, so every
+  slide is posted to `dot.mindreset.tech` with the user's key and
+  rendered onto the device by the vendor's service. It is the only
+  outbound data Vibe Bar originates, it happens only after the user
+  adds a key and switches the feature on, and both READMEs say so in
+  those words; any change that widens what a slide carries widens that
+  disclosure too. The boundaries are therefore narrow and none of them
+  is optional. The only code that reaches a panel is
+  `EInkSyncService`, and it reaches it only through
   `DotDeviceClient` — no new call site talks to `dot.mindreset.tech`,
   and nothing outside the service decides when a write happens. The API
   key lives in the credential vault behind `EInkCredentialStore` and is

@@ -298,25 +298,41 @@ up to date on a schedule. It is the same data the popover shows, laid out for a
 **Ledger**, **Rings**, **Rail** for quota; **Usage Tiles**, **Split**,
 **Table**, **Dual**, **Trend** for usage — each in any of the four
 orientations, shown as a **single** slide or as a **carousel** that rotates
-through several. Settings previews every slide at 1:1 before anything is sent,
-and only pushes when the panel's content has actually changed, so a panel
-showing the same numbers is not woken to redraw them.
+through several. A carousel runs either way round: **Device loop** lets the
+panel do the rotating between slides Vibe Bar keeps filled, and **App timer**
+keeps one slot and swaps what is in it on a schedule of your choosing.
+Settings previews every slide at 1:1 before anything is sent, and only pushes
+when the panel's content has actually changed, so a panel showing the same
+numbers is not woken to redraw them.
 
 **Two things have to exist in the Dot. app first**, and neither can be created
 from here:
 
 1. **An API key**, from the Dot. app's developer settings.
-2. **One "Canvas API" item in the device's LOOP task, per slide you want in
-   the carousel.** The API writes into a slot that already exists; it cannot
-   add one. A *fixed* task will not work — it has to be the LOOP task — and a
-   single-slide setup still needs one Canvas API item. Vibe Bar scans the loop
-   and tells you how many it found, so you can add the rest and re-scan.
+2. **At least one "Canvas API" item in the device's LOOP task.** The API
+   writes into a slot that already exists; it cannot add one, and a *fixed*
+   task will not work — it has to be the LOOP task. How many you need depends
+   on the mode: a single slide and an **App timer** carousel use one, because
+   the app decides what goes in that one slot; a **Device loop** carousel
+   needs **one per slide**, since the panel is rotating between real slots.
+   Spare slots are not wasted but they are not free either — Vibe Bar claims
+   each one and marks it unused, so it cannot sit there showing yesterday's
+   numbers. Vibe Bar scans the loop and says how many it found, so you can add
+   what is missing and re-scan.
 
 The key goes straight into the **macOS Keychain** and nowhere else: the
 settings file records only that a key exists. Vibe Bar's own state for the
 feature is one file, `~/.vibebar/eink_state.json`, which holds what was last
 pushed and the panel's last reported status — never the key, never the key's
 prefix.
+
+**This is the one feature that sends your numbers somewhere.** The panel has
+no local API: each slide is posted to the Dot. cloud (`dot.mindreset.tech`)
+with your key, and the service renders it onto your device. So the quota
+percentages, reset times and token or cost figures on a slide leave this Mac
+and reach Dot.'s servers — nothing else does, and none of it happens until you
+add a key and switch the feature on. If that trade is not one you want, leave
+it off; every other surface in Vibe Bar works exactly the same without it.
 
 **Cadence follows the panel's own power.** On USB power it refreshes every
 15 minutes; as soon as the device reports it is running on its battery, the
@@ -512,18 +528,21 @@ audit metadata only. Derived state stays under:
   config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
-- E-ink displays are the only feature that writes anywhere other than this
-  Mac, and only to a panel you paired yourself. The Dot. API key lives in the
-  Keychain Vault; `eink_state.json` holds what was last drawn and the panel's
-  last reported status, and nothing else leaves.
+- E-ink displays are the only feature that sends data off this Mac, and only
+  once you add a key and switch it on. The panel has no local API, so each
+  slide — the quota, reset and cost figures it draws — is posted to the Dot.
+  cloud, which renders it onto your device. The Dot. API key lives in the
+  Keychain Vault; `eink_state.json` holds a hash of what was last drawn and
+  the panel's last reported status.
 - Privacy Mode clears derived cost data and keeps cost history off disk while
   enabled. Retention is configurable, and Cost Data can be cleared manually.
 
 Vibe Bar intentionally runs **without the App Sandbox**: browser-cookie
 import and the local AntiGravity language-server probe require capabilities
 the sandbox blocks. The app is open source and reads only the provider inputs
-it needs; writes stay under `~/.vibebar/`, the Keychain Vault, the explicit
-Skills allowlist above, and a paired e-ink panel. See
+it needs; local writes stay under `~/.vibebar/`, the Keychain Vault and the
+explicit Skills allowlist above, and the only outbound data it originates is
+an e-ink slide you asked it to draw. See
 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox) for the
 full trade-off.
 
