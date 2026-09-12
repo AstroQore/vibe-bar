@@ -8,9 +8,13 @@ import Foundation
 /// a roster fetch that fails halfway, or a device temporarily off the account,
 /// must not silently delete the slides someone spent time arranging.
 public enum EInkDeviceMerge {
+    /// `availableQuotaFieldIDs` is what the account's cached quotas actually
+    /// expose, so a device discovered on (say) a Gemini-only account gets a
+    /// slide whose rows will draw rather than the global default order's.
     public static func merge(
         discovered: [DotDevice],
-        into existing: [EInkDeviceConfig]
+        into existing: [EInkDeviceConfig],
+        availableQuotaFieldIDs: [String] = []
     ) -> [EInkDeviceConfig] {
         var byID = Dictionary(existing.map { ($0.deviceID, $0) }, uniquingKeysWith: { first, _ in first })
         var order: [String] = []
@@ -31,7 +35,9 @@ public enum EInkDeviceMerge {
             }
             var config = byID[device.id] ?? EInkDeviceConfig(
                 deviceID: device.id,
-                slides: [EInkSlide.defaultQuotaSlide()]
+                slides: [EInkSlide.defaultQuotaSlide(
+                    available: EInkSlide.defaultQuotaFieldIDs(live: availableQuotaFieldIDs)
+                )]
             )
             config.alias = device.alias
             config.profile = profile

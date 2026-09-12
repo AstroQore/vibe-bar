@@ -26,6 +26,18 @@ public enum EInkCredentialStore {
     /// Non-throwing presence check for the settings mirror.
     public static func hasAPIKey() -> Bool { probeAPIKey() == true }
 
+    /// The Vault's answer, kept whole rather than flattened to an optional.
+    public static func probe() -> EInkCredentialProbe {
+        do {
+            let key = try readAPIKey()
+            return key.isEmpty ? .missing : .key(key)
+        } catch KeychainStore.KeychainError.itemNotFound {
+            return .missing
+        } catch {
+            return .unavailable
+        }
+    }
+
     /// Three answers, not two: `true` a key is there, `false` there is none,
     /// and `nil` the Vault could not say.
     ///
@@ -34,12 +46,24 @@ public enum EInkCredentialStore {
     /// Keychain problem into a permanently disabled feature with the
     /// credential still stored.
     public static func probeAPIKey() -> Bool? {
-        do {
-            return try !readAPIKey().isEmpty
-        } catch KeychainStore.KeychainError.itemNotFound {
-            return false
-        } catch {
-            return nil
+        switch probe() {
+        case .key: true
+        case .missing: false
+        case .unavailable: nil
         }
     }
+}
+
+
+/// What a Vault read found.
+///
+/// "Could not read it" and "there is nothing there" are different facts and
+/// they have different consequences: the first is usually temporary and must
+/// not be cached or mirrored into settings, the second is the user's actual
+/// state. Collapsing both into `nil` is what left syncing stuck as
+/// unauthorized after one locked-Keychain moment.
+public enum EInkCredentialProbe: Sendable, Equatable {
+    case key(String)
+    case missing
+    case unavailable
 }

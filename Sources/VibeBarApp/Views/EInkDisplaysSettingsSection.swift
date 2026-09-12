@@ -864,7 +864,8 @@ struct EInkDisplaysSettingsSection: View {
                 var settings = settingsStore.settings
                 settings.einkSync.devices = EInkDeviceMerge.merge(
                     discovered: devices,
-                    into: settings.einkSync.devices
+                    into: settings.einkSync.devices,
+                    availableQuotaFieldIDs: availableQuotaFieldIDs
                 )
                 settingsStore.settings = settings
                 fetchStatus = L10n.Settings.Eink.devicesFound(count: devices.count)
@@ -937,13 +938,21 @@ struct EInkDisplaysSettingsSection: View {
         selectedSlideID = slide.id
     }
 
-    /// The default buckets, narrowed to the ones this account actually shows,
-    /// so a new slide is not seeded with rows that will never draw.
+    /// The buckets this account is actually returning right now.
+    ///
+    /// Read from the cached quotas rather than from the picker, which starts
+    /// with the whole static catalog — so "known to the app" is not "on this
+    /// account", and seeding from it fills a Gemini-only device's slide with
+    /// five rows that never draw.
     private var availableQuotaFieldIDs: [String] {
-        let known = Set(pickerSections.flatMap { $0.options.map(\.id) })
-        let defaults = EInkDataAssembler.defaultQuotaPriority.map(\.fieldID)
-        let live = defaults.filter(known.contains)
-        return live.isEmpty ? defaults : live
+        var live: [String] = []
+        for tool in ToolType.allCases {
+            guard let quota = environment.quota(for: tool) else { continue }
+            for bucket in quota.buckets {
+                live.append(MenuBarFieldCatalog.fieldId(tool: tool, bucketId: bucket.id))
+            }
+        }
+        return EInkSlide.defaultQuotaFieldIDs(live: live)
     }
 
     private func removeSlide(_ deviceID: String, slideID: String) {

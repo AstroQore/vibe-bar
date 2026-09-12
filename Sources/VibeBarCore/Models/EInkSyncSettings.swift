@@ -427,6 +427,25 @@ public struct EInkSlide: Codable, Equatable, Identifiable, Sendable {
         return copy
     }
 
+    /// The buckets a new slide should start with, given what the account
+    /// actually exposes.
+    ///
+    /// The verified priority order first, narrowed to what is live, then
+    /// anything else the account has. The narrowing is the point: on a
+    /// Gemini-only account the global order's first five are all absent, so a
+    /// slide seeded from the catalog fills to capacity with rows
+    /// `EInkDataSnapshot.quotaRows` then filters out — a blank panel the user
+    /// has to repair by deselecting providers they never chose.
+    public static func defaultQuotaFieldIDs(live: [String]) -> [String] {
+        let priority = EInkDataAssembler.defaultQuotaPriority.map(\.fieldID)
+        guard !live.isEmpty else { return priority }
+        let liveSet = Set(live)
+        var seen = Set<String>()
+        var ordered = priority.filter { liveSet.contains($0) && seen.insert($0).inserted }
+        ordered += live.filter { seen.insert($0).inserted }
+        return ordered
+    }
+
     /// A ready-to-draw quota slide.
     ///
     /// Seeded with the buckets the renderer would have fallen back to anyway,
@@ -442,7 +461,10 @@ public struct EInkSlide: Codable, Equatable, Identifiable, Sendable {
     ) -> EInkSlide {
         EInkSlide(
             kind: .preset(preset),
-            quotaFieldIDs: Array(available.prefix(preset.capacity(for: orientation)))
+            quotaFieldIDs: Array(
+                EInkSlide.defaultQuotaFieldIDs(live: available)
+                    .prefix(preset.capacity(for: orientation))
+            )
         )
     }
 

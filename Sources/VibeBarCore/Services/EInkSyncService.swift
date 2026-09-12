@@ -186,11 +186,15 @@ public final class EInkSyncService: ObservableObject {
 
     public func isBusy(_ deviceID: String) -> Bool { busyDeviceIDs.contains(deviceID) }
 
+    /// Whether an app-timer carousel is running for this device. Test seam:
+    /// the loop's absence is the behaviour, and it has no other observable.
+    public func hasCarouselLoop(deviceID: String) -> Bool { carouselLoops[deviceID] != nil }
+
     // MARK: - Dependencies
 
     private let client: any DotDeviceClienting
     private let store: EInkSyncStateStore
-    private let apiKeyProvider: @Sendable () -> String?
+    private let apiKeyProvider: @Sendable () -> EInkCredentialProbe
     /// Assembles what one pass needs: the passed field ids on top of the
     /// default priority order, and the usage half only when a slide draws it.
     private let snapshotProvider: @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome
@@ -275,7 +279,7 @@ public final class EInkSyncService: ObservableObject {
     public init(
         client: any DotDeviceClienting = DotDeviceClient(),
         store: EInkSyncStateStore = EInkSyncStateStore(),
-        apiKeyProvider: @escaping @Sendable () -> String? = { try? EInkCredentialStore.readAPIKey() },
+        apiKeyProvider: @escaping @Sendable () -> EInkCredentialProbe = { EInkCredentialStore.probe() },
         snapshotProvider: @escaping @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome,
         clock: @escaping @Sendable () -> Date = Date.init,
         requestSpacing: Duration = .milliseconds(150),
@@ -353,8 +357,13 @@ public final class EInkSyncService: ObservableObject {
         }
     }
 
-    private var canSync: Bool {
-        isRunning && settings.syncEnabled && settings.apiKeyPresent && !credentialInvalid
+    private var canSync: Bool { isRunning && syncPermitted }
+
+    /// What the *user* has allowed, independent of whether the service happens
+    /// to be running its loops. The master switch, a key on file, and no
+    /// standing rejection.
+    private var syncPermitted: Bool {
+        settings.syncEnabled && settings.apiKeyPresent && !credentialInvalid
     }
 
     /// The key, read off the main actor once and then held in memory.
@@ -374,12 +383,26 @@ public final class EInkSyncService: ObservableObject {
             if apiKeyLoaded { return cachedAPIKey }
             let generation = credentialGeneration
             let provider = apiKeyProvider
-            let value = await Task.detached(priority: .utility) { provider() }.value
+            let probe = await Task.detached(priority: .utility) { provider() }.value
             guard generation == credentialGeneration else { continue }
-            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-            cachedAPIKey = (trimmed?.isEmpty == false) ? trimmed : nil
-            apiKeyLoaded = true
-            return cachedAPIKey
+            switch probe {
+            case .unavailable:
+                // A locked or otherwise unreadable Vault is not an absent key.
+                // Caching it would answer every later pass from memory, and
+                // syncing would stay stuck as unauthorized until the user
+                // rewrote the key or relaunched — over a condition that
+                // usually clears itself.
+                return nil
+            case .missing:
+                cachedAPIKey = nil
+                apiKeyLoaded = true
+                return nil
+            case let .key(value):
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                cachedAPIKey = trimmed.isEmpty ? nil : trimmed
+                apiKeyLoaded = true
+                return cachedAPIKey
+            }
         }
     }
 
@@ -418,7 +441,15 @@ public final class EInkSyncService: ObservableObject {
                     }
                 }
             }
-            guard case let .carousel(driver, seconds) = device.playback, driver == .appTimer else { continue }
+            // Two slides at least, or there is nothing to advance to: a
+            // one-slide device on this driver re-pushed the same panel through
+            // the forced path — which skips the digest check — every
+            // `secondsPerSlide`, so a full visible refresh of identical
+            // content as often as every thirty seconds.
+            guard case let .carousel(driver, seconds) = device.playback,
+                  driver == .appTimer,
+                  device.slides.count > 1
+            else { continue }
             carouselLoops[id] = Task { [weak self] in
                 while !Task.isCancelled {
                     do {
@@ -458,12 +489,18 @@ public final class EInkSyncService: ObservableObject {
         while let existing = activeRuns[deviceID] {
             let outcome = await existing.task.value
             if existing.generation == configurationGeneration { return outcome }
+            guard !Task.isCancelled, syncPermitted else { return EInkPushOutcome() }
             if activeRuns[deviceID] === existing {
                 activeRuns.removeValue(forKey: deviceID)
                 busyDeviceIDs.remove(deviceID)
                 break
             }
         }
+        // Awaiting a task does not throw when this one is cancelled, and the
+        // master switch can go off while a stale run finishes — `performRun`
+        // only consults the per-device switch, so without this a replacement
+        // run could still write a panel after syncing was turned off.
+        guard !Task.isCancelled, syncPermitted else { return EInkPushOutcome() }
         return await startRun(deviceID: deviceID, force: false)
     }
 
@@ -606,7 +643,14 @@ public final class EInkSyncService: ObservableObject {
         if assembly.usageUnavailable { failure = .usageUnavailable }
 
         for item in plan.items {
-            guard generation == configurationGeneration, !Task.isCancelled else { break }
+            if Task.isCancelled || generation != configurationGeneration {
+                // Cancel can land while the assembly was still running, so the
+                // run arrives here already finished with. Leaving `aborted`
+                // false sent it on to the status read — another request, and a
+                // committed failure, for work nobody is waiting for.
+                aborted = true
+                break
+            }
 
             let payload: DotCanvasPayload
             do {

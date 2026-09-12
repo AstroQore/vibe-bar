@@ -93,6 +93,24 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
     func fetchRenderImage(url: URL) async throws -> Data { Data() }
 }
 
+/// Hands out scripted Vault answers, repeating the last one.
+private final class ProbeScript: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [EInkCredentialProbe]
+    private var index = 0
+
+    init(answers: [EInkCredentialProbe]) {
+        self.answers = answers
+    }
+
+    func next() -> EInkCredentialProbe {
+        lock.lock(); defer { lock.unlock() }
+        let answer = answers[min(index, answers.count - 1)]
+        index += 1
+        return answer
+    }
+}
+
 /// Counts how many times the assembler was actually invoked.
 private final class CallCounter: @unchecked Sendable {
     private let lock = NSLock()
@@ -184,7 +202,7 @@ final class EInkSyncServiceTests: XCTestCase {
         let service = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
-            apiKeyProvider: { "synthetic-key" },
+            apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: snapshot,
             requestSpacing: requestSpacing,
             retryDelays: retryDelays,
@@ -355,7 +373,7 @@ final class EInkSyncServiceTests: XCTestCase {
         let sync = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
-            apiKeyProvider: { "synthetic-key" },
+            apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: { _ in EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot()) },
             retryDelays: [],
             snapshotReuseWindow: .zero
@@ -481,7 +499,7 @@ final class EInkSyncServiceTests: XCTestCase {
         let sync = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
-            apiKeyProvider: { "synthetic-key" },
+            apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: { _ in EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot()) },
             retryDelays: [],
             snapshotReuseWindow: .zero
@@ -520,7 +538,7 @@ final class EInkSyncServiceTests: XCTestCase {
         let sync = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
-            apiKeyProvider: { "synthetic-key" },
+            apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: { _ in
                 calls.bump()
                 // Long enough that every panel is waiting on it.
@@ -670,7 +688,7 @@ final class EInkSyncServiceTests: XCTestCase {
         let sync = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
-            apiKeyProvider: { "synthetic-key" },
+            apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: { request in
                 requested.record(request)
                 return EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot())
@@ -700,7 +718,7 @@ final class EInkSyncServiceTests: XCTestCase {
         let sync = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
-            apiKeyProvider: { "synthetic-key" },
+            apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: { request in
                 XCTAssertTrue(request.includesUsage)
                 var snapshot = EInkFixtures.snapshot()
@@ -1040,7 +1058,7 @@ final class EInkSyncServiceTests: XCTestCase {
         let sync = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
-            apiKeyProvider: { "synthetic-key" },
+            apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: { request in
                 requested.record(request)
                 return EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot())
@@ -1164,7 +1182,7 @@ final class EInkSyncServiceTests: XCTestCase {
         let sync = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
-            apiKeyProvider: { "synthetic-key" },
+            apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: { _ in
                 var snapshot = EInkFixtures.snapshot()
                 let now = clockBox.advance()
@@ -1302,6 +1320,119 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertFalse(sync.credentialInvalid, "a call that worked proves the key does")
         let outcome = await sync.refresh(deviceID: "panel-1")
         XCTAssertEqual(outcome.pushed, 1)
+    }
+
+    func testDefaultBucketsFollowTheAccountRatherThanTheCatalog() {
+        // A Gemini-only account: none of the global order's first five exist.
+        let live = ["gemini.weekly", "gemini.five_hour"]
+        let ordered = EInkSlide.defaultQuotaFieldIDs(live: live)
+        XCTAssertEqual(ordered, ["gemini.weekly", "gemini.five_hour"])
+
+        let slide = EInkSlide.defaultQuotaSlide(available: live)
+        XCTAssertEqual(slide.quotaFieldIDs, live, "every seeded row has to be one the panel can draw")
+
+        // The verified order still leads where the account has those buckets.
+        let mixed = EInkSlide.defaultQuotaFieldIDs(live: ["gemini.weekly", "claude.weekly", "claude.five_hour"])
+        XCTAssertEqual(mixed, ["claude.five_hour", "claude.weekly", "gemini.weekly"])
+
+        // Nothing cached yet is not "nothing exists".
+        XCTAssertEqual(
+            EInkSlide.defaultQuotaFieldIDs(live: []),
+            EInkDataAssembler.defaultQuotaPriority.map(\.fieldID)
+        )
+
+        let merged = EInkDeviceMerge.merge(
+            discovered: [DotDevice(id: "panel-1", alias: "Quote 1", model: "quote_0")],
+            into: [],
+            availableQuotaFieldIDs: live
+        )
+        XCTAssertEqual(merged[0].slides[0].quotaFieldIDs, live)
+    }
+
+    func testAnAppTimerLoopNeedsSomethingToRotate() async {
+        let client = FakeDotClient()
+        // One slide on the app timer: the loop would re-push the same panel
+        // through the forced path every `secondsPerSlide`, digest check and
+        // all, so it must not start.
+        let sync = service(
+            client: client,
+            device: device(
+                slides: [slide("a")],
+                taskKeys: ["k1"],
+                playback: .carousel(driver: .appTimer, secondsPerSlide: 30)
+            )
+        )
+        sync.start()
+        XCTAssertFalse(sync.hasCarouselLoop(deviceID: "panel-1"))
+        sync.stop()
+
+        let rotating = service(
+            client: client,
+            device: device(
+                slides: [slide("a"), slide("b")],
+                taskKeys: ["k1"],
+                playback: .carousel(driver: .appTimer, secondsPerSlide: 30)
+            )
+        )
+        rotating.start()
+        XCTAssertTrue(rotating.hasCarouselLoop(deviceID: "panel-1"))
+        rotating.stop()
+    }
+
+    func testAnUnreadableVaultIsNotCachedAsAMissingKey() async {
+        let client = FakeDotClient()
+        let probes = ProbeScript(answers: [.unavailable, .key("synthetic-key")])
+        let sync = EInkSyncService(
+            client: client,
+            store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
+            apiKeyProvider: { probes.next() },
+            snapshotProvider: { _ in EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot()) },
+            retryDelays: [],
+            snapshotReuseWindow: .zero
+        )
+        sync.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))]
+            ),
+            layouts: [:]
+        )
+        let blocked = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(blocked.failure, .unauthorized)
+        XCTAssertEqual(client.pushes.count, 0)
+
+        // The Keychain unlocks. Nothing had to be rewritten or relaunched.
+        let recovered = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(recovered.pushed, 1)
+    }
+
+    func testTurningSyncOffStopsAReplacementRunFromWritingThePanel() async {
+        let client = FakeDotClient()
+        client.sendDelay = .milliseconds(150)
+        var config = device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        let sync = service(client: client, device: config)
+        sync.start()
+
+        async let joined: Void = { _ = await sync.refresh(deviceID: "panel-1") }()
+        try? await Task.sleep(for: .milliseconds(40))
+        // A settings edit supersedes the run in flight, then the master switch
+        // goes off before it finishes.
+        config.orientation = .degrees180
+        sync.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [config]),
+            layouts: [:]
+        )
+        sync.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: false, devices: [config]),
+            layouts: [:]
+        )
+        _ = await joined
+        client.reset()
+        let after = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(after.pushed, 0)
+        XCTAssertEqual(client.pushes.count, 0, "syncing is off; nothing may reach the panel")
+        sync.stop()
     }
 
     func testANewQuotaSlideCarriesTheBucketsItWillDraw() {
