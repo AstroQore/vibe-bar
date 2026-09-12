@@ -149,6 +149,32 @@ final class EInkPresetExploderTests: XCTestCase {
         }
     }
 
+    /// The scans that decide what a pass fetches have to find an oriented
+    /// layout too, or a migrated round 1 layout draws bound elements from data
+    /// nobody gathered — "$0.00" on a panel, or a blank percentage.
+    func testTheDataDependencyScansFindOrientedLayoutsToo() {
+        var element = EInkCanvasElement(kind: .statTile)
+        element.textBinding = .usageMetric
+        var quotaElement = EInkCanvasElement(kind: .horizontalBar, fieldID: "claude.weekly_fable")
+        quotaElement.x = 6
+        quotaElement.y = 40
+        var layout = EInkCanvasLayout(profile: .quote0, orientation: .degrees90)
+        layout.elements = [element, quotaElement]
+
+        let slide = EInkSlide(id: "slide-1", kind: .custom(layoutID: "slide-1"))
+        let device = EInkDeviceConfig(deviceID: "panel-1", orientation: .degrees90, slides: [slide])
+        let settings = EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [device])
+        let oriented = [EInkRenderer.layoutKey("slide-1", orientation: .degrees90): layout]
+
+        XCTAssertTrue(slide.needsUsageData(layouts: oriented))
+        XCTAssertTrue(settings.selectedQuotaFieldIDs(layouts: oriented).contains("claude.weekly_fable"))
+        XCTAssertTrue(settings.referencedQuotaFieldIDs(layouts: oriented).contains("claude.weekly_fable"))
+        XCTAssertEqual(
+            EInkAlertEvaluator.watchedFieldIDs(device, layouts: oriented),
+            ["claude.weekly_fable"]
+        )
+    }
+
     func testReflowProducesThePresetArrangementAgain() {
         let snapshot = EInkFixtures.snapshot()
         let slide = EInkFixtures.slide(preset: .quotaRings)

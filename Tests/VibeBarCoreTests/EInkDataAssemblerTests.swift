@@ -103,9 +103,11 @@ final class EInkDataAssemblerTests: XCTestCase {
         XCTAssertEqual(rows.first?.slotLabel, "Claude · Fable · Weekly")
     }
 
-    /// A slide's own label wins, and it is split on the same separator so the
-    /// two-line slots still put the first tier on top.
-    func testACustomLabelReplacesTheDefaultAndStillSplits() async {
+    /// The snapshot carries the default name. A slide's own override is
+    /// applied while *that slide* draws, because the snapshot is shared — two
+    /// slides naming the same bucket differently must not both get the first
+    /// one's name.
+    func testTheSnapshotCarriesTheDefaultNameAndNotAnySlidesOverride() async {
         let accounts: [ToolType: AccountQuota] = [
             .claude: account(tool: .claude, buckets: [
                 QuotaBucket(id: "weekly_fable", title: "Weekly", shortLabel: "7d", usedPercent: 33, resetAt: nil)
@@ -114,10 +116,16 @@ final class EInkDataAssemblerTests: XCTestCase {
         let ledger = FakeUsageLedger(summaries: [.empty], harnessRows: [], trendPoints: [])
         var assembler = assembler(accounts: accounts, ledger: ledger)
         assembler.quotaPriority = [.init(tool: .claude, bucketID: "weekly_fable")]
-        assembler.customLabels = ["claude.weekly_fable": "Story · Weekly"]
-        let rows = await assembler.quotaRows(now: now)
-        XCTAssertEqual(rows.first?.providerDisplayName, "Story")
-        XCTAssertEqual(rows.first?.windowTitle, "Weekly")
+        let row = await assembler.quotaRows(now: now).first
+        XCTAssertEqual(row?.slotLabel, "Claude · Fable · Weekly")
+
+        var options = EInkSlideOptions.default
+        options.customLabels = ["claude.weekly_fable": "Story · Weekly"]
+        let relabeled = row?.relabeled(with: options)
+        XCTAssertEqual(relabeled?.providerDisplayName, "Story")
+        XCTAssertEqual(relabeled?.windowTitle, "Weekly")
+        // A slide with no override of its own still sees the default.
+        XCTAssertEqual(row?.relabeled(with: .default).slotLabel, "Claude · Fable · Weekly")
     }
 
     func testUsageWindowsAreTodayFromLocalMidnightPlusRollingSevenAndThirtyDays() async throws {

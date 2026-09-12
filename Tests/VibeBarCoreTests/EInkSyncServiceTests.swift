@@ -1937,6 +1937,32 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertFalse(client.sleepWrites.last?.enabled ?? true)
     }
 
+    /// A slide keeps its buckets when it is switched to a usage layout. Those
+    /// buckets are not on screen, so an alert about one would be news from
+    /// nowhere.
+    func testASlideSwitchedToAUsageLayoutStopsBeingWatched() {
+        var config = alertDevice()
+        config.slides = [
+            EInkSlide(id: "a", kind: .preset(.heatmap), quotaFieldIDs: ["claude.five_hour"])
+        ]
+        var snapshot = EInkFixtures.snapshot()
+        snapshot.quota = snapshot.quota.map { row in
+            guard row.fieldID == "claude.five_hour" else { return row }
+            var copy = row
+            copy.remainingPercent = 1
+            copy.forecast = nil
+            return copy
+        }
+        XCTAssertEqual(EInkAlertEvaluator.watchedFieldIDs(config), [])
+        XCTAssertNil(EInkAlertEvaluator.offendingFieldID(device: config, snapshot: snapshot))
+
+        config.slides = [EInkSlide(id: "a", kind: .preset(.forecast), quotaFieldIDs: ["claude.five_hour"])]
+        XCTAssertEqual(
+            EInkAlertEvaluator.offendingFieldID(device: config, snapshot: snapshot),
+            "claude.five_hour"
+        )
+    }
+
     /// Changing where a tap goes changes nothing on screen, so the digest has
     /// to carry it or the new link never leaves the Mac.
     func testChangingTheTapLinkAloneStillReachesThePanel() async {

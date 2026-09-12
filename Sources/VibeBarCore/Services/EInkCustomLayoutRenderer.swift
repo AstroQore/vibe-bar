@@ -364,6 +364,23 @@ public extension EInkCanvasElement {
 }
 
 public extension EInkSlide {
+    /// Every layout this slide has, across orientations.
+    ///
+    /// A custom slide carries up to four, keyed `"<layoutID>/<degrees>"`, and
+    /// a scan that asks only for `layouts[layoutID]` finds none of them. That
+    /// matters for more than tidiness: these scans decide whether the pass
+    /// walks the ledger and which quota buckets it gathers, so missing them
+    /// draws a bound element from data nobody fetched — `$0.00` on a panel, or
+    /// a blank where a percentage should be.
+    func allLayouts(in layouts: [String: EInkCanvasLayout]) -> [EInkCanvasLayout] {
+        guard let layoutID = kind.layoutID, !layoutID.isEmpty else { return [] }
+        let prefix = layoutID + "/"
+        return layouts
+            .filter { $0.key == layoutID || $0.key.hasPrefix(prefix) }
+            .sorted { $0.key < $1.key }
+            .map(\.value)
+    }
+
     /// Whether this slide needs the usage ledger, custom layouts included.
     ///
     /// A custom slide that prints today's spend and is drawn from an empty
@@ -372,8 +389,9 @@ public extension EInkSlide {
     /// layout, not only at the preset.
     func needsUsageData(layouts: [String: EInkCanvasLayout]) -> Bool {
         if let preset = kind.preset { return preset.needsUsageData }
-        guard let layoutID = kind.layoutID, let layout = layouts[layoutID] else { return false }
-        return layout.elements.contains { $0.readsUsage }
+        return allLayouts(in: layouts).contains { layout in
+            layout.elements.contains { $0.readsUsage }
+        }
     }
 }
 
@@ -395,9 +413,10 @@ public extension EInkSyncSettings {
         var result = referencedQuotaFieldIDs
         for device in devices {
             for slide in device.slides {
-                guard let layoutID = slide.kind.layoutID, let layout = layouts[layoutID] else { continue }
-                for element in layout.elements {
-                    result.formUnion(element.quotaFieldIDs)
+                for layout in slide.allLayouts(in: layouts) {
+                    for element in layout.elements {
+                        result.formUnion(element.quotaFieldIDs)
+                    }
                 }
             }
         }
@@ -412,20 +431,21 @@ public extension EInkSyncSettings {
         }
         for device in devices {
             for slide in device.slides {
-                guard let layoutID = slide.kind.layoutID, let layout = layouts[layoutID] else { continue }
-                for element in layout.elements {
-                    for fieldID in element.quotaFieldIDs where seen.insert(fieldID).inserted {
-                        result.append(fieldID)
-                    }
-                    // A quota block with no selection of its own draws the
-                    // slide's buckets, and those are not in
-                    // `selectedQuotaFieldIDs`, which only looks at preset
-                    // slides. Without this, a slide converted from a preset
-                    // keeps buckets the assembler is never asked for and the
-                    // block silently drops those rows.
-                    guard element.kind.preset?.isQuotaPreset == true, element.fieldIDs.isEmpty else { continue }
-                    for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
-                        result.append(fieldID)
+                for layout in slide.allLayouts(in: layouts) {
+                    for element in layout.elements {
+                        for fieldID in element.quotaFieldIDs where seen.insert(fieldID).inserted {
+                            result.append(fieldID)
+                        }
+                        // A quota block with no selection of its own draws the
+                        // slide's buckets, and those are not in
+                        // `selectedQuotaFieldIDs`, which only looks at preset
+                        // slides. Without this, a slide converted from a preset
+                        // keeps buckets the assembler is never asked for and the
+                        // block silently drops those rows.
+                        guard element.kind.preset?.isQuotaPreset == true, element.fieldIDs.isEmpty else { continue }
+                        for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
+                            result.append(fieldID)
+                        }
                     }
                 }
             }

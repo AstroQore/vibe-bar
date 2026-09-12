@@ -431,7 +431,11 @@ extension EInkPresets {
     ) -> EInkNode {
         let gap = 3
         let rows = Array(snapshot.topModels.prefix(limit))
-        let total = max(snapshot.topModels.reduce(0) { $0 + $1.costUSD }, 0.000_001)
+        // The whole day, not the models this layout happens to list: the
+        // assembler keeps the top eight, so a busy day's tail would otherwise
+        // be missing from a denominator the footer calls "today's cost".
+        let listed = snapshot.topModels.reduce(0) { $0 + $1.costUSD }
+        let total = max(max(snapshot.usage.today.costUSD, listed), 0.000_001)
         let shareLine: EInkNode? = rows.first.map { top in
             let share = Int((100 * top.costUSD / total).rounded())
             return topRuled(

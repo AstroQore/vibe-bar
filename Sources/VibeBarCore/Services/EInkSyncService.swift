@@ -676,7 +676,11 @@ public final class EInkSyncService: ObservableObject {
         // the state remembers which bucket so a relaunch does not push the
         // same news again. `border: 1` rides on every payload while it stands,
         // which is what turns the screen's frame black.
-        let alertingFieldID = EInkAlertEvaluator.offendingFieldID(device: device, snapshot: assembly.snapshot)
+        let alertingFieldID = EInkAlertEvaluator.offendingFieldID(
+            device: device,
+            snapshot: assembly.snapshot,
+            layouts: layouts
+        )
         let alertIsNew = alertingFieldID != nil && alertingFieldID != state.alertingFieldID
         state.alertingFieldID = alertingFieldID
         let border = alertingFieldID == nil ? 0 : 1
@@ -1033,11 +1037,7 @@ public final class EInkSyncService: ObservableObject {
         if let inFlight = inFlightAssembly, inFlight.key == key {
             return try await inFlight.task.value
         }
-        let request = EInkSnapshotRequest(
-            quotaFieldIDs: requested,
-            includesUsage: includesUsage,
-            customLabels: settings.customSlotLabels
-        )
+        let request = EInkSnapshotRequest(quotaFieldIDs: requested, includesUsage: includesUsage)
         let provider = snapshotProvider
         let task = Task<EInkAssemblyOutcome, Error> { try await provider(request) }
         inFlightAssembly = (key, task)

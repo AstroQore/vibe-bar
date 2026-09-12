@@ -312,8 +312,10 @@ public enum EInkPresets {
         case let .usageSummary(periods):
             return usageSummaryFooter(periods, snapshot)
         case .clock:
+            // The clock, not the timestamp: a footer set to Clock that printed
+            // "09-13 01:21" would be the date option under another name.
             return topRuled(
-                row([text(snapshot.generatedAtLabel, pixel, width: .flex(1), align: .center)], height: .points(14), align: .center)
+                row([text(snapshot.clockLabel, pixel, width: .flex(1), align: .center)], height: .points(14), align: .center)
             )
         case let .text(value):
             guard !value.isEmpty else { return nil }

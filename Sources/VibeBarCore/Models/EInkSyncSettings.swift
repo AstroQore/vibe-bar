@@ -60,20 +60,6 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
         return result
     }
 
-    /// Every slide's per-slot label overrides, merged in device then slide
-    /// order.
-    public var customSlotLabels: [String: String] {
-        var result: [String: String] = [:]
-        for device in devices {
-            for slide in device.slides {
-                for (fieldID, label) in slide.options.sanitized.customLabels where result[fieldID] == nil {
-                    result[fieldID] = label
-                }
-            }
-        }
-        return result
-    }
-
     public func device(id: String) -> EInkDeviceConfig? {
         devices.first { $0.deviceID == id }
     }

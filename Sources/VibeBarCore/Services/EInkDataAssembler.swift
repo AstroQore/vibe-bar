@@ -91,10 +91,12 @@ public struct EInkDataAssembler: Sendable {
     /// Provider health, for the header's provider-status option.
     public var serviceStatus: @Sendable () async -> [ServiceStatusSnapshot]
     /// Resolves a slot's default name; discovered buckets need the registry.
+    ///
+    /// The snapshot carries the *default* name and nothing else. A slide's own
+    /// override is applied while that slide draws (`EInkQuotaRow.relabeled`),
+    /// because the snapshot is shared: merging overrides here meant two slides
+    /// naming the same bucket differently both got the first one's name.
     public var registry: QuotaFieldRegistry
-    /// Per-slide label overrides, keyed by field id. The engine merges every
-    /// slide's `customLabels` before assembling.
-    public var customLabels: [String: String]
     public var quotaPriority: [QuotaSelector]
     public var calendar: Calendar
 
@@ -105,7 +107,6 @@ public struct EInkDataAssembler: Sendable {
         forecastLookup: @escaping @Sendable (ToolType, QuotaBucket) async -> QuotaPaceForecast? = { _, _ in nil },
         serviceStatus: @escaping @Sendable () async -> [ServiceStatusSnapshot] = { [] },
         registry: QuotaFieldRegistry = .empty,
-        customLabels: [String: String] = [:],
         quotaPriority: [QuotaSelector] = EInkDataAssembler.defaultQuotaPriority,
         calendar: Calendar = .current
     ) {
@@ -115,7 +116,6 @@ public struct EInkDataAssembler: Sendable {
         self.forecastLookup = forecastLookup
         self.serviceStatus = serviceStatus
         self.registry = registry
-        self.customLabels = customLabels
         self.quotaPriority = quotaPriority
         self.calendar = calendar
     }
@@ -205,10 +205,7 @@ public struct EInkDataAssembler: Sendable {
             }
             guard let account, let bucket = account.bucket(id: selector.bucketID) else { continue }
             let remaining = Int((100 - bucket.usedPercent).rounded())
-            let label = customLabels[selector.fieldID]?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let parts = (label?.isEmpty == false)
-                ? label!.components(separatedBy: EInkSlotLabel.separator)
-                : EInkSlotLabel.parts(for: selector.fieldID, registry: registry, bucket: bucket)
+            let parts = EInkSlotLabel.parts(for: selector.fieldID, registry: registry, bucket: bucket)
             rows.append(
                 EInkQuotaRow(
                     fieldID: selector.fieldID,
@@ -361,15 +358,8 @@ public struct EInkSnapshotRequest: Sendable, Equatable {
     public var quotaFieldIDs: [String]
     /// False when no slide on this pass draws usage.
     public var includesUsage: Bool
-    /// Every slide's per-slot label overrides, merged. First writer wins, so
-    /// two slides naming the same bucket differently do not fight over the
-    /// snapshot — the panel that asked for a different name gets it through
-    /// its own slide, not through the shared assembly.
-    public var customLabels: [String: String]
-
-    public init(quotaFieldIDs: [String], includesUsage: Bool, customLabels: [String: String] = [:]) {
+    public init(quotaFieldIDs: [String], includesUsage: Bool) {
         self.quotaFieldIDs = quotaFieldIDs
         self.includesUsage = includesUsage
-        self.customLabels = customLabels
     }
 }

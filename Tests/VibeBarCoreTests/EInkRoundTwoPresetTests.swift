@@ -188,6 +188,28 @@ final class EInkRoundTwoPresetTests: XCTestCase {
         )
     }
 
+    /// The share is a share of the *day*, not of the handful of rows the
+    /// assembler kept: on a busy day the tail would otherwise vanish from a
+    /// denominator the footer calls "today's cost".
+    func testTheTopModelShareIsMeasuredAgainstTheWholeDay() throws {
+        var busy = snapshot
+        busy.topModels = [EInkModelRow(model: "claude-opus-5", costUSD: 50, tokens: 1, requests: 1)]
+        busy.usage.today = EInkUsageTotals(costUSD: 200, tokens: 1, requests: 1, rows: [])
+        let tree = EInkRenderer.presetTree(
+            .topModels,
+            slide: EInkFixtures.slide(preset: .topModels),
+            orientation: .degrees0,
+            snapshot: busy,
+            frame: EInkRect(x: 0, y: 0, width: 296, height: 152)
+        )
+        let printed = EInkBoxLayout.resolve(tree, in: EInkRect(x: 0, y: 0, width: 296, height: 152)).compactMap { box -> String? in
+            if case let .text(value, _, _) = box.content { return value }
+            return nil
+        }
+        XCTAssertTrue(printed.contains("25% of today's cost"))
+        XCTAssertFalse(printed.contains("100% of today's cost"))
+    }
+
     func testTopModelsSaysSoWhenThereIsNothingRatherThanDrawingAnEmptyTable() throws {
         var empty = snapshot
         empty.topModels = []

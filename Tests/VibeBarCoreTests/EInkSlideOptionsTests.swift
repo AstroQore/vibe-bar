@@ -165,8 +165,11 @@ final class EInkSlideOptionsTests: XCTestCase {
         options.footer = EInkFooterConfig(content: .text("DESK PANEL"))
         XCTAssertTrue(strings(try boxes(.quotaLedger, orientation: .degrees0, options: options)).contains("DESK PANEL"))
 
+        // The clock, not the timestamp — "Clock" must not smuggle in the date.
         options.footer = EInkFooterConfig(content: .clock)
-        XCTAssertTrue(strings(try boxes(.quotaLedger, orientation: .degrees0, options: options)).contains(snapshot.generatedAtLabel))
+        let clockFooter = strings(try boxes(.quotaLedger, orientation: .degrees0, options: options))
+        XCTAssertTrue(clockFooter.contains(snapshot.clockLabel))
+        XCTAssertEqual(clockFooter.filter { $0 == snapshot.generatedAtLabel }.count, 0)
 
         options.footer = EInkFooterConfig(content: .usageSummary(periods: [.month]))
         XCTAssertTrue(strings(try boxes(.quotaLedger, orientation: .degrees0, options: options)).contains { $0.hasPrefix("30 DAYS ") })
