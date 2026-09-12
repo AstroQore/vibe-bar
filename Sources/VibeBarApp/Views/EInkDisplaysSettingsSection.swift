@@ -33,6 +33,10 @@ struct EInkDisplaysSettingsSection: View {
     @State private var isScanningLoop = false
     @State private var pushStatus: String?
     @State private var pushTask: Task<Void, Never>?
+    /// The device a manual push is running for. The selection can move while
+    /// it runs, and cancelling "the selected device" would then stop the wrong
+    /// panel and leave the real one grinding through its retries.
+    @State private var pushingDeviceID: String?
     @State private var renderImage: NSImage?
     @State private var snapshot: EInkDataSnapshot?
     @State private var previews: [Int: EInkPreviewPlan] = [:]
@@ -83,11 +87,7 @@ struct EInkDisplaysSettingsSection: View {
             pushStatus = nil
             Task { await refreshDeviceStatus() }
         }
-        .onDisappear {
-            if let deviceID = selectedDevice?.deviceID { service.cancelRun(deviceID: deviceID) }
-            pushTask?.cancel()
-            pushTask = nil
-        }
+        .onDisappear { cancelPush() }
     }
 
     // MARK: - Access
@@ -420,8 +420,7 @@ struct EInkDisplaysSettingsSection: View {
                     // a disabled button with a spinner is not an answer to
                     // that. The pane also cancels on the way out.
                     Button(L10n.Common.cancel) {
-                        service.cancelRun(deviceID: device.deviceID)
-                        pushTask?.cancel()
+                        cancelPush()
                     }
                     .buttonStyle(.vibeBar)
                 }
@@ -669,7 +668,10 @@ struct EInkDisplaysSettingsSection: View {
                         )
                         .toggleStyle(.checkbox)
                         .controlSize(.small)
-                        .disabled(isFull && !selected.contains(option.id))
+                        .disabled(
+                            (isFull && !selected.contains(option.id))
+                                || (selected.count == 1 && selected.contains(option.id))
+                        )
                     }
                 }
             }
@@ -886,9 +888,17 @@ struct EInkDisplaysSettingsSection: View {
     /// The result line belongs to the device it was asked for. Two pushes in
     /// quick succession would otherwise race, and a line reading "pushed 2"
     /// under the wrong panel is a lie the user has no way to catch.
-    private func pushNow(_ deviceID: String) {
+    private func cancelPush() {
+        if let pushingDeviceID { service.cancelRun(deviceID: pushingDeviceID) }
         pushTask?.cancel()
+        pushTask = nil
+        pushingDeviceID = nil
+    }
+
+    private func pushNow(_ deviceID: String) {
+        cancelPush()
         pushStatus = nil
+        pushingDeviceID = deviceID
         // The roster reaches the engine through a 400 ms debounce, so a slide
         // or orientation edited a moment ago may not be there yet. The service
         // applies it and forces the push as one step — applying separately
@@ -908,6 +918,7 @@ struct EInkDisplaysSettingsSection: View {
                 pushStatus = L10n.Settings.Eink.pushResult(pushed: outcome.pushed, skipped: outcome.skipped)
             }
             await loadRenderImage()
+            if pushingDeviceID == deviceID { pushingDeviceID = nil }
         }
     }
 
@@ -974,6 +985,11 @@ struct EInkDisplaysSettingsSection: View {
                               !current.quotaFieldIDs.contains(fieldID) else { return }
                         current.quotaFieldIDs.append(fieldID)
                     } else {
+                        // An empty list means "Vibe Bar's own order" to the
+                        // renderer, so clearing the last box would put back
+                        // the very buckets the user removed. One stays on, as
+                        // with the usage periods.
+                        guard current.quotaFieldIDs.count > 1 else { return }
                         current.quotaFieldIDs.removeAll { $0 == fieldID }
                     }
                 }

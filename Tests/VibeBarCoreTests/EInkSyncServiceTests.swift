@@ -908,6 +908,35 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertLessThan(client.pushes.count, 3, "cancelling must stop the pass, not just the button")
     }
 
+    func testACancelledPushDoesNotClaimTheSlidesItNeverSent() async {
+        let client = FakeDotClient()
+        client.sendDelay = .milliseconds(120)
+        let config = device(
+            slides: [slide("a"), slide("b"), slide("c")],
+            taskKeys: ["k1", "k2", "k3"],
+            playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300)
+        )
+        let sync = service(client: client, device: config)
+        async let running: Void = { _ = await sync.refresh(deviceID: "panel-1") }()
+        try? await Task.sleep(for: .milliseconds(80))
+        sync.cancelRun(deviceID: "panel-1")
+        _ = await running
+
+        let sent = client.pushes.count
+        XCTAssertLessThan(sent, 3)
+        XCTAssertEqual(
+            sync.state(for: "panel-1").pushedDigests.count,
+            sent,
+            "a digest for a payload that never left would make the next pass skip a panel it never drew"
+        )
+
+        // And the next pass really does finish the job.
+        client.sendDelay = .zero
+        let resumed = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(resumed.pushed + resumed.skipped, 3)
+        XCTAssertEqual(sync.state(for: "panel-1").pushedDigests.count, 3)
+    }
+
     func testTheCarouselDoesNotRedrawADeviceTurnedOffWhileItWaited() async {
         let client = FakeDotClient()
         var config = device(

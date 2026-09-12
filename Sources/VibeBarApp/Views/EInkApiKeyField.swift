@@ -66,10 +66,18 @@ struct EInkApiKeyField: View {
         // treats as a bug.
         .task {
             let started = mutation
-            let present = await Task.detached(priority: .userInitiated) {
-                EInkCredentialStore.hasAPIKey()
+            let probe = await Task.detached(priority: .userInitiated) {
+                EInkCredentialStore.probeAPIKey()
             }.value
             guard started == mutation, !isWorking else { return }
+            // `nil` is "the Vault could not say" — a locked or malformed
+            // Keychain. Writing that into the mirror as "no key" would stop
+            // syncing over a problem that may clear on its own, with the key
+            // still stored, so the mirror is left exactly where it was.
+            guard let present = probe else {
+                saveError = L10n.Error.keychainSave
+                return
+            }
             hasStored = present
             if present != mirroredPresence { onChange(present) }
         }
@@ -113,6 +121,9 @@ struct EInkApiKeyField: View {
             let removed = await Task.detached(priority: .userInitiated) { () -> Bool in
                 do {
                     try EInkCredentialStore.deleteAPIKey()
+                    return true
+                } catch KeychainStore.KeychainError.itemNotFound {
+                    // Nothing there to remove is the state the button wanted.
                     return true
                 } catch {
                     return false

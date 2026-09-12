@@ -24,8 +24,22 @@ public enum EInkCredentialStore {
     }
 
     /// Non-throwing presence check for the settings mirror.
-    public static func hasAPIKey() -> Bool {
-        guard let key = try? readAPIKey() else { return false }
-        return !key.isEmpty
+    public static func hasAPIKey() -> Bool { probeAPIKey() == true }
+
+    /// Three answers, not two: `true` a key is there, `false` there is none,
+    /// and `nil` the Vault could not say.
+    ///
+    /// A locked or malformed Keychain is not an absent key, and the settings
+    /// mirror must not learn "no key" from it — that turns a temporary
+    /// Keychain problem into a permanently disabled feature with the
+    /// credential still stored.
+    public static func probeAPIKey() -> Bool? {
+        do {
+            return try !readAPIKey().isEmpty
+        } catch KeychainStore.KeychainError.itemNotFound {
+            return false
+        } catch {
+            return nil
+        }
     }
 }

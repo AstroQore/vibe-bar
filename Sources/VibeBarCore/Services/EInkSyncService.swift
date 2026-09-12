@@ -214,6 +214,11 @@ public final class EInkSyncService: ObservableObject {
 
     // MARK: - Loops
 
+    /// Thrown when a run was invalidated before its request went out, so the
+    /// caller cannot mistake "never sent" for "sent successfully" and record a
+    /// digest that would make the next pass skip a panel it never drew.
+    struct RunSuperseded: Error {}
+
     private final class RefreshRun {
         let generation: Int
         let task: Task<EInkPushOutcome, Never>
@@ -587,6 +592,10 @@ public final class EInkSyncService: ObservableObject {
         var skipped = 0
         var failure = plan.failure
         var detail: String?
+        /// Set when the run stopped before it finished — cancelled, or fenced
+        /// by a newer configuration. Neither is a result worth committing a
+        /// status read or a failure for.
+        var aborted = false
 
         let snapshot = assembly.snapshot
         if assembly.usageUnavailable { failure = .usageUnavailable }
@@ -640,6 +649,12 @@ public final class EInkSyncService: ObservableObject {
                 state.pushedDigests[item.digestKey] = digest
                 state.lastPushAt = clock()
                 pushed += 1
+            } catch is CancellationError {
+                aborted = true
+                break
+            } catch is RunSuperseded {
+                aborted = true
+                break
             } catch let error as DotDeviceError {
                 if error.invalidatesCredential {
                     guard credentialGeneration == credentialAtStart else { break }
@@ -653,6 +668,14 @@ public final class EInkSyncService: ObservableObject {
                 failure = .network
                 detail = SafeLog.sanitize(String(describing: error))
             }
+        }
+
+        if aborted {
+            guard generation == configurationGeneration else { return EInkPushOutcome() }
+            // Whatever did go out keeps its digest; nothing else is claimed.
+            states[deviceID] = state.committing(over: self.state(for: deviceID))
+            persist()
+            return EInkPushOutcome(pushed: pushed, skipped: skipped)
         }
 
         // One status read per pass, after the writes: it is what gives the UI
@@ -815,23 +838,25 @@ public final class EInkSyncService: ObservableObject {
     private func withRetry(generation: Int, _ request: () async throws -> Void) async throws {
         for delay in retryDelays {
             await paceRequest()
-            guard !Task.isCancelled else { return }
+            try Task.checkCancellation()
             // The gate is a suspension, and a settings edit can land in it.
             // Sending the payload rendered under the old configuration would
             // cost a visible e-ink refresh that the replacement run then has
             // to undo.
-            guard generation == configurationGeneration else { return }
+            guard generation == configurationGeneration else { throw RunSuperseded() }
             do {
                 try await request()
                 return
             } catch let error as DotDeviceError {
                 guard Self.isTransient(error) else { throw error }
                 try? await Task.sleep(for: delay)
-                guard !Task.isCancelled, generation == configurationGeneration else { return }
+                try Task.checkCancellation()
+                guard generation == configurationGeneration else { throw RunSuperseded() }
             }
         }
         await paceRequest()
-        guard !Task.isCancelled, generation == configurationGeneration else { return }
+        try Task.checkCancellation()
+        guard generation == configurationGeneration else { throw RunSuperseded() }
         try await request()
     }
 
@@ -952,6 +977,10 @@ public final class EInkSyncService: ObservableObject {
         await paceRequest()
         do {
             let devices = try await client.listDevices(apiKey: key)
+            // The roster belongs to the account the key names. If the key was
+            // replaced while this was in flight, merging it would attach one
+            // account's devices to another's credential.
+            guard credentialAtStart == credentialGeneration else { throw DotDeviceError.unauthorized }
             clearCredentialRejection(from: credentialAtStart)
             return devices
         } catch let error as DotDeviceError {
@@ -970,6 +999,7 @@ public final class EInkSyncService: ObservableObject {
         await paceRequest()
         do {
             let tasks = try await client.listTasks(deviceID: deviceID, type: .loop, apiKey: key)
+            guard credentialAtStart == credentialGeneration else { throw DotDeviceError.unauthorized }
             var state = self.state(for: deviceID)
             state.canvasTaskCount = tasks.filter(\.isCanvasAPI).count
             states[deviceID] = state
