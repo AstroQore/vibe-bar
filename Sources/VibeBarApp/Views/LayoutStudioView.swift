@@ -909,11 +909,16 @@ struct LayoutStudioView: View {
 
     /// The stored layout for the orientation on the stage, or `nil` when
     /// nobody has authored that one yet.
+    ///
+    /// Through `EInkRenderer.layout`, which falls back to round 1's bare key —
+    /// the renderer reads it, and a Studio that did not would call an existing
+    /// design unauthored and offer to replace it.
     private func einkLayout(deviceID: String, slideID: String) -> EInkCanvasLayout? {
-        let layoutID = einkLayoutID(deviceID: deviceID, slideID: slideID)
-        return settingsStore.settings.einkCanvasLayouts[
-            EInkRenderer.layoutKey(layoutID, orientation: einkOrientation(deviceID))
-        ]
+        EInkRenderer.layout(
+            einkLayoutID(deviceID: deviceID, slideID: slideID),
+            orientation: einkOrientation(deviceID),
+            layouts: settingsStore.settings.einkCanvasLayouts
+        )
     }
 
     /// The layout, always shaped to the panel it is going to.
@@ -931,13 +936,30 @@ struct LayoutStudioView: View {
             einkLayoutID(deviceID: deviceID, slideID: slideID),
             orientation: orientation
         )
+        let layoutID = einkLayoutID(deviceID: deviceID, slideID: slideID)
+        let deviceOrientation = einkDevice(deviceID)?.orientation ?? orientation
         return Binding(
             get: {
-                let stored = settingsStore.settings.einkCanvasLayouts[key]
+                let stored = einkLayout(deviceID: deviceID, slideID: slideID)
                     ?? EInkCanvasLayout(profile: profile, orientation: orientation)
                 return stored.fitted(profile: profile, orientation: orientation)
             },
-            set: { settingsStore.settings.einkCanvasLayouts[key] = $0.normalized() }
+            set: { value in
+                var settings = settingsStore.settings
+                // Finish part A's migration on the first write rather than
+                // leaving a bare round 1 key beside the new ones, where the
+                // service's own migration would later overwrite whichever
+                // orientation the device happened to be on.
+                if let legacy = settings.einkCanvasLayouts[layoutID] {
+                    let deviceKey = EInkRenderer.layoutKey(layoutID, orientation: deviceOrientation)
+                    if settings.einkCanvasLayouts[deviceKey] == nil {
+                        settings.einkCanvasLayouts[deviceKey] = legacy
+                    }
+                    settings.einkCanvasLayouts[layoutID] = nil
+                }
+                settings.einkCanvasLayouts[key] = value.normalized()
+                settingsStore.settings = settings
+            }
         )
     }
 
