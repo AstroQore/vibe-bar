@@ -27,6 +27,16 @@ public struct EInkPushOutcome: Equatable, Sendable {
 /// is testable without a client, a clock, or a device.
 public struct EInkPushPlan: Equatable, Sendable {
     public struct Item: Equatable, Sendable {
+        /// What the item puts on its task.
+        public enum Content: Equatable, Sendable {
+            case slide(String)
+            /// A Canvas API task the device's loop carries that no slide
+            /// claims. It gets a placeholder rather than being left alone —
+            /// see `EInkPresets.unusedSlot`.
+            case unusedSlot
+        }
+
+        public var content: Content
         public var slideID: String
         /// `nil` means "the device has exactly one Canvas API task": the API
         /// treats an omitted key that way, and a device the user never added
@@ -35,10 +45,20 @@ public struct EInkPushPlan: Equatable, Sendable {
         public var refreshNow: Bool
 
         public init(slideID: String, taskKey: String?, refreshNow: Bool) {
+            self.content = .slide(slideID)
             self.slideID = slideID
             self.taskKey = taskKey
             self.refreshNow = refreshNow
         }
+
+        public init(content: Content, taskKey: String?, refreshNow: Bool) {
+            self.content = content
+            self.slideID = { if case let .slide(id) = content { return id }; return "" }()
+            self.taskKey = taskKey
+            self.refreshNow = refreshNow
+        }
+
+        public var isUnusedSlot: Bool { content == .unusedSlot }
 
         /// The key a digest is filed under. The default task has no key, so it
         /// gets the empty string rather than a second dictionary.
@@ -47,10 +67,15 @@ public struct EInkPushPlan: Equatable, Sendable {
 
     public var items: [Item]
     public var failure: EInkSyncFailure?
+    /// Canvas API tasks in the loop that no slide claims. Reported so the
+    /// settings pane can say how many, because only the Dot. app can remove
+    /// them.
+    public var surplusTaskCount: Int
 
-    public init(items: [Item] = [], failure: EInkSyncFailure? = nil) {
+    public init(items: [Item] = [], failure: EInkSyncFailure? = nil, surplusTaskCount: Int = 0) {
         self.items = items
         self.failure = failure
+        self.surplusTaskCount = surplusTaskCount
     }
 
     /// `slideIndex` is only read by the app-timer carousel; the other two
@@ -80,12 +105,22 @@ public struct EInkPushPlan: Equatable, Sendable {
                         failure: slides.count > 1 ? .noTaskKeys : nil
                     )
                 }
-                let pairs = zip(slides, keys).map {
+                var items = zip(slides, keys).map {
                     Item(slideID: $0.0.id, taskKey: $0.1, refreshNow: false)
                 }
+                // A loop with more tasks than slides — the user deleted a
+                // slide, or added one task too many on the phone — leaves the
+                // surplus slot showing whatever was pushed to it last. The API
+                // cannot delete a task, so the slot is claimed and told what
+                // it is instead of being left to lie.
+                let surplus = keys.dropFirst(slides.count)
+                items.append(contentsOf: surplus.map {
+                    Item(content: .unusedSlot, taskKey: $0, refreshNow: false)
+                })
                 return EInkPushPlan(
-                    items: pairs,
-                    failure: keys.count < slides.count ? .noTaskKeys : nil
+                    items: items,
+                    failure: keys.count < slides.count ? .noTaskKeys : nil,
+                    surplusTaskCount: surplus.count
                 )
 
             case .appTimer:
@@ -143,9 +178,9 @@ public final class EInkSyncService: ObservableObject {
     private let client: any DotDeviceClienting
     private let store: EInkSyncStateStore
     private let apiKeyProvider: @Sendable () -> String?
-    /// Assembles a snapshot that covers the passed field ids as well as the
-    /// default priority order.
-    private let snapshotProvider: @Sendable ([String]) async throws -> EInkDataSnapshot
+    /// Assembles what one pass needs: the passed field ids on top of the
+    /// default priority order, and the usage half only when a slide draws it.
+    private let snapshotProvider: @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome
     private let clock: @Sendable () -> Date
     /// Spacing between two canvas writes in the same pass. A stored property
     /// only so tests can collapse it; not part of the public API.
@@ -179,11 +214,19 @@ public final class EInkSyncService: ObservableObject {
     private var refreshLoops: [String: Task<Void, Never>] = [:]
     private var carouselLoops: [String: Task<Void, Never>] = [:]
     private var activeRuns: [String: RefreshRun] = [:]
-    private var cachedSnapshot: (snapshot: EInkDataSnapshot, takenAt: Date, generation: Int, fieldIDs: [String])?
+    private var cachedSnapshot: (
+        outcome: EInkAssemblyOutcome,
+        takenAt: Date,
+        generation: Int,
+        fieldIDs: [String],
+        includesUsage: Bool
+    )?
     private var cachedAPIKey: String?
     private var apiKeyLoaded = false
     /// When the last request to the service went out, for *any* device.
     private var lastRequestAt: Date?
+    private let writer: EInkSyncStateWriter
+    private var persistTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -191,7 +234,7 @@ public final class EInkSyncService: ObservableObject {
         client: any DotDeviceClienting = DotDeviceClient(),
         store: EInkSyncStateStore = EInkSyncStateStore(),
         apiKeyProvider: @escaping @Sendable () -> String? = { try? EInkCredentialStore.readAPIKey() },
-        snapshotProvider: @escaping @Sendable ([String]) async throws -> EInkDataSnapshot,
+        snapshotProvider: @escaping @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome,
         clock: @escaping @Sendable () -> Date = Date.init,
         requestSpacing: Duration = .milliseconds(150),
         retryDelays: [Duration] = [.seconds(1), .seconds(2)],
@@ -205,6 +248,7 @@ public final class EInkSyncService: ObservableObject {
         self.requestSpacing = requestSpacing
         self.retryDelays = retryDelays
         self.snapshotReuseWindow = snapshotReuseWindow
+        self.writer = EInkSyncStateWriter(store: store)
         self.states = store.load().devices
     }
 
@@ -424,9 +468,14 @@ public final class EInkSyncService: ObservableObject {
             return record(deviceID: deviceID, failure: plan.failure ?? .noSlides, detail: nil, generation: generation)
         }
 
-        let snapshot: EInkDataSnapshot
+        // Only walk the ledger when a slide on this pass actually draws usage.
+        let needsUsage = plan.items.contains { item in
+            guard case let .slide(slideID) = item.content else { return false }
+            return device.slide(id: slideID)?.kind.preset?.needsUsageData ?? false
+        }
+        let assembly: EInkAssemblyOutcome
         do {
-            snapshot = try await assembleSnapshot()
+            assembly = try await assembleSnapshot(includesUsage: needsUsage)
         } catch {
             return record(
                 deviceID: deviceID,
@@ -442,21 +491,37 @@ public final class EInkSyncService: ObservableObject {
         var failure = plan.failure
         var detail: String?
 
+        let snapshot = assembly.snapshot
+        if assembly.usageUnavailable { failure = .usageUnavailable }
+
         for item in plan.items {
             guard generation == configurationGeneration, !Task.isCancelled else { break }
-            guard let slide = device.slide(id: item.slideID) else { continue }
 
             let payload: DotCanvasPayload
             do {
-                payload = try EInkRenderer.render(
-                    slide: slide,
-                    device: device,
-                    snapshot: snapshot,
-                    refreshNow: item.refreshNow,
-                    taskKey: item.taskKey,
-                    taskAlias: EInkRenderer.defaultTaskAlias(slide: slide, orientation: device.orientation),
-                    layouts: layouts
-                )
+                switch item.content {
+                case .unusedSlot:
+                    payload = try EInkRenderer.renderUnusedSlot(
+                        device: device,
+                        taskKey: item.taskKey,
+                        generatedAtISO: snapshot.generatedAtISO,
+                        refreshNow: item.refreshNow
+                    )
+                case let .slide(slideID):
+                    guard let slide = device.slide(id: slideID) else { continue }
+                    // A usage slide drawn from an empty set would print "$0
+                    // today" and be believed. Skip it and say why instead.
+                    if assembly.usageUnavailable, slide.kind.preset?.needsUsageData ?? false { continue }
+                    payload = try EInkRenderer.render(
+                        slide: slide,
+                        device: device,
+                        snapshot: snapshot,
+                        refreshNow: item.refreshNow,
+                        taskKey: item.taskKey,
+                        taskAlias: EInkRenderer.defaultTaskAlias(slide: slide, orientation: device.orientation),
+                        layouts: layouts
+                    )
+                }
             } catch {
                 failure = .render
                 detail = String(describing: error)
@@ -502,6 +567,7 @@ public final class EInkSyncService: ObservableObject {
         }
         state.lastFailure = failure
         state.lastError = detail
+        state.surplusTaskCount = plan.surplusTaskCount
         state.nextRefreshAt = clock().addingTimeInterval(
             TimeInterval(
                 max(
@@ -565,21 +631,29 @@ public final class EInkSyncService: ObservableObject {
     /// that started before the user picked a new bucket could land in the
     /// cache afterwards and the very next pass — the one that exists to carry
     /// that bucket — would draw the panel without it, then sleep the interval.
-    private func assembleSnapshot(fieldIDs: [String]? = nil) async throws -> EInkDataSnapshot {
+    private func assembleSnapshot(
+        fieldIDs: [String]? = nil,
+        includesUsage: Bool
+    ) async throws -> EInkAssemblyOutcome {
         let requested = fieldIDs ?? settings.selectedQuotaFieldIDs
         let generation = configurationGeneration
         if let cached = cachedSnapshot,
            cached.generation == generation,
-           cached.fieldIDs == requested
+           cached.fieldIDs == requested,
+           // A quota-only answer cannot serve a pass that needs usage; the
+           // other way round is fine, since the usage columns simply go unread.
+           cached.includesUsage || !includesUsage
         {
             let age = clock().timeIntervalSince(cached.takenAt)
-            if age >= 0, age < Self.seconds(snapshotReuseWindow) { return cached.snapshot }
+            if age >= 0, age < Self.seconds(snapshotReuseWindow) { return cached.outcome }
         }
-        let snapshot = try await snapshotProvider(requested)
+        let outcome = try await snapshotProvider(
+            EInkSnapshotRequest(quotaFieldIDs: requested, includesUsage: includesUsage)
+        )
         if generation == configurationGeneration {
-            cachedSnapshot = (snapshot, clock(), generation, requested)
+            cachedSnapshot = (outcome, clock(), generation, requested, includesUsage)
         }
-        return snapshot
+        return outcome
     }
 
     /// Retries the transient failures and only those: a rate limit or a 5xx
@@ -640,8 +714,25 @@ public final class EInkSyncService: ObservableObject {
         return EInkPushOutcome(failure: failure, errorDetail: detail)
     }
 
+    /// Hands the current state to the background writer and returns.
+    ///
+    /// Chained rather than fired-and-forgotten so two writes cannot land out
+    /// of order: the state is a last-writer-wins snapshot, and an older one
+    /// overtaking a newer would resurrect a digest the engine has moved past.
     private func persist() {
-        store.saveQuietly(EInkSyncState(devices: states))
+        let snapshot = EInkSyncState(devices: states)
+        let writer = self.writer
+        let previous = persistTask
+        persistTask = Task.detached(priority: .utility) {
+            await previous?.value
+            await writer.write(snapshot)
+        }
+    }
+
+    /// Waits for every queued state write. Tests only; nothing in the app
+    /// needs to know when the file caught up.
+    public func flushPendingWrites() async {
+        await persistTask?.value
     }
 
     // MARK: - Preview
@@ -666,9 +757,9 @@ public final class EInkSyncService: ObservableObject {
         // asked for until the user edited something else.
         previewRequest += 1
         let request = previewRequest
-        guard let snapshot = try? await assembleSnapshot(fieldIDs: fieldIDs) else { return }
+        guard let outcome = try? await assembleSnapshot(fieldIDs: fieldIDs, includesUsage: true) else { return }
         guard request == previewRequest else { return }
-        previewSnapshot = snapshot
+        previewSnapshot = outcome.snapshot
     }
 
     private var previewRequest = 0

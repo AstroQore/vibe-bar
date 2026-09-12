@@ -43,6 +43,23 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
         return result
     }
 
+    /// Every quota field id any slide holds, whatever preset it currently
+    /// draws.
+    ///
+    /// This is the *keep* set, not the *draw* set, and the difference matters:
+    /// a slide switched to a usage layout still carries the buckets it had, and
+    /// pruning them from `QuotaFieldRegistry` because nothing is drawing them
+    /// today would empty the picker the moment the user switched back.
+    public var referencedQuotaFieldIDs: Set<String> {
+        var result = Set<String>()
+        for device in devices {
+            for slide in device.slides {
+                result.formUnion(slide.quotaFieldIDs)
+            }
+        }
+        return result
+    }
+
     public func device(id: String) -> EInkDeviceConfig? {
         devices.first { $0.deviceID == id }
     }

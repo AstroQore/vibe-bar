@@ -55,6 +55,32 @@ public enum EInkPresets {
         EInkNode(.column, width: width, height: height, padding: padding, gap: gap, justify: justify, align: align, children: children)
     }
 
+    /// What a Canvas API task with no slide behind it draws.
+    ///
+    /// The Dot. API can update a task in the device's loop but cannot delete
+    /// one, so a slide the user removes would otherwise stay on that slot
+    /// forever — a panel showing a quota row nobody configured any more, with
+    /// numbers frozen at whatever they were. A stale reading on a glanceable
+    /// surface is worse than a blank one, so the slot says what it is instead.
+    ///
+    /// English on purpose, like every other string the device draws.
+    public static func unusedSlot(_ frame: EInkRect) -> EInkNode {
+        column(
+            [
+                text("VIBE BAR", pixelBold, width: .flex(1), height: .points(12)),
+                rule(),
+                verticalSpacer(),
+                text("THIS SLOT IS UNUSED", pixel, width: .flex(1), height: .points(12), align: .center),
+                text("REMOVE IT IN THE DOT. APP", pixel, width: .flex(1), height: .points(12), align: .center),
+                verticalSpacer()
+            ],
+            width: .points(frame.width),
+            height: .points(frame.height),
+            gap: 6,
+            padding: EInkInsets(all: margin)
+        )
+    }
+
     /// Fills the remaining vertical space in a column.
     static func verticalSpacer() -> EInkNode { EInkNode(.row, width: .flex(1), height: .flex(1)) }
 

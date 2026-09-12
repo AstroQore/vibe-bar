@@ -84,14 +84,14 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
 /// Records the field ids the service asked the assembler to cover.
 private final class RequestedFields: @unchecked Sendable {
     private let lock = NSLock()
-    private var values: [[String]] = []
+    private var values: [EInkSnapshotRequest] = []
 
-    func record(_ fields: [String]) {
+    func record(_ request: EInkSnapshotRequest) {
         lock.lock(); defer { lock.unlock() }
-        values.append(fields)
+        values.append(request)
     }
 
-    var last: [String]? {
+    var last: EInkSnapshotRequest? {
         lock.lock(); defer { lock.unlock() }
         return values.last
     }
@@ -136,7 +136,8 @@ final class EInkSyncServiceTests: XCTestCase {
     private func service(
         client: FakeDotClient,
         device: EInkDeviceConfig,
-        snapshot: @escaping @Sendable ([String]) async throws -> EInkDataSnapshot = { _ in EInkFixtures.snapshot() },
+        snapshot: @escaping @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome
+            = { _ in EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot()) },
         requestSpacing: Duration = .milliseconds(150),
         retryDelays: [Duration] = []
     ) -> EInkSyncService {
@@ -309,7 +310,7 @@ final class EInkSyncServiceTests: XCTestCase {
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
             apiKeyProvider: { "synthetic-key" },
-            snapshotProvider: { _ in EInkFixtures.snapshot() },
+            snapshotProvider: { _ in EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot()) },
             retryDelays: [],
             snapshotReuseWindow: .zero
         )
@@ -415,6 +416,176 @@ final class EInkSyncServiceTests: XCTestCase {
         let forced = await sync.pushNow(deviceID: "panel-1")
         XCTAssertEqual(forced.pushed, 1)
         XCTAssertEqual(client.pushes.count, 1)
+    }
+
+    // MARK: - Unused loop slots
+
+    func testASurplusLoopTaskGetsAPlaceholderInsteadOfTheDeletedSlide() async {
+        let client = FakeDotClient()
+        let config = device(
+            slides: [slide("a")],
+            taskKeys: ["k1", "k2", "k3"],
+            playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300)
+        )
+        let plan = EInkPushPlan.make(for: config, slideIndex: 0)
+        XCTAssertEqual(plan.surplusTaskCount, 2)
+        XCTAssertEqual(plan.items.map(\.taskKey), ["k1", "k2", "k3"])
+        XCTAssertEqual(plan.items.map(\.isUnusedSlot), [false, true, true])
+
+        let sync = service(client: client, device: config)
+        let outcome = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(outcome.pushed, 3, "the loop's spare slots must not keep a removed slide")
+        XCTAssertEqual(sync.state(for: "panel-1").surplusTaskCount, 2)
+
+        // The two placeholders are the same panel; the slide is not.
+        let digests = client.pushes.map(\.windowDataDigest)
+        XCTAssertEqual(digests[1], digests[2])
+        XCTAssertNotEqual(digests[0], digests[1])
+    }
+
+    func testTheUnusedSlotPanelSaysWhatItIsInEveryOrientation() throws {
+        for orientation in EInkOrientation.allCases {
+            var config = EInkFixtures.device(orientation: orientation)
+            config.orientation = orientation
+            let payload = try EInkRenderer.renderUnusedSlot(device: config, taskKey: "k1")
+            let json = try String(data: payload.jsonData(), encoding: .utf8) ?? ""
+            XCTAssertTrue(json.contains("THIS SLOT IS UNUSED"), "\(orientation)")
+            XCTAssertTrue(json.contains("VIBE BAR"), "\(orientation)")
+        }
+    }
+
+    // MARK: - Usage is optional
+
+    func testAQuotaOnlyDeviceNeverAsksForUsage() async {
+        let client = FakeDotClient()
+        let requested = RequestedFields()
+        let sync = EInkSyncService(
+            client: client,
+            store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
+            apiKeyProvider: { "synthetic-key" },
+            snapshotProvider: { request in
+                requested.record(request)
+                return EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot())
+            },
+            retryDelays: [],
+            snapshotReuseWindow: .zero
+        )
+        sync.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [device(
+                    slides: [slide("a", preset: .quotaLedger)],
+                    taskKeys: ["k1"],
+                    playback: .single(slideID: "a")
+                )]
+            ),
+            layouts: [:]
+        )
+        let outcome = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(outcome.pushed, 1)
+        XCTAssertEqual(requested.last?.includesUsage, false)
+    }
+
+    func testAnUnreadableLedgerStillPushesTheQuotaSlides() async {
+        let client = FakeDotClient()
+        let sync = EInkSyncService(
+            client: client,
+            store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
+            apiKeyProvider: { "synthetic-key" },
+            snapshotProvider: { request in
+                XCTAssertTrue(request.includesUsage)
+                var snapshot = EInkFixtures.snapshot()
+                snapshot.usage = EInkUsageSet()
+                snapshot.trend = []
+                return EInkAssemblyOutcome(snapshot: snapshot, usageUnavailable: true)
+            },
+            retryDelays: [],
+            snapshotReuseWindow: .zero
+        )
+        sync.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [device(
+                    slides: [slide("quota", preset: .quotaLedger), slide("usage", preset: .usageTiles)],
+                    taskKeys: ["k1", "k2"],
+                    playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300)
+                )]
+            ),
+            layouts: [:]
+        )
+        let outcome = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(outcome.pushed, 1, "the quota slide goes out")
+        XCTAssertEqual(client.pushes.map(\.taskKey), ["k1"], "the usage slide is skipped, not drawn as zeros")
+        XCTAssertEqual(outcome.failure, .usageUnavailable)
+        XCTAssertEqual(sync.state(for: "panel-1").lastFailure, .usageUnavailable)
+    }
+
+    func testTheAssemblerKeepsTheQuotaHalfWhenTheLedgerThrows() async {
+        struct BrokenLedger: EInkUsageQuerying {
+            struct Failure: Error {}
+            func summary(_ filter: UsageQueryFilter) async throws -> UsageSummaryMetrics { throw Failure() }
+            func harnessStats(_ filter: UsageQueryFilter) async throws -> [UsageHarnessStat] { throw Failure() }
+            func trend(_ filter: UsageQueryFilter, bucket: UsageTrendBucket) async throws -> UsageTrendSeries {
+                throw Failure()
+            }
+        }
+        let assembler = EInkDataAssembler(
+            quotaLookup: { tool in
+                guard tool == .claude else { return nil }
+                return AccountQuota(
+                    accountId: "synthetic-account",
+                    tool: .claude,
+                    buckets: [QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "WK", usedPercent: 40)],
+                    plan: "Test Plan"
+                )
+            },
+            usage: BrokenLedger(),
+            allTimeCostSnapshots: { [] },
+            calendar: EInkFixtures.calendar()
+        )
+        let broken = await assembler.assemble(now: EInkFixtures.referenceDate, includeUsage: true)
+        XCTAssertTrue(broken.usageUnavailable)
+        XCTAssertEqual(broken.snapshot.quota.map(\.fieldID), ["claude.weekly"])
+
+        // …and a quota-only pass never touches it at all.
+        let quotaOnly = await assembler.assemble(now: EInkFixtures.referenceDate, includeUsage: false)
+        XCTAssertFalse(quotaOnly.usageUnavailable)
+        XCTAssertEqual(quotaOnly.snapshot.quota.count, 1)
+    }
+
+    // MARK: - Keep set
+
+    func testEveryPickedBucketIsKeptInTheRegistryEvenUnderAUsagePreset() {
+        var quotaSlide = EInkSlide(id: "a", kind: .preset(.quotaLedger))
+        quotaSlide.quotaFieldIDs = ["codex.five_hour"]
+        // A slide switched to a usage layout still holds its buckets, and the
+        // picker has to find them when the user switches back.
+        var switched = EInkSlide(id: "b", kind: .preset(.usageTiles))
+        switched.quotaFieldIDs = ["grok.weekly"]
+        let settings = EInkSyncSettings(
+            apiKeyPresent: true,
+            syncEnabled: true,
+            devices: [EInkDeviceConfig(deviceID: "panel-1", slides: [quotaSlide, switched])]
+        )
+        XCTAssertEqual(settings.referencedQuotaFieldIDs, ["codex.five_hour", "grok.weekly"])
+        XCTAssertEqual(settings.selectedQuotaFieldIDs, ["codex.five_hour"])
+    }
+
+    // MARK: - Persistence is off the main actor
+
+    func testStateReachesDiskThroughTheBackgroundWriter() async throws {
+        let client = FakeDotClient()
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        await sync.flushPendingWrites()
+        let reloaded = EInkSyncStateStore(homeDirectory: temporaryHome.path).load()
+        XCTAssertEqual(reloaded["panel-1"].pushedDigests.count, 1)
+        XCTAssertNotNil(reloaded["panel-1"].lastPushAt)
     }
 
     // MARK: - Cadence
@@ -524,9 +695,9 @@ final class EInkSyncServiceTests: XCTestCase {
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
             apiKeyProvider: { "synthetic-key" },
-            snapshotProvider: { fields in
-                requested.record(fields)
-                return EInkFixtures.snapshot()
+            snapshotProvider: { request in
+                requested.record(request)
+                return EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot())
             },
             retryDelays: [],
             snapshotReuseWindow: .zero
@@ -540,7 +711,7 @@ final class EInkSyncServiceTests: XCTestCase {
             layouts: [:]
         )
         _ = await sync.refresh(deviceID: "panel-1")
-        XCTAssertEqual(requested.last, ["codex.five_hour", "claude.weekly"])
+        XCTAssertEqual(requested.last?.quotaFieldIDs, ["codex.five_hour", "claude.weekly"])
 
         // …and the assembler turns them into selectors the default order misses.
         let priority = EInkDataAssembler.priority(includingSelected: ["codex.five_hour", "claude.weekly"])

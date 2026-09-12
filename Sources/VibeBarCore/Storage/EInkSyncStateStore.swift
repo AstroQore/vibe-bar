@@ -57,3 +57,21 @@ public struct EInkSyncStateStore: Sendable {
         return decoder
     }()
 }
+
+/// Serializes E-ink state writes on a background actor.
+///
+/// The file is small, but the sync engine writes it after every push, every
+/// status read and every loop scan — a hot path on the main actor, which is
+/// where CLAUDE.md rule 0 draws the line. The engine hands over the bytes and
+/// returns; the write happens here, one at a time and in order.
+public actor EInkSyncStateWriter {
+    private let store: EInkSyncStateStore
+
+    public init(store: EInkSyncStateStore) {
+        self.store = store
+    }
+
+    public func write(_ state: EInkSyncState) {
+        store.saveQuietly(state)
+    }
+}

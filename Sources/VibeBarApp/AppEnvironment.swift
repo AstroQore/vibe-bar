@@ -201,6 +201,12 @@ final class AppEnvironment: ObservableObject {
                     fieldIds.formUnion(composition.referencedFieldIds)
                 }
             }
+            // E-ink slides are a third referrer. A bucket chosen only for a
+            // panel has no mini window and no menu-bar item behind it, so
+            // without this a provider response that briefly omits it would
+            // drop it from the registry — and the slide would quietly stop
+            // drawing that row.
+            fieldIds.formUnion(settings.einkSync.referencedQuotaFieldIDs)
             return QuotaFieldKeepSet(fieldIds: fieldIds, groupKeys: groupKeys)
         }
 
@@ -407,9 +413,10 @@ final class AppEnvironment: ObservableObject {
         // E-ink sync reads the same cached quota and ledger the popover does,
         // so it is built here and handed a closure rather than its own copies
         // of anything. It stays idle until the settings say otherwise.
-        let eink = EInkSyncService(snapshotProvider: { [weak self] selectedFieldIDs in
+        let eink = EInkSyncService(snapshotProvider: { [weak self] request in
             guard let self else { throw CancellationError() }
-            return try await self.einkAssembler(selectedFieldIDs: selectedFieldIDs).snapshot()
+            return await self.einkAssembler(selectedFieldIDs: request.quotaFieldIDs)
+                .assemble(includeUsage: request.includesUsage)
         })
         self.einkSyncService = eink
         eink.apply(settings: settings.settings.einkSync, layouts: settings.settings.einkCanvasLayouts)

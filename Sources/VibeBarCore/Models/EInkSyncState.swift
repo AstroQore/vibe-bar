@@ -15,6 +15,10 @@ public enum EInkSyncFailure: String, Codable, Equatable, Sendable {
     case render
     case noTaskKeys
     case noSlides
+    /// The local usage ledger could not be read. Quota slides still went out;
+    /// the usage ones were skipped rather than drawn as zeros, because a panel
+    /// reading "$0 today" is a wrong answer, not a missing one.
+    case usageUnavailable
 }
 
 /// What the sync engine remembers about one device between launches.
@@ -48,6 +52,8 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
     public var slideIndex: Int
     /// Canvas API tasks counted by the last loop scan, or `nil` if never run.
     public var canvasTaskCount: Int?
+    /// Tasks in the loop that no slide claims, as of the last pass.
+    public var surplusTaskCount: Int
     public var lastStatusAt: Date?
 
     public init(
@@ -65,6 +71,7 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
         nextRefreshAt: Date? = nil,
         slideIndex: Int = 0,
         canvasTaskCount: Int? = nil,
+        surplusTaskCount: Int = 0,
         lastStatusAt: Date? = nil
     ) {
         self.deviceID = deviceID
@@ -81,6 +88,7 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
         self.nextRefreshAt = nextRefreshAt
         self.slideIndex = slideIndex
         self.canvasTaskCount = canvasTaskCount
+        self.surplusTaskCount = surplusTaskCount
         self.lastStatusAt = lastStatusAt
     }
 
@@ -94,7 +102,7 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case deviceID, pushedDigests, lastPushAt, lastAttemptAt, lastError, lastFailure
         case renderImageURL, onBattery, powerLabel, batteryLabel, wifiLabel
-        case nextRefreshAt, slideIndex, canvasTaskCount, lastStatusAt
+        case nextRefreshAt, slideIndex, canvasTaskCount, surplusTaskCount, lastStatusAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -114,6 +122,7 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
             nextRefreshAt: c.lenientOptional(Date.self, .nextRefreshAt),
             slideIndex: max(0, c.lenient(Int.self, .slideIndex, 0)),
             canvasTaskCount: c.lenientOptional(Int.self, .canvasTaskCount),
+            surplusTaskCount: max(0, c.lenient(Int.self, .surplusTaskCount, 0)),
             lastStatusAt: c.lenientOptional(Date.self, .lastStatusAt)
         )
     }

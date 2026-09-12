@@ -125,6 +125,29 @@ public enum EInkRenderer {
         )
     }
 
+    /// The panel a surplus Canvas API task gets. See `EInkPresets.unusedSlot`
+    /// for why a placeholder beats leaving the removed slide on screen.
+    public static func renderUnusedSlot(
+        device: EInkDeviceConfig,
+        taskKey: String?,
+        generatedAtISO: String = "",
+        refreshNow: Bool = false
+    ) throws -> DotCanvasPayload {
+        let size = device.profile.frameSize(for: device.orientation)
+        let frame = EInkRect(x: 0, y: 0, width: size.width, height: size.height)
+        return try DotCanvasEncoder.encode(
+            EInkPresets.unusedSlot(frame),
+            orientation: device.orientation,
+            profile: device.profile,
+            refreshNow: refreshNow,
+            taskKey: taskKey,
+            taskAlias: unusedSlotTaskAlias,
+            generatedAtISO: generatedAtISO
+        )
+    }
+
+    public static let unusedSlotTaskAlias = "Vibe Bar · Unused slot"
+
     /// English task name for the device's task list. Not localized on purpose:
     /// it is remote metadata, not app UI.
     public static func defaultTaskAlias(slide: EInkSlide, orientation: EInkOrientation) -> String {

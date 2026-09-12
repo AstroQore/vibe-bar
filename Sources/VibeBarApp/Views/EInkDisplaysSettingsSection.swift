@@ -389,6 +389,12 @@ struct EInkDisplaysSettingsSection: View {
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if state.surplusTaskCount > 0 {
+                Text(L10n.Settings.Eink.loopTasksSurplus(count: state.surplusTaskCount))
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -680,7 +686,12 @@ struct EInkDisplaysSettingsSection: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             if let plan = previews[selectedDevice?.orientation.rawValue ?? 0] {
-                EInkPreviewView(plan: plan, scale: 2)
+                // 2x is 592 pt wide, which a narrow window cannot hold; fall
+                // back to device pixels rather than clipping the panel.
+                ViewThatFits(in: .horizontal) {
+                    EInkPreviewView(plan: plan, scale: 2)
+                    EInkPreviewView(plan: plan, scale: 1)
+                }
             } else {
                 Rectangle()
                     .fill(Color.white)
@@ -691,7 +702,14 @@ struct EInkDisplaysSettingsSection: View {
             Text(L10n.Settings.Eink.allOrientations)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            HStack(alignment: .top, spacing: 8) {
+            // Four 296 pt panels plus their gaps are wider than the detail
+            // pane at the default Workbench width, and a clipped preview of a
+            // rotation is worse than a wrapped one.
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 296), spacing: 8, alignment: .topLeading)],
+                alignment: .leading,
+                spacing: 8
+            ) {
                 ForEach(EInkOrientation.allCases, id: \.rawValue) { orientation in
                     if let plan = previews[orientation.rawValue] {
                         EInkPreviewView(plan: plan, scale: 1)
@@ -841,6 +859,15 @@ struct EInkDisplaysSettingsSection: View {
     /// under the wrong panel is a lie the user has no way to catch.
     private func pushNow(_ deviceID: String) {
         pushStatus = nil
+        // The roster reaches the engine through a 400 ms debounce, so a slide
+        // or orientation edited a moment ago may not be there yet. Applying it
+        // here is a no-op when nothing changed, and the difference between
+        // pushing what the user is looking at and pushing what they saw half a
+        // second ago when it is not.
+        service.apply(
+            settings: settingsStore.settings.einkSync,
+            layouts: settingsStore.settings.einkCanvasLayouts
+        )
         Task {
             let outcome = await service.pushNow(deviceID: deviceID)
             guard selectedDevice?.deviceID == deviceID else { return }
@@ -1102,6 +1129,7 @@ struct EInkDisplaysSettingsSection: View {
         case .network: L10n.Settings.Eink.Error.network
         case .render: L10n.Settings.Eink.Error.render
         case .noSlides: L10n.Settings.Eink.Error.noSlides
+        case .usageUnavailable: L10n.Settings.Eink.Error.usageUnavailable
         case .noTaskKeys:
             L10n.Settings.Eink.loopTasksShort(
                 tasks: selectedDevice.map { service.state(for: $0.deviceID).canvasTaskCount ?? 0 } ?? 0,

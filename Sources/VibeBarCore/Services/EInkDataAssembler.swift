@@ -140,6 +140,46 @@ public struct EInkDataAssembler: Sendable {
         )
     }
 
+    /// Assembles what the pass actually needs, and never throws.
+    ///
+    /// Two rules, both about not losing the half that works:
+    ///
+    /// - The ledger is queried only when a slide draws usage. A device showing
+    ///   nothing but quota rows has no business walking a SQLite index every
+    ///   fifteen minutes, and a broken ledger must not stop it.
+    /// - A usage query that fails leaves the usage columns empty and says so.
+    ///   The caller pushes the quota slides and reports the gap; refusing the
+    ///   whole pass would blank a panel over data half its slides never
+    ///   touched.
+    public func assemble(now: Date = Date(), includeUsage: Bool) async -> EInkAssemblyOutcome {
+        let quota = await quotaRows(now: now)
+        var usage = EInkUsageSet()
+        var trend: [EInkTrendPoint] = []
+        var usageUnavailable = false
+        if includeUsage {
+            do {
+                usage = try await usageSet(now: now)
+                trend = try await trendPoints(now: now)
+            } catch {
+                usage = EInkUsageSet()
+                trend = []
+                usageUnavailable = true
+                SafeLog.warn("eink usage assembly failed: \(SafeLog.sanitize(String(describing: error)))")
+            }
+        }
+        return EInkAssemblyOutcome(
+            snapshot: EInkDataSnapshot(
+                generatedAt: now,
+                generatedAtLabel: EInkFormat.timestampLabel(now, calendar: calendar),
+                generatedAtISO: Self.iso8601.string(from: now),
+                quota: quota,
+                usage: usage,
+                trend: trend
+            ),
+            usageUnavailable: usageUnavailable
+        )
+    }
+
     // MARK: - Quota
 
     func quotaRows(now: Date) async -> [EInkQuotaRow] {
@@ -264,5 +304,30 @@ public struct EInkDataAssembler: Sendable {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "EEE"
         return formatter.string(from: date)
+    }
+}
+
+
+/// What one assembly produced, and whether the usage half of it is missing.
+public struct EInkAssemblyOutcome: Sendable, Equatable {
+    public var snapshot: EInkDataSnapshot
+    public var usageUnavailable: Bool
+
+    public init(snapshot: EInkDataSnapshot, usageUnavailable: Bool = false) {
+        self.snapshot = snapshot
+        self.usageUnavailable = usageUnavailable
+    }
+}
+
+/// What the engine asks an assembly for.
+public struct EInkSnapshotRequest: Sendable, Equatable {
+    /// Quota buckets any slide picked, on top of the default priority order.
+    public var quotaFieldIDs: [String]
+    /// False when no slide on this pass draws usage.
+    public var includesUsage: Bool
+
+    public init(quotaFieldIDs: [String], includesUsage: Bool) {
+        self.quotaFieldIDs = quotaFieldIDs
+        self.includesUsage = includesUsage
     }
 }
