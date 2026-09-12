@@ -31,6 +31,8 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
     var sendErrors: [DotDeviceError] = []
     var listError: DotDeviceError?
     var statusError: DotDeviceError?
+    /// Held open so a test can change something while the write is on the wire.
+    var sendDelay: Duration = .zero
 
     var pushes: [Push] {
         lock.lock(); defer { lock.unlock() }
@@ -81,12 +83,26 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
                 elapsed: ContinuousClock.now
             )
         )
+        let delay = sendDelay
         lock.unlock()
+        if delay > .zero { try? await Task.sleep(for: delay) }
         if let error { throw error }
         return "ok"
     }
 
     func fetchRenderImage(url: URL) async throws -> Data { Data() }
+}
+
+/// Hands out a later timestamp on every assembly.
+private final class MovingClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var minutes = 0
+
+    func advance() -> Date {
+        lock.lock(); defer { lock.unlock() }
+        minutes += 17
+        return EInkFixtures.referenceDate.addingTimeInterval(Double(minutes) * 60)
+    }
 }
 
 /// Records the field ids the service asked the assembler to cover.
@@ -910,6 +926,84 @@ final class EInkSyncServiceTests: XCTestCase {
         snapshot.quota[0].remainingPercent = (snapshot.quota[0].remainingPercent + 11) % 100
         let changed = try EInkRenderer.render(slide: slide, device: device, snapshot: snapshot)
         XCTAssertNotEqual(EInkSyncService.digest(of: first), EInkSyncService.digest(of: changed))
+    }
+
+    func testTheClockInTheHeaderIsNotAContentChange() async throws {
+        let device = EInkFixtures.device(orientation: .degrees0)
+        let slide = EInkFixtures.slide(preset: .quotaLedger)
+        var snapshot = EInkFixtures.snapshot()
+        let first = try EInkRenderer.render(slide: slide, device: device, snapshot: snapshot)
+
+        // Same numbers, a minute later.
+        let later = EInkFixtures.referenceDate.addingTimeInterval(17 * 60)
+        snapshot.generatedAt = later
+        snapshot.generatedAtLabel = EInkFormat.timestampLabel(later, calendar: EInkFixtures.calendar())
+        snapshot.generatedAtISO = "2026-01-01T00:17:00Z"
+        let ticked = try EInkRenderer.render(slide: slide, device: device, snapshot: snapshot)
+
+        XCTAssertNotEqual(
+            EInkSyncService.digest(of: first, ignoring: nil),
+            EInkSyncService.digest(of: ticked, ignoring: nil),
+            "the label really is in windowData — that is what this guards against"
+        )
+        XCTAssertEqual(
+            EInkSyncService.digest(of: first, ignoring: EInkFixtures.snapshot().generatedAtLabel),
+            EInkSyncService.digest(of: ticked, ignoring: snapshot.generatedAtLabel),
+            "an e-ink refresh is too expensive to spend on a clock"
+        )
+    }
+
+    func testAnAutomaticPassSkipsWhenOnlyTheClockMoved() async {
+        let client = FakeDotClient()
+        let clockBox = MovingClock()
+        let sync = EInkSyncService(
+            client: client,
+            store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
+            apiKeyProvider: { "synthetic-key" },
+            snapshotProvider: { _ in
+                var snapshot = EInkFixtures.snapshot()
+                let now = clockBox.advance()
+                snapshot.generatedAt = now
+                snapshot.generatedAtLabel = EInkFormat.timestampLabel(now, calendar: EInkFixtures.calendar())
+                snapshot.generatedAtISO = ISO8601DateFormatter().string(from: now)
+                return EInkAssemblyOutcome(snapshot: snapshot)
+            },
+            retryDelays: [],
+            snapshotReuseWindow: .zero
+        )
+        sync.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))]
+            ),
+            layouts: [:]
+        )
+        let first = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(first.pushed, 1)
+        let second = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(second.pushed, 0)
+        XCTAssertEqual(second.skipped, 1)
+    }
+
+    func testALateUnauthorizedDoesNotStopTheReplacementKey() async {
+        let client = FakeDotClient()
+        client.sendErrors = [.unauthorized]
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        // The user pastes a new key while the failing write is on the wire.
+        client.sendDelay = .milliseconds(250)
+        async let failing: Void = { _ = await sync.refresh(deviceID: "panel-1") }()
+        try? await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(client.pushes.count, 1, "the write must be in flight for this to be the race it names")
+        sync.credentialDidChange()
+        _ = await failing
+        XCTAssertFalse(
+            sync.credentialInvalid,
+            "a 401 belongs to the key that earned it, not to the one that replaced it"
+        )
     }
 
     // MARK: - State store

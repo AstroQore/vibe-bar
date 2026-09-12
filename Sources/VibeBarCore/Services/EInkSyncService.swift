@@ -520,6 +520,7 @@ public final class EInkSyncService: ObservableObject {
         guard !credentialInvalid, let key = await currentAPIKey() else {
             return record(deviceID: deviceID, failure: .unauthorized, detail: nil, generation: generation)
         }
+        let credentialAtStart = credentialGeneration
         guard generation == configurationGeneration else { return EInkPushOutcome() }
 
         var state = self.state(for: deviceID)
@@ -589,7 +590,7 @@ public final class EInkSyncService: ObservableObject {
                 continue
             }
 
-            let digest = Self.digest(of: payload)
+            let digest = Self.digest(of: payload, ignoring: snapshot.generatedAtLabel)
             if !force, state.pushedDigests[item.digestKey] == digest {
                 skipped += 1
                 continue
@@ -606,8 +607,9 @@ public final class EInkSyncService: ObservableObject {
                 pushed += 1
             } catch let error as DotDeviceError {
                 if error.invalidatesCredential {
+                    guard credentialGeneration == credentialAtStart else { break }
                     state.pushedDigests.removeAll()
-                    invalidateCredential()
+                    invalidateCredential(from: credentialAtStart)
                     return record(deviceID: deviceID, failure: .unauthorized, detail: nil, generation: generation)
                 }
                 failure = Self.failure(for: error)
@@ -661,13 +663,14 @@ public final class EInkSyncService: ObservableObject {
         key: String,
         generation: Int
     ) async -> (status: DotDeviceStatus?, failure: EInkSyncFailure?, detail: String?) {
+        let credentialAtStart = credentialGeneration
         await paceRequest()
         do {
             let status = try await client.status(deviceID: deviceID, apiKey: key)
             guard generation == configurationGeneration else { return (nil, nil, nil) }
             return (status, nil, nil)
         } catch let error as DotDeviceError {
-            if error.invalidatesCredential { invalidateCredential() }
+            if error.invalidatesCredential { invalidateCredential(from: credentialAtStart) }
             return (nil, Self.failure(for: error), error.description)
         } catch {
             return (nil, .network, SafeLog.sanitize(String(describing: error)))
@@ -792,7 +795,14 @@ public final class EInkSyncService: ObservableObject {
         restartLoops()
     }
 
-    private func invalidateCredential() {
+    /// `credentialGeneration` is the one the failing request was made under.
+    ///
+    /// A canvas write can still be in flight when the user pastes a
+    /// replacement key; its 401 belongs to the credential it used, not to the
+    /// new one, and letting it through stopped every loop that
+    /// `credentialDidChange()` had just restarted.
+    private func invalidateCredential(from generation: Int) {
+        guard generation == credentialGeneration else { return }
         credentialInvalid = true
         cancelLoops()
     }
@@ -870,13 +880,14 @@ public final class EInkSyncService: ObservableObject {
     /// keeping every existing device's configuration intact.
     public func fetchDevices() async throws -> [DotDevice] {
         guard let key = await currentAPIKey() else { throw DotDeviceError.unauthorized }
+        let credentialAtStart = credentialGeneration
         await paceRequest()
         do {
             let devices = try await client.listDevices(apiKey: key)
             clearCredentialRejection()
             return devices
         } catch let error as DotDeviceError {
-            if error.invalidatesCredential { invalidateCredential() }
+            if error.invalidatesCredential { invalidateCredential(from: credentialAtStart) }
             throw error
         }
     }
@@ -887,6 +898,7 @@ public final class EInkSyncService: ObservableObject {
     @discardableResult
     public func rescanTasks(deviceID: String) async throws -> [DotTask] {
         guard let key = await currentAPIKey() else { throw DotDeviceError.unauthorized }
+        let credentialAtStart = credentialGeneration
         await paceRequest()
         do {
             let tasks = try await client.listTasks(deviceID: deviceID, type: .loop, apiKey: key)
@@ -897,7 +909,7 @@ public final class EInkSyncService: ObservableObject {
             clearCredentialRejection()
             return tasks
         } catch let error as DotDeviceError {
-            if error.invalidatesCredential { invalidateCredential() }
+            if error.invalidatesCredential { invalidateCredential(from: credentialAtStart) }
             throw error
         }
     }
@@ -948,9 +960,26 @@ public final class EInkSyncService: ObservableObject {
     /// would make every pass look like a change and the skip would never fire.
     /// `refreshNow` and the task alias are likewise not content.
     public nonisolated static func digest(of payload: DotCanvasPayload) -> String {
+        digest(of: payload, ignoring: nil)
+    }
+
+    /// `ignoring` is the assembly timestamp the presets print in their header.
+    ///
+    /// It has to come out, or the skip never fires: the header carries
+    /// `MM-dd HH:mm`, so once a minute every payload differs even when not one
+    /// quota or usage figure moved, and the panel spent a visible refresh —
+    /// and, on battery, real power — redrawing the same numbers under a new
+    /// clock. A panel that skips keeps the timestamp of the data it is
+    /// actually showing, which is the truer label anyway.
+    public nonisolated static func digest(of payload: DotCanvasPayload, ignoring label: String?) -> String {
         let encoder = DotCanvasPayload.jsonEncoder()
         guard let data = try? encoder.encode(payload.windowData) else { return UUID().uuidString }
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        var hashed = data
+        if let label, !label.isEmpty, var text = String(data: data, encoding: .utf8) {
+            text = text.replacingOccurrences(of: label, with: "")
+            hashed = Data(text.utf8)
+        }
+        return SHA256.hash(data: hashed).map { String(format: "%02x", $0) }.joined()
     }
 }
 

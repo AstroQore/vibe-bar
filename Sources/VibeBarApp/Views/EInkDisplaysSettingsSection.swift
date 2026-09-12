@@ -821,8 +821,11 @@ struct EInkDisplaysSettingsSection: View {
         guard let deviceID = selectedDevice?.deviceID else { return }
         let data = await service.fetchRenderImage(deviceID: deviceID)
         guard selectedDevice?.deviceID == deviceID else { return }
-        guard let data else { return }
-        renderImage = NSImage(data: data)
+        // Assigned either way. A device that stopped reporting a render, or a
+        // download that failed, must not leave the previous picture up as
+        // "what the panel is showing now" — that is the one thing this
+        // thumbnail claims.
+        renderImage = data.flatMap(NSImage.init(data:))
     }
 
     // MARK: - Actions
