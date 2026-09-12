@@ -157,7 +157,11 @@ struct EInkStudioInspector: View {
             Text(L10n.Settings.Eink.Studio.Binding.label).tag(EInkCanvasElement.TextBinding.label)
             Text(L10n.Settings.Eink.Studio.Binding.countdown).tag(EInkCanvasElement.TextBinding.countdown)
             Text(L10n.Settings.Eink.Studio.Binding.usage).tag(EInkCanvasElement.TextBinding.usageMetric)
-            Text(L10n.Settings.Eink.Studio.Binding.custom).tag(EInkCanvasElement.TextBinding.custom)
+            // A tile's big line is a figure; its fixed text is the caption
+            // and the sub value below, which have their own fields.
+            if e.kind != .statTile {
+                Text(L10n.Settings.Eink.Studio.Binding.custom).tag(EInkCanvasElement.TextBinding.custom)
+            }
         }
         switch e.textBinding {
         case .percent, .label, .countdown:
@@ -174,8 +178,10 @@ struct EInkStudioInspector: View {
                 Text(L10n.Usage.Breakdown.requests).tag(EInkCanvasElement.UsageMetric.requests)
             }
         case .custom:
-            DebouncedSettingsTextField(prompt: L10n.MenuBar.Composer.Block.text, value: value(e, \.text))
-                .id("text-\(e.id)")
+            if e.kind != .statTile {
+                DebouncedSettingsTextField(prompt: L10n.MenuBar.Composer.Block.text, value: value(e, \.text))
+                    .id("text-\(e.id)")
+            }
         }
     }
 

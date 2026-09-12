@@ -138,9 +138,9 @@ public enum EInkCustomLayoutRenderer {
         height: Int,
         origin: EInkPoint
     ) -> EInkNode? {
-        let value = text(for: element, snapshot: snapshot)
-        let caption = element.text.isEmpty ? defaultCaption(for: element, snapshot: snapshot) : element.text
-        let sub = element.subText.isEmpty ? defaultSubValue(for: element, snapshot: snapshot) : element.subText
+        let value = statValue(for: element, snapshot: snapshot)
+        let caption = caption(for: element, snapshot: snapshot)
+        let sub = subValue(for: element, snapshot: snapshot)
         guard !value.isEmpty || !caption.isEmpty else { return nil }
         var children: [EInkNode] = []
         if !caption.isEmpty {
@@ -252,6 +252,27 @@ public enum EInkCustomLayoutRenderer {
     }
 
     // MARK: - Bindings
+
+    /// A stat tile's big line.
+    ///
+    /// `text` is the tile's caption, so a tile bound to fixed text has
+    /// nothing left to put on the big line — printing `text` there would draw
+    /// the same string twice and tie the two controls together. A fixed
+    /// string is what a text element is for; a tile's big line is a figure.
+    public static func statValue(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
+        element.textBinding == .custom ? "" : text(for: element, snapshot: snapshot)
+    }
+
+    /// A stat tile's top line: the author's, else the binding's own name.
+    public static func caption(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
+        element.text.isEmpty ? defaultCaption(for: element, snapshot: snapshot) : element.text
+    }
+
+    /// A stat tile's bottom line: the author's, else the binding's second
+    /// figure.
+    public static func subValue(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> String {
+        element.subText.isEmpty ? defaultSubValue(for: element, snapshot: snapshot) : element.subText
+    }
 
     static func quotaRow(for element: EInkCanvasElement, snapshot: EInkDataSnapshot) -> EInkQuotaRow? {
         guard let fieldID = element.fieldID, !fieldID.isEmpty else { return nil }
@@ -372,6 +393,16 @@ public extension EInkSyncSettings {
                 guard let layoutID = slide.kind.layoutID, let layout = layouts[layoutID] else { continue }
                 for element in layout.elements {
                     for fieldID in element.quotaFieldIDs where seen.insert(fieldID).inserted {
+                        result.append(fieldID)
+                    }
+                    // A quota block with no selection of its own draws the
+                    // slide's buckets, and those are not in
+                    // `selectedQuotaFieldIDs`, which only looks at preset
+                    // slides. Without this, a slide converted from a preset
+                    // keeps buckets the assembler is never asked for and the
+                    // block silently drops those rows.
+                    guard element.kind.preset?.isQuotaPreset == true, element.fieldIDs.isEmpty else { continue }
+                    for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
                         result.append(fieldID)
                     }
                 }

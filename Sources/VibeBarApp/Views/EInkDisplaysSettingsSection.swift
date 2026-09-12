@@ -777,6 +777,11 @@ struct EInkDisplaysSettingsSection: View {
             slide.kind.preset?.rawValue ?? slide.kind.layoutID ?? "",
             slide.quotaFieldIDs.joined(separator: ","),
             slide.usagePeriods.map(\.rawValue).joined(separator: ","),
+            // The layout itself, not only its id: the Studio edits it in
+            // another window, and a preview that kept redrawing the shape it
+            // had when the pane opened would be a picture of the wrong panel.
+            slide.kind.layoutID.flatMap { settingsStore.settings.einkCanvasLayouts[$0] }
+                .map { String($0.hashValue) } ?? "",
             snapshot?.generatedAtISO ?? ""
         ].joined(separator: "|")
     }

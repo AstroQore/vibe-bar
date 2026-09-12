@@ -316,6 +316,46 @@ final class EInkCustomLayoutRendererTests: XCTestCase {
         }
     }
 
+    /// A tile's caption is its own line, not a second copy of the value: the
+    /// `.custom` binding has nothing to put on the big line, because the fixed
+    /// text *is* the caption.
+    func testAStatTileNeverDrawsItsCaptionTwice() {
+        var tile = element(.statTile, x: 8, y: 8, width: 120, height: 46)
+        tile.textBinding = .custom
+        tile.text = "STANDUP"
+        tile.subText = "10:00"
+
+        let strings = boxes(layout([tile])).compactMap { box -> String? in
+            if case let .text(value, _, _) = box.content { return value }
+            return nil
+        }
+        XCTAssertEqual(strings, ["STANDUP", "10:00"])
+    }
+
+    /// A caption and a sub value are fixed-width lines too, in a different
+    /// face from the big one — so the checks measure all three.
+    func testDiagnosticsMeasureEveryStatTileLine() {
+        var tile = element(.statTile, fieldID: "claude.weekly", x: 8, y: 8, width: 40, height: 46)
+        tile.textBinding = .percent
+        tile.font = .sans(size: 14, bold: true)
+        tile.text = "A VERY LONG CAPTION INDEED"
+
+        func report(_ e: EInkCanvasElement) -> [EInkLayoutDiagnostics.Issue] {
+            EInkLayoutDiagnostics.report(
+                layout: layout([e]),
+                slide: EInkSlide(id: "slide-1", kind: .custom(layoutID: "layout-1")),
+                orientation: .degrees0,
+                snapshot: snapshot
+            ).issues(for: e.id)
+        }
+        XCTAssertEqual(report(tile), [.textOverflow(elementID: tile.id)])
+
+        var short = tile
+        short.text = "LEFT"
+        short.subText = "4d"
+        XCTAssertTrue(report(short).isEmpty, "41% in 40 px with short lines fits")
+    }
+
     // MARK: - Orientation
 
     /// Turning the device keeps every element's pixel and pulls back only
@@ -371,6 +411,25 @@ final class EInkCustomLayoutRendererTests: XCTestCase {
         let layouts = ["layout-1": built]
 
         XCTAssertTrue(settings.selectedQuotaFieldIDs(layouts: layouts).contains("cursor.models"))
+
+        // A preset block with no selection of its own draws the slide's
+        // buckets, so those have to be assembled too — a slide converted from
+        // a preset keeps them, and `selectedQuotaFieldIDs` only reads preset
+        // slides.
+        var block = EInkCanvasElement(kind: .quotaLedger)
+        var withBlock = built
+        withBlock.elements = [block]
+        device.slides[0].quotaFieldIDs = ["codex.five_hour"]
+        settings.devices = [device]
+        XCTAssertTrue(
+            settings.selectedQuotaFieldIDs(layouts: ["layout-1": withBlock]).contains("codex.five_hour")
+        )
+        block.fieldIDs = ["grok.weekly"]
+        withBlock.elements = [block]
+        XCTAssertFalse(
+            settings.selectedQuotaFieldIDs(layouts: ["layout-1": withBlock]).contains("codex.five_hour"),
+            "a block that picked its own buckets does not also pull the slide's"
+        )
         XCTAssertTrue(device.slides[0].needsUsageData(layouts: layouts))
 
         built.elements = [bucket]

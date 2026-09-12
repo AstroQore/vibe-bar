@@ -11,7 +11,7 @@ import Foundation
 /// panel: the canvas size is fixed by the device profile and orientation
 /// rather than user-resizable, every coordinate is a whole device pixel, and
 /// the major grid is 8 px ("main pixels") rather than 24.
-public struct EInkCanvasLayout: Codable, Equatable, Sendable {
+public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
     /// Fixed by `EInkDeviceProfile.frameSize(for:)`; stored so a layout still
     /// renders when its device is offline or has been removed.
     public var width: Double = 296
@@ -300,7 +300,7 @@ public enum EInkFont: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-public enum EInkTextAlignment: String, Codable, CaseIterable, Sendable {
+public enum EInkTextAlignment: String, Codable, CaseIterable, Hashable, Sendable {
     case leading, center, trailing
 
     public var cssValue: String {
@@ -312,8 +312,8 @@ public enum EInkTextAlignment: String, Codable, CaseIterable, Sendable {
     }
 }
 
-public struct EInkCanvasElement: Codable, Equatable, Identifiable, Sendable {
-    public enum Kind: String, Codable, CaseIterable, Sendable {
+public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sendable {
+    public enum Kind: String, Codable, CaseIterable, Hashable, Sendable {
         case text, ring, horizontalBar, verticalBar, statTile, divider
         case quotaLedger, quotaRings, quotaRail
         case usageTiles, usageSplit, usageTable, usageDual, usageTrend
@@ -336,12 +336,12 @@ public struct EInkCanvasElement: Codable, Equatable, Identifiable, Sendable {
     }
 
     /// What a `text` element is bound to.
-    public enum TextBinding: String, Codable, CaseIterable, Sendable {
+    public enum TextBinding: String, Codable, CaseIterable, Hashable, Sendable {
         case percent, label, countdown, usageMetric, custom
     }
 
     /// Which number a `usageMetric` text (or a `statTile`) reads.
-    public enum UsageMetric: String, Codable, CaseIterable, Sendable {
+    public enum UsageMetric: String, Codable, CaseIterable, Hashable, Sendable {
         case cost, tokens, requests
     }
 

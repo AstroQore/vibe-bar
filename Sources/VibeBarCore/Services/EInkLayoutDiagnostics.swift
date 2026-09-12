@@ -101,10 +101,23 @@ public enum EInkLayoutDiagnostics {
             }
 
             guard element.kind == .text || element.kind == .statTile else { continue }
-            let content = EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot)
-            let clips = element.kind == .statTile || !element.autoWidth
-            if clips, !content.isEmpty,
-               EInkTextMetrics.width(content, font: element.font) > rect.width {
+            // A tile draws three fixed-width lines in two different faces, and
+            // a caption clipped on the device is exactly as wrong as a value
+            // clipped on it — so every line is measured in the face it is
+            // drawn in, not just the big one.
+            let lines: [(String, EInkFont)]
+            if element.kind == .statTile {
+                lines = [
+                    (EInkCustomLayoutRenderer.statValue(for: element, snapshot: snapshot), element.font),
+                    (EInkCustomLayoutRenderer.caption(for: element, snapshot: snapshot), .pixel12(bold: true)),
+                    (EInkCustomLayoutRenderer.subValue(for: element, snapshot: snapshot), .pixel12(bold: false))
+                ]
+            } else if element.autoWidth {
+                lines = []
+            } else {
+                lines = [(EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot), element.font)]
+            }
+            if lines.contains(where: { !$0.0.isEmpty && EInkTextMetrics.width($0.0, font: $0.1) > rect.width }) {
                 issues.append(.textOverflow(elementID: element.id))
             }
         }
