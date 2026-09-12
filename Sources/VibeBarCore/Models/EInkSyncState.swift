@@ -99,6 +99,20 @@ public struct EInkDeviceSyncState: Codable, Equatable, Sendable {
         return DotRenderImagePolicy.isAllowed(url) ? url : nil
     }
 
+    /// This state, with the fields a push pass does not own taken from
+    /// `latest`.
+    ///
+    /// A pass captures the state before its network work and commits after, so
+    /// anything written in between — a loop scan's task count, a carousel
+    /// tick's slide index — belongs to whoever wrote it, not to the snapshot
+    /// this pass has been carrying around.
+    public func committing(over latest: EInkDeviceSyncState) -> EInkDeviceSyncState {
+        var merged = self
+        merged.slideIndex = latest.slideIndex
+        merged.canvasTaskCount = latest.canvasTaskCount
+        return merged
+    }
+
     private enum CodingKeys: String, CodingKey {
         case deviceID, pushedDigests, lastPushAt, lastAttemptAt, lastError, lastFailure
         case renderImageURL, onBattery, powerLabel, batteryLabel, wifiLabel

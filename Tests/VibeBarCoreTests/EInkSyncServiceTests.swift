@@ -93,6 +93,22 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
     func fetchRenderImage(url: URL) async throws -> Data { Data() }
 }
 
+/// Counts how many times the assembler was actually invoked.
+private final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func bump() {
+        lock.lock(); defer { lock.unlock() }
+        value += 1
+    }
+
+    var count: Int {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
+}
+
 /// Hands out a later timestamp on every assembly.
 private final class MovingClock: @unchecked Sendable {
     private let lock = NSLock()
@@ -487,6 +503,71 @@ final class EInkSyncServiceTests: XCTestCase {
         let stamps = client.pushes.map(\.elapsed).sorted()
         XCTAssertEqual(stamps.count, 6)
         XCTAssertGreaterThanOrEqual(stamps[0].duration(to: stamps[5]), .milliseconds(600))
+    }
+
+    func testOneWaveAssemblesOnceNoMatterHowManyPanels() async {
+        let client = FakeDotClient()
+        let calls = CallCounter()
+        func panel(_ id: String) -> EInkDeviceConfig {
+            EInkDeviceConfig(
+                deviceID: id,
+                enabled: true,
+                playback: .single(slideID: "a"),
+                taskKeys: ["k1"],
+                slides: [slide("a", preset: .usageTiles)]
+            )
+        }
+        let sync = EInkSyncService(
+            client: client,
+            store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
+            apiKeyProvider: { "synthetic-key" },
+            snapshotProvider: { _ in
+                calls.bump()
+                // Long enough that every panel is waiting on it.
+                try? await Task.sleep(for: .milliseconds(80))
+                return EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot())
+            },
+            retryDelays: [],
+            snapshotReuseWindow: .zero
+        )
+        sync.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [panel("panel-1"), panel("panel-2"), panel("panel-3")]
+            ),
+            layouts: [:]
+        )
+        await withTaskGroup(of: Void.self) { group in
+            for id in ["panel-1", "panel-2", "panel-3"] {
+                group.addTask { @MainActor in _ = await sync.refresh(deviceID: id) }
+            }
+        }
+        XCTAssertEqual(calls.count, 1, "a usage assembly is several ledger queries; one wave means one of them")
+        XCTAssertEqual(client.pushes.count, 3)
+    }
+
+    func testAScanThatLandsMidPassIsNotUndoneByIt() async {
+        let client = FakeDotClient()
+        client.sendDelay = .milliseconds(200)
+        client.tasks = [
+            DotTask(key: "k1", type: "CANVAS_API", alias: "one"),
+            DotTask(key: "k2", type: "CANVAS_API", alias: "two")
+        ]
+        let sync = service(
+            client: client,
+            device: device(slides: [slide("a")], taskKeys: ["k1"], playback: .single(slideID: "a"))
+        )
+        async let pushing: Void = { _ = await sync.refresh(deviceID: "panel-1") }()
+        try? await Task.sleep(for: .milliseconds(60))
+        _ = try? await sync.rescanTasks(deviceID: "panel-1")
+        XCTAssertEqual(sync.state(for: "panel-1").canvasTaskCount, 2)
+        _ = await pushing
+        XCTAssertEqual(
+            sync.state(for: "panel-1").canvasTaskCount,
+            2,
+            "the pass must not write back a snapshot older than the scan"
+        )
     }
 
     // MARK: - Unused loop slots

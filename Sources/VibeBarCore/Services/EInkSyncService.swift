@@ -234,6 +234,15 @@ public final class EInkSyncService: ObservableObject {
         fieldIDs: [String],
         includesUsage: Bool
     )?
+    /// Identifies an assembly so concurrent callers that want the same answer
+    /// can share one.
+    private struct AssemblyKey: Equatable {
+        let generation: Int
+        let fieldIDs: [String]
+        let includesUsage: Bool
+    }
+
+    private var inFlightAssembly: (key: AssemblyKey, task: Task<EInkAssemblyOutcome, Error>)?
     private var cachedAPIKey: String?
     private var apiKeyLoaded = false
     private var credentialGeneration = 0
@@ -649,7 +658,12 @@ public final class EInkSyncService: ObservableObject {
         // One status read per pass, after the writes: it is what gives the UI
         // the power state (and therefore the next cadence), the Wi-Fi line,
         // and the render the device is actually showing.
-        let statusRead = await readStatus(deviceID: deviceID, key: key, generation: generation)
+        let statusRead = await readStatus(
+            deviceID: deviceID,
+            key: key,
+            keyGeneration: credentialAtStart,
+            generation: generation
+        )
         if let status = statusRead.status {
             state.apply(status)
             state.lastStatusAt = clock()
@@ -670,10 +684,12 @@ public final class EInkSyncService: ObservableObject {
         )
 
         guard generation == configurationGeneration else { return EInkPushOutcome() }
-        // The index belongs to the carousel timer, not to this pass: it may
-        // have moved while this one was in flight.
-        state.slideIndex = self.state(for: deviceID).slideIndex
-        states[deviceID] = state
+        // Merge, never replace. This snapshot was taken before the network
+        // work; a loop scan or a carousel tick that finished meanwhile owns
+        // fields this pass never looked at, and writing the whole struct back
+        // would silently undo them — the pane would drop back to "the loop has
+        // not been scanned yet" seconds after a scan.
+        states[deviceID] = state.committing(over: self.state(for: deviceID))
         persist()
         return EInkPushOutcome(pushed: pushed, skipped: skipped, failure: failure, errorDetail: detail)
     }
@@ -687,9 +703,14 @@ public final class EInkSyncService: ObservableObject {
     private func readStatus(
         deviceID: String,
         key: String,
+        keyGeneration: Int,
         generation: Int
     ) async -> (status: DotDeviceStatus?, failure: EInkSyncFailure?, detail: String?) {
-        let credentialAtStart = credentialGeneration
+        // `keyGeneration` belongs to the key in hand, not to the moment this
+        // was entered: the credential can be replaced between the caller
+        // taking the key and this sending it, and a 401 earned by the old one
+        // must not stop the new one's loops.
+        let credentialAtStart = keyGeneration
         await paceRequest()
         do {
             let status = try await client.status(deviceID: deviceID, apiKey: key)
@@ -763,9 +784,20 @@ public final class EInkSyncService: ObservableObject {
             let age = clock().timeIntervalSince(cached.takenAt)
             if age >= 0, age < Self.seconds(snapshotReuseWindow) { return cached.outcome }
         }
-        let outcome = try await snapshotProvider(
-            EInkSnapshotRequest(quotaFieldIDs: requested, includesUsage: includesUsage)
-        )
+        // One assembly per wave, not one per panel. Three enabled devices all
+        // reach here before any of them has filled the cache, and a usage
+        // assembly is several ledger queries — so the second and third callers
+        // join the first instead of walking the index again.
+        let key = AssemblyKey(generation: generation, fieldIDs: requested, includesUsage: includesUsage)
+        if let inFlight = inFlightAssembly, inFlight.key == key {
+            return try await inFlight.task.value
+        }
+        let request = EInkSnapshotRequest(quotaFieldIDs: requested, includesUsage: includesUsage)
+        let provider = snapshotProvider
+        let task = Task<EInkAssemblyOutcome, Error> { try await provider(request) }
+        inFlightAssembly = (key, task)
+        defer { if inFlightAssembly?.key == key { inFlightAssembly = nil } }
+        let outcome = try await task.value
         if generation == configurationGeneration {
             cachedSnapshot = (outcome, clock(), generation, requested, includesUsage)
         }
@@ -961,7 +993,13 @@ public final class EInkSyncService: ObservableObject {
     @discardableResult
     public func refreshStatus(deviceID: String) async -> DotDeviceStatus? {
         guard let key = await currentAPIKey() else { return nil }
-        let read = await readStatus(deviceID: deviceID, key: key, generation: configurationGeneration)
+        let keyGeneration = credentialGeneration
+        let read = await readStatus(
+            deviceID: deviceID,
+            key: key,
+            keyGeneration: keyGeneration,
+            generation: configurationGeneration
+        )
         guard let status = read.status else {
             if let statusFailure = read.failure {
                 var state = self.state(for: deviceID)
