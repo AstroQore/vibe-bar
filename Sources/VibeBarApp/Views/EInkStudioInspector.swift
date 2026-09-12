@@ -264,6 +264,25 @@ struct EInkStudioInspector: View {
         }
     }
 
+    /// What the slide asks this slot's name to look like.
+    ///
+    /// Read-only on purpose: the style belongs to the slide, not to one
+    /// element, and an element that could disagree with the slot it came from
+    /// would draw a name the slide editor says it is not drawing. It is shown
+    /// because a slot's name can arrive here as two boxes, and "which half is
+    /// this" is exactly what the author needs to know.
+    @ViewBuilder
+    private func labelStyleRow(_ e: EInkCanvasElement) -> some View {
+        let style = slide.options.labelStyle(for: e.fieldID ?? "")
+        if style != .text || e.labelPart != .whole {
+            LabeledContent(L10n.Settings.Eink.labelStyle) {
+                Text(EInkNaming.labelStyle(style))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     @ViewBuilder
     private func bindingPicker(_ e: EInkCanvasElement) -> some View {
         Picker(L10n.MenuBar.Composer.Field.shows, selection: value(e, \.textBinding)) {
@@ -280,6 +299,7 @@ struct EInkStudioInspector: View {
         switch e.textBinding {
         case .percent, .label, .countdown:
             fieldPicker(e)
+            if e.textBinding == .label { labelStyleRow(e) }
         case .usageMetric:
             Picker(L10n.Settings.Eink.Studio.period, selection: value(e, \.usagePeriod)) {
                 ForEach(EInkUsagePeriod.allCases, id: \.self) { period in
@@ -624,6 +644,19 @@ struct EInkStudioInspector: View {
 /// One place that names an e-ink preset, window or element, so the settings
 /// pane and the Studio cannot disagree about what a thing is called.
 enum EInkNaming {
+    /// How a quota slot names its provider: in words, or with its mark.
+    ///
+    /// One list, so the slide editor's picker, the per-slot override and the
+    /// Studio inspector all call the same option by the same name.
+    static func labelStyle(_ style: EInkSlotLabelStyle) -> String {
+        switch style {
+        case .text: L10n.Settings.Eink.LabelStyle.text
+        case .logoAndGroup: L10n.Settings.Eink.LabelStyle.logoAndGroup
+        case .logoAndWindow: L10n.Settings.Eink.LabelStyle.logoAndWindow
+        case .logoOnly: L10n.Settings.Eink.LabelStyle.logoOnly
+        }
+    }
+
     static func preset(_ preset: EInkPreset) -> String {
         switch preset {
         case .quotaLedger: L10n.Settings.MiniWindow.Mode.ledger
