@@ -247,9 +247,14 @@ public final class EInkSyncService: ObservableObject {
     private var lastSendAt: ContinuousClock.Instant?
     private let writer: EInkSyncStateWriter
     private var persistTask: Task<Void, Never>?
-    /// Devices whose restarted loop must sleep before its first pass, because
-    /// a forced push is about to cover it.
-    private var deferredFirstPass: Set<String> = []
+    /// Device whose next restart may skip its first pass, because a forced
+    /// push is about to cover it.
+    private var deferFirstPassFor: String?
+    /// Device id → the configuration generation the forced push covers. A
+    /// later edit bumps the generation, so the entry stops matching and the
+    /// loop runs its own pass instead of sleeping out the interval on a
+    /// configuration nobody ever pushed.
+    private var deferredFirstPass: [String: Int] = [:]
 
     // MARK: - Init
 
@@ -347,20 +352,21 @@ public final class EInkSyncService: ObservableObject {
     /// the main-thread stall AGENTS.md § 7 calls a blocker, so the lookup is
     /// detached and the answer is cached until `credentialDidChange()`.
     private func currentAPIKey() async -> String? {
-        if apiKeyLoaded { return cachedAPIKey }
-        let generation = credentialGeneration
-        let provider = apiKeyProvider
-        let value = await Task.detached(priority: .utility) { provider() }.value
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolved = (trimmed?.isEmpty == false) ? trimmed : nil
-        // The key may have been replaced while this read was out. Caching the
-        // superseded one would keep syncing with a credential the user has
-        // already thrown away, and the 401 that follows would stop the loops
-        // with a perfectly good key sitting in the Keychain.
-        guard generation == credentialGeneration else { return resolved }
-        cachedAPIKey = resolved
-        apiKeyLoaded = true
-        return resolved
+        // Reads again on a mismatch rather than handing back the superseded
+        // key. Callers note `credentialGeneration` after this returns, so a
+        // stale key would be filed under the new credential — and its 401
+        // would stop the loops belonging to a key that is perfectly good.
+        while true {
+            if apiKeyLoaded { return cachedAPIKey }
+            let generation = credentialGeneration
+            let provider = apiKeyProvider
+            let value = await Task.detached(priority: .utility) { provider() }.value
+            guard generation == credentialGeneration else { continue }
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            cachedAPIKey = (trimmed?.isEmpty == false) ? trimmed : nil
+            apiKeyLoaded = true
+            return cachedAPIKey
+        }
     }
 
     private var activeDevices: [EInkDeviceConfig] {
@@ -376,10 +382,11 @@ public final class EInkSyncService: ObservableObject {
 
     private func restartLoops() {
         cancelLoops()
+        if let pending = deferFirstPassFor { deferredFirstPass[pending] = configurationGeneration }
         guard canSync else { return }
         for device in activeDevices {
             let id = device.deviceID
-            let deferFirst = deferredFirstPass.contains(id)
+            let deferFirst = deferredFirstPass[id] == configurationGeneration
             refreshLoops[id] = Task { [weak self] in
                 var skipFirst = deferFirst
                 while !Task.isCancelled {
@@ -459,9 +466,10 @@ public final class EInkSyncService: ObservableObject {
         applying settings: EInkSyncSettings,
         layouts: [String: EInkCanvasLayout]
     ) async -> EInkPushOutcome {
-        deferredFirstPass.insert(deviceID)
+        deferFirstPassFor = deviceID
         apply(settings: settings, layouts: layouts)
-        defer { deferredFirstPass.remove(deviceID) }
+        deferFirstPassFor = nil
+        defer { deferredFirstPass.removeValue(forKey: deviceID) }
         return await pushNow(deviceID: deviceID)
     }
 
@@ -508,7 +516,16 @@ public final class EInkSyncService: ObservableObject {
         // incrementing underneath it would be undone and the panel would show
         // the same slide twice.
         if let existing = activeRuns[deviceID] { _ = await existing.task.value }
-        guard let device = settings.device(id: deviceID), !device.slides.isEmpty else { return }
+        // Everything below was true when the timer fired; the wait is long
+        // enough for the user to have switched the device off, or moved it to
+        // a driver that does not want a forced redraw.
+        guard !Task.isCancelled,
+              let device = settings.device(id: deviceID),
+              device.enabled,
+              case let .carousel(driver, _) = device.playback,
+              driver == .appTimer,
+              !device.slides.isEmpty
+        else { return }
         var state = self.state(for: deviceID)
         state.slideIndex = (state.slideIndex + 1) % device.slides.count
         states[deviceID] = state
@@ -766,6 +783,7 @@ public final class EInkSyncService: ObservableObject {
     private func withRetry(generation: Int, _ request: () async throws -> Void) async throws {
         for delay in retryDelays {
             await paceRequest()
+            guard !Task.isCancelled else { return }
             // The gate is a suspension, and a settings edit can land in it.
             // Sending the payload rendered under the old configuration would
             // cost a visible e-ink refresh that the replacement run then has
@@ -777,11 +795,11 @@ public final class EInkSyncService: ObservableObject {
             } catch let error as DotDeviceError {
                 guard Self.isTransient(error) else { throw error }
                 try? await Task.sleep(for: delay)
-                guard generation == configurationGeneration else { return }
+                guard !Task.isCancelled, generation == configurationGeneration else { return }
             }
         }
         await paceRequest()
-        guard generation == configurationGeneration else { return }
+        guard !Task.isCancelled, generation == configurationGeneration else { return }
         try await request()
     }
 
@@ -807,8 +825,8 @@ public final class EInkSyncService: ObservableObject {
     /// lifting it has to restart what `invalidateCredential` cancelled.
     /// Clearing the flag alone left syncing silently off until some unrelated
     /// edit happened to move the roster.
-    private func clearCredentialRejection() {
-        guard credentialInvalid else { return }
+    private func clearCredentialRejection(from generation: Int) {
+        guard generation == credentialGeneration, credentialInvalid else { return }
         credentialInvalid = false
         restartLoops()
     }
@@ -902,7 +920,7 @@ public final class EInkSyncService: ObservableObject {
         await paceRequest()
         do {
             let devices = try await client.listDevices(apiKey: key)
-            clearCredentialRejection()
+            clearCredentialRejection(from: credentialAtStart)
             return devices
         } catch let error as DotDeviceError {
             if error.invalidatesCredential { invalidateCredential(from: credentialAtStart) }
@@ -924,7 +942,7 @@ public final class EInkSyncService: ObservableObject {
             state.canvasTaskCount = tasks.filter(\.isCanvasAPI).count
             states[deviceID] = state
             persist()
-            clearCredentialRejection()
+            clearCredentialRejection(from: credentialAtStart)
             return tasks
         } catch let error as DotDeviceError {
             if error.invalidatesCredential { invalidateCredential(from: credentialAtStart) }
@@ -960,6 +978,11 @@ public final class EInkSyncService: ObservableObject {
         states[deviceID] = state
         persist()
         return status
+    }
+
+    /// Cancels the pass in flight for this device, if any. The UI's Cancel.
+    public func cancelRun(deviceID: String) {
+        activeRuns[deviceID]?.task.cancel()
     }
 
     /// Forgets a device's recorded digests, so the next pass pushes every

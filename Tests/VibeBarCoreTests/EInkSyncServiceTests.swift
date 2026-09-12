@@ -809,6 +809,44 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertTrue(EInkPowerReading.isBattery(current: "电池", battery: "72%"))
     }
 
+    func testCancellingAPushStopsItBeforeTheRemainingSlides() async {
+        let client = FakeDotClient()
+        client.sendDelay = .milliseconds(120)
+        let sync = service(
+            client: client,
+            device: device(
+                slides: [slide("a"), slide("b"), slide("c")],
+                taskKeys: ["k1", "k2", "k3"],
+                playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300)
+            )
+        )
+        async let running: Void = { _ = await sync.refresh(deviceID: "panel-1") }()
+        try? await Task.sleep(for: .milliseconds(80))
+        sync.cancelRun(deviceID: "panel-1")
+        _ = await running
+        XCTAssertLessThan(client.pushes.count, 3, "cancelling must stop the pass, not just the button")
+    }
+
+    func testTheCarouselDoesNotRedrawADeviceTurnedOffWhileItWaited() async {
+        let client = FakeDotClient()
+        var config = device(
+            slides: [slide("a"), slide("b")],
+            taskKeys: ["k1"],
+            playback: .carousel(driver: .appTimer, secondsPerSlide: 30)
+        )
+        let sync = service(client: client, device: config)
+        _ = await sync.refresh(deviceID: "panel-1")
+        client.reset()
+
+        config.enabled = false
+        sync.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [config]),
+            layouts: [:]
+        )
+        await sync.advanceCarousel(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.count, 0, "a timer must not force a redraw onto a switched-off panel")
+    }
+
     // MARK: - Failures
 
     func testARejectedKeyStopsEveryLoopAndIsSurfaced() async {

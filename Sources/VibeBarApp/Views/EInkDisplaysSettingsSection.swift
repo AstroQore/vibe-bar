@@ -32,6 +32,7 @@ struct EInkDisplaysSettingsSection: View {
     @State private var fetchStatus: String?
     @State private var isScanningLoop = false
     @State private var pushStatus: String?
+    @State private var pushTask: Task<Void, Never>?
     @State private var renderImage: NSImage?
     @State private var snapshot: EInkDataSnapshot?
     @State private var previews: [Int: EInkPreviewPlan] = [:]
@@ -81,6 +82,11 @@ struct EInkDisplaysSettingsSection: View {
             renderImage = nil
             pushStatus = nil
             Task { await refreshDeviceStatus() }
+        }
+        .onDisappear {
+            if let deviceID = selectedDevice?.deviceID { service.cancelRun(deviceID: deviceID) }
+            pushTask?.cancel()
+            pushTask = nil
         }
     }
 
@@ -407,7 +413,18 @@ struct EInkDisplaysSettingsSection: View {
                 }
                 .buttonStyle(.vibeBar)
                 .disabled(!sync.apiKeyPresent || service.isBusy(device.deviceID))
-                if service.isBusy(device.deviceID) { ProgressView().controlSize(.small) }
+                if service.isBusy(device.deviceID) {
+                    ProgressView().controlSize(.small)
+                    // A slow service can hold a multi-slide push for minutes
+                    // (three attempts per item, each with a 30 s timeout), and
+                    // a disabled button with a spinner is not an answer to
+                    // that. The pane also cancels on the way out.
+                    Button(L10n.Common.cancel) {
+                        service.cancelRun(deviceID: device.deviceID)
+                        pushTask?.cancel()
+                    }
+                    .buttonStyle(.vibeBar)
+                }
                 Spacer(minLength: 4)
             }
             if let pushStatus {
@@ -870,6 +887,7 @@ struct EInkDisplaysSettingsSection: View {
     /// quick succession would otherwise race, and a line reading "pushed 2"
     /// under the wrong panel is a lie the user has no way to catch.
     private func pushNow(_ deviceID: String) {
+        pushTask?.cancel()
         pushStatus = nil
         // The roster reaches the engine through a 400 ms debounce, so a slide
         // or orientation edited a moment ago may not be there yet. The service
@@ -877,7 +895,7 @@ struct EInkDisplaysSettingsSection: View {
         // restarts the loops, and the restarted loop's own first pass would
         // race this one into two identical panel refreshes.
         let pending = settingsStore.settings
-        Task {
+        pushTask = Task {
             let outcome = await service.pushNow(
                 deviceID: deviceID,
                 applying: pending.einkSync,
