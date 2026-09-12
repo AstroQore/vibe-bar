@@ -47,6 +47,12 @@ struct EInkStudioStage: View {
         var layout: EInkCanvasLayout
         var generatedAtISO: String
         var orientation: Int
+        /// The slide's composition options, because a label-bound element
+        /// draws the *slide's* name for its bucket: renaming a slot in the
+        /// inspector changes no layout and no snapshot, and a cache keyed on
+        /// those two alone would keep drawing the old name until something
+        /// else moved.
+        var options: EInkSlideOptions
         var boxes: [EInkDrawBox]
         var report: EInkLayoutDiagnostics.Report
     }
@@ -90,6 +96,7 @@ struct EInkStudioStage: View {
         .onChange(of: shown) { _, value in rebuild(value) }
         .onChange(of: snapshot?.generatedAtISO ?? "") { _, _ in rebuild(shown) }
         .onChange(of: orientation) { _, _ in rebuild(shown) }
+        .onChange(of: slide.options) { _, _ in rebuild(shown) }
         .onChange(of: layout) { _, _ in
             // An Undo or a Settings edit wins over a gesture still in flight.
             if gestureBase != nil { cancelled = true; preview = nil; gestureBase = nil }
@@ -238,13 +245,15 @@ struct EInkStudioStage: View {
             layout: candidate,
             generatedAtISO: snapshot.generatedAtISO,
             orientation: orientation.rawValue,
+            options: slide.options,
             boxes: [],
             report: EInkLayoutDiagnostics.Report(issues: [], elementCount: 0, elementLimit: 0)
         )
         if let render,
            render.layout == key.layout,
            render.generatedAtISO == key.generatedAtISO,
-           render.orientation == key.orientation {
+           render.orientation == key.orientation,
+           render.options == key.options {
             return
         }
         let size = profile.frameSize(for: orientation)

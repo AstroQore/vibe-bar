@@ -247,6 +247,37 @@ final class EInkRoundTwoUITests: XCTestCase {
         )
     }
 
+    /// The panel checks measure what the panel will draw, which is the
+    /// slide's name for a bucket. Measuring the default is how a column that
+    /// clips on the device reports itself as clear.
+    func testTheDiagnosticsMeasureTheSlideName() {
+        var slide = EInkSlide(id: "s", kind: .custom(layoutID: "s"), quotaFieldIDs: ["claude.weekly"])
+        var element = EInkCanvasElement(kind: .text, fieldID: "claude.weekly")
+        element.textBinding = .label
+        element.autoWidth = false
+        element.clipsOverflow = true
+        element.width = 120
+        element.height = 12
+        var layout = EInkCanvasLayout(profile: .quote0, orientation: .degrees0)
+        layout.elements = [element]
+
+        func overflows(_ slide: EInkSlide) -> Bool {
+            EInkLayoutDiagnostics.report(
+                layout: layout,
+                slide: slide,
+                orientation: .degrees0,
+                profile: .quote0,
+                snapshot: snapshot
+            ).issues.contains { if case .textOverflow = $0 { return true } else { return false } }
+        }
+
+        XCTAssertFalse(overflows(slide), "the default name fits the column")
+        slide.options.customLabels = [
+            "claude.weekly": "Claude · Weekly · the long name nobody measured"
+        ]
+        XCTAssertTrue(overflows(slide), "the slide's own name is what the panel draws")
+    }
+
     // MARK: - Briefing long names
 
     private func briefingBoxes(_ rows: [EInkQuotaRow]) -> [EInkDrawBox] {

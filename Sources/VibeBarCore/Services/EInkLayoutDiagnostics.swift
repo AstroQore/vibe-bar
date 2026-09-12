@@ -108,14 +108,42 @@ public enum EInkLayoutDiagnostics {
             let lines: [(String, EInkFont)]
             if element.kind == .statTile {
                 lines = [
-                    (EInkCustomLayoutRenderer.statValue(for: element, snapshot: snapshot), element.font),
-                    (EInkCustomLayoutRenderer.caption(for: element, snapshot: snapshot), .pixel12(bold: true)),
-                    (EInkCustomLayoutRenderer.subValue(for: element, snapshot: snapshot), .pixel12(bold: false))
+                    // Through the slide's own names, like the renderer: a
+                    // custom label is usually longer than the default, so
+                    // measuring the default is how a column that will clip on
+                    // the panel reports itself as clear.
+                    (
+                        EInkCustomLayoutRenderer.statValue(
+                            for: element,
+                            snapshot: snapshot,
+                            options: slide.options
+                        ),
+                        element.font
+                    ),
+                    (
+                        EInkCustomLayoutRenderer.caption(
+                            for: element,
+                            snapshot: snapshot,
+                            options: slide.options
+                        ),
+                        .pixel12(bold: true)
+                    ),
+                    (
+                        EInkCustomLayoutRenderer.subValue(
+                            for: element,
+                            snapshot: snapshot,
+                            options: slide.options
+                        ),
+                        .pixel12(bold: false)
+                    )
                 ]
             } else if element.autoWidth {
                 lines = []
             } else {
-                lines = [(EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot), element.font)]
+                lines = [(
+                    EInkCustomLayoutRenderer.text(for: element, snapshot: snapshot, options: slide.options),
+                    element.font
+                )]
             }
             if lines.contains(where: { !$0.0.isEmpty && EInkTextMetrics.width($0.0, font: $0.1) > rect.width }) {
                 issues.append(.textOverflow(elementID: element.id))

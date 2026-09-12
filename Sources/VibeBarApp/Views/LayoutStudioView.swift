@@ -1014,6 +1014,12 @@ struct LayoutStudioView: View {
                       let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slideID })
                 else { return }
                 settings.einkSync.devices[index].slides[position].options.customLabels = labels
+                // The same sanitize the settings pane's own writes go through.
+                // Without it a 400-character name, or one carrying the Canvas
+                // API's `{{` marker, is stored and previewed as typed while
+                // `EInkSyncService.apply` trims its own copy on the way to the
+                // panel — a preview that disagrees with the device.
+                settings.einkSync.devices[index] = settings.einkSync.devices[index].sanitized
                 settingsStore.settings = settings
             }
         )
