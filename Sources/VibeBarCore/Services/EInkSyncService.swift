@@ -498,12 +498,17 @@ public final class EInkSyncService: ObservableObject {
         // of that would put two writers on the same panel.
         while let existing = activeRuns[deviceID] {
             _ = await existing.task.value
+            // Awaiting a task does not throw when *this* task is cancelled,
+            // so Cancel pressed while we were draining would otherwise fall
+            // through and start a forced run with no Cancel control behind it.
+            guard !Task.isCancelled else { return EInkPushOutcome() }
             if activeRuns[deviceID] === existing {
                 activeRuns.removeValue(forKey: deviceID)
                 busyDeviceIDs.remove(deviceID)
                 break
             }
         }
+        guard !Task.isCancelled else { return EInkPushOutcome() }
         return await startRun(deviceID: deviceID, force: true)
     }
 
@@ -656,6 +661,14 @@ public final class EInkSyncService: ObservableObject {
                 aborted = true
                 break
             } catch let error as DotDeviceError {
+                // `URLSession` reports a cancelled transfer as an ordinary
+                // failure, and the client folds it into `.network` — so a
+                // Cancel that lands during the final attempt arrives here
+                // rather than at the `CancellationError` branch above.
+                if Task.isCancelled {
+                    aborted = true
+                    break
+                }
                 if error.invalidatesCredential {
                     guard credentialGeneration == credentialAtStart else { break }
                     state.pushedDigests.removeAll()

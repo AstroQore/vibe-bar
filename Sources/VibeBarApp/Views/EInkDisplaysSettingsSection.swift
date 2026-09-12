@@ -981,8 +981,12 @@ struct EInkDisplaysSettingsSection: View {
                 guard let preset = EInkPreset(rawValue: value) else { return }
                 updateSlide(deviceID, slideID: slideID) { current in
                     current.kind = .preset(preset)
-                    let capacity = preset.capacity(for: device.orientation)
-                    current.quotaFieldIDs = Array(current.quotaFieldIDs.prefix(capacity))
+                    // Only the axis the new layout actually reads is trimmed.
+                    // A quota slide switched to Usage Trend still holds its
+                    // buckets, and truncating them to *that* layout's capacity
+                    // would quietly throw away four choices the user gets back
+                    // the moment they switch the layout again.
+                    current = current.fitted(to: device.orientation)
                 }
             }
         )

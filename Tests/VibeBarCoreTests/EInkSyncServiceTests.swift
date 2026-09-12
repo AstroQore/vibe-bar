@@ -1071,6 +1071,25 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertNil(EInkDataAssembler.selector(fieldID: "notatool.weekly"))
     }
 
+    func testSwitchingToAUsageLayoutKeepsTheQuotaChoices() {
+        var slide = EInkSlide(
+            id: "a",
+            kind: .preset(.quotaLedger),
+            quotaFieldIDs: ["f1", "f2", "f3", "f4", "f5"]
+        )
+        // Usage Trend has capacity 1, but quota fields are not its axis.
+        slide.kind = .preset(.usageTrend)
+        XCTAssertEqual(
+            slide.fitted(to: .degrees0).quotaFieldIDs.count,
+            5,
+            "a hidden selection is still the user's, and it comes back with the layout"
+        )
+        slide.kind = .preset(.usageSplit)
+        let fitted = slide.fitted(to: .degrees0)
+        XCTAssertEqual(fitted.quotaFieldIDs.count, 5)
+        XCTAssertEqual(fitted.usagePeriods.count, 3, "its own axis is still trimmed")
+    }
+
     func testRotatingToASmallerFrameTrimsTheSelectionToWhatFits() {
         var slide = EInkSlide(
             id: "a",
