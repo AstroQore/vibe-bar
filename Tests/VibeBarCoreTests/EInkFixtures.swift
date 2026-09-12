@@ -82,6 +82,42 @@ enum EInkFixtures {
         return points
     }
 
+    /// A 7 × 24 grid with a clear busiest cell, so the heatmap's header has
+    /// something definite to say.
+    static func heatmap() -> EInkHeatmap {
+        var cells = Array(repeating: Array(repeating: 0, count: 24), count: 7)
+        for weekday in 0..<7 {
+            for hour in 9..<19 {
+                cells[weekday][hour] = 1_000 * (weekday + 1) + 100 * hour
+            }
+        }
+        cells[2][21] = 9_000_000
+        return EInkHeatmap(cells: cells, totalTokens: cells.flatMap { $0 }.reduce(0, +))
+    }
+
+    static func modelRows(count: Int = 6) -> [EInkModelRow] {
+        let names = [
+            "claude-opus-5", "gpt-5.3-codex", "gemini-3-pro",
+            "claude-sonnet-4-6", "grok-4", "gpt-6-astra"
+        ]
+        return (0..<count).map { index in
+            EInkModelRow(
+                model: names[index % names.count],
+                costUSD: Double(940 - index * 137) / 11,
+                tokens: Int64(1_400_000_000) / Int64(index + 1),
+                requests: 4_311 / (index + 1)
+            )
+        }
+    }
+
+    static func forecast(_ verdict: QuotaPaceForecast.Verdict, projected: Double, runsOutIn: TimeInterval?) -> EInkQuotaForecast {
+        EInkQuotaForecast(
+            verdict: verdict,
+            projectedUsedPercent: projected,
+            runOutAt: runsOutIn.map { referenceDate.addingTimeInterval($0) }
+        )
+    }
+
     static func snapshot(quotaCount: Int = 7, harnessCount: Int = 6) -> EInkDataSnapshot {
         let usage = EInkUsageSet(
             today: usageTotals(rowCount: harnessCount, scale: 0.002),
@@ -89,13 +125,28 @@ enum EInkFixtures {
             month: usageTotals(rowCount: harnessCount, scale: 0.2),
             allTime: usageTotals(rowCount: harnessCount, scale: 1)
         )
+        let verdicts: [QuotaPaceForecast.Verdict] = [.surplus, .enough, .watch, .atRisk, .learning, .enough, .surplus]
+        let quota = quotaRows(count: quotaCount).enumerated().map { index, row -> EInkQuotaRow in
+            var copy = row
+            copy.forecast = forecast(
+                verdicts[index % verdicts.count],
+                projected: Double(40 + index * 9),
+                runsOutIn: index % 2 == 0 ? Double(index + 1) * 3_600 : nil
+            )
+            return copy
+        }
         return EInkDataSnapshot(
             generatedAt: referenceDate,
             generatedAtLabel: EInkFormat.timestampLabel(referenceDate, calendar: calendar()),
             generatedAtISO: "2026-01-01T00:00:00Z",
-            quota: quotaRows(count: quotaCount),
+            quota: quota,
             usage: usage,
-            trend: trendPoints()
+            trend: trendPoints(),
+            clockLabel: EInkFormat.clockLabel(referenceDate, calendar: calendar()),
+            dateLabel: EInkFormat.dateLabel(referenceDate, calendar: calendar()),
+            heatmap: heatmap(),
+            topModels: modelRows(),
+            providerStatusLine: "All providers operational"
         )
     }
 

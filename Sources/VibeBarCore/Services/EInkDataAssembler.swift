@@ -9,41 +9,16 @@ public protocol EInkUsageQuerying: Sendable {
     func summary(_ filter: UsageQueryFilter) async throws -> UsageSummaryMetrics
     func harnessStats(_ filter: UsageQueryFilter) async throws -> [UsageHarnessStat]
     func trend(_ filter: UsageQueryFilter, bucket: UsageTrendBucket) async throws -> UsageTrendSeries
+    /// Today's per-model rows, for the Top Models layout.
+    func modelStats(_ filter: UsageQueryFilter) async throws -> [UsageModelStat]
 }
 
-/// Company-axis display names for the quota rows.
-///
-/// Deliberately short and fixed: the panel is 296 px wide and these strings
-/// are measured against the pixel font's metrics by the presets. The quota
-/// axis names companies, never harnesses — see the naming contract.
-/// The single table of provider labels the panel is allowed to print.
-///
-/// These are deliberately **not** `ToolType.hierarchy`'s display names, and
-/// the difference is a product decision rather than an oversight. A Quote/0
-/// panel is 296 px wide; a quota ledger spends about 126 px of that on the
-/// provider column, which is roughly eleven pixel-font characters. The
-/// hierarchy's names are written for a Mac window with room to disambiguate a
-/// vendor from its surfaces — "ChatGPT Agentic" does not fit in that column
-/// at any supported font size, and it is not the name the owner of the device
-/// uses for it either. The short form is what the panel shows and what the
-/// person reading it across a desk expects to see.
-///
-/// Keep this the only place the mapping lives. If a label ever has to change,
-/// it changes here and every preset follows.
-public enum EInkProviderLabel {
-    /// The panel label for a provider. Falls back to a capitalized raw value
-    /// so a tool added upstream still draws something readable.
-    public static func short(for tool: ToolType) -> String {
-        switch tool.rawValue {
-        case "codex": "Codex"
-        case "claude": "Claude"
-        case "grok": "Grok"
-        case "antigravity": "AntiGravity"
-        case "gemini": "Gemini"
-        case "cursor": "Cursor"
-        default: tool.rawValue.capitalized
-        }
-    }
+public extension EInkUsageQuerying {
+    /// Defaulted so a source that predates the Top Models layout — or a test
+    /// that only cares about totals — does not have to answer it. An empty
+    /// list draws no rows, which is the honest answer for a source that has
+    /// none.
+    func modelStats(_ filter: UsageQueryFilter) async throws -> [UsageModelStat] { [] }
 }
 
 /// Builds an `EInkDataSnapshot` from injected sources.
@@ -107,8 +82,19 @@ public struct EInkDataAssembler: Sendable {
 
     public var quotaLookup: @Sendable (ToolType) async -> AccountQuota?
     public var usage: any EInkUsageQuerying
-    /// Per-tool cost snapshots; only their all-time columns are read.
+    /// Per-tool cost snapshots; their all-time columns and their activity
+    /// heatmaps are read.
     public var allTimeCostSnapshots: @Sendable () async -> [CostSnapshot]
+    /// The pace verdict for one bucket, injected like the quota lookup so the
+    /// whole pipeline stays testable without `QuotaService`.
+    public var forecastLookup: @Sendable (ToolType, QuotaBucket) async -> QuotaPaceForecast?
+    /// Provider health, for the header's provider-status option.
+    public var serviceStatus: @Sendable () async -> [ServiceStatusSnapshot]
+    /// Resolves a slot's default name; discovered buckets need the registry.
+    public var registry: QuotaFieldRegistry
+    /// Per-slide label overrides, keyed by field id. The engine merges every
+    /// slide's `customLabels` before assembling.
+    public var customLabels: [String: String]
     public var quotaPriority: [QuotaSelector]
     public var calendar: Calendar
 
@@ -116,12 +102,20 @@ public struct EInkDataAssembler: Sendable {
         quotaLookup: @escaping @Sendable (ToolType) async -> AccountQuota?,
         usage: any EInkUsageQuerying,
         allTimeCostSnapshots: @escaping @Sendable () async -> [CostSnapshot],
+        forecastLookup: @escaping @Sendable (ToolType, QuotaBucket) async -> QuotaPaceForecast? = { _, _ in nil },
+        serviceStatus: @escaping @Sendable () async -> [ServiceStatusSnapshot] = { [] },
+        registry: QuotaFieldRegistry = .empty,
+        customLabels: [String: String] = [:],
         quotaPriority: [QuotaSelector] = EInkDataAssembler.defaultQuotaPriority,
         calendar: Calendar = .current
     ) {
         self.quotaLookup = quotaLookup
         self.usage = usage
         self.allTimeCostSnapshots = allTimeCostSnapshots
+        self.forecastLookup = forecastLookup
+        self.serviceStatus = serviceStatus
+        self.registry = registry
+        self.customLabels = customLabels
         self.quotaPriority = quotaPriority
         self.calendar = calendar
     }
@@ -136,7 +130,12 @@ public struct EInkDataAssembler: Sendable {
             generatedAtISO: Self.iso8601.string(from: now),
             quota: quota,
             usage: usageSet,
-            trend: trend
+            trend: trend,
+            clockLabel: EInkFormat.clockLabel(now, calendar: calendar),
+            dateLabel: EInkFormat.dateLabel(now, calendar: calendar),
+            heatmap: EInkHeatmap.summing(await allTimeCostSnapshots().map(\.heatmap)),
+            topModels: (try? await modelRows(now: now)) ?? [],
+            providerStatusLine: EInkProviderStatusLine.compose(await serviceStatus())
         )
     }
 
@@ -155,14 +154,20 @@ public struct EInkDataAssembler: Sendable {
         let quota = await quotaRows(now: now)
         var usage = EInkUsageSet()
         var trend: [EInkTrendPoint] = []
+        var models: [EInkModelRow] = []
+        var heatmap = EInkHeatmap.empty
         var usageUnavailable = false
         if includeUsage {
             do {
                 usage = try await usageSet(now: now)
                 trend = try await trendPoints(now: now)
+                models = try await modelRows(now: now)
+                heatmap = EInkHeatmap.summing(await allTimeCostSnapshots().map(\.heatmap))
             } catch {
                 usage = EInkUsageSet()
                 trend = []
+                models = []
+                heatmap = .empty
                 usageUnavailable = true
                 SafeLog.warn("eink usage assembly failed: \(SafeLog.sanitize(String(describing: error)))")
             }
@@ -174,7 +179,12 @@ public struct EInkDataAssembler: Sendable {
                 generatedAtISO: Self.iso8601.string(from: now),
                 quota: quota,
                 usage: usage,
-                trend: trend
+                trend: trend,
+                clockLabel: EInkFormat.clockLabel(now, calendar: calendar),
+                dateLabel: EInkFormat.dateLabel(now, calendar: calendar),
+                heatmap: heatmap,
+                topModels: models,
+                providerStatusLine: EInkProviderStatusLine.compose(await serviceStatus())
             ),
             usageUnavailable: usageUnavailable
         )
@@ -195,15 +205,23 @@ public struct EInkDataAssembler: Sendable {
             }
             guard let account, let bucket = account.bucket(id: selector.bucketID) else { continue }
             let remaining = Int((100 - bucket.usedPercent).rounded())
+            let label = customLabels[selector.fieldID]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let parts = (label?.isEmpty == false)
+                ? label!.components(separatedBy: EInkSlotLabel.separator)
+                : EInkSlotLabel.parts(for: selector.fieldID, registry: registry, bucket: bucket)
             rows.append(
                 EInkQuotaRow(
                     fieldID: selector.fieldID,
-                    providerDisplayName: EInkProviderLabel.short(for: selector.tool),
-                    windowTitle: Self.windowTitle(for: bucket),
+                    // Tier 1 on its own line, tiers 2 and 3 on the next: the
+                    // split every two-line slot needs, and exactly what
+                    // "provider · window" already meant to the one-line ones.
+                    providerDisplayName: parts.first ?? selector.tool.quotaSubProviderName(bucketID: selector.bucketID),
+                    windowTitle: parts.dropFirst().joined(separator: EInkSlotLabel.separator),
                     remainingPercent: remaining,
                     resetAt: bucket.resetAt,
                     countdown: EInkFormat.countdown(bucket.resetAt, now: now),
-                    plan: account.plan ?? ""
+                    plan: account.plan ?? "",
+                    forecast: await forecastLookup(selector.tool, bucket).map(EInkQuotaForecast.init)
                 )
             )
         }
@@ -263,6 +281,24 @@ public struct EInkDataAssembler: Sendable {
             requests: summary.requests,
             rows: harnessRows
         )
+    }
+
+    // MARK: - Models
+
+    func modelRows(now: Date) async throws -> [EInkModelRow] {
+        let midnight = calendar.startOfDay(for: now)
+        let filter = UsageQueryFilter(range: DateInterval(start: midnight, end: max(midnight, now)))
+        return try await usage.modelStats(filter)
+            .sorted { $0.costMicros > $1.costMicros }
+            .prefix(8)
+            .map {
+                EInkModelRow(
+                    model: $0.model,
+                    costUSD: Self.usd($0.costMicros),
+                    tokens: $0.totalTokens,
+                    requests: $0.requests
+                )
+            }
     }
 
     // MARK: - Trend
@@ -325,9 +361,15 @@ public struct EInkSnapshotRequest: Sendable, Equatable {
     public var quotaFieldIDs: [String]
     /// False when no slide on this pass draws usage.
     public var includesUsage: Bool
+    /// Every slide's per-slot label overrides, merged. First writer wins, so
+    /// two slides naming the same bucket differently do not fight over the
+    /// snapshot — the panel that asked for a different name gets it through
+    /// its own slide, not through the shared assembly.
+    public var customLabels: [String: String]
 
-    public init(quotaFieldIDs: [String], includesUsage: Bool) {
+    public init(quotaFieldIDs: [String], includesUsage: Bool, customLabels: [String: String] = [:]) {
         self.quotaFieldIDs = quotaFieldIDs
         self.includesUsage = includesUsage
+        self.customLabels = customLabels
     }
 }

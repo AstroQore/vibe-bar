@@ -70,7 +70,10 @@ public struct DotCanvasPayload: Encodable, Equatable, Sendable {
     public var data: DotCanvasValue
     public var windowData: DotCanvasValue
     public var layoutFull: DotCanvasValue
+    /// 0 = white screen border, 1 = black. Black is the alert state.
     public var border: Int
+    /// Where a phone tapping the (NFC) panel is sent. Omitted when absent.
+    public var link: String?
 
     public static let defaultLayoutFull = DotCanvasValue.object([
         "tw": .string("p-0 bg-white"),
@@ -84,7 +87,8 @@ public struct DotCanvasPayload: Encodable, Equatable, Sendable {
         data: DotCanvasValue,
         windowData: DotCanvasValue,
         layoutFull: DotCanvasValue = DotCanvasPayload.defaultLayoutFull,
-        border: Int = 0
+        border: Int = 0,
+        link: String? = nil
     ) {
         self.refreshNow = refreshNow
         self.taskKey = taskKey
@@ -93,10 +97,11 @@ public struct DotCanvasPayload: Encodable, Equatable, Sendable {
         self.windowData = windowData
         self.layoutFull = layoutFull
         self.border = border
+        self.link = link
     }
 
     private enum CodingKeys: String, CodingKey {
-        case refreshNow, taskKey, taskAlias, data, windowData, layoutFull, border
+        case refreshNow, taskKey, taskAlias, data, windowData, layoutFull, border, link
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -108,6 +113,7 @@ public struct DotCanvasPayload: Encodable, Equatable, Sendable {
         try c.encode(windowData, forKey: .windowData)
         try c.encode(layoutFull, forKey: .layoutFull)
         try c.encode(border, forKey: .border)
+        try c.encodeIfPresent(link, forKey: .link)
     }
 
     /// Deterministic bytes: the sync engine compares digests to avoid a
@@ -180,7 +186,9 @@ public enum DotCanvasEncoder {
         refreshNow: Bool = false,
         taskKey: String? = nil,
         taskAlias: String? = nil,
-        generatedAtISO: String = ""
+        generatedAtISO: String = "",
+        border: Int = 0,
+        link: String? = nil
     ) throws -> DotCanvasPayload {
         let frameSize = profile.frameSize(for: orientation)
         let frame = EInkRect(x: 0, y: 0, width: frameSize.width, height: frameSize.height)
@@ -192,7 +200,9 @@ public enum DotCanvasEncoder {
             refreshNow: refreshNow,
             taskKey: taskKey,
             taskAlias: taskAlias,
-            generatedAtISO: generatedAtISO
+            generatedAtISO: generatedAtISO,
+            border: border,
+            link: link
         )
     }
 
@@ -203,7 +213,9 @@ public enum DotCanvasEncoder {
         refreshNow: Bool = false,
         taskKey: String? = nil,
         taskAlias: String? = nil,
-        generatedAtISO: String = ""
+        generatedAtISO: String = "",
+        border: Int = 0,
+        link: String? = nil
     ) throws -> DotCanvasPayload {
         let elements = try boxes.map(element(for:))
         let root = rootElement(children: elements, orientation: orientation, profile: profile)
@@ -212,7 +224,9 @@ public enum DotCanvasEncoder {
             taskKey: taskKey,
             taskAlias: taskAlias,
             data: .object(["generatedAt": .string(generatedAtISO)]),
-            windowData: .object(["default": .array([root])])
+            windowData: .object(["default": .array([root])]),
+            border: border == 1 ? 1 : 0,
+            link: link
         )
         try validate(payload)
         return payload

@@ -47,9 +47,20 @@ extension EInkPresets {
         )
     }
 
-    static func tilesLandscape(_ periods: [EInkUsagePeriod], _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
+    static func tilesLandscape(
+        _ periods: [EInkUsagePeriod],
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: "USAGE · \(snapshot.generatedAtLabel)"),
+            snapshot: snapshot,
+            gap: 4
+        )
         let tiles = periods.map { tile($0.caption, snapshot.usage[$0], size: 18, width: .flex(1)) }
-        var children: [EInkNode] = [header("VIBE BAR", "USAGE · \(snapshot.generatedAtLabel)")]
+        var children: [EInkNode] = []
         let first = Array(tiles.prefix(2))
         let second = Array(tiles.dropFirst(2))
         children.append(row(decorated(first), height: .flex(1), gap: 8))
@@ -57,7 +68,7 @@ extension EInkPresets {
             children.append(rule())
             children.append(row(decorated(second), height: .flex(1), gap: 8))
         }
-        return screen(children, frame: frame, gap: 4)
+        return screen(chrome.compose(children), frame: frame, gap: 4)
     }
 
     /// Every tile after the first in a row gets the demo's left rule.
@@ -65,24 +76,46 @@ extension EInkPresets {
         tiles.enumerated().map { index, tile in index == 0 ? tile : leftRuled(tile) }
     }
 
-    static func tilesPortrait(_ periods: [EInkUsagePeriod], _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
-        var children: [EInkNode] = [header("VIBE BAR", snapshot.generatedAtLabel)]
+    static func tilesPortrait(
+        _ periods: [EInkUsagePeriod],
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: snapshot.generatedAtLabel),
+            snapshot: snapshot,
+            gap: 5
+        )
+        var children: [EInkNode] = []
         for (index, period) in periods.enumerated() {
             if index > 0 { children.append(rule()) }
             children.append(tile(period.caption, snapshot.usage[period], size: 18, width: .flex(1)))
         }
-        return screen(children, frame: frame, gap: 5)
+        return screen(chrome.compose(children), frame: frame, gap: 5)
     }
 
     // MARK: - Split
 
-    static func splitLandscape(_ periods: [EInkUsagePeriod], _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
+    static func splitLandscape(
+        _ periods: [EInkUsagePeriod],
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: "USAGE · \(snapshot.generatedAtLabel)"),
+            snapshot: snapshot,
+            gap: 4
+        )
         var blocks: [EInkNode] = []
         for (index, period) in periods.prefix(2).enumerated() {
             let block = usageBlock(period.caption, snapshot.usage[period], size: 26)
             blocks.append(index == 0 ? block : leftRuled(block, gap: 10))
         }
-        var children: [EInkNode] = [header("VIBE BAR", "USAGE · \(snapshot.generatedAtLabel)")]
+        var children: [EInkNode] = []
         children.append(row(blocks, height: .flex(1), gap: 10))
         if let trailing = periods.dropFirst(2).first {
             let totals = snapshot.usage[trailing]
@@ -104,16 +137,27 @@ extension EInkPresets {
                 )
             )
         }
-        return screen(children, frame: frame, gap: 4)
+        return screen(chrome.compose(children), frame: frame, gap: 4)
     }
 
-    static func splitPortrait(_ periods: [EInkUsagePeriod], _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
-        var children: [EInkNode] = [header("VIBE BAR", snapshot.generatedAtLabel)]
+    static func splitPortrait(
+        _ periods: [EInkUsagePeriod],
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: snapshot.generatedAtLabel),
+            snapshot: snapshot,
+            gap: 4
+        )
+        var children: [EInkNode] = []
         for (index, period) in periods.enumerated() {
             if index > 0 { children.append(rule()) }
             children.append(usageBlock(period.caption, snapshot.usage[period], size: 20, gap: 3))
         }
-        return screen(children, frame: frame, gap: 4)
+        return screen(chrome.compose(children), frame: frame, gap: 4)
     }
 
     // MARK: - Table
@@ -191,7 +235,12 @@ extension EInkPresets {
         return output
     }
 
-    static func tableLandscape(_ limit: Int, _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
+    static func tableLandscape(
+        _ limit: Int,
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
         let totals = snapshot.usage.today
         let week = snapshot.usage.week
         let columns = [
@@ -202,10 +251,21 @@ extension EInkPresets {
         ]
         let count = min(limit, totals.rows.count)
         let gap = 3
-        let childCount = 3 + count + 1
-        let available = frame.height - 2 * margin - 14 - 12 - 15 - 14 - gap * max(0, childCount - 1)
-        let rowHeight = fittedRowHeight(available: available, count: max(1, count), gap: gap, preferred: 14)
-        var children: [EInkNode] = [header("VIBE BAR", "USAGE · \(snapshot.generatedAtLabel)")]
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: "USAGE · \(snapshot.generatedAtLabel)"),
+            snapshot: snapshot,
+            gap: gap
+        )
+        let childCount = 2 + count + 1
+        let available = frame.height - 2 * margin - chrome.reserved - 12 - 15 - 14 - gap * max(0, childCount - 1)
+        let rowHeight = fittedRowHeight(
+            available: available,
+            count: max(1, count),
+            gap: gap,
+            preferred: chrome.preferredRowHeight(14)
+        )
+        var children: [EInkNode] = []
         children += tableRows(
             caption: nil,
             totals: totals,
@@ -228,7 +288,7 @@ extension EInkPresets {
                 align: .center
             )
         )
-        return screen(children, frame: frame, gap: gap)
+        return screen(chrome.compose(children), frame: frame, gap: gap)
     }
 
     /// A header row whose cells size to their own text instead of to the
@@ -252,7 +312,12 @@ extension EInkPresets {
         return row(children, height: .points(12), gap: gap, align: .center)
     }
 
-    static func tablePortrait(_ limit: Int, _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
+    static func tablePortrait(
+        _ limit: Int,
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
         // 68 + 34 + 34 plus two 2 px gaps is exactly the 140 px content
         // width, and every part of that split is a measured number rather
         // than a guess (Fusion Pixel 12 px, via `EInkTextMetrics`):
@@ -280,11 +345,22 @@ extension EInkPresets {
         let blocks: [(String, EInkUsageTotals)] = [("TODAY", snapshot.usage.today), ("7 DAYS", snapshot.usage.week)]
         let counts = blocks.map { min(limit, $0.1.rows.count) }
         let gap = 2
-        let childCount = 1 + counts.reduce(0) { $0 + $1 + 3 }
-        let fixed = 14 + blocks.count * (12 + 12 + 15)
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: snapshot.generatedAtLabel),
+            snapshot: snapshot,
+            gap: gap
+        )
+        let childCount = counts.reduce(0) { $0 + $1 + 3 }
+        let fixed = chrome.reserved + blocks.count * (12 + 12 + 15)
         let available = frame.height - 2 * margin - fixed - gap * max(0, childCount - 1)
-        let rowHeight = fittedRowHeight(available: available, count: max(1, counts.reduce(0, +)), gap: gap, preferred: 14)
-        var children: [EInkNode] = [header("VIBE BAR", snapshot.generatedAtLabel)]
+        let rowHeight = fittedRowHeight(
+            available: available,
+            count: max(1, counts.reduce(0, +)),
+            gap: gap,
+            preferred: chrome.preferredRowHeight(14)
+        )
+        var children: [EInkNode] = []
         for (index, block) in blocks.enumerated() {
             children += tableRows(
                 caption: block.0,
@@ -298,7 +374,7 @@ extension EInkPresets {
                 headerFitsColumns: false
             )
         }
-        return screen(children, frame: frame, gap: gap)
+        return screen(chrome.compose(children), frame: frame, gap: gap)
     }
 
     // MARK: - Dual bars
@@ -362,12 +438,31 @@ extension EInkPresets {
         }
     }
 
-    static func dualLandscape(_ limit: Int, _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
+    static func dualLandscape(
+        _ limit: Int,
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
         let totals = snapshot.usage.today
         let count = max(1, min(limit, totals.rows.count))
         let gap = 3
-        let available = frame.height - 2 * margin - 14 - 15 - gap * (count + 1)
-        let rowHeight = fittedRowHeight(available: available, count: count, gap: gap, preferred: 26)
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(
+                right: "COST / TOKENS · TODAY · \(snapshot.generatedAtLabel)",
+                footer: usageFooter(snapshot)
+            ),
+            snapshot: snapshot,
+            gap: gap
+        )
+        let available = frame.height - 2 * margin - chrome.reserved - gap * (count - 1)
+        let rowHeight = fittedRowHeight(
+            available: available,
+            count: count,
+            gap: gap,
+            preferred: chrome.preferredRowHeight(26)
+        )
         let rows = dualRows(
             totals,
             limit: count,
@@ -377,14 +472,15 @@ extension EInkPresets {
             stackedLabel: false,
             rowHeight: rowHeight
         )
-        return screen(
-            [header("VIBE BAR", "COST / TOKENS · TODAY · \(snapshot.generatedAtLabel)")] + rows + [usageFooter(snapshot)],
-            frame: frame,
-            gap: gap
-        )
+        return screen(chrome.compose(rows), frame: frame, gap: gap)
     }
 
-    static func dualPortrait(_ limit: Int, _ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
+    static func dualPortrait(
+        _ limit: Int,
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
         let totals = snapshot.usage.today
         let count = max(1, min(limit, totals.rows.count))
         let rows = dualRows(
@@ -412,9 +508,14 @@ extension EInkPresets {
             ),
             paddingTop: 3
         )
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: snapshot.generatedAtLabel, footer: footer),
+            snapshot: snapshot,
+            gap: 4
+        )
         return screen(
-            [header("VIBE BAR", snapshot.generatedAtLabel), text("COST / TOKENS · TODAY", pixel, height: .points(12))]
-                + rows + [verticalSpacer(), footer],
+            chrome.compose([text("COST / TOKENS · TODAY", pixel, height: .points(12))] + rows + [verticalSpacer()]),
             frame: frame,
             gap: 4
         )
@@ -458,7 +559,11 @@ extension EInkPresets {
         )
     }
 
-    static func trendLandscape(_ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
+    static func trendLandscape(
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
         let totals = snapshot.usage.today
         let points = snapshot.trend
         let left = column(
@@ -498,22 +603,34 @@ extension EInkPresets {
                 gap: 4
             )
         )
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: "USAGE · \(snapshot.generatedAtLabel)"),
+            snapshot: snapshot,
+            gap: 4
+        )
         return screen(
-            [
-                header("VIBE BAR", "USAGE · \(snapshot.generatedAtLabel)"),
-                row([left, right], height: .flex(1), gap: 8)
-            ],
+            chrome.compose([row([left, right], height: .flex(1), gap: 8)]),
             frame: frame,
             gap: 4
         )
     }
 
-    static func trendPortrait(_ snapshot: EInkDataSnapshot, frame: EInkRect) -> EInkNode {
+    static func trendPortrait(
+        _ snapshot: EInkDataSnapshot,
+        frame: EInkRect,
+        options: EInkSlideOptions = .default
+    ) -> EInkNode {
         let totals = snapshot.usage.today
         let points = snapshot.trend
+        let chrome = chrome(
+            options,
+            defaults: ChromeDefaults(right: snapshot.generatedAtLabel),
+            snapshot: snapshot,
+            gap: 5
+        )
         return screen(
-            [
-                header("VIBE BAR", snapshot.generatedAtLabel),
+            chrome.compose([
                 text("TODAY", pixelBold, height: .points(12)),
                 bigStat(EInkFormat.money(totals.costUSD), "cost", size: 22),
                 bigStat(EInkFormat.tokens(totals.tokens), "tokens", size: 22),
@@ -536,7 +653,7 @@ extension EInkPresets {
                     gap: 6
                 ),
                 trendDates(points, barWidth: 14, gap: 6)
-            ],
+            ]),
             frame: frame,
             gap: 5
         )

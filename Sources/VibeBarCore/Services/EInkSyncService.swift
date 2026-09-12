@@ -199,6 +199,9 @@ public final class EInkSyncService: ObservableObject {
     /// default priority order, and the usage half only when a slide draws it.
     private let snapshotProvider: @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome
     private let clock: @Sendable () -> Date
+    /// Where a tapped panel goes when the device is set to "remote dashboard".
+    /// Injected so a test can have one without a workspace on disk.
+    private let remoteDashboardURL: @Sendable () -> URL?
     /// Spacing between two canvas writes in the same pass. A stored property
     /// only so tests can collapse it; not part of the public API.
     private var requestSpacing: Duration
@@ -282,6 +285,7 @@ public final class EInkSyncService: ObservableObject {
         apiKeyProvider: @escaping @Sendable () -> EInkCredentialProbe = { EInkCredentialStore.probe() },
         snapshotProvider: @escaping @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome,
         clock: @escaping @Sendable () -> Date = Date.init,
+        remoteDashboardURL: @escaping @Sendable () -> URL? = { EInkRemoteDashboard.current() },
         requestSpacing: Duration = .milliseconds(150),
         retryDelays: [Duration] = [.seconds(1), .seconds(2)],
         snapshotReuseWindow: Duration = .seconds(5)
@@ -291,6 +295,7 @@ public final class EInkSyncService: ObservableObject {
         self.apiKeyProvider = apiKeyProvider
         self.snapshotProvider = snapshotProvider
         self.clock = clock
+        self.remoteDashboardURL = remoteDashboardURL
         self.requestSpacing = requestSpacing
         self.retryDelays = retryDelays
         self.snapshotReuseWindow = snapshotReuseWindow
@@ -307,9 +312,14 @@ public final class EInkSyncService: ObservableObject {
     /// the panel. Loops are restarted rather than reconciled: there are at
     /// most a handful of devices, and a diff would be more code than it saves.
     public func apply(settings: EInkSyncSettings, layouts: [String: EInkCanvasLayout]) {
-        let changed = settings != self.settings || layouts != self.layouts
+        // Round 1 stored one layout per slide. Migrating on the way in means
+        // the engine never has to guess which orientation a bare key was
+        // authored for, and a rotation falls back to the preset's own
+        // arrangement instead of drawing a landscape design on its side.
+        let migrated = EInkCanvasLayoutMigration.migrated(layouts, devices: settings.devices)
+        let changed = settings != self.settings || migrated != self.layouts
         self.settings = settings.sanitized
-        self.layouts = layouts
+        self.layouts = migrated
         guard changed else { return }
         configurationGeneration += 1
         // A settings edit must *not* clear a rejected key. `apiKeyPresent`
@@ -662,6 +672,24 @@ public final class EInkSyncService: ObservableObject {
         }
         guard generation == configurationGeneration else { return EInkPushOutcome() }
 
+        // Alerts are edges: the panel flips the moment a bucket crosses, and
+        // the state remembers which bucket so a relaunch does not push the
+        // same news again. `border: 1` rides on every payload while it stands,
+        // which is what turns the screen's frame black.
+        let snapshotForAlert = assembly.snapshot
+        let alertingFieldID = EInkAlertEvaluator.offendingFieldID(device: device, snapshot: snapshotForAlert)
+        let alertIsNew = alertingFieldID != nil && alertingFieldID != state.alertingFieldID
+        state.alertingFieldID = alertingFieldID
+        let border = alertingFieldID == nil ? 0 : 1
+        let link = device.tapLink.url(remoteDashboard: remoteDashboardURL())?.absoluteString
+        // A reset the last pass was waiting for has happened, so the figures
+        // behind the panel just jumped: redraw now rather than at the end of
+        // the cadence.
+        let boundaryPassed = EInkAlertEvaluator.resetBoundaryPassed(recorded: state.nextResetAt, now: clock())
+        state.nextResetAt = EInkAlertEvaluator.nextResetAt(snapshotForAlert, after: clock())
+
+        await writeQuietHours(device: device, key: key, state: &state, generation: generation)
+
         var pushed = 0
         var skipped = 0
         var failure = plan.failure
@@ -685,6 +713,14 @@ public final class EInkSyncService: ObservableObject {
             }
 
             let payload: DotCanvasPayload
+            // An alert takes over the single slide and the first loop slot,
+            // and nothing else: the rest of a carousel keeps saying what it
+            // says, so the reader still has the context the alert lacks.
+            let isFirstSlide = item.slideID == plan.items.first(where: { !$0.isUnusedSlot })?.slideID
+            let alertSlide = alertingFieldID
+                .map(EInkAlertEvaluator.alertSlide(fieldID:))
+                .flatMap { isFirstSlide && !item.isUnusedSlot ? $0 : nil }
+            let refreshNow = item.refreshNow || boundaryPassed || (alertIsNew && alertSlide != nil)
             do {
                 switch item.content {
                 case .unusedSlot:
@@ -692,10 +728,12 @@ public final class EInkSyncService: ObservableObject {
                         device: device,
                         taskKey: item.taskKey,
                         generatedAtISO: snapshot.generatedAtISO,
-                        refreshNow: item.refreshNow
+                        refreshNow: refreshNow,
+                        link: link
                     )
                 case let .slide(slideID):
-                    guard let slide = device.slide(id: slideID) else { continue }
+                    guard let configured = device.slide(id: slideID) else { continue }
+                    let slide = alertSlide ?? configured
                     // A usage slide drawn from an empty set would print "$0
                     // today" and be believed. Skip it and say why instead.
                     if assembly.usageUnavailable, slide.needsUsageData(layouts: layouts) { continue }
@@ -703,10 +741,12 @@ public final class EInkSyncService: ObservableObject {
                         slide: slide,
                         device: device,
                         snapshot: snapshot,
-                        refreshNow: item.refreshNow,
+                        refreshNow: refreshNow,
                         taskKey: item.taskKey,
                         taskAlias: EInkRenderer.defaultTaskAlias(slide: slide, orientation: device.orientation),
-                        layouts: layouts
+                        layouts: layouts,
+                        border: border,
+                        link: link
                     )
                 }
             } catch {
@@ -836,6 +876,45 @@ public final class EInkSyncService: ObservableObject {
         return EInkPushOutcome(pushed: pushed, skipped: skipped, failure: failure, errorDetail: detail)
     }
 
+    /// Writes the device's sleep window, once per change.
+    ///
+    /// Quiet hours live on the *device* — it is the panel that goes dark — so
+    /// this is a write to someone else's setting, and it happens only when the
+    /// user's window differs from the one Vibe Bar last sent. A failure is
+    /// logged and dropped rather than failing the pass: the panel is the
+    /// point, and a sleep window that did not take is not a reason to leave
+    /// the numbers stale.
+    private func writeQuietHours(
+        device: EInkDeviceConfig,
+        key: String,
+        state: inout EInkDeviceSyncState,
+        generation: Int
+    ) async {
+        let hours = device.quietHours.sanitized
+        // Never touch a device the user has not asked for quiet hours on. The
+        // default window is a *suggestion* in the settings pane, not a setting
+        // Vibe Bar is entitled to push; only once the toggle has been on does
+        // turning it off earn a write of its own.
+        guard hours.enabled || state.quietHoursSignature != nil else { return }
+        guard let window = hours.window, window.start != window.end else { return }
+        let signature = "\(hours.enabled)|\(window.start)|\(window.end)"
+        guard state.quietHoursSignature != signature else { return }
+        await paceRequest()
+        guard !Task.isCancelled, generation == configurationGeneration else { return }
+        do {
+            try await client.updateSleep(
+                deviceID: device.deviceID,
+                enabled: hours.enabled,
+                start: window.start,
+                end: window.end,
+                apiKey: key
+            )
+            state.quietHoursSignature = signature
+        } catch {
+            SafeLog.warn("eink quiet hours write failed: \(SafeLog.sanitize(String(describing: error)))")
+        }
+    }
+
     /// A status read reports its own failure.
     ///
     /// Swallowing it meant a pass whose pushes were all skipped as unchanged
@@ -955,7 +1034,11 @@ public final class EInkSyncService: ObservableObject {
         if let inFlight = inFlightAssembly, inFlight.key == key {
             return try await inFlight.task.value
         }
-        let request = EInkSnapshotRequest(quotaFieldIDs: requested, includesUsage: includesUsage)
+        let request = EInkSnapshotRequest(
+            quotaFieldIDs: requested,
+            includesUsage: includesUsage,
+            customLabels: settings.customSlotLabels
+        )
         let provider = snapshotProvider
         let task = Task<EInkAssemblyOutcome, Error> { try await provider(request) }
         inFlightAssembly = (key, task)

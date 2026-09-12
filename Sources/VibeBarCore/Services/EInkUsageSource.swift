@@ -26,6 +26,10 @@ public struct EInkLedgerUsageSource: EInkUsageQuerying {
     public func trend(_ filter: UsageQueryFilter, bucket: UsageTrendBucket) async throws -> UsageTrendSeries {
         try await ledger.trend(filter, bucket: bucket)
     }
+
+    public func modelStats(_ filter: UsageQueryFilter) async throws -> [UsageModelStat] {
+        try await ledger.modelStats(filter)
+    }
 }
 
 /// Stands in when the ledger could not be opened at all.
@@ -52,6 +56,10 @@ public struct EInkEmptyUsageSource: EInkUsageQuerying {
     }
 
     public func trend(_ filter: UsageQueryFilter, bucket: UsageTrendBucket) async throws -> UsageTrendSeries {
+        throw LedgerUnavailable()
+    }
+
+    public func modelStats(_ filter: UsageQueryFilter) async throws -> [UsageModelStat] {
         throw LedgerUnavailable()
     }
 }

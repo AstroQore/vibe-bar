@@ -11,6 +11,9 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
         let deviceID: String
         let taskKey: String?
         let refreshNow: Bool
+        let border: Int
+        let link: String?
+        let payload: DotCanvasPayload
         let windowDataDigest: String
         let at: Date
         /// Monotonic stamp: the gate the engine uses is a `ContinuousClock`,
@@ -22,6 +25,7 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
     private let lock = NSLock()
     private var pushLog: [Push] = []
     private var statusCallCount = 0
+    private var sleepLog: [(enabled: Bool, start: String, end: String)] = []
 
     var devices: [DotDevice] = []
     var tasks: [DotTask] = []
@@ -42,6 +46,19 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
     var statusReads: Int {
         lock.lock(); defer { lock.unlock() }
         return statusCallCount
+    }
+
+    var sleepWrites: [(enabled: Bool, start: String, end: String)] {
+        lock.lock(); defer { lock.unlock() }
+        return sleepLog
+    }
+
+    @discardableResult
+    func updateSleep(deviceID: String, enabled: Bool, start: String, end: String, apiKey: String) async throws -> String {
+        lock.lock()
+        sleepLog.append((enabled, start, end))
+        lock.unlock()
+        return "ok"
     }
 
     func reset() {
@@ -78,6 +95,9 @@ private final class FakeDotClient: DotDeviceClienting, @unchecked Sendable {
                 deviceID: deviceID,
                 taskKey: payload.taskKey,
                 refreshNow: payload.refreshNow,
+                border: payload.border,
+                link: payload.link,
+                payload: payload,
                 windowDataDigest: EInkSyncService.digest(of: payload),
                 at: Date(),
                 elapsed: ContinuousClock.now
@@ -197,13 +217,15 @@ final class EInkSyncServiceTests: XCTestCase {
         snapshot: @escaping @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome
             = { _ in EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot()) },
         requestSpacing: Duration = .milliseconds(150),
-        retryDelays: [Duration] = []
+        retryDelays: [Duration] = [],
+        remoteDashboardURL: @escaping @Sendable () -> URL? = { nil }
     ) -> EInkSyncService {
         let service = EInkSyncService(
             client: client,
             store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
             apiKeyProvider: { .key("synthetic-key") },
             snapshotProvider: snapshot,
+            remoteDashboardURL: remoteDashboardURL,
             requestSpacing: requestSpacing,
             retryDelays: retryDelays,
             snapshotReuseWindow: .zero
@@ -1708,5 +1730,223 @@ final class EInkSyncServiceTests: XCTestCase {
         )
         XCTAssertTrue(plan.boxes.isEmpty)
         XCTAssertEqual(plan.failure, EInkRenderError.layoutMissing(layoutID: "layout-1"))
+    }
+
+    // MARK: - Alerts, border, tap link, quiet hours
+
+    private func alertingSnapshot(remaining: Int) -> @Sendable (EInkSnapshotRequest) async throws -> EInkAssemblyOutcome {
+        { _ in
+            var snapshot = EInkFixtures.snapshot()
+            snapshot.quota = snapshot.quota.map { row in
+                guard row.fieldID == "claude.five_hour" else { return row }
+                var copy = row
+                copy.remainingPercent = remaining
+                copy.forecast = nil
+                return copy
+            }
+            return EInkAssemblyOutcome(snapshot: snapshot)
+        }
+    }
+
+    /// A two-slot loop on purpose: the device drives the rotation, so the plan
+    /// asks for no immediate redraw and an `refreshNow` in a push can only
+    /// have come from the alert.
+    private func alertDevice(threshold: Int = 10, tapLink: EInkTapLink = .none) -> EInkDeviceConfig {
+        var config = device(
+            slides: [
+                EInkSlide(id: "a", title: "a", kind: .preset(.quotaLedger), quotaFieldIDs: ["claude.five_hour"]),
+                EInkSlide(id: "b", title: "b", kind: .preset(.quotaRings), quotaFieldIDs: ["claude.five_hour"])
+            ],
+            taskKeys: ["k1", "k2"],
+            playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300)
+        )
+        config.alerts = EInkAlertConfig(enabled: true, thresholdPercent: threshold)
+        config.tapLink = tapLink
+        return config
+    }
+
+    /// The whole point of the alert: the panel says the one thing that
+    /// matters, framed in black, and says it *once*.
+    func testABucketCrossingTheThresholdReplacesTheSlideAndBlackensTheBorder() async {
+        let client = FakeDotClient()
+        let service = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 4))
+        await service.refresh(deviceID: "panel-1")
+
+        let push = try? XCTUnwrap(client.pushes.first)
+        XCTAssertEqual(push?.border, 1)
+        XCTAssertEqual(push?.refreshNow, true, "a new alert redraws immediately")
+        let strings = push?.payload.windowData.allStrings ?? []
+        XCTAssertTrue(strings.contains("ALERT · \(EInkFixtures.snapshot().generatedAtLabel)"))
+        XCTAssertTrue(strings.contains("CLAUDE"))
+        XCTAssertTrue(strings.contains("5 HOURS"))
+    }
+
+    /// Edge-triggered and persisted: a second pass with the same bucket still
+    /// in trouble must not ask the panel to flash again.
+    func testAnAlertThatIsAlreadyStandingDoesNotAskForAnotherRedraw() async {
+        let client = FakeDotClient()
+        let service = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 4))
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertEqual(service.state(for: "panel-1").alertingFieldID, "claude.five_hour")
+        client.reset()
+        await service.pushNow(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.first?.refreshNow, false, "the same alert is not news")
+        XCTAssertEqual(client.pushes.first?.border, 1)
+    }
+
+    /// Restarting the app with the same bucket still under its threshold is
+    /// the case the persisted state exists for.
+    func testARestartWithTheSameAlertStandingDoesNotReAlert() async {
+        let client = FakeDotClient()
+        let first = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 4))
+        await first.refresh(deviceID: "panel-1")
+        await first.flushPendingWrites()
+        client.reset()
+
+        let second = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 4))
+        XCTAssertEqual(second.state(for: "panel-1").alertingFieldID, "claude.five_hour")
+        await second.pushNow(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.first?.refreshNow, false)
+    }
+
+    func testWhenTheConditionClearsTheNormalSlideAndTheWhiteBorderComeBack() async {
+        let client = FakeDotClient()
+        let service = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 4))
+        await service.refresh(deviceID: "panel-1")
+        client.reset()
+
+        service.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [alertDevice(threshold: 1)]),
+            layouts: [:]
+        )
+        await service.pushNow(deviceID: "panel-1")
+        XCTAssertNil(service.state(for: "panel-1").alertingFieldID)
+        XCTAssertEqual(client.pushes.last?.border, 0)
+        XCTAssertFalse(client.pushes.contains { $0.payload.windowData.allStrings.contains("5 HOURS") })
+    }
+
+    func testAlertsCanBeTurnedOffPerDevice() async {
+        let client = FakeDotClient()
+        var config = alertDevice()
+        config.alerts = EInkAlertConfig(enabled: false, thresholdPercent: 10)
+        let service = service(client: client, device: config, snapshot: alertingSnapshot(remaining: 1))
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.first?.border, 0)
+        XCTAssertNil(service.state(for: "panel-1").alertingFieldID)
+    }
+
+    /// A panel only alerts about what it shows. Anything else is news about
+    /// something the reader never asked this panel to watch.
+    func testADeviceOnlyAlertsAboutBucketsItsOwnSlidesDraw() {
+        var config = alertDevice()
+        config.slides = [EInkSlide(id: "a", kind: .preset(.quotaLedger), quotaFieldIDs: ["codex.weekly"])]
+        var snapshot = EInkFixtures.snapshot()
+        snapshot.quota = snapshot.quota.map { row in
+            guard row.fieldID == "claude.five_hour" else { return row }
+            var copy = row
+            copy.remainingPercent = 1
+            copy.forecast = nil
+            return copy
+        }
+        XCTAssertNil(EInkAlertEvaluator.offendingFieldID(device: config, snapshot: snapshot))
+    }
+
+    /// A bucket well above the threshold still alerts when the pace model says
+    /// it will not last the window.
+    func testAnAtRiskVerdictAlertsEvenAboveTheThreshold() {
+        let config = alertDevice()
+        var snapshot = EInkFixtures.snapshot()
+        snapshot.quota = snapshot.quota.map { row in
+            guard row.fieldID == "claude.five_hour" else { return row }
+            var copy = row
+            copy.remainingPercent = 62
+            copy.forecast = EInkQuotaForecast(verdict: .atRisk, projectedUsedPercent: 130, runOutAt: nil)
+            return copy
+        }
+        XCTAssertEqual(EInkAlertEvaluator.offendingFieldID(device: config, snapshot: snapshot), "claude.five_hour")
+    }
+
+    func testTheTapLinkRidesOnEveryPayloadAndIsOmittedWhenThereIsNone() async {
+        let client = FakeDotClient()
+        let linked = service(
+            client: client,
+            device: alertDevice(tapLink: .custom("https://example.com/panel")),
+            snapshot: alertingSnapshot(remaining: 90)
+        )
+        await linked.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.first?.link, "https://example.com/panel")
+
+        client.reset()
+        let unlinked = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 90))
+        await unlinked.pushNow(deviceID: "panel-1")
+        XCTAssertNil(client.pushes.first?.link)
+    }
+
+    func testTheRemoteDashboardLinkIsOnlySentWhenRemoteIsConfigured() async {
+        let client = FakeDotClient()
+        let withWorkspace = service(
+            client: client,
+            device: alertDevice(tapLink: .remoteDashboard),
+            snapshot: alertingSnapshot(remaining: 90),
+            remoteDashboardURL: { URL(string: "https://example.com/dashboard") }
+        )
+        await withWorkspace.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.first?.link, "https://example.com/dashboard")
+
+        client.reset()
+        let without = service(
+            client: client,
+            device: alertDevice(tapLink: .remoteDashboard),
+            snapshot: alertingSnapshot(remaining: 90),
+            remoteDashboardURL: { nil }
+        )
+        await without.pushNow(deviceID: "panel-1")
+        XCTAssertNil(client.pushes.first?.link)
+    }
+
+    /// Quiet hours live on the device, so the write happens once per change —
+    /// not once per refresh.
+    func testQuietHoursAreWrittenOnceAndOnlyAfterTheUserTurnsThemOn() async {
+        let client = FakeDotClient()
+        let service = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 90))
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertTrue(client.sleepWrites.isEmpty, "a device nobody configured is not written to")
+
+        var config = alertDevice()
+        config.quietHours = EInkQuietHours(enabled: true, start: "23:00", end: "07:00")
+        service.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [config]),
+            layouts: [:]
+        )
+        await service.pushNow(deviceID: "panel-1")
+        XCTAssertEqual(client.sleepWrites.count, 1)
+        XCTAssertEqual(client.sleepWrites.first?.start, "23:00")
+        XCTAssertEqual(client.sleepWrites.first?.end, "07:00")
+        XCTAssertTrue(client.sleepWrites.first?.enabled ?? false)
+
+        await service.pushNow(deviceID: "panel-1")
+        XCTAssertEqual(client.sleepWrites.count, 1, "an unchanged window is not rewritten")
+
+        config.quietHours = EInkQuietHours(enabled: false, start: "23:00", end: "07:00")
+        service.apply(
+            settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [config]),
+            layouts: [:]
+        )
+        await service.pushNow(deviceID: "panel-1")
+        XCTAssertEqual(client.sleepWrites.count, 2, "turning it off is a change worth sending")
+        XCTAssertFalse(client.sleepWrites.last?.enabled ?? true)
+    }
+
+    /// A reset just happened, so the numbers behind the panel jumped: redraw
+    /// rather than sitting on the old ones for the rest of the cadence.
+    func testAResetBoundaryForcesAnImmediateRedrawOnTheNextPass() {
+        let now = EInkFixtures.referenceDate
+        XCTAssertFalse(EInkAlertEvaluator.resetBoundaryPassed(recorded: nil, now: now))
+        XCTAssertFalse(EInkAlertEvaluator.resetBoundaryPassed(recorded: now.addingTimeInterval(60), now: now))
+        XCTAssertTrue(EInkAlertEvaluator.resetBoundaryPassed(recorded: now.addingTimeInterval(-1), now: now))
+
+        let snapshot = EInkFixtures.snapshot()
+        let next = EInkAlertEvaluator.nextResetAt(snapshot, after: EInkFixtures.referenceDate)
+        XCTAssertEqual(next, snapshot.quota.compactMap(\.resetAt).min())
     }
 }

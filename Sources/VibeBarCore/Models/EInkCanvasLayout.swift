@@ -58,6 +58,7 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
             e.percentOverride = e.percentOverride.map { Self.bound($0, 0...100, fallback: 0).rounded() }
             e.text = Self.panelText(e.text)
             e.subText = Self.panelText(e.subText)
+            e.imageSource = Self.imageSource(e.imageSource)
             var seenFields = Set<String>()
             e.fieldIDs = e.fieldIDs.filter { !$0.isEmpty && seenFields.insert($0).inserted }
             var seenPeriods = Set<EInkUsagePeriod>()
@@ -221,6 +222,12 @@ public struct EInkCanvasLayout: Codable, Equatable, Hashable, Sendable {
         return text.count > maximumTextLength ? String(text.prefix(maximumTextLength)) : text
     }
 
+    /// Only a data URI for a raster image is ever kept: an element pointing at
+    /// a URL would make the panel fetch from a host nobody vetted.
+    static func imageSource(_ value: String) -> String {
+        value.hasPrefix("data:image/") ? value : ""
+    }
+
     static func bound(_ value: Double, _ range: ClosedRange<Double>, fallback: Double) -> Double {
         value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : fallback
     }
@@ -332,8 +339,21 @@ public enum EInkTextAlignment: String, Codable, CaseIterable, Hashable, Sendable
 public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Hashable, Sendable {
         case text, ring, horizontalBar, verticalBar, statTile, divider
+        /// A solid black rectangle at the author's exact frame.
+        ///
+        /// `divider` is a one-pixel rule whatever its handle says, which a
+        /// preset's own rules are — but a preset also paints solid blocks
+        /// (a bar's fill, a rule down a column), and exploding one into a
+        /// divider would lose its height. This is the kind that survives a
+        /// round trip.
+        case fill
+        /// A 1-bit PNG data URI, in `imageSource`. Not in the Studio palette
+        /// — an author cannot draw one — but an exploded Heatmap carries its
+        /// grid this way instead of losing it.
+        case image
         case quotaLedger, quotaRings, quotaRail
         case usageTiles, usageSplit, usageTable, usageDual, usageTrend
+        case briefing, forecast, resets, heatmap, topModels
 
         /// Whole-preset blocks the Studio can drop in and scale, the E-ink
         /// counterpart of `MiniCanvasElement.Kind.presetMode`.
@@ -347,6 +367,11 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
             case .usageTable: .usageTable
             case .usageDual: .usageDual
             case .usageTrend: .usageTrend
+            case .briefing: .briefing
+            case .forecast: .forecast
+            case .resets: .resets
+            case .heatmap: .heatmap
+            case .topModels: .topModels
             default: nil
             }
         }
@@ -355,6 +380,10 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
     /// What a `text` element is bound to.
     public enum TextBinding: String, Codable, CaseIterable, Hashable, Sendable {
         case percent, label, countdown, usageMetric, custom
+        /// `HH:mm` / `MM-dd` at assembly time — what a header bar set to
+        /// "Clock" or "Date" prints, and what the exploder gives those nodes
+        /// so a header stays a clock after it is exploded.
+        case clock, date
     }
 
     /// Which number a `usageMetric` text (or a `statTile`) reads.
@@ -383,6 +412,13 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
     /// A stat tile's bottom line. Empty draws the binding's own second
     /// figure — a quota countdown, or the tokens behind a cost.
     public var subText = ""
+    /// A `data:image/png;base64,…` source for an `image` element.
+    ///
+    /// Its own field rather than `text` because `text` is capped at 512
+    /// characters — a label that long is not a label — and a 1-bit PNG is
+    /// tens of kilobytes. The encoder's own `windowData` limit is what bounds
+    /// this one.
+    public var imageSource = ""
     /// Whether the drawn box is measured from the text (`true`) or kept at
     /// the author's `width`, clipping anything longer (`false`).
     ///
@@ -391,6 +427,12 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
     /// the Studio losing characters. Fixing the width is the deliberate act —
     /// it is what a column needs, and the Studio says so.
     public var autoWidth = true
+    /// Whether a fixed-width text element clips what does not fit.
+    ///
+    /// A column clips; a header that was laid out flexed does not. Only read
+    /// when `autoWidth` is false — a measured box is never wrong about its
+    /// own text.
+    public var clipsOverflow = true
     public var usagePeriod: EInkUsagePeriod = .today
     public var usageMetric: UsageMetric = .cost
     /// Ring / bar stroke in device pixels.
@@ -398,6 +440,11 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
     /// Studio preview value when no live field is bound yet.
     public var percentOverride: Double?
     public var groupID: UUID?
+    /// Which preset module this element was exploded out of ("header",
+    /// "slot:claude.weekly", "footer"). Kept so the Studio can say what a
+    /// group is, and so "Re-layout" can tell an exploded module from an
+    /// element the author drew.
+    public var moduleID: String?
 
     public init(kind: Kind, fieldID: String? = nil) {
         self.kind = kind
@@ -409,7 +456,10 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
         case .verticalBar: width = 22; height = 60
         case .statTile: width = 96; height = 48; font = .sans(size: 18, bold: true)
         case .divider: width = 96; height = 1
-        case .quotaLedger, .quotaRail, .usageTiles, .usageSplit, .usageTable, .usageDual, .usageTrend:
+        case .fill: width = 96; height = 4
+        case .image: width = 96; height = 48
+        case .quotaLedger, .quotaRail, .usageTiles, .usageSplit, .usageTable, .usageDual, .usageTrend,
+             .briefing, .forecast, .resets, .heatmap, .topModels:
             width = 284; height = 140
         case .quotaRings:
             width = 284; height = 140
@@ -418,7 +468,8 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
 
     private enum CodingKeys: String, CodingKey {
         case id, kind, fieldID, fieldIDs, periods, x, y, width, height, font, alignment
-        case textBinding, text, subText, autoWidth, usagePeriod, usageMetric, thickness, percentOverride, groupID
+        case textBinding, text, subText, imageSource, autoWidth, clipsOverflow, usagePeriod, usageMetric
+        case thickness, percentOverride, groupID, moduleID
     }
 
     public init(from decoder: Decoder) throws {
@@ -436,7 +487,10 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
         textBinding = c.lenient(TextBinding.self, .textBinding, .percent)
         text = c.lenient(String.self, .text, "")
         subText = c.lenient(String.self, .subText, "")
+        imageSource = c.lenient(String.self, .imageSource, "")
         autoWidth = c.lenient(Bool.self, .autoWidth, true)
+        clipsOverflow = c.lenient(Bool.self, .clipsOverflow, true)
+        moduleID = c.lenientOptional(String.self, .moduleID)
         usagePeriod = c.lenient(EInkUsagePeriod.self, .usagePeriod, .today)
         usageMetric = c.lenient(UsageMetric.self, .usageMetric, .cost)
         thickness = c.lenient(Double.self, .thickness, thickness)
@@ -460,7 +514,10 @@ public struct EInkCanvasElement: Codable, Equatable, Hashable, Identifiable, Sen
         try c.encode(textBinding, forKey: .textBinding)
         try c.encode(text, forKey: .text)
         try c.encode(subText, forKey: .subText)
+        try c.encode(imageSource, forKey: .imageSource)
         try c.encode(autoWidth, forKey: .autoWidth)
+        try c.encode(clipsOverflow, forKey: .clipsOverflow)
+        try c.encodeIfPresent(moduleID, forKey: .moduleID)
         try c.encode(usagePeriod, forKey: .usagePeriod)
         try c.encode(usageMetric, forKey: .usageMetric)
         try c.encode(thickness, forKey: .thickness)

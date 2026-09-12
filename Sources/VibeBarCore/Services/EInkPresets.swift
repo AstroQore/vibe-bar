@@ -26,9 +26,15 @@ public enum EInkPresets {
         _ font: EInkFont = EInkPresets.pixel,
         width: EInkLength = .auto,
         height: EInkLength = .auto,
-        align: EInkTextAlignment = .leading
+        align: EInkTextAlignment = .leading,
+        clips: Bool? = nil
     ) -> EInkNode {
-        EInkNode(.text(content, font: font, alignment: align), width: width, height: height)
+        EInkNode(
+            .text(content, font: font, alignment: align),
+            width: width,
+            height: height,
+            clipsText: clips
+        )
     }
 
     static func row(
@@ -147,9 +153,17 @@ public enum EInkPresets {
 
     // MARK: - Shared rows
 
-    static func header(_ left: String, _ right: String) -> EInkNode {
+    static func header(
+        _ left: String,
+        _ right: String,
+        leftBinding: EInkNodeBinding? = nil,
+        rightBinding: EInkNodeBinding? = nil
+    ) -> EInkNode {
         row(
-            [text(left, pixelBold), text(right, pixel, width: .flex(1), align: .trailing)],
+            [
+                text(left, pixelBold).bound(leftBinding),
+                text(right, pixel, width: .flex(1), align: .trailing).bound(rightBinding)
+            ],
             height: .points(14),
             align: .center
         )
@@ -189,6 +203,141 @@ public enum EInkPresets {
             )
         }
         return topRuled(column(lines, height: .auto, gap: 1), paddingTop: 3)
+    }
+
+    /// The module id one quota slot's nodes carry, so the exploder can group
+    /// them.
+    static func slotModule(_ fieldID: String) -> String { "slot:\(fieldID)" }
+
+    static let headerModule = "header"
+    static let footerModule = "footer"
+
+    // MARK: - Chrome (header / footer composition)
+
+    /// What one preset prints in its bars when the slide has not said
+    /// otherwise. Round 1's strings, exactly.
+    struct ChromeDefaults {
+        var left: String
+        var right: String
+        /// `nil` when this preset never had a footer.
+        var footer: EInkNode?
+
+        init(left: String = "VIBE BAR", right: String, footer: EInkNode? = nil) {
+            self.left = left
+            self.right = right
+            self.footer = footer
+        }
+    }
+
+    /// A slide's resolved header and footer, plus the height they cost the
+    /// body.
+    struct Chrome {
+        var header: EInkNode?
+        var headerAtBottom = false
+        var footer: EInkNode?
+        var reserved = 0
+        var compact = false
+
+        /// `body` between the bars, in the order the slide asked for.
+        func compose(_ body: [EInkNode]) -> [EInkNode] {
+            var children: [EInkNode] = []
+            if let header, !headerAtBottom { children.append(header) }
+            children += body
+            if let footer { children.append(footer) }
+            if let header, headerAtBottom { children.append(header) }
+            return children
+        }
+
+        /// The row height a list should aim for: the preset's own, unless the
+        /// slide asked to fill the panel.
+        func preferredRowHeight(_ preferred: Int) -> Int {
+            compact ? 1_000 : preferred
+        }
+    }
+
+    static func chrome(
+        _ options: EInkSlideOptions,
+        defaults: ChromeDefaults,
+        snapshot: EInkDataSnapshot,
+        gap: Int
+    ) -> Chrome {
+        var result = Chrome(compact: options.compact)
+        if let bar = options.header {
+            let left = barText(bar.left, default: defaults.left, snapshot: snapshot)
+            let right = barText(bar.right, default: defaults.right, snapshot: snapshot)
+            if !left.isEmpty || !right.isEmpty {
+                result.header = header(left, right, leftBinding: binding(for: bar.left), rightBinding: binding(for: bar.right))
+                    .module(headerModule)
+                result.headerAtBottom = bar.position == .bottom
+                result.reserved += 14 + gap
+            }
+        }
+        if let config = options.footer, let node = footerNode(config.content, defaults: defaults, snapshot: snapshot) {
+            result.footer = node.module(footerModule)
+            result.reserved += EInkBoxLayout.intrinsicHeight(node) + gap
+        }
+        return result
+    }
+
+    /// What an exploded header element follows. Only the clock and the date
+    /// move on their own; everything else is a fixed string.
+    static func binding(for content: EInkBarContent) -> EInkNodeBinding? {
+        switch content {
+        case .clock: .clock
+        case .date: .date
+        default: nil
+        }
+    }
+
+    static func barText(_ content: EInkBarContent, default fallback: String, snapshot: EInkDataSnapshot) -> String {
+        switch content {
+        case .presetDefault: return fallback
+        case .none: return ""
+        case let .text(value): return value
+        case .clock: return snapshot.clockLabel
+        case .date: return snapshot.dateLabel
+        case .dateClock: return snapshot.generatedAtLabel
+        case .providerStatus: return snapshot.providerStatusLine
+        }
+    }
+
+    static func footerNode(
+        _ content: EInkFooterContent,
+        defaults: ChromeDefaults,
+        snapshot: EInkDataSnapshot
+    ) -> EInkNode? {
+        switch content {
+        case .presetDefault:
+            return defaults.footer
+        case let .usageSummary(periods):
+            return usageSummaryFooter(periods, snapshot)
+        case .clock:
+            return topRuled(
+                row([text(snapshot.generatedAtLabel, pixel, width: .flex(1), align: .center)], height: .points(14), align: .center)
+            )
+        case let .text(value):
+            guard !value.isEmpty else { return nil }
+            return topRuled(row([text(value, pixel, width: .flex(1))], height: .points(14), align: .center))
+        }
+    }
+
+    /// A footer over the windows the slide picked. One line each, so two
+    /// windows read like the shipped footer and four still fit.
+    static func usageSummaryFooter(_ periods: [EInkUsagePeriod], _ snapshot: EInkDataSnapshot) -> EInkNode? {
+        let chosen = periods.isEmpty ? [EInkUsagePeriod.today, .week] : periods
+        let lines = chosen.map { period -> EInkNode in
+            let totals = snapshot.usage[period]
+            return row(
+                [
+                    text("\(period.caption) \(EInkFormat.money(totals.costUSD))", pixelBold),
+                    text("\(EInkFormat.tokens(totals.tokens)) tokens", pixel, width: .flex(1), align: .trailing)
+                ],
+                height: .points(14),
+                align: .center
+            )
+        }
+        guard !lines.isEmpty else { return nil }
+        return topRuled(column(lines, height: .auto, gap: 1))
     }
 
     // MARK: - Column ordering
