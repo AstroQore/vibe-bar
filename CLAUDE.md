@@ -74,14 +74,19 @@ ignored. The full reasoning and grep recipes live in `AGENTS.md`.
    one-line entitlement edit. The flip side: unsandboxed *is not* a
    license for casual filesystem access — read only the credential /
    cookie / config files you actually need, never write outside
-   `~/.vibebar/`, never log raw secrets. There are exactly two
-   exceptions: whole-session deletion through `SessionDeleter`,
-   performed only at the user's explicit request and on the
-   containment / symlink / re-parsed-session-id terms `AGENTS.md` § 5
-   sets out; and the Skills manager, which may write to
+   `~/.vibebar/`, never log raw secrets. There are exactly three
+   documented exceptions: whole-session deletion through
+   `SessionDeleter`, performed only at the user's explicit request and
+   on the containment / symlink / re-parsed-session-id terms
+   `AGENTS.md` § 5 sets out; the Skills manager, which may write to
    `~/.agents/skills/` and the seven managed app skills directories
-   and nowhere else, only through `SkillSyncEngine` / `SkillsService`
-   — see `AGENTS.md` § 7 for the full terms.
+   and nowhere else, only through `SkillSyncEngine` / `SkillsService`;
+   and the E-ink displays feature, the one path that writes *off* this
+   Mac — `EInkSyncService` through `DotDeviceClient` and nothing else
+   reaches a panel, the API key stays in the vault behind
+   `EInkCredentialStore`, and the only new file is
+   `~/.vibebar/eink_state.json`. See `AGENTS.md` § 7 for the full
+   terms of all three.
 4. **Verification before completion.** Before claiming a change works,
    run all four:
 
