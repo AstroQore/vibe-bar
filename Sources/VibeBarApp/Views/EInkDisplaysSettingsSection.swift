@@ -415,14 +415,16 @@ struct EInkDisplaysSettingsSection: View {
                 .disabled(!sync.apiKeyPresent || service.isBusy(device.deviceID))
                 if service.isBusy(device.deviceID) {
                     ProgressView().controlSize(.small)
-                    // A slow service can hold a multi-slide push for minutes
-                    // (three attempts per item, each with a 30 s timeout), and
-                    // a disabled button with a spinner is not an answer to
-                    // that. The pane also cancels on the way out.
-                    Button(L10n.Common.cancel) {
-                        cancelPush()
+                    // Only for the push this pane started. A scheduled refresh
+                    // also makes the device busy, and a Cancel button that
+                    // stops nothing is worse than no button.
+                    if pushingDeviceID == device.deviceID {
+                        // A slow service can hold a multi-slide push for
+                        // minutes — three attempts per item, each with a 30 s
+                        // timeout. The pane also cancels on the way out.
+                        Button(L10n.Common.cancel) { cancelPush() }
+                            .buttonStyle(.vibeBar)
                     }
-                    .buttonStyle(.vibeBar)
                 }
                 Spacer(minLength: 4)
             }
@@ -911,7 +913,10 @@ struct EInkDisplaysSettingsSection: View {
                 applying: pending.einkSync,
                 layouts: pending.einkCanvasLayouts
             )
-            guard selectedDevice?.deviceID == deviceID else { return }
+            // Cancellation does not unwind a closure, so a cancelled push
+            // would otherwise report itself as a successful one and start
+            // another thumbnail fetch on its way out.
+            guard !Task.isCancelled, selectedDevice?.deviceID == deviceID else { return }
             if let failure = outcome.failure {
                 pushStatus = message(for: failure)
             } else {
@@ -923,9 +928,22 @@ struct EInkDisplaysSettingsSection: View {
     }
 
     private func addSlide(_ deviceID: String) {
-        let slide = EInkSlide(kind: .preset(.quotaLedger))
+        let orientation = sync.device(id: deviceID)?.orientation ?? .degrees0
+        let slide = EInkSlide.defaultQuotaSlide(
+            orientation: orientation,
+            available: availableQuotaFieldIDs
+        )
         updateDevice(deviceID) { $0.slides.append(slide) }
         selectedSlideID = slide.id
+    }
+
+    /// The default buckets, narrowed to the ones this account actually shows,
+    /// so a new slide is not seeded with rows that will never draw.
+    private var availableQuotaFieldIDs: [String] {
+        let known = Set(pickerSections.flatMap { $0.options.map(\.id) })
+        let defaults = EInkDataAssembler.defaultQuotaPriority.map(\.fieldID)
+        let live = defaults.filter(known.contains)
+        return live.isEmpty ? defaults : live
     }
 
     private func removeSlide(_ deviceID: String, slideID: String) {

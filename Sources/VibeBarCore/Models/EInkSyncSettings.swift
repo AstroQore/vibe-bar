@@ -427,6 +427,25 @@ public struct EInkSlide: Codable, Equatable, Identifiable, Sendable {
         return copy
     }
 
+    /// A ready-to-draw quota slide.
+    ///
+    /// Seeded with the buckets the renderer would have fallen back to anyway,
+    /// because an empty selection means "Vibe Bar's own order" there while the
+    /// picker reads it as "nothing chosen" — every box off above a panel
+    /// showing five rows. Writing the defaults down makes the two agree, and
+    /// makes the first thing the user does *edit* a selection rather than
+    /// discover one.
+    public static func defaultQuotaSlide(
+        preset: EInkPreset = .quotaLedger,
+        orientation: EInkOrientation = .degrees0,
+        available: [String] = EInkDataAssembler.defaultQuotaPriority.map(\.fieldID)
+    ) -> EInkSlide {
+        EInkSlide(
+            kind: .preset(preset),
+            quotaFieldIDs: Array(available.prefix(preset.capacity(for: orientation)))
+        )
+    }
+
     /// Trims the selection to what the layout has room for at this
     /// orientation.
     ///

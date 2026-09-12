@@ -31,7 +31,7 @@ public enum EInkDeviceMerge {
             }
             var config = byID[device.id] ?? EInkDeviceConfig(
                 deviceID: device.id,
-                slides: [EInkSlide(kind: .preset(.quotaLedger))]
+                slides: [EInkSlide.defaultQuotaSlide()]
             )
             config.alias = device.alias
             config.profile = profile

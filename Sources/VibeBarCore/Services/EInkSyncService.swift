@@ -741,8 +741,18 @@ public final class EInkSyncService: ObservableObject {
             return (status, nil, nil)
         } catch let error as DotDeviceError {
             if error.invalidatesCredential { invalidateCredential(from: credentialAtStart) }
+            // The same fence the success path uses. Recording an old key's
+            // 401 against the replacement leaves a disabled device claiming a
+            // perfectly good credential failed, with no automatic pass coming
+            // to correct it.
+            guard generation == configurationGeneration, keyGeneration == credentialGeneration else {
+                return (nil, nil, nil)
+            }
             return (nil, Self.failure(for: error), error.description)
         } catch {
+            guard generation == configurationGeneration, keyGeneration == credentialGeneration else {
+                return (nil, nil, nil)
+            }
             return (nil, .network, SafeLog.sanitize(String(describing: error)))
         }
     }
@@ -763,7 +773,7 @@ public final class EInkSyncService: ObservableObject {
         // then send immediately behind it. Here the stamp is written at the
         // instant a caller is let through, in the same uninterrupted step that
         // releases it, so anyone else waking sees it and waits again.
-        while true {
+        while !Task.isCancelled {
             let now = ContinuousClock.now
             guard let last = lastSendAt else {
                 lastSendAt = now
@@ -774,7 +784,14 @@ public final class EInkSyncService: ObservableObject {
                 lastSendAt = now
                 return
             }
-            try? await Task.sleep(until: earliest, clock: ContinuousClock())
+            do {
+                try await Task.sleep(until: earliest, clock: ContinuousClock())
+            } catch {
+                // Cancelled. `try?` here span the loop on the main actor until
+                // the deadline passed, because a cancelled sleep returns at
+                // once — a busy main thread for most of a spacing interval.
+                return
+            }
         }
     }
 

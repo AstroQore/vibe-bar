@@ -1285,6 +1285,26 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(outcome.pushed, 1)
     }
 
+    func testANewQuotaSlideCarriesTheBucketsItWillDraw() {
+        let slide = EInkSlide.defaultQuotaSlide()
+        XCTAssertEqual(slide.quotaFieldIDs.count, EInkPreset.quotaLedger.capacity(for: .degrees0))
+        XCTAssertEqual(
+            slide.quotaFieldIDs,
+            Array(EInkDataAssembler.defaultQuotaPriority.map(\.fieldID).prefix(5)),
+            "the picker and the panel have to agree from the first frame"
+        )
+        // Portrait holds one more.
+        XCTAssertEqual(EInkSlide.defaultQuotaSlide(orientation: .degrees90).quotaFieldIDs.count, 6)
+
+        // And a merged-in device gets the same, not an empty selection the
+        // renderer would quietly fill in.
+        let merged = EInkDeviceMerge.merge(
+            discovered: [DotDevice(id: "panel-1", alias: "Quote 1", model: "quote_0")],
+            into: []
+        )
+        XCTAssertFalse(merged[0].slides[0].quotaFieldIDs.isEmpty)
+    }
+
     // MARK: - Roster merge
 
     func testFetchingDevicesKeepsEveryExistingConfigurationAndOnlyRefreshesTheAlias() {
