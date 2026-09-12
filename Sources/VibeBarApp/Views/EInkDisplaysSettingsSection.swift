@@ -679,7 +679,10 @@ struct EInkDisplaysSettingsSection: View {
                 )
                 .toggleStyle(.checkbox)
                 .controlSize(.small)
-                .disabled(isFull && !selected.contains(period))
+                .disabled(
+                    (isFull && !selected.contains(period))
+                        || (selected.count == 1 && selected.contains(period))
+                )
             }
         }
     }
@@ -975,6 +978,10 @@ struct EInkDisplaysSettingsSection: View {
                               !current.usagePeriods.contains(period) else { return }
                         current.usagePeriods.append(period)
                     } else {
+                        // The renderer reads an empty selection as "all four",
+                        // so clearing the last box would show every period
+                        // while the picker showed none. One always stays on.
+                        guard current.usagePeriods.count > 1 else { return }
                         current.usagePeriods.removeAll { $0 == period }
                     }
                 }

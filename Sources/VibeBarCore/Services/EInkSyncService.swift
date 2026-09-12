@@ -237,14 +237,14 @@ public final class EInkSyncService: ObservableObject {
     private var cachedAPIKey: String?
     private var apiKeyLoaded = false
     private var credentialGeneration = 0
-    /// The last slot handed out by the rate gate, for *any* device.
+    /// When the rate gate last released a caller, for *any* device.
     ///
     /// A `ContinuousClock` instant, not a `Date`: a rate limit is a duration
     /// between two events, and the wall clock is not one — an NTP step
     /// between the claim and the send makes the gap the service sees bear no
     /// relation to the one the gate computed. (CI caught this as two writes
     /// 9 ms apart through a gate set to 150.)
-    private var lastRequestSlot: ContinuousClock.Instant?
+    private var lastSendAt: ContinuousClock.Instant?
     private let writer: EInkSyncStateWriter
     private var persistTask: Task<Void, Never>?
     /// Devices whose restarted loop must sleep before its first pass, because
@@ -470,8 +470,17 @@ public final class EInkSyncService: ObservableObject {
     /// even when the numbers happen to be identical.
     @discardableResult
     public func pushNow(deviceID: String) async -> EInkPushOutcome {
-        if let existing = activeRuns[deviceID] {
+        // Drain, not "await once": a loop cancelled by `apply` is still parked
+        // inside `refresh`, and when the run it joined finishes it can start a
+        // fresh one before this waiter resumes. Starting the forced run on top
+        // of that would put two writers on the same panel.
+        while let existing = activeRuns[deviceID] {
             _ = await existing.task.value
+            if activeRuns[deviceID] === existing {
+                activeRuns.removeValue(forKey: deviceID)
+                busyDeviceIDs.remove(deviceID)
+                break
+            }
         }
         return await startRun(deviceID: deviceID, force: true)
     }
@@ -685,17 +694,26 @@ public final class EInkSyncService: ObservableObject {
     /// counting its own gap put two writes on the wire every 150 ms — over the
     /// documented ten per second once the status reads are added.
     private func paceRequest() async {
-        let now = ContinuousClock.now
-        let earliest = lastRequestSlot.map { $0.advanced(by: requestSpacing) } ?? now
-        let scheduled = earliest > now ? earliest : now
-        // Claim the slot *before* suspending. Reading the stamp, sleeping, and
-        // only then writing it lets two device passes wake into the same
-        // instant and fire together; the claim and the read are one
-        // uninterrupted step on the main actor, so every caller queues behind
-        // the last slot handed out rather than behind the last send.
-        lastRequestSlot = scheduled
-        if scheduled > now {
-            try? await Task.sleep(until: scheduled, clock: ContinuousClock())
+        // Re-checked after every wake, against the moment the last caller was
+        // actually released rather than against a deadline reserved up front.
+        // Reserving worked only while waiters resumed in the order they
+        // queued: the main actor makes no such promise, so a waiter for an
+        // earlier deadline could resume after a later one had already sent and
+        // then send immediately behind it. Here the stamp is written at the
+        // instant a caller is let through, in the same uninterrupted step that
+        // releases it, so anyone else waking sees it and waits again.
+        while true {
+            let now = ContinuousClock.now
+            guard let last = lastSendAt else {
+                lastSendAt = now
+                return
+            }
+            let earliest = last.advanced(by: requestSpacing)
+            if earliest <= now {
+                lastSendAt = now
+                return
+            }
+            try? await Task.sleep(until: earliest, clock: ContinuousClock())
         }
     }
 

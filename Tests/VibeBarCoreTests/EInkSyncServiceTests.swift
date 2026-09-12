@@ -451,6 +451,44 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(client.pushes.count, 1)
     }
 
+    func testPacingHoldsWhenManyPassesWakeTogether() async {
+        let client = FakeDotClient()
+        func panel(_ id: String) -> EInkDeviceConfig {
+            EInkDeviceConfig(
+                deviceID: id,
+                enabled: true,
+                playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300),
+                taskKeys: ["k1", "k2"],
+                slides: [slide("a"), slide("b")]
+            )
+        }
+        let sync = EInkSyncService(
+            client: client,
+            store: EInkSyncStateStore(homeDirectory: temporaryHome.path),
+            apiKeyProvider: { "synthetic-key" },
+            snapshotProvider: { _ in EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot()) },
+            retryDelays: [],
+            snapshotReuseWindow: .zero
+        )
+        sync.apply(
+            settings: EInkSyncSettings(
+                apiKeyPresent: true,
+                syncEnabled: true,
+                devices: [panel("panel-1"), panel("panel-2"), panel("panel-3")]
+            ),
+            layouts: [:]
+        )
+        await withTaskGroup(of: Void.self) { group in
+            for id in ["panel-1", "panel-2", "panel-3"] {
+                group.addTask { @MainActor in _ = await sync.refresh(deviceID: id) }
+            }
+        }
+        // Six writes through one gate: the span has to cover five spacings.
+        let stamps = client.pushes.map(\.elapsed).sorted()
+        XCTAssertEqual(stamps.count, 6)
+        XCTAssertGreaterThanOrEqual(stamps[0].duration(to: stamps[5]), .milliseconds(600))
+    }
+
     // MARK: - Unused loop slots
 
     func testASurplusLoopTaskGetsAPlaceholderInsteadOfTheDeletedSlide() async {
