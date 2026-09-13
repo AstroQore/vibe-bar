@@ -247,6 +247,13 @@ public struct EInkDataAssembler: Sendable {
                     resetAt: bucket.resetAt,
                     countdown: EInkFormat.countdown(bucket.resetAt, now: now),
                     plan: account.plan ?? "",
+                    // Resolved here because this is the one place that holds
+                    // the live registry: a discovered bucket's group has no
+                    // key in the static catalog.
+                    groupLevelKey: EInkSlotLabel.groupLevelKey(
+                        for: selector.fieldID,
+                        registry: registry
+                    ),
                     forecast: await forecastLookup(selector.tool, bucket).map(EInkQuotaForecast.init)
                 )
             )

@@ -33,6 +33,49 @@ public extension EInkOrientation {
         }
     }
 
+    /// Which edge of the upright picture the device's blank body sits against.
+    ///
+    /// A Quote/0 is not a screen-sized tile. It is a long rounded bar: the
+    /// 296 × 152 panel fills one half of it behind a thin bezel and the other
+    /// half is blank white plastic, with the USB-C port centred in the short
+    /// edge at the *screen* end. Drawing the device as a bare rectangle with a
+    /// notch on it was a picture of something the owner does not own, and the
+    /// notch was the only thing saying which way the panel was turned.
+    ///
+    /// The body sits on the device's own right-hand side when the device's top
+    /// is up — the native 296 × 152 raster's right edge is the one that faces
+    /// it — so the body edge is a quarter turn clockwise from
+    /// `uprightDeviceEdge`, and the four answers are:
+    ///
+    /// | Orientation | Device top | Body | Port |
+    /// | --- | --- | --- | --- |
+    /// | 0° | top | right | left |
+    /// | 90° | left | top | bottom |
+    /// | 180° | bottom | left | right |
+    /// | 270° | right | bottom | top |
+    ///
+    /// Which is why the shape alone says the orientation: at 90° the device is
+    /// standing on its port edge with the blank half above the screen.
+    var uprightBodyEdge: DeviceEdge {
+        switch uprightDeviceEdge {
+        case .top: .right
+        case .right: .bottom
+        case .bottom: .left
+        case .left: .top
+        }
+    }
+
+    /// The short edge the USB-C port is centred in — the screen end, opposite
+    /// the body.
+    var uprightPortEdge: DeviceEdge {
+        switch uprightBodyEdge {
+        case .top: .bottom
+        case .bottom: .top
+        case .left: .right
+        case .right: .left
+        }
+    }
+
     /// The frame the reader sees: 296 × 152 landscape, 152 × 296 portrait.
     ///
     /// The same numbers a layout is authored in — which is the point. Upright

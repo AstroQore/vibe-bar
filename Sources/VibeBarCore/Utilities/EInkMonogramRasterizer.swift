@@ -110,14 +110,21 @@ public enum EInkMonogramRasterizer {
         small.draw(large, in: CGRect(x: 0, y: 0, width: size, height: size))
         guard let pixels = small.data else { throw RasterError.contextUnavailable }
         let buffer = pixels.bindMemory(to: UInt8.self, capacity: size * size)
-        var flipped = [UInt8](repeating: 0, count: size * size)
+        // Straight through, no flip. A bitmap context's memory already runs
+        // top-down — row 0 is the top of the picture — while its *drawing*
+        // origin is bottom-left; the two are not the same axis, and flipping
+        // the rows to "convert" between them turns the image over. On a ring
+        // that is nearly invisible, which is how the convention survived; on
+        // two letters it is upside-down type, and the owner's panel printed
+        // "ChatGPT Agentic" as "CV".
+        var gray = [UInt8](repeating: 0, count: size * size)
         for row in 0..<size {
-            let source = (size - 1 - row) * small.bytesPerRow
+            let source = row * small.bytesPerRow
             for column in 0..<size {
-                flipped[row * size + column] = buffer[source + column]
+                gray[row * size + column] = buffer[source + column]
             }
         }
-        return flipped
+        return gray
     }
 
     // MARK: - Encoding

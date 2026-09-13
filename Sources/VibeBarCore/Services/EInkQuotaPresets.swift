@@ -12,21 +12,16 @@ extension EInkPresets {
     /// then does a slot give up a line instead.
     static let barMinimumWidth = 48
 
-    /// The landscape ledger's shipped label column. The column never shrinks
-    /// below it, so a panel of short names looks exactly as it did.
-    static let ledgerColumnMinimum = 126
-    /// The portrait ledger's window column, same reasoning.
-    static let ledgerPortraitColumnMinimum = 48
-
-    /// The label column the ledger and the table use.
+    /// The label column the ledger and the table use: exactly as wide as the
+    /// widest thing actually drawn in it, and never wider than `maximum`.
     ///
-    /// It grows before anything else gives way: the owner's review found
-    /// "Claude · Weekly" hiding which weekly bucket a row was, and the fix is
-    /// a longer name, which is only worth printing if there is room for it.
-    /// `minimum` is the shipped width, `maximum` what the row can spare once
-    /// the bar has kept `barMinimumWidth`.
-    static func labelColumnWidth(_ widths: [Int], minimum: Int, maximum: Int) -> Int {
-        max(minimum, min(max(minimum, maximum), widths.max() ?? 0))
+    /// Round 2 gave the column a fixed 126 px floor so a panel of short names
+    /// looked as it always had. The owner's round 3 review killed it: a ledger
+    /// of "Logo only" slots draws a 14 px mark and nothing else, and the floor
+    /// left 107 px of white between the mark and the bar. A column holds what
+    /// it holds; every pixel it does not need belongs to the bar.
+    static func labelColumnWidth(_ widths: [Int], maximum: Int) -> Int {
+        max(0, min(maximum, widths.max() ?? 0))
     }
 
     /// How many text rows the panel can draw, and how tall one of them gets.
@@ -225,22 +220,22 @@ extension EInkPresets {
         // cost; the bar keeps `barMinimumWidth` of the rest and the column
         // takes everything left over.
         let figures = 34 + 42 + 5 * 3
-        let maximum = content - figures - barMinimumWidth - logoWidth
-        let ceiling = max(ledgerColumnMinimum - logoWidth, maximum)
+        let maximum = max(0, content - figures - barMinimumWidth - logoWidth)
         let column = labelColumnWidth(
             zip(rows, styles).map { quota, style in
                 guard style.drawsLogo else {
                     return EInkSlotLabel.columnWidth(
                         name: quota.providerDisplayName,
                         window: quota.windowTitle,
-                        maximum: ceiling
+                        maximum: maximum
                     )
                 }
+                // A slot wearing nothing but its mark asks the column for
+                // nothing: the mark has its own reserved width in front.
                 let text = style.text(of: quota)
-                guard EInkSlotLabel.fits(text, width: ceiling) else { return 0 }
+                guard !text.isEmpty, EInkSlotLabel.fits(text, width: maximum) else { return 0 }
                 return EInkTextMetrics.width(text, font: pixel) + EInkSlotLabel.measurementSlack
             },
-            minimum: max(0, ledgerColumnMinimum - logoWidth),
             maximum: maximum
         )
         return LedgerPlan(
@@ -318,14 +313,21 @@ extension EInkPresets {
         let mark: [EInkNode] = logoWidth > 0
             ? [logo ?? spacer(.points(EInkLogo.rowSize))]
             : []
-        let figures = row(
-            mark + [
+        // A column that holds nothing is not drawn at all: an empty box would
+        // still cost the row its gap, which is the white the owner's "Logo
+        // only" ledger had between the mark and the bar.
+        let label: [EInkNode] = columnWidth > 0
+            ? [
                 labelFragment(
                     lines.column,
                     fieldID: quota.fieldID,
                     width: .points(columnWidth),
                     font: lines.column.part == .name ? pixelBold : pixel
-                ),
+                )
+            ]
+            : []
+        let figures = row(
+            mark + label + [
                 horizontalBar(quota.remainingPercent).bound(.quota(quota.fieldID, .percent)),
                 text("\(quota.remainingPercent)%", sans(14), width: .points(34), align: .trailing)
                     .bound(.quota(quota.fieldID, .percent)),
@@ -397,19 +399,16 @@ extension EInkPresets {
         let available = frame.height - 2 * margin - chrome.reserved
         // The bar row is [window][bar][percent]: the window column grows until
         // the bar would fall under its minimum.
-        let maximum = content - 34 - barMinimumWidth - 4 * 2
-        let ceiling = max(ledgerPortraitColumnMinimum, maximum)
+        let maximum = max(0, content - 34 - barMinimumWidth - 4 * 2)
         let styles = rows.map { labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.rowSize) }
         let widths: [Int] = zip(rows, styles).map { quota, style in
             let text = style.drawsLogo ? style.text(of: quota) : quota.windowTitle
-            guard EInkSlotLabel.fits(text, width: ceiling) else { return 0 }
+            guard !text.isEmpty, EInkSlotLabel.fits(text, width: maximum) else { return 0 }
             return EInkTextMetrics.width(text, font: pixel) + EInkSlotLabel.measurementSlack
         }
-        var windowColumn = labelColumnWidth(widths, minimum: ledgerPortraitColumnMinimum, maximum: maximum)
-        // A panel where every window took a line of its own has no column to
-        // keep: handing its 48 px back to the bar is the whole reason the
-        // column is measured rather than fixed.
-        if widths.allSatisfy({ $0 == 0 }) { windowColumn = 0 }
+        // A panel where every window took a line of its own — or drew nothing
+        // but a mark — has no column to keep, and the bar takes the row.
+        let windowColumn = labelColumnWidth(widths, maximum: maximum)
         let plans = zip(rows, styles).map {
             portraitSlotPlan($0, style: $1, column: windowColumn, content: content)
         }
@@ -504,9 +503,11 @@ extension EInkPresets {
                 clips: true
             )
         }
+        let label: [EInkNode] = columnWidth > 0
+            ? [labelFragment(plan.column, fieldID: quota.fieldID, width: .points(columnWidth))]
+            : []
         let figures = row(
-            [
-                labelFragment(plan.column, fieldID: quota.fieldID, width: .points(columnWidth)),
+            label + [
                 horizontalBar(quota.remainingPercent).bound(.quota(quota.fieldID, .percent)),
                 text("\(quota.remainingPercent)%", sans(14), width: .points(34), align: .trailing)
                     .bound(.quota(quota.fieldID, .percent))
@@ -522,22 +523,262 @@ extension EInkPresets {
         ).module(slotModule(quota.fieldID))
     }
 
+    // MARK: - Centred cells (rings and the rail)
+
+    /// The narrowest column a centred cell can be drawn in.
+    ///
+    /// A rail cell holds a 22 px bar under a three-digit percentage, and a
+    /// ring cell holds the smallest ring the panel still reads as one. Below
+    /// this a column is not a slot, so the row drops a cell instead.
+    static let railCellMinimum = 40
+    static let ringCellMinimum = 44
+
+    /// One centred cell's name: at most two lines, fitted to the column the
+    /// row actually gave it.
+    ///
+    /// A slot wearing its provider's mark has already said who it is, so only
+    /// the words the style left are drawn — and "Logo only" draws no text line
+    /// at all, which is height the bar gets back.
+    /// `rowWidth` is the panel's own content width: a cell lends its
+    /// neighbours' slack, but nothing may be wider than the row, and a name
+    /// that is gets the one ellipsis the panel is allowed to draw.
+    static func cellLabelLines(
+        _ quota: EInkQuotaRow,
+        style: EInkSlotLabelStyle,
+        width: Int,
+        rowWidth: Int? = nil,
+        keepsGroup: Bool = false
+    ) -> [EInkSlotLineFragment] {
+        let limit = rowWidth ?? width
+        guard style.drawsLogo else {
+            return EInkSlotLabel.cellLines(
+                name: quota.providerDisplayName,
+                window: quota.windowTitle,
+                width: width,
+                rowWidth: limit,
+                keepsGroup: keepsGroup
+            )
+        }
+        let text = style.text(of: quota)
+        guard !text.isEmpty else { return [] }
+        func line(_ value: String, _ part: EInkSlotLabelPart?) -> [EInkSlotLineFragment] {
+            let cut = EInkSlotLabel.truncated(value, width: limit, font: pixel)
+            return [EInkSlotLineFragment(cut, part: cut == value ? part : nil)]
+        }
+        if keepsGroup || EInkSlotLabel.fits(text, width: width) { return line(text, style.part) }
+        // The same rule the words follow: the group goes before anything is
+        // cut, and the window — the tier the reader came for — stays.
+        let tiers = text.components(separatedBy: EInkSlotLabel.separator)
+        guard tiers.count > 1, let last = tiers.last else { return line(text, style.part) }
+        return line(last, .period)
+    }
+
+    /// The width one centred cell asks its row for.
+    static func cellDesiredWidth(_ quota: EInkQuotaRow, style: EInkSlotLabelStyle) -> Int {
+        guard style.drawsLogo else {
+            return EInkSlotLabel.cellDesiredWidth(
+                name: quota.providerDisplayName,
+                window: quota.windowTitle
+            )
+        }
+        let text = style.text(of: quota)
+        guard !text.isEmpty else { return 0 }
+        return EInkTextMetrics.width(text, font: pixel) + EInkSlotLabel.measurementSlack
+    }
+
+    /// One row of centred cells, sized to the names it has to print.
+    ///
+    /// Round 2 split the row into equal columns, which gave "Weekly" the same
+    /// 94 px as "Claude and GPT Models · Weekly" and served neither: the long
+    /// name wrapped onto three lines and every bar in the row shrank to the
+    /// stub the owner's review reported. Here each column asks for what its
+    /// own name needs, the row shares itself out in proportion, and the figure
+    /// takes every pixel of height the tallest label left.
+    struct CentredRowPlan {
+        var rows: [EInkQuotaRow]
+        var styles: [EInkSlotLabelStyle]
+        var widths: [Int]
+        var lines: [[EInkSlotLineFragment]]
+        /// Ring diameter, or bar height.
+        var figure: Int
+        /// Text lines under the tallest cell's figure.
+        var textLines: Int
+        /// Whether any cell in the row draws a mark.
+        var drawsMark: Bool
+    }
+
+    /// Fits `rows` into one row `content` wide and `available` tall.
+    ///
+    /// `figure` is handed the row's line count and answers with the height
+    /// left for the ring or the bar; a row that cannot give it `minimumFigure`
+    /// drops its last slot and tries again, which is the ledger's order and
+    /// the same reason — a figure nobody can read is not a smaller figure.
+    static func planRow(
+        _ rows: [EInkQuotaRow],
+        styleByField: [String: EInkSlotLabelStyle],
+        content: Int,
+        minimumCell: Int,
+        order: ([EInkQuotaRow]) -> [EInkQuotaRow],
+        figure: (_ widths: [Int], _ textLines: Int, _ drawsMark: Bool) -> Int
+    ) -> CentredRowPlan {
+        // Every cell measures against the row, not only its own column.
+        let ordered = order(rows)
+        let styles = ordered.map { styleByField[$0.fieldID] ?? .text }
+        let widths = EInkSlotLabel.sharedWidths(
+            zip(ordered, styles).map(cellDesiredWidth),
+            total: content,
+            minimum: minimumCell
+        )
+        var lines = zip(zip(ordered, styles), widths).map { pair, width in
+            cellLabelLines(pair.0, style: pair.1, width: width, rowWidth: content)
+        }
+        // A dropped group must not cost the panel the thing the three-tier
+        // name was for: two buckets under one SubProvider that both come back
+        // as "AntiGravity / Weekly" name nothing. Those cells keep their
+        // group, and `isDrawable` gives up a column if it no longer fits.
+        let printed = lines.map { $0.map(\.text).joined(separator: "\u{1}") }
+        var counts: [String: Int] = [:]
+        for label in printed { counts[label, default: 0] += 1 }
+        for index in lines.indices where counts[printed[index], default: 0] > 1 {
+            lines[index] = cellLabelLines(
+                ordered[index],
+                style: styles[index],
+                width: widths[index],
+                rowWidth: content,
+                keepsGroup: true
+            )
+        }
+        let textLines = lines.map(\.count).max() ?? 0
+        let drawsMark = styles.contains(where: \.drawsLogo)
+        return CentredRowPlan(
+            rows: ordered,
+            styles: styles,
+            widths: widths,
+            lines: lines,
+            figure: figure(widths, textLines, drawsMark),
+            textLines: textLines,
+            drawsMark: drawsMark
+        )
+    }
+
+    /// Whether a planned row can actually be drawn.
+    ///
+    /// Every column keeps the minimum a figure needs, the figure keeps a size
+    /// that still reads, and no cell's line overhangs by more than the
+    /// neighbours can lend — the last one is what stops "ChatGPT Agentic"
+    /// printing through "AntiGravity" on a 140 px panel.
+    static func isDrawable(_ plan: CentredRowPlan, minimumCell: Int, minimumFigure: Int) -> Bool {
+        guard plan.widths.min() ?? 0 >= minimumCell, plan.figure >= minimumFigure else { return false }
+        for (index, lines) in plan.lines.enumerated() {
+            // `fits` is the one measurement that carries `measurementSlack`;
+            // comparing the raw estimate let five 70 px names into 57 px cells
+            // and the panel printed them through each other.
+            let lent = plan.widths[index] + cellSpill
+            if lines.contains(where: { !EInkSlotLabel.fits($0.text, width: lent, font: pixel) }) {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// One row of cells: as many as the names can be drawn in, dropping the
+    /// trailing slot rather than printing two names through each other.
+    static func centredRowPlan(
+        _ rows: [EInkQuotaRow],
+        styleByField: [String: EInkSlotLabelStyle],
+        content: Int,
+        minimumCell: Int,
+        minimumFigure: Int,
+        order: @escaping ([EInkQuotaRow]) -> [EInkQuotaRow] = { $0 },
+        figure: (_ widths: [Int], _ textLines: Int, _ drawsMark: Bool) -> Int
+    ) -> CentredRowPlan {
+        func plan(_ count: Int) -> CentredRowPlan {
+            planRow(
+                Array(rows.prefix(count)),
+                styleByField: styleByField,
+                content: content,
+                minimumCell: minimumCell,
+                order: order,
+                figure: figure
+            )
+        }
+        for count in stride(from: max(1, rows.count), through: 2, by: -1) {
+            let candidate = plan(count)
+            guard isDrawable(candidate, minimumCell: minimumCell, minimumFigure: minimumFigure) else { continue }
+            return candidate
+        }
+        return plan(1)
+    }
+
+    /// A portrait grid of centred cells: the widest number of columns every
+    /// row can actually draw, then as many rows as the height holds.
+    static func centredRowGrid(
+        _ rows: [EInkQuotaRow],
+        styleByField: [String: EInkSlotLabelStyle],
+        content: Int,
+        available: Int,
+        gap: Int,
+        maxPerRow: Int,
+        minimumCell: Int,
+        minimumFigure: Int,
+        order: @escaping ([EInkQuotaRow]) -> [EInkQuotaRow] = { $0 },
+        figure: (_ share: Int, _ widths: [Int], _ textLines: Int, _ drawsMark: Bool) -> Int,
+        height: (CentredRowPlan) -> Int
+    ) -> [CentredRowPlan] {
+        func chunks(_ perRow: Int) -> [[EInkQuotaRow]] {
+            stride(from: 0, to: rows.count, by: perRow).map {
+                Array(rows[$0..<min($0 + perRow, rows.count)])
+            }
+        }
+        func plans(_ perRow: Int) -> [CentredRowPlan] {
+            let groups = chunks(perRow)
+            let share = max(0, (available - gap * max(0, groups.count - 1)) / max(1, groups.count))
+            return groups.map { group in
+                planRow(
+                    group,
+                    styleByField: styleByField,
+                    content: content,
+                    minimumCell: minimumCell,
+                    order: order,
+                    figure: { figure(share, $0, $1, $2) }
+                )
+            }
+        }
+        var chosen = plans(1)
+        for perRow in stride(from: max(1, min(maxPerRow, rows.count)), through: 2, by: -1) {
+            let candidate = plans(perRow)
+            guard candidate.allSatisfy({ isDrawable($0, minimumCell: minimumCell, minimumFigure: minimumFigure) })
+            else { continue }
+            chosen = candidate
+            break
+        }
+        // The height the panel actually has decides how many of those rows
+        // survive; a row that does not fit is dropped rather than squeezed.
+        var kept: [CentredRowPlan] = []
+        var used = 0
+        for plan in chosen {
+            let cost = height(plan)
+            guard kept.isEmpty || used + gap + cost <= available else { break }
+            used += (kept.isEmpty ? 0 : gap) + cost
+            kept.append(plan)
+        }
+        return kept
+    }
+
     // MARK: - Rings
 
-    /// Rings always print the two-line form, centred: the cell is 48–70 px
-    /// wide and no one-line three-tier name fits it.
+    /// One ring cell: the figure, the mark the style asked for, at most two
+    /// lines of name, and the countdown.
     static func ringCell(
         _ quota: EInkQuotaRow,
         size: Int,
         labelSize: Int,
-        cellWidth: Int,
-        rowWidth: Int,
-        maxLines: Int,
+        width: Int,
+        lines: [EInkSlotLineFragment],
         style: EInkSlotLabelStyle = .text,
         logo: EInkNode? = nil
     ) -> EInkNode {
-        let lines = centredLabelLines(quota, width: cellWidth, rowWidth: rowWidth, maxLines: maxLines, style: style)
-        return column(
+        column(
             [
                 ring(quota.remainingPercent, size: size, stroke: 6, labelSize: labelSize)
                     .bound(.quota(quota.fieldID, .percent))
@@ -552,99 +793,20 @@ extension EInkPresets {
             } + [
                 text(quota.countdown, pixel, align: .center).bound(.quota(quota.fieldID, .countdown))
             ],
-            width: .flex(1),
+            width: .points(width),
             height: .auto,
             gap: 1,
             align: .center
         ).module(slotModule(quota.fieldID))
     }
 
-    /// A centred grid: how many cells to a row, how big the figure in one,
-    /// how many label lines they need, and how many slots the panel can hold.
+    /// A ring cell's height, given the ring's diameter.
     ///
-    /// Cells share the row, so more of them means a narrower one means more
-    /// lines. The layout gives up columns first (a name printed through its
-    /// neighbour is not a name), then the figure's size one step at a time,
-    /// then the trailing slot — which is the ledger's order, for the same
-    /// reason.
-    struct CentredGrid {
-        var count: Int
-        var perRow: Int
-        var size: Int
-        /// Text lines under the figure. The mark, when there is one, costs
-        /// `markLines` on top of them.
-        var lines: Int
-        var markLines: Int
-        var cellWidth: Int
-
-        /// Every line the cell draws under its ring or bar.
-        var totalLines: Int { lines + markLines }
-    }
-
-    static func centredGrid(
-        _ rows: [EInkQuotaRow],
-        content: Int,
-        available: Int,
-        maxPerRow: Int,
-        singleRow: Bool,
-        sizes: [Int],
-        gap: Int,
-        maxLines: Int,
-        styles: [EInkSlotLabelStyle] = [],
-        height: (Int, Int) -> Int
-    ) -> CentredGrid {
-        let total = max(1, rows.count)
-        func style(_ index: Int) -> EInkSlotLabelStyle {
-            index < styles.count ? styles[index] : .text
-        }
-        func plans(_ perRow: Int) -> (lines: Int, widest: Int, cell: Int) {
-            let cell = content / max(1, perRow)
-            // A single-row layout only draws its first `perRow` slots, so a
-            // name in a slot it already dropped must not go on costing it
-            // columns.
-            let measured = singleRow ? Array(rows.prefix(perRow)) : rows
-            let drawn = measured.enumerated().map {
-                centredLabelLines($1, width: cell, rowWidth: content, maxLines: maxLines, style: style($0))
-            }
-            return (
-                drawn.map(\.count).max() ?? 1,
-                drawn.flatMap { $0 }.map { EInkTextMetrics.width($0.text, font: pixel) }.max() ?? 0,
-                cell
-            )
-        }
-        // A 16 px mark is a line and a third of pixel type; it is budgeted
-        // as two so the cell never ends up a pixel short of its countdown.
-        let markLines = rows.indices.contains(where: { style($0).drawsLogo }) ? 2 : 0
-        for perRow in stride(from: min(maxPerRow, total), through: 1, by: -1) {
-            let plan = plans(perRow)
-            // A cell whose widest line overhangs by more than the neighbours
-            // can lend is a collision, not a layout.
-            if plan.widest > plan.cell + cellSpill { continue }
-            for size in sizes {
-                let rowHeight = height(size, plan.lines + markLines)
-                guard rowHeight <= available else { continue }
-                let rowsOfCells = singleRow ? 1 : max(1, (available + gap) / (rowHeight + gap))
-                return CentredGrid(
-                    count: min(total, rowsOfCells * perRow),
-                    perRow: perRow,
-                    size: size,
-                    lines: plan.lines,
-                    markLines: markLines,
-                    cellWidth: plan.cell
-                )
-            }
-        }
-        // Nothing fits: one cell, the smallest figure, and the name wrapped
-        // into whatever the height allows.
-        let plan = plans(1)
-        return CentredGrid(
-            count: 1,
-            perRow: 1,
-            size: sizes.last ?? 0,
-            lines: plan.lines,
-            markLines: markLines,
-            cellWidth: plan.cell
-        )
+    /// ring + mark + label lines + countdown, with a 1 px gap between each.
+    static func ringCellHeight(size: Int, textLines: Int, drawsMark: Bool) -> Int {
+        let mark = drawsMark ? EInkLogo.cellSize : 0
+        let children = 2 + (drawsMark ? 1 : 0) + textLines
+        return size + mark + textLines * 12 + 12 + max(0, children - 1)
     }
 
     static func ringsLandscape(
@@ -664,33 +826,34 @@ extension EInkPresets {
             gap: gap
         )
         let content = frame.width - 2 * margin
-        let styles = rows.map { labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.cellSize) }
-        let grid = centredGrid(
+        let available = frame.height - 2 * margin - chrome.reserved
+        let styleByField = styleMap(rows, snapshot: snapshot, options: options, size: EInkLogo.cellSize)
+        let plan = centredRowPlan(
             rows,
+            styleByField: styleByField,
             content: content,
-            available: frame.height - 2 * margin - chrome.reserved,
-            maxPerRow: max(1, rows.count),
-            singleRow: true,
-            sizes: chrome.compact ? [60, 52, 44, 36] : [48, 40, 32],
-            gap: gap,
-            maxLines: 4,
-            styles: styles,
-            // ring + mark + label lines + countdown, and a 1 px gap between.
-            height: { size, lines in size + (lines + 1) * 12 + lines + 1 }
-        )
-        let kept = Array(rows.prefix(grid.count))
-        let styleByField = Dictionary(zip(rows.map(\.fieldID), styles), uniquingKeysWith: { first, _ in first })
-        let ordered = longestInMiddle(kept)
-        let cells = ordered.map { quota in
+            minimumCell: ringCellMinimum,
+            minimumFigure: 28,
+            order: longestInMiddle
+        ) { widths, textLines, drawsMark in
+            // Every pixel the labels did not take is the ring's, and the only
+            // other limit is the column it has to fit inside.
+            ringSize(
+                available: available,
+                textLines: textLines,
+                drawsMark: drawsMark,
+                maximum: widths.min() ?? 0
+            )
+        }
+        let cells = plan.rows.indices.map { index in
             ringCell(
-                quota,
-                size: grid.size,
+                plan.rows[index],
+                size: plan.figure,
                 labelSize: chrome.compact ? 16 : 14,
-                cellWidth: grid.cellWidth,
-                rowWidth: content,
-                maxLines: grid.lines,
-                style: styleByField[quota.fieldID] ?? .text,
-                logo: logoNode(quota, snapshot: snapshot, size: EInkLogo.cellSize)
+                width: plan.widths[index],
+                lines: plan.lines[index],
+                style: plan.styles[index],
+                logo: logoNode(plan.rows[index], snapshot: snapshot, size: EInkLogo.cellSize)
             )
         }
         return screen(
@@ -698,6 +861,19 @@ extension EInkPresets {
             frame: frame,
             gap: gap
         )
+    }
+
+    /// The smallest ring `EInkRingRasterizer` will draw. A cell that cannot
+    /// hold one is not a ring cell, and the planner drops a column instead —
+    /// a zero-diameter ring is a rejected payload, which is a blank panel.
+    static let ringMinimumSize = 16
+
+    /// The largest ring the height allows, never wider than `maximum` — the
+    /// narrowest column in the row, because a ring is square and one wider
+    /// than its cell would be drawn through its neighbour.
+    static func ringSize(available: Int, textLines: Int, drawsMark: Bool, maximum: Int) -> Int {
+        let chrome = ringCellHeight(size: 0, textLines: textLines, drawsMark: drawsMark)
+        return max(ringMinimumSize, min(max(ringMinimumSize, maximum), available - chrome))
     }
 
     static func ringsPortrait(
@@ -714,41 +890,46 @@ extension EInkPresets {
             gap: gap
         )
         let content = frame.width - 2 * margin
-        let styles = rows.map { labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.cellSize) }
-        let grid = centredGrid(
+        let available = frame.height - 2 * margin - chrome.reserved
+        let styleByField = styleMap(rows, snapshot: snapshot, options: options, size: EInkLogo.cellSize)
+        // Two to a row while the names allow it: a portrait ring cell is 70 px
+        // of width, which one three-tier name uses up on its own.
+        let plans = centredRowGrid(
             rows,
+            styleByField: styleByField,
             content: content,
-            available: frame.height - 2 * margin - chrome.reserved,
-            maxPerRow: min(2, max(1, rows.count)),
-            singleRow: false,
-            sizes: [44, 36, 28],
+            available: available,
             gap: gap,
-            maxLines: 4,
-            styles: styles,
-            height: { size, lines in max(83, size + (lines + 1) * 12 + lines + 1) }
-        )
-        let kept = Array(rows.prefix(grid.count))
-        let cellHeight = max(83, grid.size + (grid.totalLines + 1) * 12 + grid.totalLines + 1)
-        var lines: [EInkNode] = []
-        for start in stride(from: 0, to: kept.count, by: grid.perRow) {
-            let chunk = Array(kept[start..<min(start + grid.perRow, kept.count)])
-            lines.append(
-                row(
-                    chunk.enumerated().map { index, quota in
-                        ringCell(
-                            quota,
-                            size: grid.size,
-                            labelSize: 13,
-                            cellWidth: grid.cellWidth,
-                            rowWidth: content,
-                            maxLines: grid.lines,
-                            style: styles[min(start + index, styles.count - 1)],
-                            logo: logoNode(quota, snapshot: snapshot, size: EInkLogo.cellSize)
-                        )
-                    },
-                    height: .points(cellHeight),
-                    align: .start
+            maxPerRow: 2,
+            minimumCell: ringCellMinimum,
+            minimumFigure: 24,
+            figure: { share, widths, textLines, drawsMark in
+                ringSize(
+                    available: share,
+                    textLines: textLines,
+                    drawsMark: drawsMark,
+                    maximum: widths.min() ?? 0
                 )
+            },
+            height: { ringCellHeight(size: $0.figure, textLines: $0.textLines, drawsMark: $0.drawsMark) }
+        )
+        let lines = plans.map { plan in
+            row(
+                plan.rows.indices.map { index in
+                    ringCell(
+                        plan.rows[index],
+                        size: plan.figure,
+                        labelSize: 13,
+                        width: plan.widths[index],
+                        lines: plan.lines[index],
+                        style: plan.styles[index],
+                        logo: logoNode(plan.rows[index], snapshot: snapshot, size: EInkLogo.cellSize)
+                    )
+                },
+                height: .points(
+                    ringCellHeight(size: plan.figure, textLines: plan.textLines, drawsMark: plan.drawsMark)
+                ),
+                align: .start
             )
         }
         return screen(chrome.compose(lines), frame: frame, gap: gap)
@@ -759,15 +940,12 @@ extension EInkPresets {
     static func railCell(
         _ quota: EInkQuotaRow,
         barHeight: Int,
-        width: EInkLength,
-        cellWidth: Int,
-        rowWidth: Int,
-        maxLines: Int,
+        width: Int,
+        lines: [EInkSlotLineFragment],
         style: EInkSlotLabelStyle = .text,
         logo: EInkNode? = nil
     ) -> EInkNode {
-        let lines = centredLabelLines(quota, width: cellWidth, rowWidth: rowWidth, maxLines: maxLines, style: style)
-        return column(
+        column(
             [
                 text("\(quota.remainingPercent)", sans(13), align: .center)
                     .bound(.quota(quota.fieldID, .percent)),
@@ -782,11 +960,30 @@ extension EInkPresets {
                     align: .center
                 )
             },
-            width: width,
+            width: .points(width),
             height: .auto,
             gap: 2,
             align: .center
         ).module(slotModule(quota.fieldID))
+    }
+
+    /// A rail cell's height: the percentage, the bar, the mark and the label
+    /// lines, with a 2 px gap between each.
+    static func railCellHeight(bar: Int, textLines: Int, drawsMark: Bool) -> Int {
+        let mark = drawsMark ? EInkLogo.cellSize : 0
+        let children = 2 + (drawsMark ? 1 : 0) + textLines
+        return 13 + bar + mark + textLines * 12 + 2 * max(0, children - 1)
+    }
+
+    /// The tallest bar the height allows.
+    ///
+    /// Every pixel the percentage, the mark and the labels did not take. Round
+    /// 2 picked from a fixed list of heights (60 / 48 / 36 / 30, or 84 / 72 /
+    /// 60 / 48 with no chrome), so a rail whose names had shrunk kept drawing
+    /// the same bar with white under it; a slide with no header, no footer and
+    /// nothing but marks now fills the panel.
+    static func railBarHeight(available: Int, textLines: Int, drawsMark: Bool) -> Int {
+        max(0, available - railCellHeight(bar: 0, textLines: textLines, drawsMark: drawsMark))
     }
 
     static func railLandscape(
@@ -806,32 +1003,28 @@ extension EInkPresets {
             gap: gap
         )
         let content = frame.width - 2 * margin
-        let styles = rows.map { labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.cellSize) }
-        let grid = centredGrid(
+        let available = frame.height - 2 * margin - chrome.reserved
+        let styleByField = styleMap(rows, snapshot: snapshot, options: options, size: EInkLogo.cellSize)
+        let plan = centredRowPlan(
             rows,
+            styleByField: styleByField,
             content: content,
-            available: frame.height - 2 * margin - chrome.reserved,
-            maxPerRow: max(1, rows.count),
-            singleRow: true,
-            sizes: chrome.compact ? [84, 72, 60, 48] : [60, 48, 36, 30],
-            gap: gap,
-            maxLines: 4,
-            styles: styles,
-            // the percentage, the bar, the label lines, and a 2 px gap between.
-            height: { bar, lines in 13 + bar + lines * 12 + (1 + lines) * 2 }
-        )
-        let styleByField = Dictionary(zip(rows.map(\.fieldID), styles), uniquingKeysWith: { first, _ in first })
-        let ordered = longestInMiddle(Array(rows.prefix(grid.count)))
-        let cells = ordered.map { quota in
+            minimumCell: railCellMinimum,
+            minimumFigure: 30,
+            order: longestInMiddle
+        ) { _, textLines, drawsMark in
+            // No fixed height: the bar is whatever the chrome and the labels
+            // left, which is the whole panel when a slide has neither.
+            railBarHeight(available: available, textLines: textLines, drawsMark: drawsMark)
+        }
+        let cells = plan.rows.indices.map { index in
             railCell(
-                quota,
-                barHeight: grid.size,
-                width: .flex(1),
-                cellWidth: grid.cellWidth,
-                rowWidth: content,
-                maxLines: grid.lines,
-                style: styleByField[quota.fieldID] ?? .text,
-                logo: logoNode(quota, snapshot: snapshot, size: EInkLogo.cellSize)
+                plan.rows[index],
+                barHeight: plan.figure,
+                width: plan.widths[index],
+                lines: plan.lines[index],
+                style: plan.styles[index],
+                logo: logoNode(plan.rows[index], snapshot: snapshot, size: EInkLogo.cellSize)
             )
         }
         return screen(
@@ -856,75 +1049,57 @@ extension EInkPresets {
         )
         let content = frame.width - 2 * margin
         let available = frame.height - 2 * margin - chrome.reserved
-        let ordered = longestFirst(rows)
-        let styleByField = Dictionary(
-            uniqueKeysWithValues: rows.map {
-                ($0.fieldID, labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.cellSize))
-            }
+        let styleByField = styleMap(rows, snapshot: snapshot, options: options, size: EInkLogo.cellSize)
+        // The demo drew three to a row on a 140 px panel. Three columns of a
+        // three-tier name is 46 px each, so the row keeps as many cells as the
+        // names can actually be drawn in and no more.
+        let plans = centredRowGrid(
+            rows,
+            styleByField: styleByField,
+            content: content,
+            available: available,
+            gap: gap,
+            maxPerRow: 3,
+            minimumCell: railCellMinimum,
+            minimumFigure: 30,
+            order: longestFirst,
+            figure: { share, _, textLines, drawsMark in
+                railBarHeight(available: share, textLines: textLines, drawsMark: drawsMark)
+            },
+            height: { railCellHeight(bar: $0.figure, textLines: $0.textLines, drawsMark: $0.drawsMark) }
         )
-        // The demo's wide-first columns, kept while the names fit them. A
-        // panel of three-tier names gets equal columns instead, and fewer of
-        // them, rather than three names printed through each other.
-        let demo = [60, 40, 40]
-        func fits(_ widths: [Int]) -> Int? {
-            let drawn = ordered.enumerated().map { index, quota in
-                (
-                    widths[min(index % widths.count, widths.count - 1)],
-                    centredLabelLines(
-                        quota,
-                        width: widths[min(index % widths.count, widths.count - 1)],
-                        rowWidth: content,
-                        maxLines: 4,
-                        style: styleByField[quota.fieldID] ?? .text
+        let lines = plans.map { plan in
+            row(
+                plan.rows.indices.map { index in
+                    railCell(
+                        plan.rows[index],
+                        barHeight: plan.figure,
+                        width: plan.widths[index],
+                        lines: plan.lines[index],
+                        style: plan.styles[index],
+                        logo: logoNode(plan.rows[index], snapshot: snapshot, size: EInkLogo.cellSize)
                     )
-                )
-            }
-            for (width, lines) in drawn {
-                let widest = lines.map { EInkTextMetrics.width($0.text, font: pixel) }.max() ?? 0
-                if widest > width + cellSpill { return nil }
-            }
-            return drawn.map(\.1.count).max() ?? 2
-        }
-        var widths = demo
-        var needed = fits(demo)
-        if needed == nil {
-            for perRow in [2, 1] {
-                let equal = Array(repeating: content / perRow, count: perRow)
-                if let lines = fits(equal) {
-                    widths = equal
-                    needed = lines
-                    break
-                }
-            }
-        }
-        let lineCountPerCell = needed ?? 2
-        let markLines = styleByField.values.contains(where: \.drawsLogo) ? 2 : 0
-        var barHeight = 84
-        func rowHeight() -> Int {
-            max(127, 13 + barHeight + (lineCountPerCell + markLines) * 12 + (1 + lineCountPerCell + markLines) * 2)
-        }
-        var rowsOfCells = (rows.count + widths.count - 1) / widths.count
-        while rowsOfCells > 1, rowHeight() * rowsOfCells + gap * (rowsOfCells - 1) > available {
-            if barHeight > 36 { barHeight -= 12 } else { rowsOfCells -= 1 }
-        }
-        let kept = Array(rows.prefix(rowsOfCells * widths.count))
-        var lines: [EInkNode] = []
-        for start in stride(from: 0, to: kept.count, by: widths.count) {
-            let chunk = longestFirst(Array(kept[start..<min(start + widths.count, kept.count)]))
-            let cells = chunk.enumerated().map { index, quota in
-                railCell(
-                    quota,
-                    barHeight: barHeight,
-                    width: .points(widths[min(index, widths.count - 1)]),
-                    cellWidth: widths[min(index, widths.count - 1)],
-                    rowWidth: content,
-                    maxLines: lineCountPerCell,
-                    style: styleByField[quota.fieldID] ?? .text,
-                    logo: logoNode(quota, snapshot: snapshot, size: EInkLogo.cellSize)
-                )
-            }
-            lines.append(row(cells, height: .points(rowHeight()), justify: .between, align: .end))
+                },
+                height: .points(
+                    railCellHeight(bar: plan.figure, textLines: plan.textLines, drawsMark: plan.drawsMark)
+                ),
+                align: .end
+            )
         }
         return screen(chrome.compose(lines), frame: frame, gap: gap)
+    }
+
+    /// Every slot's resolved style, keyed by field, so a row planned twice
+    /// resolves each mark once.
+    static func styleMap(
+        _ rows: [EInkQuotaRow],
+        snapshot: EInkDataSnapshot,
+        options: EInkSlideOptions,
+        size: Int
+    ) -> [String: EInkSlotLabelStyle] {
+        Dictionary(
+            rows.map { ($0.fieldID, labelStyle($0, snapshot: snapshot, options: options, size: size)) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 }

@@ -152,6 +152,16 @@ public extension MenuBarFieldCatalog {
         "\(tool.rawValue).all-models"
     }
 
+    /// The key a renamed SubProvider is stored under.
+    ///
+    /// The mini windows have keyed their SubProvider labels this way since
+    /// they grew group renaming, and the e-ink slide editor renames the same
+    /// two levels of the same tree. One spelling of the key lives here so the
+    /// two surfaces cannot drift into storing "Codex" under two names.
+    static func subProviderLabelKey(tool: ToolType, name: String) -> String {
+        "subprovider:\(tool.rawValue)/\(name)"
+    }
+
     /// Collapse the selected fields into rendered entries.
     ///
     /// One forward pass, no per-bucket dictionaries: this runs inside the

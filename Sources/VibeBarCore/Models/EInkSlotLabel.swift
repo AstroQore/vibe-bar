@@ -34,13 +34,15 @@ public enum EInkSlotLabel {
     public static func `default`(
         for fieldID: String,
         registry: QuotaFieldRegistry = .empty,
-        bucket: QuotaBucket? = nil
+        bucket: QuotaBucket? = nil,
+        levelLabels: [String: String] = [:]
     ) -> String {
-        parts(for: fieldID, registry: registry, bucket: bucket).joined(separator: separator)
+        parts(for: fieldID, registry: registry, bucket: bucket, levelLabels: levelLabels)
+            .joined(separator: separator)
     }
 
     /// The label a slide prints for a slot: its own override, else the
-    /// default.
+    /// default with whatever levels the slide has renamed.
     public static func resolved(
         for fieldID: String,
         options: EInkSlideOptions,
@@ -48,22 +50,66 @@ public enum EInkSlotLabel {
         bucket: QuotaBucket? = nil
     ) -> String {
         options.customLabel(for: fieldID)
-            ?? `default`(for: fieldID, registry: registry, bucket: bucket)
+            ?? `default`(
+                for: fieldID,
+                registry: registry,
+                bucket: bucket,
+                levelLabels: options.levelLabels
+            )
+    }
+
+    // MARK: - Level keys
+
+    /// The key a renamed SubProvider is stored under, for this slot.
+    ///
+    /// The same key the mini windows use, so the two surfaces name one
+    /// SubProvider the same way rather than each keeping a private spelling.
+    public static func subProviderLevelKey(for fieldID: String) -> String? {
+        guard let selector = EInkDataAssembler.selector(fieldID: fieldID) else { return nil }
+        return MenuBarFieldCatalog.subProviderLabelKey(
+            tool: selector.tool,
+            name: selector.tool.quotaSubProviderName(bucketID: selector.bucketID)
+        )
+    }
+
+    /// The key a renamed quota group is stored under, or `nil` for a bucket
+    /// that sits directly under its SubProvider — there is no group row to
+    /// rename, and offering one would be a field that prints nothing.
+    public static func groupLevelKey(
+        for fieldID: String,
+        registry: QuotaFieldRegistry = .empty
+    ) -> String? {
+        guard let field = MenuBarFieldCatalog.field(id: fieldID, registry: registry),
+              let key = MenuBarFieldCatalog.namingGroupKey(for: field),
+              key != MenuBarFieldCatalog.allModelsGroupKey(for: field.tool)
+        else { return nil }
+        return key
     }
 
     /// The tiers, already de-duplicated and with empties dropped.
     public static func parts(
         for fieldID: String,
         registry: QuotaFieldRegistry = .empty,
-        bucket: QuotaBucket? = nil
+        bucket: QuotaBucket? = nil,
+        levelLabels: [String: String] = [:]
     ) -> [String] {
         guard let selector = EInkDataAssembler.selector(fieldID: fieldID) else {
             return [fieldID]
         }
         let field = MenuBarFieldCatalog.field(id: fieldID, registry: registry)
-        var raw: [String] = [selector.tool.quotaSubProviderName(bucketID: selector.bucketID)]
+        let subProvider = subProviderLevelKey(for: fieldID)
+            .flatMap { trimmedLevel(levelLabels[$0]) }
+            ?? selector.tool.quotaSubProviderName(bucketID: selector.bucketID)
+        var raw: [String] = [subProvider]
+        // A renamed group replaces the tier rather than adding one: a bucket
+        // with no group of its own has nothing to rename, so the level row is
+        // not offered for it either.
         if let group = groupTitle(selector: selector, field: field, bucket: bucket) {
-            raw.append(group)
+            raw.append(
+                groupLevelKey(for: fieldID, registry: registry)
+                    .flatMap { trimmedLevel(levelLabels[$0]) }
+                    ?? group
+            )
         }
         if let window = windowTitle(field: field, bucket: bucket) {
             raw.append(window)
@@ -147,6 +193,13 @@ public enum EInkSlotLabel {
 
     static func isCatchAll(_ value: String) -> Bool {
         value.caseInsensitiveCompare("All Models") == .orderedSame
+    }
+
+    static func trimmedLevel(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
     }
 }
 
@@ -360,6 +413,135 @@ public extension EInkSlotLabel {
             column: EInkSlotLineFragment(""),
             trailing: lines.map { EInkSlotLineFragment($0, part: lines.count == 1 ? part : nil) }
         )
+    }
+
+    /// The most lines a centred cell — a ring, a rail bar — prints under its
+    /// figure.
+    ///
+    /// Two. The owner's round 2 panel wrapped "AntiGravity · Claude and GPT
+    /// Models · Weekly" onto three lines and left the bars a stub; the cell is
+    /// a column of a 152 px panel, and the third line always comes out of the
+    /// bar's height.
+    static let cellMaximumLines = 2
+
+    /// The lines a centred cell prints for one slot: the SubProvider on the
+    /// first, the group and the window on the second — and when that second
+    /// line will not fit the column the cell was given, the window alone.
+    ///
+    /// Dropping the group is not an abbreviation. The group is a whole word
+    /// the slide editor still shows in full, and the alternative — a third
+    /// line, or "Claude and GPT Mo…" — is either a shorter bar or a name that
+    /// has been cut. Nothing here is ever cut mid-word.
+    /// `rowWidth` is the width a line may never exceed — the panel's own, not
+    /// the cell's. A cell deliberately lends its neighbours' slack (see
+    /// `cellSpill`), so a line wider than its column is normal; a line wider
+    /// than the whole row is a name the panel cannot hold, and that one is cut
+    /// with an ellipsis so `EInkLayoutDiagnostics` can report it rather than
+    /// letting the device clip it silently.
+    /// `keepsGroup` refuses the drop: two buckets under one SubProvider that
+    /// share a window would otherwise print the same two lines, which is the
+    /// ambiguity the three-tier name exists to remove. The planner sets it for
+    /// exactly those cells and gives up a column instead.
+    static func cellLines(
+        name: String,
+        window: String,
+        width: Int,
+        rowWidth: Int? = nil,
+        keepsGroup: Bool = false,
+        font: EInkFont = .pixel12(bold: false)
+    ) -> [EInkSlotLineFragment] {
+        let limit = rowWidth ?? width
+        func line(_ text: String, _ part: EInkSlotLabelPart?) -> EInkSlotLineFragment {
+            let cut = truncated(text, width: limit, font: font)
+            return EInkSlotLineFragment(cut, part: cut == text ? part : nil)
+        }
+        let whole = window.isEmpty ? name : name + separator + window
+        if fits(whole, width: width, font: font) {
+            return [line(whole, .whole)]
+        }
+        guard !window.isEmpty else { return [line(name, .name)] }
+        let tiers = window.components(separatedBy: separator)
+        var second = window
+        var part = EInkSlotLabelPart.window
+        if !keepsGroup, !fits(second, width: width, font: font), tiers.count > 1, let last = tiers.last {
+            second = last
+            part = .period
+        }
+        return [line(name, .name), line(second, part)]
+    }
+
+    /// The width a centred cell would like: enough for the widest line it can
+    /// end up drawing, measured before any column has been handed out.
+    ///
+    /// Measured against the *full* second line rather than the one that may
+    /// survive, because that is what decides whether the group survives at
+    /// all: a slot asked for the width its whole name wants, and whichever
+    /// slots the row could not afford drop their group instead of a line.
+    static func cellDesiredWidth(
+        name: String,
+        window: String,
+        font: EInkFont = .pixel12(bold: false)
+    ) -> Int {
+        let lines = window.isEmpty ? [name] : [name, window]
+        return (lines.map { EInkTextMetrics.width($0, font: font) }.max() ?? 0) + measurementSlack
+    }
+
+    /// `desired` widths scaled to fill exactly `total`, with nothing below
+    /// `minimum`.
+    ///
+    /// A long name gets a wider column and a short one a narrower, which is
+    /// the whole of the round 3 fix: equal columns meant "Weekly" was given
+    /// the same 94 px as "Claude and GPT Models · Weekly" and neither was
+    /// served. `minimum` is the width the figure itself needs, so a column
+    /// never shrinks past the bar it has to hold.
+    static func sharedWidths(_ desired: [Int], total: Int, minimum: Int) -> [Int] {
+        guard !desired.isEmpty else { return [] }
+        let count = desired.count
+        // Not even the floor fits: equal columns, and the caller's own
+        // fallback (fewer cells per row) is what actually resolves it.
+        guard total >= minimum * count else {
+            return equalWidths(total: total, count: count)
+        }
+        var widths = desired.map { max(minimum, $0) }
+        let asked = widths.reduce(0, +)
+        if asked < total {
+            // Hand the slack out in proportion, so the long names keep their
+            // lead rather than every column growing by the same amount.
+            let slack = total - asked
+            var given = 0
+            for index in widths.indices.dropLast() {
+                let share = slack * widths[index] / max(1, asked)
+                widths[index] += share
+                given += share
+            }
+            widths[widths.count - 1] += slack - given
+        } else if asked > total {
+            // Shrink only what sits above the floor, in proportion to how far
+            // above it each column is.
+            let over = asked - total
+            let headroom = widths.map { $0 - minimum }
+            let total_headroom = max(1, headroom.reduce(0, +))
+            var taken = 0
+            for index in widths.indices.dropLast() {
+                let share = min(headroom[index], over * headroom[index] / total_headroom)
+                widths[index] -= share
+                taken += share
+            }
+            widths[widths.count - 1] = max(minimum, widths[widths.count - 1] - (over - taken))
+        }
+        // Rounding can still leave a pixel over; the last column absorbs it so
+        // the row is exactly as wide as the panel says it is.
+        let drift = total - widths.reduce(0, +)
+        widths[widths.count - 1] = max(0, widths[widths.count - 1] + drift)
+        return widths
+    }
+
+    static func equalWidths(total: Int, count: Int) -> [Int] {
+        guard count > 0 else { return [] }
+        let base = total / count
+        var widths = [Int](repeating: base, count: count)
+        widths[count - 1] += total - base * count
+        return widths
     }
 
     /// The width a slot asks of the label column: the whole name when it fits

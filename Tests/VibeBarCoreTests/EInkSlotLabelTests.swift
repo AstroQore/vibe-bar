@@ -118,13 +118,19 @@ final class EInkSlotLabelTests: XCTestCase {
             )
         }
 
-        // Short names keep the shipped 126 px column.
+        // The column is exactly as wide as the widest name in it. Round 2's
+        // 126 px floor is gone: whatever the names do not need is the bar's.
         let short = try drawn([("Claude", "Weekly"), ("Grok", "Weekly")])
         let shortLabel = try XCTUnwrap(short.first { box in
             if case let .text(value, _, _) = box.content { return value == "Claude · Weekly" }
             return false
         })
-        XCTAssertEqual(shortLabel.frame.width, 126)
+        XCTAssertEqual(
+            shortLabel.frame.width,
+            EInkTextMetrics.width("Claude · Weekly", font: .pixel12(bold: false))
+                + EInkSlotLabel.measurementSlack
+        )
+        XCTAssertLessThan(shortLabel.frame.width, 126, "the column no longer reserves a fixed 126 px")
 
         // A longer name grows the column instead of clipping in it — as far
         // as it can while the bar keeps its minimum width.
@@ -133,7 +139,11 @@ final class EInkSlotLabelTests: XCTestCase {
             if case let .text(value, _, _) = box.content { return value == "AntiGravity · 5 Hours" }
             return false
         })
-        XCTAssertGreaterThan(grown.frame.width, 126, "the column grows to the name that needs it")
+        XCTAssertGreaterThan(
+            grown.frame.width,
+            shortLabel.frame.width,
+            "the column grows to the name that needs it"
+        )
         XCTAssertTrue(
             EInkSlotLabel.fits("AntiGravity · 5 Hours", width: grown.frame.width),
             "and grows far enough that the name is not clipped in it"

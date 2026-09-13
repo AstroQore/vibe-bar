@@ -50,7 +50,7 @@ enum MiniWindowGroupLabelCatalog {
     }
 
     static func subProviderKey(tool: ToolType, name: String) -> String {
-        "subprovider:\(tool.rawValue)/\(name)"
+        MenuBarFieldCatalog.subProviderLabelKey(tool: tool, name: name)
     }
 
     static var subProviderOptions: [MiniWindowGroupLabelOption] {

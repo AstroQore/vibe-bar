@@ -19,18 +19,28 @@ struct EInkSlidesEditor: View {
     let sections: [EInkFieldSection]
     let plan: EInkPreviewPlan?
     let availableQuotaFieldIDs: [String]
+    /// The preview snapshot, for the live percentage beside each slot. `nil`
+    /// before the first assembly, and the rows simply say nothing then.
+    let snapshot: EInkDataSnapshot?
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
+    @EnvironmentObject private var quotaService: QuotaService
 
     @State private var slideDrag: Drag?
     @State private var slideFrames: [String: CGRect] = [:]
-    @State private var slotDrag: Drag?
-    @State private var slotFrames: [String: CGRect] = [:]
     @State private var isConfirmingReset = false
+    /// The shown slots as one company → SubProvider → group tree, and the
+    /// live percentage for each of them.
+    ///
+    /// Both are rebuilt when the selection, the registry or the snapshot
+    /// moves — never in `body`. Every settings write republishes into this
+    /// view, and walking the catalog per pass is exactly the hitch `AGENTS.md`
+    /// § 7 forbids on an interactive surface.
+    @State private var companies: [SlotCompany] = []
+    @State private var percentByField: [String: Int] = [:]
 
     private static let slideSpace = "vibebar.eink.slides"
-    private static let slotSpace = "vibebar.eink.slots"
     private static let dragThreshold: CGFloat = 5
 
     /// One row being dragged in one of the two reorderable lists.
@@ -46,18 +56,63 @@ struct EInkSlidesEditor: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                slideList
-                if let slide = selectedSlide {
-                    Divider().padding(.vertical, 2)
-                    slideEditor(slide)
-                }
+        // A device is twice as long as its panel, so even at device pixels the
+        // preview is about 630 pt. Beside an editor column whose pickers and
+        // fields need several hundred more, that does not fit the Settings
+        // pane at the Workbench's default width — and the paper may not be
+        // shrunk to make it (`docs/DESIGN.md`: whole pixels). So the preview
+        // goes under the editor instead of beside it.
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                editorColumn
+                previewColumn
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            previewColumn
+            VStack(alignment: .leading, spacing: 16) {
+                editorColumn
+                previewColumn
+            }
         }
+        .onAppear { rebuildCaches() }
+        // The *resolved* order, so a slot moved with the arrows rebuilds the
+        // tree too: `slotOrder` is what an up / down click writes, and
+        // watching the selection alone left the list in its old order until
+        // something unrelated happened to invalidate it.
+        .onChange(of: selectedSlide?.orderedQuotaFieldIDs ?? []) { _, _ in rebuildCaches() }
+        .onChange(of: selectedSlide?.id) { _, _ in rebuildCaches() }
+        .onChange(of: quotaService.fieldRegistry) { _, _ in rebuildCaches() }
+        .onChange(of: snapshot?.generatedAtISO) { _, _ in rebuildPercentages() }
+    }
+
+    private func rebuildCaches() {
+        companies = SlotCompany.tree(
+            fieldIDs: selectedSlide?.orderedQuotaFieldIDs ?? [],
+            registry: quotaService.fieldRegistry
+        )
+        rebuildPercentages()
+    }
+
+    private func rebuildPercentages() {
+        percentByField = Dictionary(
+            (snapshot?.quota ?? []).map { ($0.fieldID, $0.remainingPercent) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    /// The slide list and the selected slide's editor.
+    ///
+    /// `minWidth` is what makes the side-by-side arrangement report an honest
+    /// width: a column that only says "as wide as you like" always fits, and
+    /// `ViewThatFits` would never reach for the stacked form.
+    @ViewBuilder
+    private var editorColumn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            slideList
+            if let slide = selectedSlide {
+                Divider().padding(.vertical, 2)
+                slideEditor(slide)
+            }
+        }
+        .frame(minWidth: 440, maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - The list
@@ -334,38 +389,6 @@ struct EInkSlidesEditor: View {
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .disabled(slide.options.header != nil || slide.options.footer != nil)
-
-                labelStyleRow(slide)
-            }
-        }
-    }
-
-    /// How this slide's quota slots name their provider.
-    ///
-    /// Only for a layout that draws quota slots: a usage table has no
-    /// SubProvider to swap for a mark, and a picker that changes nothing is a
-    /// picker that teaches people the setting is broken.
-    @ViewBuilder
-    private func labelStyleRow(_ slide: EInkSlide) -> some View {
-        if slide.kind.preset?.isQuotaPreset == true {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(L10n.Settings.Eink.labelStyle)
-                        .font(.caption)
-                        .frame(width: 96, alignment: .leading)
-                    Picker(L10n.Settings.Eink.labelStyle, selection: labelStyleBinding(slide)) {
-                        ForEach(EInkSlotLabelStyle.allCases, id: \.self) { style in
-                            Text(EInkNaming.labelStyle(style)).tag(style)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 200, alignment: .leading)
-                    Spacer(minLength: 0)
-                }
-                Text(L10n.Settings.Eink.LabelStyle.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -407,8 +430,7 @@ struct EInkSlidesEditor: View {
             let capacity = preset.capacity(for: device.orientation)
             switch preset.selectionAxis {
             case .quotaFields:
-                bucketPicker(slide, capacity: capacity)
-                slotOrderList(slide)
+                slotArrangement(slide, capacity: capacity)
             case .usagePeriods:
                 periodPicker(slide, capacity: capacity)
             case .harnessRows:
@@ -425,138 +447,259 @@ struct EInkSlidesEditor: View {
         }
     }
 
-    private func bucketPicker(_ slide: EInkSlide, capacity: Int) -> some View {
-        let selected = slide.quotaFieldIDs
-        let isFull = selected.count >= capacity
-        return VStack(alignment: .leading, spacing: 4) {
+    // MARK: - Slot arrangement
+
+    /// The slide's quota slots, arranged the way the menu bar arranges its
+    /// fields: what is shown, as one ordered tree of company → SubProvider →
+    /// group with an editable name at each level, and a candidate list under
+    /// it.
+    ///
+    /// Round 2 shipped a checkbox list of every bucket the app knows plus a
+    /// separate "Order" list, which the owner's review called out: two
+    /// controls for one decision, in a shape nothing else in Vibe Bar uses,
+    /// and no way to rename a whole provider without renaming five slots.
+    private func slotArrangement(_ slide: EInkSlide, capacity: Int) -> some View {
+        let ids = slide.orderedQuotaFieldIDs
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(L10n.Settings.Eink.buckets)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                Text(L10n.Quota.History.curvesSome(shown: selected.count, total: capacity))
+                Text(L10n.Quota.History.curvesSome(shown: ids.count, total: capacity))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
+                Spacer(minLength: 8)
+                if slide.kind.preset?.isQuotaPreset == true {
+                    Text(L10n.Settings.Eink.labelStyle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Picker(L10n.Settings.Eink.labelStyle, selection: labelStyleBinding(slide)) {
+                        ForEach(EInkSlotLabelStyle.allCases, id: \.self) { style in
+                            Text(EInkNaming.labelStyle(style)).tag(style)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 170)
+                    .help(L10n.Settings.Eink.LabelStyle.detail)
+                }
             }
-            if selected.isEmpty {
+
+            if ids.isEmpty {
                 Text(L10n.Settings.Eink.noSelection)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
+            } else {
+                shownTree(slide, ids: ids)
             }
+
+            Text(L10n.Settings.Eink.slotLabelDetail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            candidateList(slide, shown: ids, capacity: capacity)
+        }
+    }
+
+    private func shownTree(_ slide: EInkSlide, ids: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(companies) { company in
+                if company.showsHeader {
+                    HStack(spacing: 6) {
+                        CompanyBrandIconView(tool: company.accentTool, size: 12)
+                            .opacity(0.85)
+                        Text(company.name)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .tracking(0.4)
+                    }
+                    .padding(.top, company.isFirst ? 0 : 5)
+                }
+                ForEach(company.subProviders) { subProvider in
+                    levelRow(
+                        slide,
+                        title: subProvider.name,
+                        key: subProvider.key,
+                        indent: 14,
+                        weight: .bold,
+                        size: 9
+                    )
+                    ForEach(subProvider.groups) { group in
+                        if let key = group.key {
+                            levelRow(
+                                slide,
+                                title: group.title,
+                                key: key,
+                                indent: 28,
+                                weight: .semibold,
+                                size: 8.5
+                            )
+                        }
+                        ForEach(group.fieldIDs, id: \.self) { fieldID in
+                            slotRow(slide, fieldID: fieldID, ids: ids)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// One level heading with the name the panel prints for it.
+    ///
+    /// Empty inherits, exactly as a slot's own name does: the field's prompt
+    /// is the default, so an untouched level says what it will print without
+    /// anybody having to type it back in.
+    private func levelRow(
+        _ slide: EInkSlide,
+        title: String,
+        key: String,
+        indent: CGFloat,
+        weight: Font.Weight,
+        size: CGFloat
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: size, weight: weight, design: .rounded))
+                .foregroundStyle(.secondary)
+                .tracking(1.0)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            DebouncedSettingsTextField(
+                prompt: title,
+                value: levelLabelBinding(slide, key: key)
+            )
+            .frame(width: 150)
+            .id("level-\(slide.id)-\(key)")
+        }
+        .padding(.leading, indent)
+        .padding(.top, 2)
+    }
+
+    private func slotRow(_ slide: EInkSlide, fieldID: String, ids: [String]) -> some View {
+        let index = ids.firstIndex(of: fieldID) ?? 0
+        let tool = EInkDataAssembler.selector(fieldID: fieldID)?.tool
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(tool.map { Theme.providerAccent(for: $0) } ?? Color.secondary)
+                .frame(width: 6, height: 6)
+            // The row has to say which bucket it is before it says anything
+            // else, so the name outranks the controls beside it: without the
+            // priority the fixed-width picker and field take the row and the
+            // name is squeezed to nothing.
+            Text(slotRowName(fieldID))
+                .font(.system(size: 11.5, weight: .medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .layoutPriority(2)
+            if let percent = percentByField[fieldID] {
+                // `AppLocale.percent` takes a fraction, and a row that read
+                // "6,400%" would be a number nobody could trust.
+                Text(AppLocale.percent(Double(percent) / 100))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .layoutPriority(2)
+            }
+            Spacer(minLength: 4)
+            Picker(L10n.Settings.Eink.labelStyle, selection: slotLabelStyleBinding(slide, fieldID: fieldID)) {
+                Text(L10n.Settings.Eink.LabelStyle.slideDefault).tag(EInkSlotLabelStyle?.none)
+                ForEach(EInkSlotLabelStyle.allCases, id: \.self) { style in
+                    Text(EInkNaming.labelStyle(style)).tag(EInkSlotLabelStyle?.some(style))
+                }
+            }
+            .labelsHidden()
+            .frame(width: 112)
+            .id("label-style-\(slide.id)-\(fieldID)")
+
+            DebouncedSettingsTextField(
+                prompt: L10n.Settings.Eink.slotLabel,
+                value: slotLabelBinding(slide, fieldID: fieldID)
+            )
+            .frame(minWidth: 84, maxWidth: 150)
+            .id("label-\(slide.id)-\(fieldID)")
+
+            BorderlessIconButton(systemImage: "chevron.up", help: L10n.Settings.Eink.slotOrder) {
+                moveSlot(slide, fieldID: fieldID, by: -1, order: ids)
+            }
+            .disabled(index == 0)
+            BorderlessIconButton(systemImage: "chevron.down", help: L10n.Settings.Eink.slotOrder) {
+                moveSlot(slide, fieldID: fieldID, by: 1, order: ids)
+            }
+            .disabled(index >= ids.count - 1)
+            BorderlessIconButton(systemImage: "xmark", help: L10n.Common.remove) {
+                setBucket(slide, fieldID: fieldID, selected: false, capacity: 0)
+            }
+            .disabled(ids.count <= 1)
+        }
+        .padding(.horizontal, 6)
+        .frame(height: 26)
+        .padding(.leading, 20)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+                .padding(.leading, 20)
+        )
+        .help(fieldID)
+    }
+
+    /// The buckets this account returns that the slide is not already showing,
+    /// grouped the way the shown list is.
+    ///
+    /// Only what the account actually exposes: round 2 offered the whole
+    /// static catalog, so a Gemini-only Mac could tick five Claude rows that
+    /// never drew.
+    @ViewBuilder
+    private func candidateList(_ slide: EInkSlide, shown: [String], capacity: Int) -> some View {
+        let isFull = shown.count >= capacity
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.Common.add)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             if isFull {
                 Text(L10n.Settings.Eink.capacityFull(count: capacity))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(sections) { section in
+            ForEach(candidateSections(shown: shown)) { section in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(section.title)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.tertiary)
-                    ForEach(section.options) { option in
-                        Toggle(
-                            QuotaGroupLabelLocalizer.display(option.displayTitle),
-                            isOn: bucketBinding(slide, fieldID: option.id, capacity: capacity)
+                    HStack(spacing: 6) {
+                        QuotaBrandIconView(
+                            tool: section.tool,
+                            bucketID: section.bucketID,
+                            size: 13
                         )
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
-                        .disabled(
-                            (isFull && !selected.contains(option.id))
-                                || (selected.count == 1 && selected.contains(option.id))
-                        )
+                        .opacity(0.85)
+                        Text(section.title)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.tertiary)
+                            .textCase(.uppercase)
+                            .tracking(0.4)
+                    }
+                    ForEach(section.fieldIDs, id: \.self) { fieldID in
+                        Button {
+                            setBucket(slide, fieldID: fieldID, selected: true, capacity: capacity)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text(candidateName(fieldID))
+                                    .font(.system(size: 11.5))
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .buttonStyle(.vibeBar(cornerRadius: 6))
+                        .disabled(isFull)
+                        .help(fieldID)
                     }
                 }
+                .padding(.leading, 14)
             }
-        }
-    }
-
-    /// The chosen buckets in the order the panel prints them, each with the
-    /// name this slide gives it.
-    ///
-    /// Both were missing in round 1: the order was whatever order the boxes
-    /// were ticked in, and a three-tier name that did not fit could only be
-    /// shortened by not picking that bucket.
-    @ViewBuilder
-    private func slotOrderList(_ slide: EInkSlide) -> some View {
-        let ids = slide.orderedQuotaFieldIDs
-        if !ids.isEmpty {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(L10n.Settings.Eink.slotOrder)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                ForEach(ids, id: \.self) { fieldID in
-                    slotRow(slide, fieldID: fieldID, ids: ids)
-                }
-                Text(L10n.Settings.Eink.slotLabelDetail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .coordinateSpace(.named(Self.slotSpace))
-            .overlay(alignment: .topLeading) {
-                if let insertion = insertionIndex(slotDrag, ids: ids, frames: slotFrames),
-                   let offset = insertionOffset(ids, frames: slotFrames, at: insertion) {
-                    caret.offset(y: offset)
-                }
-            }
-        }
-    }
-
-    private func slotRow(_ slide: EInkSlide, fieldID: String, ids: [String]) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .frame(width: 16, height: 20)
-                .contentShape(Rectangle())
-                .gesture(
-                    reorderGesture(
-                        id: fieldID,
-                        space: Self.slotSpace,
-                        state: $slotDrag,
-                        ids: ids,
-                        frames: slotFrames,
-                        apply: { moved, index in applySlotMove(slide, fieldID: moved, to: index, order: ids) }
-                    )
-                )
-                .help(L10n.Common.dragToReorder)
-
-            Text(defaultSlotName(fieldID))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(width: 180, alignment: .leading)
-
-            DebouncedSettingsTextField(
-                prompt: L10n.Settings.Eink.slotLabel,
-                value: slotLabelBinding(slide, fieldID: fieldID)
-            )
-            .frame(maxWidth: 240)
-            .id("label-\(slide.id)-\(fieldID)")
-
-            // One slot may disagree with the slide: the bucket with a
-            // three-tier name is the one that needs its mark, and the short
-            // ones can stay in words.
-            if slide.kind.preset?.isQuotaPreset == true {
-                Picker(L10n.Settings.Eink.labelStyle, selection: slotLabelStyleBinding(slide, fieldID: fieldID)) {
-                    Text(L10n.Settings.Eink.LabelStyle.slideDefault).tag(EInkSlotLabelStyle?.none)
-                    ForEach(EInkSlotLabelStyle.allCases, id: \.self) { style in
-                        Text(EInkNaming.labelStyle(style)).tag(EInkSlotLabelStyle?.some(style))
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 150)
-                .id("label-style-\(slide.id)-\(fieldID)")
-            }
-            Spacer(minLength: 0)
-        }
-        .opacity(slotDrag?.engaged == true && slotDrag?.id == fieldID ? 0.3 : 1)
-        .onGeometryChange(for: CGRect.self) { proxy in
-            proxy.frame(in: .named(Self.slotSpace))
-        } action: { frame in
-            slotFrames[fieldID] = frame
         }
     }
 
@@ -597,9 +740,11 @@ struct EInkSlidesEditor: View {
                 .foregroundStyle(.secondary)
             if let plan {
                 let size = device.orientation.physicalFrame(device.profile)
-                // 2x of a landscape panel is 592 pt wide, which a narrow
+                // 2x of a landscape device is about 1,260 pt, which a narrow
                 // window cannot hold; fall back to device pixels rather than
-                // clipping the panel.
+                // clipping. Whole pixels only — `docs/DESIGN.md` — so there is
+                // no third step: a preview smaller than the panel would be a
+                // downsampled 1-bit canvas, which lies about the ink.
                 ViewThatFits(in: .horizontal) {
                     framedPreview(plan, size: size, scale: 2)
                     framedPreview(plan, size: size, scale: 1)
@@ -666,25 +811,49 @@ struct EInkSlidesEditor: View {
         )
     }
 
-    private func bucketBinding(_ slide: EInkSlide, fieldID: String, capacity: Int) -> Binding<Bool> {
+    /// Adding or removing one bucket.
+    ///
+    /// An empty list means "Vibe Bar's own order" to the renderer, so removing
+    /// the last slot would put back the very buckets the user just took off.
+    /// One always stays, as with the usage periods.
+    private func setBucket(_ slide: EInkSlide, fieldID: String, selected: Bool, capacity: Int) {
+        updateSlide(slide.id) { current in
+            if selected {
+                guard current.quotaFieldIDs.count < capacity,
+                      !current.quotaFieldIDs.contains(fieldID) else { return }
+                current.quotaFieldIDs.append(fieldID)
+            } else {
+                guard current.quotaFieldIDs.count > 1 else { return }
+                current.quotaFieldIDs.removeAll { $0 == fieldID }
+                current.options.slotOrder.removeAll { $0 == fieldID }
+                current.options.customLabels[fieldID] = nil
+                current.options.labelStyles[fieldID] = nil
+            }
+        }
+    }
+
+    /// One step up or down the shown list.
+    ///
+    /// The order is one flat list even though it is drawn as a tree, which is
+    /// what the panel actually prints; a slot moved past its SubProvider's
+    /// last bucket simply lands under the next heading.
+    private func moveSlot(_ slide: EInkSlide, fieldID: String, by offset: Int, order: [String]) {
+        guard let index = order.firstIndex(of: fieldID) else { return }
+        let target = index + offset
+        guard order.indices.contains(target) else { return }
+        var next = order
+        next.swapAt(index, target)
+        updateSlide(slide.id) { $0.options.slotOrder = next }
+    }
+
+    /// The name this slide prints for one level of the tree. Empty inherits.
+    private func levelLabelBinding(_ slide: EInkSlide, key: String) -> Binding<String> {
         Binding(
-            get: { slide.quotaFieldIDs.contains(fieldID) },
+            get: { slide.options.levelLabels[key] ?? "" },
             set: { [slideID = slide.id] value in
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 updateSlide(slideID) { current in
-                    if value {
-                        guard current.quotaFieldIDs.count < capacity,
-                              !current.quotaFieldIDs.contains(fieldID) else { return }
-                        current.quotaFieldIDs.append(fieldID)
-                    } else {
-                        // An empty list means "Vibe Bar's own order" to the
-                        // renderer, so clearing the last box would put back
-                        // the very buckets the user removed. One stays on, as
-                        // with the usage periods.
-                        guard current.quotaFieldIDs.count > 1 else { return }
-                        current.quotaFieldIDs.removeAll { $0 == fieldID }
-                        current.options.slotOrder.removeAll { $0 == fieldID }
-                        current.options.customLabels[fieldID] = nil
-                    }
+                    current.options.levelLabels[key] = trimmed.isEmpty ? nil : trimmed
                 }
             }
         )
@@ -1057,11 +1226,6 @@ struct EInkSlidesEditor: View {
         }
     }
 
-    private func applySlotMove(_ slide: EInkSlide, fieldID: String, to index: Int, order: [String]) {
-        let next = reordered(order, moving: fieldID, to: index)
-        updateSlide(slide.id) { $0.options.slotOrder = next }
-    }
-
     // MARK: - Naming
 
     private func slideDisplayName(_ slide: EInkSlide) -> String {
@@ -1073,13 +1237,158 @@ struct EInkSlidesEditor: View {
         return EInkNaming.preset(preset)
     }
 
-    /// The name the panel prints for a bucket when the slide names nothing —
-    /// shown beside the field so an empty box is not a mystery.
-    private func defaultSlotName(_ fieldID: String) -> String {
-        sections
-            .flatMap(\.options)
-            .first { $0.id == fieldID }
-            .map { QuotaGroupLabelLocalizer.display($0.displayTitle) }
-            ?? fieldID
+    /// What one shown row calls its bucket.
+    ///
+    /// The window tier alone — the SubProvider and the group already stand as
+    /// the headings above it, and repeating them in every row is the noise the
+    /// tree exists to remove. The whole name is still one hover away.
+    private func slotRowName(_ fieldID: String) -> String {
+        let parts = EInkSlotLabel.parts(for: fieldID, registry: quotaService.fieldRegistry)
+        return QuotaGroupLabelLocalizer.display(parts.last ?? fieldID)
     }
+
+    /// What one candidate row calls its bucket: the whole name, because there
+    /// is no heading above it saying which group it belongs to.
+    private func candidateName(_ fieldID: String) -> String {
+        let parts = EInkSlotLabel.parts(for: fieldID, registry: quotaService.fieldRegistry)
+        return QuotaGroupLabelLocalizer.display(
+            parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+        )
+    }
+
+    /// One provider's worth of buckets the slide could still add.
+    private struct CandidateSection: Identifiable {
+        let tool: ToolType
+        let bucketID: String?
+        let title: String
+        var fieldIDs: [String]
+        var id: String { "\(tool.rawValue)/\(title)" }
+    }
+
+    /// The buckets this account returns that the slide is not showing,
+    /// grouped by SubProvider in the order the account offered them.
+    private func candidateSections(shown: [String]) -> [CandidateSection] {
+        let taken = Set(shown)
+        var sections: [CandidateSection] = []
+        var index: [String: Int] = [:]
+        for fieldID in availableQuotaFieldIDs where !taken.contains(fieldID) {
+            guard let selector = EInkDataAssembler.selector(fieldID: fieldID) else { continue }
+            let name = selector.tool.quotaSubProviderName(bucketID: selector.bucketID)
+            let key = "\(selector.tool.rawValue)/\(name)"
+            if let position = index[key] {
+                sections[position].fieldIDs.append(fieldID)
+                continue
+            }
+            index[key] = sections.count
+            sections.append(
+                CandidateSection(
+                    tool: selector.tool,
+                    bucketID: selector.bucketID,
+                    title: name,
+                    fieldIDs: [fieldID]
+                )
+            )
+        }
+        return sections
+    }
+}
+
+// MARK: - The shown tree
+
+/// One company's worth of shown slots, as the editor draws them.
+///
+/// Built from `MenuBarFieldCatalog.orderedSubProviderGroups`, which is what
+/// the mini windows and the menu bar already group by — so a bucket sits under
+/// the same two headings wherever it is arranged.
+struct SlotCompany: Identifiable {
+    struct Group: Identifiable {
+        /// `nil` for a bucket that sits directly under its SubProvider: there
+        /// is no group tier on the panel, so there is no name to rename.
+        let key: String?
+        let title: String
+        var fieldIDs: [String]
+        // The first slot in the run, because a run can repeat: two Codex
+        // sections either side of a Claude one are two rows, not one.
+        var id: String { fieldIDs.first ?? title }
+    }
+
+    struct SubProvider: Identifiable {
+        let tool: ToolType
+        let name: String
+        let key: String
+        var groups: [Group]
+        var id: String { groups.first?.id ?? key }
+    }
+
+    let name: String
+    let accentTool: ToolType
+    /// A company heading repeated from the row above says nothing, exactly as
+    /// in the menu bar's own field editor.
+    let showsHeader: Bool
+    let isFirst: Bool
+    var subProviders: [SubProvider]
+    var id: String { subProviders.first?.id ?? name }
+
+    /// The flat order, cut into runs.
+    ///
+    /// Runs, not a grouping: the panel prints one flat list, so a heading
+    /// starts wherever the SubProvider changes and starts again if that
+    /// SubProvider comes back later. Coalescing every Codex bucket under the
+    /// first Codex heading would show an order the panel does not draw, and
+    /// would make a slot moved past a heading appear not to move at all.
+    /// `MenuBarFieldsEditor` cuts its own list the same way.
+    static func tree(fieldIDs: [String], registry: QuotaFieldRegistry) -> [SlotCompany] {
+        var companies: [SlotCompany] = []
+        var previousCompany: String?
+        for fieldID in fieldIDs {
+            guard let field = MenuBarFieldCatalog.field(id: fieldID, registry: registry) else { continue }
+            let name = field.tool.quotaSubProviderName(bucketID: field.bucketId)
+            let key = MenuBarFieldCatalog.subProviderLabelKey(tool: field.tool, name: name)
+            let vendor = field.tool.vendorName
+            let groupKey = EInkSlotLabel.groupLevelKey(for: fieldID, registry: registry)
+            let parts = EInkSlotLabel.parts(for: fieldID, registry: registry)
+            // Three tiers means the middle one is the group; two means the
+            // bucket sits directly under its SubProvider.
+            let groupTitle = QuotaGroupLabelLocalizer.display(parts.count > 2 ? parts[1] : "")
+
+            if var company = companies.last,
+               var subProvider = company.subProviders.last,
+               subProvider.key == key
+            {
+                if var group = subProvider.groups.last, group.key == groupKey, groupKey != nil {
+                    group.fieldIDs.append(fieldID)
+                    subProvider.groups[subProvider.groups.count - 1] = group
+                } else {
+                    subProvider.groups.append(Group(key: groupKey, title: groupTitle, fieldIDs: [fieldID]))
+                }
+                company.subProviders[company.subProviders.count - 1] = subProvider
+                companies[companies.count - 1] = company
+                continue
+            }
+
+            let subProvider = SubProvider(
+                tool: field.tool,
+                name: name,
+                key: key,
+                groups: [Group(key: groupKey, title: groupTitle, fieldIDs: [fieldID])]
+            )
+            if var company = companies.last, company.name == vendor {
+                company.subProviders.append(subProvider)
+                companies[companies.count - 1] = company
+            } else {
+                companies.append(
+                    SlotCompany(
+                        name: vendor,
+                        accentTool: field.tool == .chatgptChat ? .codex : field.tool,
+                        showsHeader: vendor != previousCompany,
+                        isFirst: companies.isEmpty,
+                        subProviders: [subProvider]
+                    )
+                )
+                previousCompany = vendor
+            }
+        }
+        return companies
+    }
+
 }

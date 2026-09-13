@@ -95,6 +95,14 @@ public struct EInkQuotaRow: Sendable, Equatable {
     /// `EInkFormat.countdown(resetAt, now)`, e.g. "5d 23h".
     public var countdown: String
     public var plan: String
+    /// The key a slide stores this bucket's *group* rename under, resolved by
+    /// the assembler because only it holds the live registry.
+    ///
+    /// `EInkSlotLabel.groupLevelKey` answers from the static catalog, which is
+    /// `nil` for a bucket the provider only just started returning — so a
+    /// group renamed in the editor (which does have the registry) would have
+    /// been saved and then never printed.
+    public var groupLevelKey: String?
     /// What the pace model says about this bucket, when there is enough
     /// history for one.
     public var forecast: EInkQuotaForecast?
@@ -107,6 +115,7 @@ public struct EInkQuotaRow: Sendable, Equatable {
         resetAt: Date? = nil,
         countdown: String = "",
         plan: String = "",
+        groupLevelKey: String? = nil,
         forecast: EInkQuotaForecast? = nil
     ) {
         self.fieldID = fieldID
@@ -116,6 +125,7 @@ public struct EInkQuotaRow: Sendable, Equatable {
         self.resetAt = resetAt
         self.countdown = countdown
         self.plan = plan
+        self.groupLevelKey = groupLevelKey
         self.forecast = forecast
     }
 
@@ -150,11 +160,27 @@ public struct EInkQuotaRow: Sendable, Equatable {
     /// label therefore wins at draw time, split on the same separator so the
     /// two-line slots still break where the name reads.
     public func relabeled(with options: EInkSlideOptions) -> EInkQuotaRow {
-        guard let label = options.customLabel(for: fieldID) else { return self }
+        if let label = options.customLabel(for: fieldID) {
+            var copy = self
+            let parts = label.components(separatedBy: EInkSlotLabel.separator)
+            copy.providerDisplayName = parts.first ?? label
+            copy.windowTitle = parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+            return copy
+        }
+        // No name of its own: whatever levels of the tree the slide renamed
+        // still apply. A SubProvider renamed "Codex" prints "Codex · Weekly"
+        // on every bucket under it without five per-slot overrides.
+        guard !options.levelLabels.isEmpty else { return self }
         var copy = self
-        let parts = label.components(separatedBy: EInkSlotLabel.separator)
-        copy.providerDisplayName = parts.first ?? label
-        copy.windowTitle = parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+        if let name = options.levelLabel(for: EInkSlotLabel.subProviderLevelKey(for: fieldID)) {
+            copy.providerDisplayName = name
+        }
+        let tiers = windowTitle.components(separatedBy: EInkSlotLabel.separator)
+        if tiers.count > 1,
+           let group = options.levelLabel(for: groupLevelKey ?? EInkSlotLabel.groupLevelKey(for: fieldID))
+        {
+            copy.windowTitle = ([group] + tiers.dropFirst()).joined(separator: EInkSlotLabel.separator)
+        }
         return copy
     }
 }

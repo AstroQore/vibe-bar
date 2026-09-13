@@ -232,7 +232,11 @@ struct EInkDisplaysSettingsSection: View {
             ) { orientation in
                 setOrientation(orientation, deviceID: device.deviceID)
             }
-            Text(L10n.Settings.Eink.orientationNote)
+            // The old note explained a notch. The four schematics now draw the
+            // device's blank half where it will actually be, so the shape says
+            // the orientation and the caption only has to say that the panel
+            // is drawn the way it is read.
+            Text(L10n.Settings.Eink.uprightPreview)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -658,7 +662,8 @@ struct EInkDisplaysSettingsSection: View {
                 selectedSlideID: $selectedSlideID,
                 sections: pickerSections,
                 plan: previews[device.orientation.rawValue],
-                availableQuotaFieldIDs: availableQuotaFieldIDs
+                availableQuotaFieldIDs: availableQuotaFieldIDs,
+                snapshot: snapshot
             )
         }
     }
