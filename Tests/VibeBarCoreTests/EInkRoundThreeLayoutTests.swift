@@ -196,6 +196,36 @@ final class EInkRoundThreeLayoutTests: XCTestCase {
         XCTAssertEqual(short.map(\.text), ["Claude · Weekly"])
     }
 
+    /// A name with no tier left to drop, wider than the whole panel, gets the
+    /// one ellipsis the panel is allowed to draw — and loses its binding, so
+    /// the Studio reports it rather than passing it off as the bucket's name.
+    func testANameWiderThanTheRowIsCutRatherThanDrawnThroughTheEdge() {
+        let huge = String(repeating: "Desk Panel ", count: 8)
+        let lines = EInkSlotLabel.cellLines(name: huge, window: "", width: 94, rowWidth: 284)
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertTrue(EInkSlotLabel.isTruncated(lines[0].text))
+        XCTAssertTrue(EInkSlotLabel.fits(lines[0].text, width: 284))
+        XCTAssertNil(lines[0].part, "a cut name is not the bucket's name")
+
+        // And the presets pass the row width, so a panel never draws one.
+        var snapshot = EInkFixtures.snapshot()
+        snapshot.quota = [
+            EInkQuotaRow(fieldID: "claude.weekly", providerDisplayName: huge, windowTitle: "", remainingPercent: 50)
+        ]
+        for preset in [EInkPreset.quotaRings, .quotaRail] {
+            for orientation in EInkOrientation.allCases {
+                let content = orientation.isPortrait ? 140 : 284
+                for (value, box) in texts(try! drawn(preset, .default, snapshot, orientation: orientation)) {
+                    XCTAssertLessThanOrEqual(
+                        EInkTextMetrics.width(value, font: .pixel12(bold: false)),
+                        content + EInkPresets.cellSpill,
+                        "\(preset.rawValue)/\(orientation.rawValue)°: \"\(value)\" at \(box.frame.width) px"
+                    )
+                }
+            }
+        }
+    }
+
     /// The rail never stacks more than two lines of name under a bar,
     /// whatever the names are.
     ///
@@ -404,6 +434,46 @@ final class EInkRoundThreeLayoutTests: XCTestCase {
         let printed = texts(try drawn(.quotaLedger, options, snapshot)).map(\.0)
         XCTAssertTrue(printed.contains("Codex · Weekly"))
         XCTAssertFalse(printed.contains("ChatGPT Agentic · Weekly"))
+    }
+
+    // MARK: - The device's own shape
+
+    /// Where the blank half of the bar sits, per rotation.
+    ///
+    /// The Quote/0 is a long bar with the panel at one end; the body is on the
+    /// device's own right when its top is up, which is a quarter turn
+    /// clockwise from `uprightDeviceEdge`. This is the table the orientation
+    /// picker draws, and drawing it wrong is a picture that says the device is
+    /// hung the other way up.
+    func testTheBlankBodySitsOnTheRightEdgeForEveryRotation() {
+        let expected: [EInkOrientation: (
+            top: EInkOrientation.DeviceEdge,
+            body: EInkOrientation.DeviceEdge,
+            port: EInkOrientation.DeviceEdge
+        )] = [
+            .degrees0: (.top, .right, .left),
+            .degrees90: (.left, .top, .bottom),
+            .degrees180: (.bottom, .left, .right),
+            .degrees270: (.right, .bottom, .top)
+        ]
+        for orientation in EInkOrientation.allCases {
+            let want = try! XCTUnwrap(expected[orientation])
+            XCTAssertEqual(orientation.uprightDeviceEdge, want.top, "\(orientation.rawValue)° top")
+            XCTAssertEqual(orientation.uprightBodyEdge, want.body, "\(orientation.rawValue)° body")
+            XCTAssertEqual(orientation.uprightPortEdge, want.port, "\(orientation.rawValue)° port")
+            // The port is always the edge opposite the body, and the body is
+            // always on a short edge of the panel as it is read.
+            XCTAssertNotEqual(orientation.uprightBodyEdge, orientation.uprightPortEdge)
+            let isVertical = { (edge: EInkOrientation.DeviceEdge) in edge == .top || edge == .bottom }
+            XCTAssertEqual(isVertical(orientation.uprightBodyEdge), isVertical(orientation.uprightPortEdge))
+            // A portrait panel's bar runs vertically; a landscape one's runs
+            // across. The body always extends off the panel's long axis.
+            XCTAssertEqual(
+                isVertical(orientation.uprightBodyEdge),
+                orientation.isPortrait,
+                "\(orientation.rawValue)°: the bar runs along the panel's long side"
+            )
+        }
     }
 
     /// Level names survive a settings round trip, and an empty one is not

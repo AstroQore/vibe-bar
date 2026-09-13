@@ -432,17 +432,29 @@ public extension EInkSlotLabel {
     /// the slide editor still shows in full, and the alternative — a third
     /// line, or "Claude and GPT Mo…" — is either a shorter bar or a name that
     /// has been cut. Nothing here is ever cut mid-word.
+    /// `rowWidth` is the width a line may never exceed — the panel's own, not
+    /// the cell's. A cell deliberately lends its neighbours' slack (see
+    /// `cellSpill`), so a line wider than its column is normal; a line wider
+    /// than the whole row is a name the panel cannot hold, and that one is cut
+    /// with an ellipsis so `EInkLayoutDiagnostics` can report it rather than
+    /// letting the device clip it silently.
     static func cellLines(
         name: String,
         window: String,
         width: Int,
+        rowWidth: Int? = nil,
         font: EInkFont = .pixel12(bold: false)
     ) -> [EInkSlotLineFragment] {
+        let limit = rowWidth ?? width
+        func line(_ text: String, _ part: EInkSlotLabelPart?) -> EInkSlotLineFragment {
+            let cut = truncated(text, width: limit, font: font)
+            return EInkSlotLineFragment(cut, part: cut == text ? part : nil)
+        }
         let whole = window.isEmpty ? name : name + separator + window
         if fits(whole, width: width, font: font) {
-            return [EInkSlotLineFragment(whole, part: .whole)]
+            return [line(whole, .whole)]
         }
-        guard !window.isEmpty else { return [EInkSlotLineFragment(name, part: .name)] }
+        guard !window.isEmpty else { return [line(name, .name)] }
         let tiers = window.components(separatedBy: separator)
         var second = window
         var part = EInkSlotLabelPart.window
@@ -450,10 +462,7 @@ public extension EInkSlotLabel {
             second = last
             part = .period
         }
-        return [
-            EInkSlotLineFragment(name, part: .name),
-            EInkSlotLineFragment(second, part: part)
-        ]
+        return [line(name, .name), line(second, part)]
     }
 
     /// The width a centred cell would like: enough for the widest line it can

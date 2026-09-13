@@ -1,15 +1,36 @@
 import SwiftUI
 import VibeBarCore
 
-/// A panel drawn the way it is read, inside the outline of the device holding
-/// it, with a notch on the hardware's own top edge.
+/// The proportions of a Quote/0, measured off the hardware.
 ///
-/// The notch is the whole point. Once the preview is upright
-/// (`EInkPreviewView`), all four orientations look like a page — so nothing on
-/// screen says which way the device is actually turned any more. The outline
-/// says it: at 0° the notch is at the top; at 90° the canvas was turned
-/// clockwise into the panel, so reading it upright means turning the device
-/// counter-clockwise and the notch ends up on the left.
+/// The device is a long white bar, not a screen-sized tile: the 296 × 152
+/// panel sits behind a thin bezel at one end and fills a little over half the
+/// bar's length, the rest is blank plastic, and the USB-C port is centred in
+/// the short edge at the screen end. Every number here is a ratio of the
+/// panel's own short side, so the chrome scales with the preview while the
+/// preview itself stays pixel-true.
+enum EInkChassis {
+    /// The bezel between the panel and the plastic around it. 8 px of 152.
+    static let bezelRatio: CGFloat = 0.055
+    /// Plastic outside the bezel, on the three edges the body is not on.
+    /// 14 px of 152 — what makes the bar thicker than the screen area.
+    static let rimRatio: CGFloat = 0.092
+    /// The share of the bar's length the screen area takes. 313 of 602.
+    static let screenShare: CGFloat = 0.52
+    /// Corner radius as a share of the bar's short side.
+    static let cornerRatio: CGFloat = 0.12
+}
+
+/// A panel drawn the way it is read, inside a line-art schematic of the
+/// device holding it.
+///
+/// Round 2 drew a rounded rectangle the size of the panel with a notch on the
+/// device's top edge. The owner's photograph of the real thing is a bar twice
+/// as long as its screen, and nothing about a notch said so. This draws the
+/// bar: the panel at one end, the blank body at the other, the port on the
+/// screen's own short edge — and because the body can only be in one place
+/// per rotation (`EInkOrientation.uprightBodyEdge`), the shape alone says
+/// which way the device is turned. No notch, and no sentence explaining one.
 struct EInkDeviceFrame<Content: View>: View {
     let orientation: EInkOrientation
     let paperWidth: CGFloat
@@ -17,43 +38,104 @@ struct EInkDeviceFrame<Content: View>: View {
     var isSelected: Bool = false
     @ViewBuilder var content: () -> Content
 
-    private static var bezel: CGFloat { 6 }
+    /// The bar runs along the panel's long side, always: the body extends off
+    /// a short edge of the screen, whichever way the device is hung.
+    private var isHorizontal: Bool {
+        orientation.uprightBodyEdge == .left || orientation.uprightBodyEdge == .right
+    }
+
+    private var paperShort: CGFloat { min(paperWidth, paperHeight) }
+    private var bezel: CGFloat { max(1, (paperShort * EInkChassis.bezelRatio).rounded()) }
+    private var rim: CGFloat { max(1, (paperShort * EInkChassis.rimRatio).rounded()) }
+
+    /// How far the blank half extends past the screen area.
+    private var bodyLength: CGFloat {
+        let screenArea = max(paperWidth, paperHeight) + 2 * bezel
+        return max(4, (screenArea / EInkChassis.screenShare - screenArea).rounded())
+    }
+
+    private var barShort: CGFloat { paperShort + 2 * bezel + 2 * rim }
+    private var corner: CGFloat { barShort * EInkChassis.cornerRatio }
 
     var body: some View {
-        content()
-            .frame(width: paperWidth, height: paperHeight)
-            .padding(Self.bezel)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
-            .overlay(alignment: notchAlignment) { notch }
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? Color.accentColor : Color.primary.opacity(0.18),
-                        lineWidth: isSelected ? 2 : 1
-                    )
-            )
+        chassis
+            .overlay(alignment: portAlignment) { port }
             .accessibilityHidden(true)
     }
 
-    private var isVerticalEdge: Bool {
-        orientation.uprightDeviceEdge == .left || orientation.uprightDeviceEdge == .right
+    private var chassis: some View {
+        halves
+            .padding(rim)
+            .background(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .fill(Color.primary.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? Color.accentColor : Color.primary.opacity(0.3),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            )
     }
 
-    private var notch: some View {
-        Capsule(style: .continuous)
-            .fill(Color.primary.opacity(0.45))
+    /// The screen end and the blank end, in the order the body edge asks for.
+    @ViewBuilder
+    private var halves: some View {
+        let bodyFirst = orientation.uprightBodyEdge == .left || orientation.uprightBodyEdge == .top
+        if isHorizontal {
+            HStack(spacing: 0) {
+                if bodyFirst { blankBody }
+                screen
+                if !bodyFirst { blankBody }
+            }
+        } else {
+            VStack(spacing: 0) {
+                if bodyFirst { blankBody }
+                screen
+                if !bodyFirst { blankBody }
+            }
+        }
+    }
+
+    private var screen: some View {
+        content()
+            .frame(width: paperWidth, height: paperHeight)
+            .padding(bezel)
+            .background(Color.primary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: max(2, bezel * 0.6), style: .continuous))
+    }
+
+    /// White plastic. Drawn as space rather than as a fill, so the schematic
+    /// reads as one bar with a screen in it and not as two blocks.
+    ///
+    /// Both dimensions are stated: `Color.clear` is infinitely flexible, and
+    /// left to itself it takes every point the enclosing row can spare — which
+    /// is a device the size of the pane.
+    private var blankBody: some View {
+        let across = paperShort + 2 * bezel
+        return Color.clear
             .frame(
-                width: isVerticalEdge ? 2.5 : 22,
-                height: isVerticalEdge ? 22 : 2.5
+                width: isHorizontal ? bodyLength : across,
+                height: isHorizontal ? across : bodyLength
+            )
+    }
+
+    /// The USB-C port, centred in the short edge at the screen end.
+    private var port: some View {
+        let portIsVertical = orientation.uprightPortEdge == .left
+            || orientation.uprightPortEdge == .right
+        return Capsule(style: .continuous)
+            .fill(Color.primary.opacity(0.35))
+            .frame(
+                width: portIsVertical ? 2 : barShort * 0.22,
+                height: portIsVertical ? barShort * 0.22 : 2
             )
             .padding(1.5)
     }
 
-    private var notchAlignment: Alignment {
-        switch orientation.uprightDeviceEdge {
+    private var portAlignment: Alignment {
+        switch orientation.uprightPortEdge {
         case .top: .top
         case .bottom: .bottom
         case .left: .leading
@@ -101,9 +183,9 @@ struct EInkOrientationPicker: View {
     private func option(_ candidate: EInkOrientation) -> some View {
         let size = candidate.physicalFrame(profile)
         // No caption under the panels: the four say what they are by their
-        // shape and their notch, and the only words that fit under a 76 pt
-        // portrait frame would be a truncated sentence. The full one is the
-        // tooltip, and the note under the row explains the notch once.
+        // shape — where the blank half of the bar sits — and the only words
+        // that fit under a 76 pt portrait frame would be a truncated
+        // sentence. The full one is the tooltip.
         return EInkDeviceFrame(
             orientation: candidate,
             paperWidth: CGFloat(size.width) * Self.scale,
@@ -120,38 +202,47 @@ struct EInkOrientationPicker: View {
     }
 }
 
-/// The panel outline, small, with the device's own top edge marked — the
-/// toolbar's version of `EInkDeviceFrame`, where there is no room for paper.
+/// The device, small: the toolbar's version of `EInkDeviceFrame`, where
+/// there is no room for paper.
+///
+/// The same bar, the same proportions, the screen end filled in — so the
+/// Studio's toolbar and the settings picker say the orientation the same way.
 struct EInkOrientationGlyph: View {
     let orientation: EInkOrientation
 
+    /// The panel's short side at glyph scale; everything else follows the
+    /// chassis ratios, exactly as the big frame does.
+    private static let paperShort: CGFloat = 9
+
+    private var isHorizontal: Bool {
+        orientation.uprightBodyEdge == .left || orientation.uprightBodyEdge == .right
+    }
+
     var body: some View {
-        let portrait = orientation.isPortrait
-        let width: CGFloat = portrait ? 13 : 22
-        let height: CGFloat = portrait ? 22 : 13
-        ZStack(alignment: notchAlignment) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
+        let short = Self.paperShort * (1 + 2 * EInkChassis.bezelRatio + 2 * EInkChassis.rimRatio)
+        let long = (Self.paperShort * 296 / 152 + 2) / EInkChassis.screenShare
+        let screenLong = long * EInkChassis.screenShare - 2
+        return ZStack(alignment: screenAlignment) {
+            RoundedRectangle(cornerRadius: short * EInkChassis.cornerRatio, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.55), lineWidth: 1)
-            Rectangle()
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
                 .fill(Color.accentColor)
                 .frame(
-                    width: isVerticalEdge ? 2.5 : width - 6,
-                    height: isVerticalEdge ? height - 6 : 2.5
+                    width: isHorizontal ? screenLong - 3 : Self.paperShort - 1,
+                    height: isHorizontal ? Self.paperShort - 1 : screenLong - 3
                 )
                 .padding(2)
         }
-        .frame(width: width, height: height)
+        .frame(
+            width: isHorizontal ? long : short,
+            height: isHorizontal ? short : long
+        )
         .padding(3)
     }
 
-    private var isVerticalEdge: Bool {
-        orientation.uprightDeviceEdge == .left || orientation.uprightDeviceEdge == .right
-    }
-
-    /// The device's top edge, not the drawing's: `uprightDeviceEdge` is the
-    /// one answer both this and the settings picker read.
-    private var notchAlignment: Alignment {
-        switch orientation.uprightDeviceEdge {
+    /// The screen sits at the end opposite the body — the port end.
+    private var screenAlignment: Alignment {
+        switch orientation.uprightPortEdge {
         case .top: .top
         case .bottom: .bottom
         case .left: .leading

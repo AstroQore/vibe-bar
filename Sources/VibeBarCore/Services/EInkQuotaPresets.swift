@@ -539,30 +539,36 @@ extension EInkPresets {
     /// A slot wearing its provider's mark has already said who it is, so only
     /// the words the style left are drawn — and "Logo only" draws no text line
     /// at all, which is height the bar gets back.
+    /// `rowWidth` is the panel's own content width: a cell lends its
+    /// neighbours' slack, but nothing may be wider than the row, and a name
+    /// that is gets the one ellipsis the panel is allowed to draw.
     static func cellLabelLines(
         _ quota: EInkQuotaRow,
         style: EInkSlotLabelStyle,
-        width: Int
+        width: Int,
+        rowWidth: Int? = nil
     ) -> [EInkSlotLineFragment] {
+        let limit = rowWidth ?? width
         guard style.drawsLogo else {
             return EInkSlotLabel.cellLines(
                 name: quota.providerDisplayName,
                 window: quota.windowTitle,
-                width: width
+                width: width,
+                rowWidth: limit
             )
         }
         let text = style.text(of: quota)
         guard !text.isEmpty else { return [] }
-        if EInkSlotLabel.fits(text, width: width) {
-            return [EInkSlotLineFragment(text, part: style.part)]
+        func line(_ value: String, _ part: EInkSlotLabelPart?) -> [EInkSlotLineFragment] {
+            let cut = EInkSlotLabel.truncated(value, width: limit, font: pixel)
+            return [EInkSlotLineFragment(cut, part: cut == value ? part : nil)]
         }
+        if EInkSlotLabel.fits(text, width: width) { return line(text, style.part) }
         // The same rule the words follow: the group goes before anything is
         // cut, and the window — the tier the reader came for — stays.
         let tiers = text.components(separatedBy: EInkSlotLabel.separator)
-        guard tiers.count > 1, let last = tiers.last else {
-            return [EInkSlotLineFragment(text, part: style.part)]
-        }
-        return [EInkSlotLineFragment(last, part: .period)]
+        guard tiers.count > 1, let last = tiers.last else { return line(text, style.part) }
+        return line(last, .period)
     }
 
     /// The width one centred cell asks its row for.
@@ -613,6 +619,7 @@ extension EInkPresets {
         order: ([EInkQuotaRow]) -> [EInkQuotaRow],
         figure: (_ widths: [Int], _ textLines: Int, _ drawsMark: Bool) -> Int
     ) -> CentredRowPlan {
+        // Every cell measures against the row, not only its own column.
         let ordered = order(rows)
         let styles = ordered.map { styleByField[$0.fieldID] ?? .text }
         let widths = EInkSlotLabel.sharedWidths(
@@ -621,7 +628,7 @@ extension EInkPresets {
             minimum: minimumCell
         )
         let lines = zip(zip(ordered, styles), widths).map { pair, width in
-            cellLabelLines(pair.0, style: pair.1, width: width)
+            cellLabelLines(pair.0, style: pair.1, width: width, rowWidth: content)
         }
         let textLines = lines.map(\.count).max() ?? 0
         let drawsMark = styles.contains(where: \.drawsLogo)

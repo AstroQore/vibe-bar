@@ -69,7 +69,11 @@ struct EInkSlidesEditor: View {
             previewColumn
         }
         .onAppear { rebuildCaches() }
-        .onChange(of: selectedSlide?.quotaFieldIDs ?? []) { _, _ in rebuildCaches() }
+        // The *resolved* order, so a slot moved with the arrows rebuilds the
+        // tree too: `slotOrder` is what an up / down click writes, and
+        // watching the selection alone left the list in its old order until
+        // something unrelated happened to invalidate it.
+        .onChange(of: selectedSlide?.orderedQuotaFieldIDs ?? []) { _, _ in rebuildCaches() }
         .onChange(of: selectedSlide?.id) { _, _ in rebuildCaches() }
         .onChange(of: quotaService.fieldRegistry) { _, _ in rebuildCaches() }
         .onChange(of: snapshot?.generatedAtISO) { _, _ in rebuildPercentages() }
@@ -803,7 +807,6 @@ struct EInkSlidesEditor: View {
                 current.options.labelStyles[fieldID] = nil
             }
         }
-        rebuildCaches()
     }
 
     /// One step up or down the shown list.
@@ -818,7 +821,6 @@ struct EInkSlidesEditor: View {
         var next = order
         next.swapAt(index, target)
         updateSlide(slide.id) { $0.options.slotOrder = next }
-        rebuildCaches()
     }
 
     /// The name this slide prints for one level of the tree. Empty inherits.
@@ -1282,7 +1284,9 @@ struct SlotCompany: Identifiable {
         let key: String?
         let title: String
         var fieldIDs: [String]
-        var id: String { key ?? (fieldIDs.first ?? title) }
+        // The first slot in the run, because a run can repeat: two Codex
+        // sections either side of a Claude one are two rows, not one.
+        var id: String { fieldIDs.first ?? title }
     }
 
     struct SubProvider: Identifiable {
@@ -1290,7 +1294,7 @@ struct SlotCompany: Identifiable {
         let name: String
         let key: String
         var groups: [Group]
-        var id: String { key }
+        var id: String { groups.first?.id ?? key }
     }
 
     let name: String
@@ -1300,60 +1304,68 @@ struct SlotCompany: Identifiable {
     let showsHeader: Bool
     let isFirst: Bool
     var subProviders: [SubProvider]
-    var id: String { "\(name)/\(subProviders.first?.key ?? "")" }
+    var id: String { subProviders.first?.id ?? name }
 
+    /// The flat order, cut into runs.
+    ///
+    /// Runs, not a grouping: the panel prints one flat list, so a heading
+    /// starts wherever the SubProvider changes and starts again if that
+    /// SubProvider comes back later. Coalescing every Codex bucket under the
+    /// first Codex heading would show an order the panel does not draw, and
+    /// would make a slot moved past a heading appear not to move at all.
+    /// `MenuBarFieldsEditor` cuts its own list the same way.
     static func tree(fieldIDs: [String], registry: QuotaFieldRegistry) -> [SlotCompany] {
-        let companies = MenuBarFieldCatalog.orderedSubProviderGroups(
-            fieldIds: fieldIDs,
-            registry: registry
-        )
+        var companies: [SlotCompany] = []
         var previousCompany: String?
-        return companies.enumerated().map { index, company in
-            let result = SlotCompany(
-                name: company.company,
-                accentTool: company.accentTool,
-                showsHeader: company.company != previousCompany,
-                isFirst: index == 0,
-                subProviders: company.subProviders.map { group in
-                    SubProvider(
-                        tool: group.tool,
-                        name: group.name,
-                        key: MenuBarFieldCatalog.subProviderLabelKey(tool: group.tool, name: group.name),
-                        groups: groups(of: group.fields, registry: registry)
-                    )
-                }
-            )
-            previousCompany = company.company
-            return result
-        }
-    }
-
-    /// Consecutive fields sharing a quota group become one group row, so a
-    /// SubProvider's two Fable windows sit under one editable "Fable".
-    private static func groups(
-        of fields: [MenuBarFieldOption],
-        registry: QuotaFieldRegistry
-    ) -> [Group] {
-        var groups: [Group] = []
-        for field in fields {
-            let key = EInkSlotLabel.groupLevelKey(for: field.id, registry: registry)
-            let parts = EInkSlotLabel.parts(for: field.id, registry: registry)
+        for fieldID in fieldIDs {
+            guard let field = MenuBarFieldCatalog.field(id: fieldID, registry: registry) else { continue }
+            let name = field.tool.quotaSubProviderName(bucketID: field.bucketId)
+            let key = MenuBarFieldCatalog.subProviderLabelKey(tool: field.tool, name: name)
+            let vendor = field.tool.vendorName
+            let groupKey = EInkSlotLabel.groupLevelKey(for: fieldID, registry: registry)
+            let parts = EInkSlotLabel.parts(for: fieldID, registry: registry)
             // Three tiers means the middle one is the group; two means the
             // bucket sits directly under its SubProvider.
-            let title = parts.count > 2 ? parts[1] : ""
-            if var last = groups.last, last.key == key, key != nil {
-                last.fieldIDs.append(field.id)
-                groups[groups.count - 1] = last
+            let groupTitle = QuotaGroupLabelLocalizer.display(parts.count > 2 ? parts[1] : "")
+
+            if var company = companies.last,
+               var subProvider = company.subProviders.last,
+               subProvider.key == key
+            {
+                if var group = subProvider.groups.last, group.key == groupKey, groupKey != nil {
+                    group.fieldIDs.append(fieldID)
+                    subProvider.groups[subProvider.groups.count - 1] = group
+                } else {
+                    subProvider.groups.append(Group(key: groupKey, title: groupTitle, fieldIDs: [fieldID]))
+                }
+                company.subProviders[company.subProviders.count - 1] = subProvider
+                companies[companies.count - 1] = company
+                continue
+            }
+
+            let subProvider = SubProvider(
+                tool: field.tool,
+                name: name,
+                key: key,
+                groups: [Group(key: groupKey, title: groupTitle, fieldIDs: [fieldID])]
+            )
+            if var company = companies.last, company.name == vendor {
+                company.subProviders.append(subProvider)
+                companies[companies.count - 1] = company
             } else {
-                groups.append(
-                    Group(
-                        key: key,
-                        title: QuotaGroupLabelLocalizer.display(title),
-                        fieldIDs: [field.id]
+                companies.append(
+                    SlotCompany(
+                        name: vendor,
+                        accentTool: field.tool == .chatgptChat ? .codex : field.tool,
+                        showsHeader: vendor != previousCompany,
+                        isFirst: companies.isEmpty,
+                        subProviders: [subProvider]
                     )
                 )
+                previousCompany = vendor
             }
         }
-        return groups
+        return companies
     }
+
 }
