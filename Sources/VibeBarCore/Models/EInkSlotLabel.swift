@@ -438,11 +438,16 @@ public extension EInkSlotLabel {
     /// than the whole row is a name the panel cannot hold, and that one is cut
     /// with an ellipsis so `EInkLayoutDiagnostics` can report it rather than
     /// letting the device clip it silently.
+    /// `keepsGroup` refuses the drop: two buckets under one SubProvider that
+    /// share a window would otherwise print the same two lines, which is the
+    /// ambiguity the three-tier name exists to remove. The planner sets it for
+    /// exactly those cells and gives up a column instead.
     static func cellLines(
         name: String,
         window: String,
         width: Int,
         rowWidth: Int? = nil,
+        keepsGroup: Bool = false,
         font: EInkFont = .pixel12(bold: false)
     ) -> [EInkSlotLineFragment] {
         let limit = rowWidth ?? width
@@ -458,7 +463,7 @@ public extension EInkSlotLabel {
         let tiers = window.components(separatedBy: separator)
         var second = window
         var part = EInkSlotLabelPart.window
-        if !fits(second, width: width, font: font), tiers.count > 1, let last = tiers.last {
+        if !keepsGroup, !fits(second, width: width, font: font), tiers.count > 1, let last = tiers.last {
             second = last
             part = .period
         }

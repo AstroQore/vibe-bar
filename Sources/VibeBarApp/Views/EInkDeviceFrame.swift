@@ -155,32 +155,65 @@ struct EInkOrientationPicker: View {
     let profile: EInkDeviceProfile
     var onSelect: (EInkOrientation) -> Void
 
-    /// Half device pixels. A quarter of the ink is unreadable and full size is
-    /// three times wider than the pane; at half, the *shape* of the layout —
-    /// which is what an orientation choice is about — still reads.
-    private static let scale: CGFloat = 0.5
+    /// Half device pixels, then a third, then a quarter.
+    ///
+    /// A device is now twice as long as its panel, so four of them at half
+    /// scale are about 850 pt — wider than the Settings pane at the Workbench's
+    /// default width, and a row that wide puts two orientations off the edge of
+    /// a vertical-only scroll view. `ViewThatFits` walks these in order: one
+    /// row at the largest scale the pane can hold, then two rows of two, and
+    /// only then the smallest.
+    private static let scales: [CGFloat] = [0.5, 0.36, 0.26]
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(Self.scales, id: \.self) { scale in
+                row(scale: scale)
+            }
+            grid(scale: Self.scales[1])
+            grid(scale: Self.scales[2])
+        }
+    }
+
+    private func row(scale: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 10) {
             ForEach(EInkOrientation.allCases, id: \.rawValue) { candidate in
-                Button {
-                    onSelect(candidate)
-                } label: {
-                    option(candidate)
-                }
-                .buttonStyle(.plain)
-                .help(EInkNaming.orientation(candidate))
-                // The panel inside is hidden from accessibility — it is a
-                // picture of the slide, not a control — so the button would
-                // otherwise have no name at all to read out.
-                .accessibilityLabel(EInkNaming.orientation(candidate))
-                .accessibilityAddTraits(candidate == orientation ? [.isSelected] : [])
+                cell(candidate, scale: scale)
             }
             Spacer(minLength: 0)
         }
     }
 
-    private func option(_ candidate: EInkOrientation) -> some View {
+    /// Two rows of two, for a pane too narrow for four in a line.
+    private func grid(scale: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach([0, 2], id: \.self) { start in
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(Array(EInkOrientation.allCases[start..<start + 2]), id: \.rawValue) { candidate in
+                        cell(candidate, scale: scale)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    private func cell(_ candidate: EInkOrientation, scale: CGFloat) -> some View {
+        Button {
+            onSelect(candidate)
+        } label: {
+            option(candidate, scale: scale)
+        }
+        .buttonStyle(.plain)
+        .help(EInkNaming.orientation(candidate))
+        // The panel inside is hidden from accessibility — it is a picture of
+        // the slide, not a control — so the button would otherwise have no
+        // name at all to read out.
+        .accessibilityLabel(EInkNaming.orientation(candidate))
+        .accessibilityAddTraits(candidate == orientation ? [.isSelected] : [])
+    }
+
+    private func option(_ candidate: EInkOrientation, scale: CGFloat) -> some View {
         let size = candidate.physicalFrame(profile)
         // No caption under the panels: the four say what they are by their
         // shape — where the blank half of the bar sits — and the only words
@@ -188,12 +221,12 @@ struct EInkOrientationPicker: View {
         // sentence. The full one is the tooltip.
         return EInkDeviceFrame(
             orientation: candidate,
-            paperWidth: CGFloat(size.width) * Self.scale,
-            paperHeight: CGFloat(size.height) * Self.scale,
+            paperWidth: CGFloat(size.width) * scale,
+            paperHeight: CGFloat(size.height) * scale,
             isSelected: candidate == orientation
         ) {
             if let plan = plans[candidate.rawValue] {
-                EInkPreviewView(plan: plan, scale: Self.scale)
+                EInkPreviewView(plan: plan, scale: scale)
             } else {
                 Rectangle().fill(Color.white)
             }

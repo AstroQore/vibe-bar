@@ -546,7 +546,8 @@ extension EInkPresets {
         _ quota: EInkQuotaRow,
         style: EInkSlotLabelStyle,
         width: Int,
-        rowWidth: Int? = nil
+        rowWidth: Int? = nil,
+        keepsGroup: Bool = false
     ) -> [EInkSlotLineFragment] {
         let limit = rowWidth ?? width
         guard style.drawsLogo else {
@@ -554,7 +555,8 @@ extension EInkPresets {
                 name: quota.providerDisplayName,
                 window: quota.windowTitle,
                 width: width,
-                rowWidth: limit
+                rowWidth: limit,
+                keepsGroup: keepsGroup
             )
         }
         let text = style.text(of: quota)
@@ -563,7 +565,7 @@ extension EInkPresets {
             let cut = EInkSlotLabel.truncated(value, width: limit, font: pixel)
             return [EInkSlotLineFragment(cut, part: cut == value ? part : nil)]
         }
-        if EInkSlotLabel.fits(text, width: width) { return line(text, style.part) }
+        if keepsGroup || EInkSlotLabel.fits(text, width: width) { return line(text, style.part) }
         // The same rule the words follow: the group goes before anything is
         // cut, and the window — the tier the reader came for — stays.
         let tiers = text.components(separatedBy: EInkSlotLabel.separator)
@@ -627,8 +629,24 @@ extension EInkPresets {
             total: content,
             minimum: minimumCell
         )
-        let lines = zip(zip(ordered, styles), widths).map { pair, width in
+        var lines = zip(zip(ordered, styles), widths).map { pair, width in
             cellLabelLines(pair.0, style: pair.1, width: width, rowWidth: content)
+        }
+        // A dropped group must not cost the panel the thing the three-tier
+        // name was for: two buckets under one SubProvider that both come back
+        // as "AntiGravity / Weekly" name nothing. Those cells keep their
+        // group, and `isDrawable` gives up a column if it no longer fits.
+        let printed = lines.map { $0.map(\.text).joined(separator: "\u{1}") }
+        var counts: [String: Int] = [:]
+        for label in printed { counts[label, default: 0] += 1 }
+        for index in lines.indices where counts[printed[index], default: 0] > 1 {
+            lines[index] = cellLabelLines(
+                ordered[index],
+                style: styles[index],
+                width: widths[index],
+                rowWidth: content,
+                keepsGroup: true
+            )
         }
         let textLines = lines.map(\.count).max() ?? 0
         let drawsMark = styles.contains(where: \.drawsLogo)
@@ -652,8 +670,13 @@ extension EInkPresets {
     static func isDrawable(_ plan: CentredRowPlan, minimumCell: Int, minimumFigure: Int) -> Bool {
         guard plan.widths.min() ?? 0 >= minimumCell, plan.figure >= minimumFigure else { return false }
         for (index, lines) in plan.lines.enumerated() {
-            let widest = lines.map { EInkTextMetrics.width($0.text, font: pixel) }.max() ?? 0
-            if widest > plan.widths[index] + cellSpill { return false }
+            // `fits` is the one measurement that carries `measurementSlack`;
+            // comparing the raw estimate let five 70 px names into 57 px cells
+            // and the panel printed them through each other.
+            let lent = plan.widths[index] + cellSpill
+            if lines.contains(where: { !EInkSlotLabel.fits($0.text, width: lent, font: pixel) }) {
+                return false
+            }
         }
         return true
     }
@@ -840,12 +863,17 @@ extension EInkPresets {
         )
     }
 
+    /// The smallest ring `EInkRingRasterizer` will draw. A cell that cannot
+    /// hold one is not a ring cell, and the planner drops a column instead —
+    /// a zero-diameter ring is a rejected payload, which is a blank panel.
+    static let ringMinimumSize = 16
+
     /// The largest ring the height allows, never wider than `maximum` — the
     /// narrowest column in the row, because a ring is square and one wider
     /// than its cell would be drawn through its neighbour.
     static func ringSize(available: Int, textLines: Int, drawsMark: Bool, maximum: Int) -> Int {
         let chrome = ringCellHeight(size: 0, textLines: textLines, drawsMark: drawsMark)
-        return max(0, min(maximum, available - chrome))
+        return max(ringMinimumSize, min(max(ringMinimumSize, maximum), available - chrome))
     }
 
     static func ringsPortrait(

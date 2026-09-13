@@ -292,6 +292,88 @@ final class EInkRoundThreeLayoutTests: XCTestCase {
         }
     }
 
+    /// Two buckets under one SubProvider that share a window keep their
+    /// group, whatever it costs the row.
+    ///
+    /// Dropping it would print "AntiGravity / Weekly" twice, which names
+    /// nothing — the exact ambiguity the three-tier name was added to remove.
+    func testTwoBucketsThatWouldReadAlikeKeepTheirGroup() throws {
+        var snapshot = EInkFixtures.snapshot()
+        snapshot.quota = [
+            EInkQuotaRow(
+                fieldID: "antigravity.gemini_weekly",
+                providerDisplayName: "AntiGravity",
+                windowTitle: "Gemini Models · Weekly",
+                remainingPercent: 40,
+                countdown: "2d 00h"
+            ),
+            EInkQuotaRow(
+                fieldID: "antigravity.claude_gpt_weekly",
+                providerDisplayName: "AntiGravity",
+                windowTitle: "Claude and GPT Models · Weekly",
+                remainingPercent: 60,
+                countdown: "3d 00h"
+            )
+        ]
+        for preset in [EInkPreset.quotaRings, .quotaRail] {
+            let printed = texts(try drawn(preset, .default, snapshot)).map(\.0)
+            XCTAssertLessThanOrEqual(
+                printed.filter { $0 == "Weekly" }.count,
+                1,
+                "\(preset.rawValue): two slots came back as the same two lines"
+            )
+        }
+        // And the rule still applies where nothing is ambiguous.
+        XCTAssertEqual(
+            EInkSlotLabel.cellLines(
+                name: "AntiGravity",
+                window: "Claude and GPT Models · Weekly",
+                width: 80
+            ).map(\.text),
+            ["AntiGravity", "Weekly"]
+        )
+    }
+
+    /// A row is only drawable if its lines fit with the slack every other
+    /// measurement carries.
+    func testTheSpillCheckCarriesTheMeasurementSlack() {
+        var plan = EInkPresets.CentredRowPlan(
+            rows: [],
+            styles: [],
+            widths: [57],
+            lines: [[EInkSlotLineFragment("Desk Panel A")]],
+            figure: 40,
+            textLines: 1,
+            drawsMark: false
+        )
+        // Twelve characters is about 70 px: inside 57 + 16 by the raw estimate
+        // and outside it once the slack every other measurement carries is
+        // counted.
+        XCTAssertFalse(EInkPresets.isDrawable(plan, minimumCell: 40, minimumFigure: 30))
+        plan.lines = [[EInkSlotLineFragment("Weekly")]]
+        XCTAssertTrue(EInkPresets.isDrawable(plan, minimumCell: 40, minimumFigure: 30))
+    }
+
+    /// A discovered bucket's group rename reaches the panel.
+    ///
+    /// Its key only exists in the live registry, so the row carries the key
+    /// the assembler resolved rather than asking the static catalog again.
+    func testADiscoveredBucketsGroupRenameReachesThePanel() throws {
+        let key = "codex.gpt-reserve"
+        var row = EInkQuotaRow(
+            fieldID: "codex.gpt_reserve_weekly",
+            providerDisplayName: "ChatGPT Agentic",
+            windowTitle: "GPT Reserve · Weekly",
+            remainingPercent: 50
+        )
+        var options = EInkSlideOptions.default
+        options.levelLabels[key] = "Reserve"
+        // Without the key the static catalog has never heard of the bucket.
+        XCTAssertEqual(row.relabeled(with: options).windowTitle, "GPT Reserve · Weekly")
+        row.groupLevelKey = key
+        XCTAssertEqual(row.relabeled(with: options).windowTitle, "Reserve · Weekly")
+    }
+
     // MARK: - Height
 
     /// Shorter labels are taller bars. The rail's whole job is the bar, and
