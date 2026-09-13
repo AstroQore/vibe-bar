@@ -150,11 +150,27 @@ public struct EInkQuotaRow: Sendable, Equatable {
     /// label therefore wins at draw time, split on the same separator so the
     /// two-line slots still break where the name reads.
     public func relabeled(with options: EInkSlideOptions) -> EInkQuotaRow {
-        guard let label = options.customLabel(for: fieldID) else { return self }
+        if let label = options.customLabel(for: fieldID) {
+            var copy = self
+            let parts = label.components(separatedBy: EInkSlotLabel.separator)
+            copy.providerDisplayName = parts.first ?? label
+            copy.windowTitle = parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+            return copy
+        }
+        // No name of its own: whatever levels of the tree the slide renamed
+        // still apply. A SubProvider renamed "Codex" prints "Codex · Weekly"
+        // on every bucket under it without five per-slot overrides.
+        guard !options.levelLabels.isEmpty else { return self }
         var copy = self
-        let parts = label.components(separatedBy: EInkSlotLabel.separator)
-        copy.providerDisplayName = parts.first ?? label
-        copy.windowTitle = parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+        if let name = options.levelLabel(for: EInkSlotLabel.subProviderLevelKey(for: fieldID)) {
+            copy.providerDisplayName = name
+        }
+        let tiers = windowTitle.components(separatedBy: EInkSlotLabel.separator)
+        if tiers.count > 1,
+           let group = options.levelLabel(for: EInkSlotLabel.groupLevelKey(for: fieldID))
+        {
+            copy.windowTitle = ([group] + tiers.dropFirst()).joined(separator: EInkSlotLabel.separator)
+        }
         return copy
     }
 }

@@ -658,7 +658,8 @@ struct EInkDisplaysSettingsSection: View {
                 selectedSlideID: $selectedSlideID,
                 sections: pickerSections,
                 plan: previews[device.orientation.rawValue],
-                availableQuotaFieldIDs: availableQuotaFieldIDs
+                availableQuotaFieldIDs: availableQuotaFieldIDs,
+                snapshot: snapshot
             )
         }
     }

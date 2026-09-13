@@ -179,9 +179,15 @@ final class EInkLongNameTests: XCTestCase {
 
     // MARK: - Rings and the rail
 
-    /// Rings and the rail always print the two-line centred form: the
-    /// SubProvider, then the group and window under it.
-    func testRingsAndRailAlwaysPrintTheTwoLineCentredForm() throws {
+    /// Rings and the rail print the two-line centred form: the SubProvider,
+    /// then the group and the window under it — or, in a column too narrow for
+    /// both, the window alone.
+    ///
+    /// Round 3 caps the cell at two lines. The owner's build 82 panel wrapped
+    /// "AntiGravity / Claude and GPT Models / Weekly" onto three and left the
+    /// bar a stub; a third line always comes out of the figure's height, and
+    /// the group is a word the slide editor still shows in full.
+    func testRingsAndRailPrintAtMostTwoCentredLinesUnderTheirFigure() throws {
         for preset in [EInkPreset.quotaRings, .quotaRail] {
             for orientation in [EInkOrientation.degrees0, .degrees90] {
                 let boxes = try drawn(preset, orientation, count: 3)
@@ -194,11 +200,25 @@ final class EInkLongNameTests: XCTestCase {
                     },
                     "\(preset.rawValue)/\(orientation.rawValue)° never printed the SubProvider centred"
                 )
-                let under = boxes.contains { box in
-                    guard case let .text(value, _, alignment) = box.content else { return false }
-                    return value.hasPrefix("GPT-5.3") && alignment == .center && box.frame.y > name.frame.y
+                // The second line is the rest of the name, or the window on
+                // its own — never a fragment of a word, and never a third
+                // line.
+                let under = boxes.filter { box in
+                    guard case let .text(_, _, alignment) = box.content else { return false }
+                    return alignment == .center
+                        && box.frame.y > name.frame.y
+                        && box.frame.x < name.frame.maxX
+                        && box.frame.maxX > name.frame.x
                 }
-                XCTAssertTrue(under, "\(preset.rawValue)/\(orientation.rawValue)°: the rest goes underneath")
+                let second = under.min { $0.frame.y < $1.frame.y }
+                if case let .text(value, _, _) = second?.content {
+                    XCTAssertTrue(
+                        value == "GPT-5.3 Codex Spark · Weekly" || value == "Weekly",
+                        "\(preset.rawValue)/\(orientation.rawValue)°: printed \"\(value)\" under the name"
+                    )
+                } else {
+                    XCTFail("\(preset.rawValue)/\(orientation.rawValue)°: nothing under the SubProvider")
+                }
                 // And no two names on the same line print through each other,
                 // which is exactly what the panel did with these names before
                 // the cells learned to break a tier at its spaces.
