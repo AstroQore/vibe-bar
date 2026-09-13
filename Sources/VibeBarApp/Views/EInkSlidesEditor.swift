@@ -56,17 +56,21 @@ struct EInkSlidesEditor: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                slideList
-                if let slide = selectedSlide {
-                    Divider().padding(.vertical, 2)
-                    slideEditor(slide)
-                }
+        // A device is twice as long as its panel, so even at device pixels the
+        // preview is about 630 pt. Beside an editor column whose pickers and
+        // fields need several hundred more, that does not fit the Settings
+        // pane at the Workbench's default width — and the paper may not be
+        // shrunk to make it (`docs/DESIGN.md`: whole pixels). So the preview
+        // goes under the editor instead of beside it.
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                editorColumn
+                previewColumn
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            previewColumn
+            VStack(alignment: .leading, spacing: 16) {
+                editorColumn
+                previewColumn
+            }
         }
         .onAppear { rebuildCaches() }
         // The *resolved* order, so a slot moved with the arrows rebuilds the
@@ -92,6 +96,23 @@ struct EInkSlidesEditor: View {
             (snapshot?.quota ?? []).map { ($0.fieldID, $0.remainingPercent) },
             uniquingKeysWith: { first, _ in first }
         )
+    }
+
+    /// The slide list and the selected slide's editor.
+    ///
+    /// `minWidth` is what makes the side-by-side arrangement report an honest
+    /// width: a column that only says "as wide as you like" always fits, and
+    /// `ViewThatFits` would never reach for the stacked form.
+    @ViewBuilder
+    private var editorColumn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            slideList
+            if let slide = selectedSlide {
+                Divider().padding(.vertical, 2)
+                slideEditor(slide)
+            }
+        }
+        .frame(minWidth: 440, maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - The list
