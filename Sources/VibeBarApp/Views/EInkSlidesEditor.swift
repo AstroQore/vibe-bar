@@ -719,13 +719,14 @@ struct EInkSlidesEditor: View {
                 .foregroundStyle(.secondary)
             if let plan {
                 let size = device.orientation.physicalFrame(device.profile)
-                // A device is twice as long as its panel, so even 1x is about
-                // 630 pt beside the editor's own column. Fall back rather than
-                // clip: 2x, device pixels, then half.
+                // 2x of a landscape device is about 1,260 pt, which a narrow
+                // window cannot hold; fall back to device pixels rather than
+                // clipping. Whole pixels only — `docs/DESIGN.md` — so there is
+                // no third step: a preview smaller than the panel would be a
+                // downsampled 1-bit canvas, which lies about the ink.
                 ViewThatFits(in: .horizontal) {
                     framedPreview(plan, size: size, scale: 2)
                     framedPreview(plan, size: size, scale: 1)
-                    framedPreview(plan, size: size, scale: 0.5)
                 }
             } else {
                 Rectangle()

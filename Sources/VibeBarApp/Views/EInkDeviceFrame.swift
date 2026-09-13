@@ -155,42 +155,40 @@ struct EInkOrientationPicker: View {
     let profile: EInkDeviceProfile
     var onSelect: (EInkOrientation) -> Void
 
-    /// Half device pixels, then a third, then a quarter.
+    /// Half device pixels — the one magnification this picker has ever used,
+    /// and the only fraction `docs/DESIGN.md` allows below 1×.
     ///
-    /// A device is now twice as long as its panel, so four of them at half
-    /// scale are about 850 pt — wider than the Settings pane at the Workbench's
-    /// default width, and a row that wide puts two orientations off the edge of
-    /// a vertical-only scroll view. `ViewThatFits` walks these in order: one
-    /// row at the largest scale the pane can hold, then two rows of two, and
-    /// only then the smallest.
-    private static let scales: [CGFloat] = [0.5, 0.36, 0.26]
+    /// A device is twice as long as its panel, so four of them in a line are
+    /// about 850 pt: wider than the Settings pane at the Workbench's default
+    /// width, and a row that wide puts two orientations off the edge of a
+    /// vertical-only scroll view. The answer is fewer per row, not a smaller
+    /// paper — downsampling a 1-bit canvas to 0.36 would make the pixel font
+    /// look like something the device cannot draw.
+    private static let scale: CGFloat = 0.5
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            ForEach(Self.scales, id: \.self) { scale in
-                row(scale: scale)
-            }
-            grid(scale: Self.scales[1])
-            grid(scale: Self.scales[2])
+            row
+            grid
         }
     }
 
-    private func row(scale: CGFloat) -> some View {
+    private var row: some View {
         HStack(alignment: .top, spacing: 10) {
             ForEach(EInkOrientation.allCases, id: \.rawValue) { candidate in
-                cell(candidate, scale: scale)
+                cell(candidate, scale: Self.scale)
             }
             Spacer(minLength: 0)
         }
     }
 
     /// Two rows of two, for a pane too narrow for four in a line.
-    private func grid(scale: CGFloat) -> some View {
+    private var grid: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach([0, 2], id: \.self) { start in
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(Array(EInkOrientation.allCases[start..<start + 2]), id: \.rawValue) { candidate in
-                        cell(candidate, scale: scale)
+                        cell(candidate, scale: Self.scale)
                     }
                     Spacer(minLength: 0)
                 }
