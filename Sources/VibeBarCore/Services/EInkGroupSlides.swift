@@ -27,6 +27,29 @@ public enum EInkGroupSlides {
         return group
     }
 
+    /// Group pages are authored upright at orientation zero. Import the
+    /// source screen's current custom layout, and fork it per region so a
+    /// group edit cannot rewrite the standalone layout kept for ungrouping.
+    public static func importingLayouts(_ group: EInkScreenGroup, devices: [EInkDeviceConfig],
+                                        layouts: [String: EInkCanvasLayout]) -> (group: EInkScreenGroup, additions: [String: EInkCanvasLayout]) {
+        var copy = group
+        var additions: [String: EInkCanvasLayout] = [:]
+        for fi in copy.frames.indices {
+            for ri in copy.frames[fi].regions.indices {
+                let region = copy.frames[fi].regions[ri]
+                guard let sourceID = region.slide.kind.layoutID else { continue }
+                let targetID = "group-region-" + region.id
+                guard sourceID != targetID else { continue }
+                let orientation = devices.first { $0.id == region.deviceIDs.first }?.orientation ?? .degrees0
+                guard let layout = EInkRenderer.layout(sourceID, orientation: orientation, layouts: layouts)
+                    ?? EInkRenderer.layout(sourceID, orientation: .degrees0, layouts: layouts) else { continue }
+                additions[EInkRenderer.layoutKey(targetID, orientation: .degrees0)] = layout
+                copy.frames[fi].regions[ri].slide.kind = .custom(layoutID: targetID)
+            }
+        }
+        return (copy, additions)
+    }
+
     public static func adding(_ device: EInkDeviceConfig, to group: EInkScreenGroup,
                               devices: [EInkDeviceConfig]) -> EInkScreenGroup {
         guard !group.screens.contains(where: { $0.id == device.id }) else { return group }

@@ -32,14 +32,8 @@ public enum EInkCustomLayoutRenderer {
         let size = profile.frameSize(for: orientation)
         let frame = EInkRect(x: 0, y: 0, width: size.width, height: size.height)
         let normalized = layout.fitted(profile: profile, orientation: orientation)
-        let children = normalized.elements.compactMap { element -> EInkNode? in
-            guard var result = node(for: element, slide: slide, orientation: orientation, snapshot: snapshot) else { return nil }
-            if let fieldID = element.fieldID, element.quotaFieldIDs.contains(fieldID) {
-                let kind: EInkCanvasElement.TextBinding = element.kind == .text || element.kind == .statTile ? element.textBinding : .percent
-                result.binding = EInkNodeBinding(kind: kind, fieldID: fieldID, labelPart: element.labelPart)
-                result.moduleID = EInkPresets.slotModule(fieldID)
-            }
-            return result
+        let children = normalized.elements.compactMap {
+            node(for: $0, slide: slide, orientation: orientation, snapshot: snapshot)
         }
         return EInkNode(
             .stack,

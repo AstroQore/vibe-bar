@@ -61,15 +61,7 @@ public enum EInkAlertEvaluator {
                 result.formUnion(slide.quotaFieldIDs)
                 continue
             }
-            let templates = slide.allLayouts(in: layouts)
-            if slide.options.sourcePreset?.isQuotaPreset == true,
-               templates.contains(where: { layout in
-                   layout.elements.contains { !Set($0.quotaFieldIDs).isDisjoint(with: slide.quotaFieldIDs) }
-               }) {
-                // Exploded quota slots are rebound on later pages too.
-                result.formUnion(slide.quotaFieldIDs)
-            }
-            for layout in templates {
+            for layout in slide.allLayouts(in: layouts) {
                 for element in layout.elements {
                     result.formUnion(element.quotaFieldIDs)
                     // A quota block with no selection of its own draws the

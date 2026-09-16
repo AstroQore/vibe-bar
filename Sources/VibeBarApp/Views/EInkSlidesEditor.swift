@@ -30,6 +30,8 @@ struct EInkSlidesEditor: View {
     @State private var contentRequest: EInkContentPicker.Request?
     @State private var previewPages: [EInkPreviewPlan] = []
     @State private var previewPage = 0
+    @State private var confirmingStudioPages = false
+    @State private var studioSlide: EInkSlide?
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -97,6 +99,10 @@ struct EInkSlidesEditor: View {
         .onChange(of: device.orientation) { _, _ in rebuildCaches() }
         .onChange(of: device.profile) { _, _ in rebuildCaches() }
         .onChange(of: settingsStore.settings.einkCanvasLayouts) { _, _ in rebuildCaches() }
+        .confirmationDialog(L10n.Settings.Eink.Workflow.editPages, isPresented: $confirmingStudioPages, titleVisibility: .visible, presenting: studioSlide) { slide in
+            Button(L10n.Settings.Eink.Workflow.materializePages) { materializeAndEdit(slide) }
+            Button(L10n.Common.cancel, role: .cancel) {}
+        } message: { _ in Text(L10n.Settings.Eink.Workflow.editPagesDetail) }
         .sheet(item: $contentRequest) { request in
             EInkContentPicker(request: request, onSave: { fields in
                 updateSlide(request.slideID) { $0.quotaFieldIDs = fields; $0.options.slotOrder = fields }
@@ -113,7 +119,7 @@ struct EInkSlidesEditor: View {
         )
         rebuildPercentages()
         if let slide = selectedSlide, let snapshot {
-            previewPages = EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot, layouts: settingsStore.settings.einkCanvasLayouts).map {
+            previewPages = EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot).map {
                 EInkPreviewPlanner.plan(slide: $0, orientation: device.orientation, profile: device.profile,
                     snapshot: snapshot, layouts: settingsStore.settings.einkCanvasLayouts)
             }
@@ -458,7 +464,7 @@ struct EInkSlidesEditor: View {
 
     @ViewBuilder
     private func selectionEditor(_ slide: EInkSlide) -> some View {
-        if let preset = slide.kind.preset ?? (slide.options.sourcePreset?.isQuotaPreset == true ? slide.options.sourcePreset : nil) {
+        if let preset = slide.kind.preset {
             let capacity = preset.capacity(for: device.orientation)
             switch preset.selectionAxis {
             case .quotaFields:
@@ -1086,6 +1092,9 @@ struct EInkSlidesEditor: View {
     /// paper. A slide that is already custom just opens.
     private func openInStudio(_ slide: EInkSlide) {
         if let onOpenStudio { onOpenStudio(slide); return }
+        if let snapshot, EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot).count > 1 {
+            studioSlide = slide; confirmingStudioPages = true; return
+        }
         if slide.kind.preset != nil { explode(slide) }
         LayoutStudioWindowController.shared.open(
             subject: .einkSlide(deviceID: device.deviceID, slideID: slide.id),
@@ -1093,8 +1102,27 @@ struct EInkSlidesEditor: View {
         )
     }
 
-    private func explode(_ slide: EInkSlide) {
-        guard let snapshot = environment.einkSyncService?.previewSnapshot else { return }
+    private func materializeAndEdit(_ original: EInkSlide) {
+        guard let snapshot else { return }
+        var settings = settingsStore.settings
+        guard settings.einkSync.owningGroup(for: device.id) == nil,
+              let di = settings.einkSync.devices.firstIndex(where: { $0.id == device.id }),
+              let si = settings.einkSync.devices[di].slides.firstIndex(where: { $0.id == original.id }) else { return }
+        var pages = EInkPagination.materializedPages(original, orientation: device.orientation, profile: device.profile, snapshot: snapshot)
+        let index = min(previewPage, pages.count - 1)
+        for i in pages.indices {
+            pages[i].title = original.title.isEmpty ? L10n.Settings.Eink.Workflow.slideNumber(number: i + 1) : original.title + " · " + String(i + 1)
+        }
+        settings.einkSync.devices[di].slides.replaceSubrange(si...si, with: pages)
+        if settings.einkSync.devices[di].playbackMode == .single { settings.einkSync.devices[di].singleSlideID = pages[index].id }
+        settingsStore.settings = settings
+        selectedSlideID = pages[index].id
+        explode(pages[index], snapshot: snapshot)
+        LayoutStudioWindowController.shared.open(subject: .einkSlide(deviceID: device.id, slideID: pages[index].id), environment: environment)
+    }
+
+    private func explode(_ slide: EInkSlide, snapshot supplied: EInkDataSnapshot? = nil) {
+        guard let snapshot = supplied ?? environment.einkSyncService?.previewSnapshot else { return }
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == device.deviceID }),
               let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slide.id })

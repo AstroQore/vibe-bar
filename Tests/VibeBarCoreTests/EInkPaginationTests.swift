@@ -126,34 +126,40 @@ final class EInkPaginationTests: XCTestCase {
         }
     }
 
-    func testStudioTemplateKeepsEveryOverflowPageBoundToTheRightQuota() throws {
-        var snapshot = EInkFixtures.snapshot()
-        let seed = snapshot.quota[0]
-        snapshot.quota = (0..<13).map { index in
-            var row = seed; row.fieldID = "codex.template-\(index)"
-            row.providerDisplayName = "Provider \(index)"; row.windowTitle = "Weekly"
-            row.remainingPercent = 20 + index
-            return row
-        }
-        var slide = EInkSlide(id: "studio", kind: .preset(.quotaRings), quotaFieldIDs: snapshot.quota.map(\.fieldID))
-        let layout = EInkPresetExploder.explode(slide: slide, orientation: .degrees0, snapshot: snapshot)
-        slide.kind = .custom(layoutID: "template"); slide.options.sourcePreset = .quotaRings
-        let layouts = ["template/0": layout]
-        let settings = EInkSyncSettings(devices: [.init(deviceID: "panel", slides: [slide])])
-        XCTAssertEqual(Set(settings.selectedQuotaFieldIDs(layouts: layouts)), Set(slide.quotaFieldIDs))
-        XCTAssertEqual(EInkAlertEvaluator.watchedFieldIDs(settings.devices[0], layouts: layouts), Set(slide.quotaFieldIDs))
-        let pages = EInkPagination.pages(slide, orientation: .degrees0, snapshot: snapshot, layouts: layouts)
-        XCTAssertGreaterThan(pages.count, 1)
+    func testMaterializingPagesKeepsEverySelectionAndUsesIndependentSlideIDs() {
+        let slide = EInkSlide(id: "original", kind: .preset(.quotaRings), quotaFieldIDs: (0..<13).map { "codex.extra-\($0)" })
+        let pages = EInkPagination.materializedPages(slide, orientation: .degrees0, snapshot: EInkFixtures.snapshot())
         XCTAssertEqual(pages.flatMap(\.quotaFieldIDs), slide.quotaFieldIDs)
-        for page in pages {
-            let tree = try EInkRenderer.tree(slide: page, orientation: .degrees0, snapshot: snapshot, layouts: layouts)
-            let bindings = EInkBoxLayout.resolveAnnotated(tree, in: EInkRect(x: 0, y: 0, width: 296, height: 152)).compactMap { $0.binding?.fieldID }
-            XCTAssertEqual(Set(bindings), Set(page.quotaFieldIDs))
-            let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(page)) as? [String: Any])
-            XCTAssertNil(object["renderFieldMap"])
-            XCTAssertNil(object["renderSourceFieldIDs"])
-        }
-        XCTAssertEqual(layouts["template/0"], layout, "rendering a page does not rewrite the saved template")
+        XCTAssertEqual(pages.first?.id, slide.id)
+        XCTAssertEqual(Set(pages.map(\.id)).count, pages.count)
+        XCTAssertGreaterThan(pages.count, 1)
+    }
+
+    func testMaterializedGroupSlidesKeepAllScreensAndContent() {
+        let slide = EInkSlide(id: "original", kind: .preset(.quotaRings), quotaFieldIDs: (0..<13).map { "codex.extra-\($0)" })
+        let frame = EInkScreenFrame(id: "frame", regions: [.init(deviceIDs: ["a","b"], slide: slide)])
+        let group = EInkScreenGroup(frames: [frame])
+        let pages = EInkPagination.materializedFrames(frame, group: group, devices: [], snapshot: EInkFixtures.snapshot())
+        XCTAssertEqual(pages.flatMap { $0.regions[0].slide.quotaFieldIDs }, slide.quotaFieldIDs)
+        XCTAssertTrue(pages.allSatisfy { $0.regions[0].deviceIDs == ["a","b"] })
+        XCTAssertEqual(Set(pages.map(\.id)).count, pages.count)
+        XCTAssertEqual(Set(pages.map { $0.regions[0].id }).count, pages.count)
+    }
+
+    func testGroupImportsTheCurrentPortraitLayoutWithoutChangingItsSource() throws {
+        let slide = EInkSlide(id: "portrait", kind: .custom(layoutID: "source"))
+        let a = EInkDeviceConfig(deviceID: "a", orientation: .degrees90, slides: [slide])
+        let b = EInkDeviceConfig(deviceID: "b", slides: [.init(id: "b", kind: .preset(.quotaLedger))])
+        var portrait = EInkCanvasLayout(profile: .quote0, orientation: .degrees90)
+        var element = EInkCanvasElement(kind: .text); element.text = "Portrait content"
+        portrait.elements = [element]
+        let layouts = ["source/0": EInkCanvasLayout(), "source/90": portrait]
+        let imported = EInkGroupSlides.importingLayouts(EInkGroupSlides.create(name: "Group", devices: [a,b], vertical: true), devices: [a,b], layouts: layouts)
+        let id = try XCTUnwrap(imported.group.frames[0].regions[0].slide.kind.layoutID)
+        XCTAssertNotEqual(id, "source")
+        XCTAssertEqual(imported.additions[id + "/0"], portrait)
+        XCTAssertEqual(layouts["source/90"], portrait)
+        XCTAssertEqual(EInkPreset.quotaRings.layoutOrientation(.degrees0, width: 152, height: 296), .degrees90)
     }
 
     func testDisabledGroupStillOwnsMembersAndOldSettingsDecode() throws {

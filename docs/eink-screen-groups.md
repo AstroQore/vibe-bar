@@ -45,9 +45,11 @@ three selected names carries the remaining names onto subsequent pages.
 The page arrows preview every derived page. A single logical slide can have
 several pages; they turn using the same seconds-per-slide setting. In a group,
 regions turn together and shorter content holds its last page until the
-longer content has finished. Quota presets opened in Studio become bound
-templates reused by their overflow pages; entering Studio does not drop later
-quota selections. Other custom freeform layouts remain authored canvases.
+longer content has finished. Before editing paginated content in Studio, an explicit action turns every
+page into an independent slide and opens the selected page. All selections
+remain in the same slide list; single-slide or carousel playback remains a
+user choice. Custom freeform content uses its element bindings, as before;
+it does not expose a conflicting preset content selector.
 
 Alerts join the same gallery as one temporary card, disappearing when the
 condition clears. A device-loop carousel with insufficient tasks temporarily

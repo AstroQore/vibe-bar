@@ -492,7 +492,7 @@ public final class EInkSyncService: ObservableObject {
     private func reconcileCarousel(deviceID: String) {
         guard isRunning, canSync, settings.owningGroup(for: deviceID) == nil,
               let configured = settings.device(id: deviceID), configured.enabled else { return }
-        let paginated = EInkPagination.playbackDevice(configured, snapshot: cachedSnapshot?.outcome.snapshot, layouts: layouts)
+        let paginated = EInkPagination.playbackDevice(configured, snapshot: cachedSnapshot?.outcome.snapshot)
         let device = EInkAlertEvaluator.playbackDevice(paginated, fieldID: state(for: deviceID).alertingFieldID)
         guard device.playbackMode == .appTimer, device.slides.count > 1 else {
             carouselLoops.removeValue(forKey: deviceID)?.cancel()
@@ -643,7 +643,7 @@ public final class EInkSyncService: ObservableObject {
         guard !Task.isCancelled,
               let configured = settings.device(id: deviceID), configured.enabled
         else { return }
-        let paginated = EInkPagination.playbackDevice(configured, snapshot: cachedSnapshot?.outcome.snapshot, layouts: layouts)
+        let paginated = EInkPagination.playbackDevice(configured, snapshot: cachedSnapshot?.outcome.snapshot)
         let device = EInkAlertEvaluator.playbackDevice(paginated, fieldID: state(for: deviceID).alertingFieldID)
         guard device.playbackMode == .appTimer, device.slides.count > 1 else { return }
         var state = self.state(for: deviceID)
@@ -667,7 +667,7 @@ public final class EInkSyncService: ObservableObject {
 
     private func groupPageCount(_ group: EInkScreenGroup) -> Int {
         guard let snapshot = cachedSnapshot?.outcome.snapshot else { return group.frames.count }
-        return EInkPagination.frames(group, devices: settings.devices, snapshot: snapshot, layouts: layouts).count
+        return EInkPagination.frames(group, devices: settings.devices, snapshot: snapshot).count
     }
 
     private func groupInterval(_ group: EInkScreenGroup) -> TimeInterval {
@@ -753,7 +753,7 @@ public final class EInkSyncService: ObservableObject {
                     alerts[id] = field
                 }
             }
-            let frames = EInkPagination.frames(group, devices: settings.devices, snapshot: assembly.snapshot, layouts: layouts)
+            let frames = EInkPagination.frames(group, devices: settings.devices, snapshot: assembly.snapshot)
             let count = frames.count + (alerts.isEmpty ? 0 : 1)
             let oldIndex = state(for: leader).slideIndex
             let hadAlert = ids.contains { state(for: $0).alertingFieldID != nil }
@@ -873,7 +873,7 @@ public final class EInkSyncService: ObservableObject {
         if prepared == nil {
             let wasDeviceLoop = device.playbackMode == .deviceLoop
             let wasSingle = device.playbackMode == .single
-            device = EInkPagination.playbackDevice(device, snapshot: assembly.snapshot, layouts: layouts)
+            device = EInkPagination.playbackDevice(device, snapshot: assembly.snapshot)
             device = EInkAlertEvaluator.playbackDevice(device, fieldID: alertingFieldID)
             if previousAlert == nil, alertingFieldID != nil, device.playbackMode == .appTimer {
                 state.slideIndex = device.slides.count - 1

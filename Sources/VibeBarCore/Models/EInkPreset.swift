@@ -91,7 +91,7 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
     }
 
     public func layoutOrientation(_ orientation: EInkOrientation, width: Int, height: Int) -> EInkOrientation {
-        guard width * height > 296 * 152 else { return orientation }
+        guard width * height >= 296 * 152 else { return orientation }
         if self == .quotaLedger, width >= 296 { return .degrees0 }
         return height > width ? .degrees90 : .degrees0
     }

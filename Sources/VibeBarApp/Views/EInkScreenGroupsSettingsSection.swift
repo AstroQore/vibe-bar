@@ -24,7 +24,9 @@ struct EInkScreenGroupsSettingsSection: View {
                     EInkScreenGroupEditor(group: group, service: service) { value in
                         var settings = settingsStore.settings
                         guard let i = settings.einkSync.groups.firstIndex(where: { $0.id == group.id }) else { return }
-                        settings.einkSync.groups[i] = value
+                        let imported = EInkGroupSlides.importingLayouts(value, devices: settings.einkSync.devices, layouts: settings.einkCanvasLayouts)
+                        settings.einkSync.groups[i] = imported.group
+                        settings.einkCanvasLayouts.merge(imported.additions) { _, new in new }
                         settingsStore.settings = settings
                     }
                     Button(L10n.Settings.Eink.Workflow.ungroup, role: .destructive) {
@@ -40,7 +42,9 @@ struct EInkScreenGroupsSettingsSection: View {
                 var settings = settingsStore.settings
                 var group = group
                 group.behavior = group.resolvedBehavior(devices: settings.einkSync.devices)
-                settings.einkSync.groups.append(group)
+                let imported = EInkGroupSlides.importingLayouts(group, devices: settings.einkSync.devices, layouts: settings.einkCanvasLayouts)
+                settings.einkSync.groups.append(imported.group)
+                settings.einkCanvasLayouts.merge(imported.additions) { _, new in new }
                 settingsStore.settings = settings
                 creating = false
             }.vibeBarNoInitialFocus()
@@ -56,7 +60,9 @@ private struct EInkScreenGroupEditor: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var quotaService: QuotaService
     @State private var selectedFrameID: String?
-    @State private var editingRegionID: String?
+    @State private var studioRequest: StudioRequest?
+    @State private var confirmingStudioPages = false
+    @State private var pendingStudioRegion: String?
     @State private var selectedScreenID: String?
     @State private var precise = false
     @State private var tapDraft = ""
@@ -107,23 +113,62 @@ private struct EInkScreenGroupEditor: View {
         .onChange(of: settingsStore.settings.einkCanvasLayouts) { _, _ in previewRevision += 1 }
         .onChange(of: selectedFrameID) { _, _ in previewPage = 0; previewRevision += 1 }
         .onChange(of: previewPage) { _, _ in previewRevision += 1 }
-        .sheet(item: Binding(get: { editingRegionID.map(RegionSelection.init) }, set: { editingRegionID = $0?.id })) { selection in
-            if let region = frame?.regions.first(where: { $0.id == selection.id }),
-               let size = group.bounds(for: region.deviceIDs, devices: devices) {
-                EInkGroupPageStudio(region: region, width: size.width, height: size.height, snapshot: service.previewSnapshot) { slide, layout in
-                    var settings = settingsStore.settings
-                    guard let gi = settings.einkSync.groups.firstIndex(where: { $0.id == group.id }),
-                          let fi = settings.einkSync.groups[gi].frames.firstIndex(where: { $0.id == frame?.id }),
-                          let ri = settings.einkSync.groups[gi].frames[fi].regions.firstIndex(where: { $0.id == region.id }) else { return }
-                    settings.einkSync.groups[gi].frames[fi].regions[ri].slide = slide
-                    settings.einkCanvasLayouts[EInkRenderer.layoutKey(slide.kind.layoutID!, orientation: .degrees0)] = layout
-                    settingsStore.settings = settings
-                }.vibeBarNoInitialFocus()
-            }
+        .confirmationDialog(L10n.Settings.Eink.Workflow.editPages, isPresented: $confirmingStudioPages, titleVisibility: .visible, presenting: pendingStudioRegion) { id in
+            Button(L10n.Settings.Eink.Workflow.materializePages) { materializeAndEdit(id) }
+            Button(L10n.Common.cancel, role: .cancel) {}
+        } message: { _ in Text(L10n.Settings.Eink.Workflow.editPagesDetail) }
+        .sheet(item: $studioRequest) { request in
+            EInkGroupPageStudio(region: request.region, width: request.width, height: request.height, snapshot: request.snapshot) { slide, layout in
+                var settings = settingsStore.settings
+                guard let gi = settings.einkSync.groups.firstIndex(where: { $0.id == group.id }),
+                      let fi = settings.einkSync.groups[gi].frames.firstIndex(where: { $0.id == request.frameID }),
+                      let ri = settings.einkSync.groups[gi].frames[fi].regions.firstIndex(where: { $0.id == request.region.id }) else { return }
+                settings.einkSync.groups[gi].frames[fi].regions[ri].slide = slide
+                settings.einkCanvasLayouts[EInkRenderer.layoutKey(slide.kind.layoutID!, orientation: .degrees0)] = layout
+                settingsStore.settings = settings
+            }.vibeBarNoInitialFocus()
         }
     }
 
-    private struct RegionSelection: Identifiable { let id: String }
+    private struct StudioRequest: Identifiable {
+        let id = UUID()
+        let frameID: String
+        let region: EInkScreenRegion
+        let width: Int
+        let height: Int
+        let snapshot: EInkDataSnapshot
+    }
+
+    private func openStudio(_ region: EInkScreenRegion, in frame: EInkScreenFrame, snapshot: EInkDataSnapshot) {
+        guard let bounds = group.bounds(for: region.deviceIDs, devices: devices) else { return }
+        studioRequest = StudioRequest(frameID: frame.id, region: region, width: bounds.width, height: bounds.height, snapshot: snapshot)
+    }
+
+    private func editRegion(_ id: String) {
+        guard let frame, let region = frame.regions.first(where: { $0.id == id }), let snapshot = service.previewSnapshot else { return }
+        var owner = group; owner.frames = [frame]; owner.playbackMode = .appTimer
+        if EInkPagination.frames(owner, devices: devices, snapshot: snapshot).count > 1 {
+            pendingStudioRegion = id; confirmingStudioPages = true
+        } else { openStudio(region, in: frame, snapshot: snapshot) }
+    }
+
+    private func materializeAndEdit(_ id: String) {
+        guard let frame, let ri = frame.regions.firstIndex(where: { $0.id == id }),
+              let fi = group.frames.firstIndex(where: { $0.id == frame.id }),
+              let snapshot = service.previewSnapshot else { return }
+        var pages = EInkPagination.materializedFrames(frame, group: group, devices: devices, snapshot: snapshot)
+        let index = min(previewPage, pages.count - 1)
+        if !frame.title.isEmpty {
+            for i in pages.indices { pages[i].title = frame.title + " · " + String(i + 1) }
+        }
+        var copy = group
+        copy.frames.replaceSubrange(fi...fi, with: pages)
+        if copy.playbackMode == .single { copy.singleSlideID = pages[index].id }
+        onChange(copy)
+        selectedFrameID = pages[index].id
+        previewPage = 0
+        openStudio(pages[index].regions[ri], in: pages[index], snapshot: snapshot)
+    }
 
     private var arrangement: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -239,7 +284,7 @@ private struct EInkScreenGroupEditor: View {
                 showsSlideList: false, showsPreview: false, showsTitleEditor: false,
                 onDeviceChange: { changed in
                     if let slide = changed.slides.first { updateRegion(region.id) { $0.slide = slide } }
-                }, onOpenStudio: { _ in editingRegionID = region.id })
+                }, onOpenStudio: { _ in editRegion(region.id) })
         }.padding(12).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
     }
 
@@ -372,7 +417,7 @@ private struct EInkScreenGroupEditor: View {
         await service.refreshPreviewSnapshot(includingFieldIDs: settingsStore.settings.einkSync.selectedQuotaFieldIDs(layouts: settingsStore.settings.einkCanvasLayouts))
         guard !Task.isCancelled, let frame, let snapshot = service.previewSnapshot else { plans = [:]; return }
         var selected = group; selected.frames = [frame]; selected.playbackMode = .appTimer
-        let pages = EInkPagination.frames(selected, devices: devices, snapshot: snapshot, layouts: settingsStore.settings.einkCanvasLayouts)
+        let pages = EInkPagination.frames(selected, devices: devices, snapshot: snapshot)
         previewPageCount = pages.count
         previewPage = min(previewPage, max(0, pages.count - 1))
         guard let boxes = try? EInkScreenGroupRenderer.boxes(group: group, frame: pages[previewPage], devices: devices, snapshot: snapshot,

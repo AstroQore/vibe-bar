@@ -4,11 +4,8 @@ import Foundation
 /// what the user can select. Runtime pages are derived, not persisted copies.
 public enum EInkPagination {
     public static func pages(_ slide: EInkSlide, orientation: EInkOrientation,
-                             profile: EInkDeviceProfile = .quote0, snapshot: EInkDataSnapshot? = nil,
-                             layouts: [String: EInkCanvasLayout] = [:]) -> [EInkSlide] {
-        guard let preset = slide.kind.preset else {
-            return customPages(slide, orientation: orientation, profile: profile, snapshot: snapshot, layouts: layouts)
-        }
+                             profile: EInkDeviceProfile = .quote0, snapshot: EInkDataSnapshot? = nil) -> [EInkSlide] {
+        guard let preset = slide.kind.preset else { return [slide] }
         let size = profile.frameSize(for: orientation)
         let capacity = max(1, preset.pageCapacity(for: orientation, width: size.width, height: size.height))
         var pages: [EInkSlide] = []
@@ -64,26 +61,24 @@ public enum EInkPagination {
         return pages
     }
 
-    /// Studio edits a bound template. Each overflow page reuses its slots
-    /// with new field bindings, so opening Studio cannot discard later pages.
-    private static func customPages(_ slide: EInkSlide, orientation: EInkOrientation, profile: EInkDeviceProfile,
-                                    snapshot: EInkDataSnapshot?, layouts: [String: EInkCanvasLayout]) -> [EInkSlide] {
-        guard slide.options.sourcePreset?.isQuotaPreset == true, let snapshot,
-              let tree = try? EInkRenderer.tree(slide: slide, orientation: orientation, profile: profile, snapshot: snapshot, layouts: layouts)
-        else { return [slide] }
-        let fields = slide.orderedQuotaFieldIDs
-        let drawn = drawnFieldIDs(tree)
-        let slots = fields.filter(drawn.contains)
-        guard !slots.isEmpty, slots.count < fields.count else { return [slide] }
-        return stride(from: 0, to: fields.count, by: slots.count).enumerated().map { index, offset in
-            var page = slide
-            page.quotaFieldIDs = Array(fields.dropFirst(offset).prefix(slots.count))
-            page.options.slotOrder = page.quotaFieldIDs
-            page.renderSourceFieldIDs = fields
-            page.renderFieldMap = Dictionary(uniqueKeysWithValues: zip(slots, page.quotaFieldIDs))
-            if index > 0 { page.id += "/page/\(index + 1)" }
-            return page
+    /// Materialize before freeform editing: each page becomes an ordinary
+    /// independently editable slide, and no selected content is discarded.
+    public static func materializedPages(_ slide: EInkSlide, orientation: EInkOrientation,
+                                         profile: EInkDeviceProfile = .quote0, snapshot: EInkDataSnapshot) -> [EInkSlide] {
+        var result = pages(slide, orientation: orientation, profile: profile, snapshot: snapshot)
+        for i in result.indices where i > 0 { result[i].id = UUID().uuidString }
+        return result
+    }
+
+    public static func materializedFrames(_ frame: EInkScreenFrame, group: EInkScreenGroup,
+                                          devices: [EInkDeviceConfig], snapshot: EInkDataSnapshot) -> [EInkScreenFrame] {
+        var owner = group; owner.frames = [frame]; owner.playbackMode = .appTimer
+        var result = frames(owner, devices: devices, snapshot: snapshot)
+        for i in result.indices where i > 0 {
+            result[i].id = UUID().uuidString
+            result[i].regions = result[i].regions.map { EInkScreenRegion(deviceIDs: $0.deviceIDs, slide: $0.slide) }
         }
+        return result
     }
 
     private static func drawnFieldIDs(_ node: EInkNode) -> Set<String> {
@@ -95,10 +90,10 @@ public enum EInkPagination {
         return result
     }
 
-    public static func playbackDevice(_ device: EInkDeviceConfig, snapshot: EInkDataSnapshot? = nil, layouts: [String: EInkCanvasLayout] = [:]) -> EInkDeviceConfig {
+    public static func playbackDevice(_ device: EInkDeviceConfig, snapshot: EInkDataSnapshot? = nil) -> EInkDeviceConfig {
         var copy = device
         let selected = device.playbackMode == .single ? device.resolvedSingleSlide.map { [$0] } ?? [] : device.slides
-        copy.slides = selected.flatMap { pages($0, orientation: device.orientation, profile: device.profile, snapshot: snapshot, layouts: layouts) }
+        copy.slides = selected.flatMap { pages($0, orientation: device.orientation, profile: device.profile, snapshot: snapshot) }
         if copy.slides.count > 1, device.playbackMode == .single ||
             (device.playbackMode == .deviceLoop && device.taskKeys.count < copy.slides.count) {
             copy.playbackMode = .appTimer
@@ -108,7 +103,7 @@ public enum EInkPagination {
 
     /// Regions share page turns. A shorter region holds its last page while
     /// a longer selection continues; no chosen field is silently dropped.
-    public static func frames(_ group: EInkScreenGroup, devices: [EInkDeviceConfig] = [], snapshot: EInkDataSnapshot, layouts: [String: EInkCanvasLayout] = [:]) -> [EInkScreenFrame] {
+    public static func frames(_ group: EInkScreenGroup, devices: [EInkDeviceConfig] = [], snapshot: EInkDataSnapshot) -> [EInkScreenFrame] {
         let selected: [EInkScreenFrame]
         if group.playbackMode == .single {
             selected = (group.frames.first { $0.id == group.singleSlideID } ?? group.frames.first).map { [$0] } ?? []
@@ -117,7 +112,7 @@ public enum EInkPagination {
             let regionPages = frame.regions.map { region in
                 let bounds = group.bounds(for: region.deviceIDs, devices: devices)
                 let profile = bounds.map { EInkDeviceProfile(width: $0.width, height: $0.height) } ?? .quote0
-                return pages(region.slide, orientation: .degrees0, profile: profile, snapshot: snapshot, layouts: layouts)
+                return pages(region.slide, orientation: .degrees0, profile: profile, snapshot: snapshot)
             }
             let count = regionPages.map(\.count).max() ?? 1
             return (0..<count).map { index in

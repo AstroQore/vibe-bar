@@ -37,8 +37,7 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
         var seen = Set<String>()
         var result: [String] = []
         for device in devices + groupContentDevices {
-            for slide in device.slides where (slide.kind.preset?.isQuotaPreset ?? false) ||
-                (slide.kind.layoutID != nil && slide.options.sourcePreset?.isQuotaPreset == true) {
+            for slide in device.slides where slide.kind.preset?.isQuotaPreset ?? false {
                 for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
                     result.append(fieldID)
                 }
@@ -688,10 +687,6 @@ public struct EInkSlide: Codable, Equatable, Identifiable, Sendable {
     public var kind: Kind
     /// `MenuBarFieldCatalog` field IDs ("claude.weekly"), in display order.
     public var quotaFieldIDs: [String]
-    /// Transient bindings for a derived page of an exploded preset. These
-    /// are intentionally absent from CodingKeys: saved slides own selections.
-    public var renderFieldMap: [String: String] = [:]
-    public var renderSourceFieldIDs: [String] = []
     public var usagePeriods: [EInkUsagePeriod]
     /// Header / footer / slot order / per-slot labels. `.default` reproduces
     /// the round 1 panel exactly.
