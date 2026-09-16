@@ -80,7 +80,7 @@ public struct EInkPushPlan: Equatable, Sendable {
 
     /// `slideIndex` is only read by the app-timer carousel; the other two
     /// playback modes ignore it.
-    public static func make(for device: EInkDeviceConfig, slideIndex: Int) -> EInkPushPlan {
+    public static func make(for device: EInkDeviceConfig, slideIndex: Int, mirrorAppTimerTasks: Bool = false) -> EInkPushPlan {
         let slides = device.slides
         guard !slides.isEmpty else { return EInkPushPlan(failure: .noSlides) }
         let keys = device.taskKeys
@@ -138,6 +138,15 @@ public struct EInkPushPlan: Equatable, Sendable {
                 let index = slides.isEmpty ? 0 : ((slideIndex % slides.count) + slides.count) % slides.count
                 // Same as `single`: this driver uses one task, so any others
                 // in the loop are slots nobody is writing to any more.
+                if mirrorAppTimerTasks, !keys.isEmpty {
+                    // The firmware loop remains active during a temporary
+                    // alert fallback. Fill every live task with this card so
+                    // firmware rotation cannot insert an unused placeholder.
+                    return EInkPushPlan(items: keys.enumerated().map { indexAndKey in
+                        Item(slideID: slides[index].id, taskKey: indexAndKey.element,
+                             refreshNow: indexAndKey.offset == 0)
+                    })
+                }
                 let surplus = keys.dropFirst()
                 return EInkPushPlan(
                     items: [Item(slideID: slides[index].id, taskKey: keys.first, refreshNow: true)]
@@ -322,6 +331,7 @@ public final class EInkSyncService: ObservableObject {
         self.layouts = migrated
         guard changed else { return }
         configurationGeneration += 1
+        groupPendingIndex.removeAll()
         // A settings edit must *not* clear a rejected key. `apiKeyPresent`
         // stays true through a 401, so treating any edit as good news would
         // restart the loops with the same rejected credential and earn another
@@ -362,7 +372,10 @@ public final class EInkSyncService: ObservableObject {
     /// on the panel is as old as the sleep was long.
     public func wakeFromSleep() {
         guard canSync else { return }
-        for device in activeDevices {
+        for group in settings.groups where group.enabled {
+            Task { [weak self] in _ = await self?.runGroup(group, force: false, advance: false) }
+        }
+        for device in activeDevices where settings.group(for: device.deviceID) == nil {
             Task { [weak self] in _ = await self?.refresh(deviceID: device.deviceID) }
         }
     }
@@ -421,6 +434,9 @@ public final class EInkSyncService: ObservableObject {
     }
 
     private func cancelLoops() {
+        for loop in groupLoops.values { loop.cancel() }
+        groupLoops.removeAll()
+        for run in groupRuns.values { run.task.cancel() }
         for loop in refreshLoops.values { loop.cancel() }
         for loop in carouselLoops.values { loop.cancel() }
         // A deadline outlives the loop that promised it otherwise. `restart`
@@ -428,7 +444,7 @@ public final class EInkSyncService: ObservableObject {
         // the device has just been switched off, no loop is coming and the
         // pane should say nothing rather than name a time.
         var cleared = false
-        for id in refreshLoops.keys where states[id]?.nextRefreshAt != nil {
+        for id in states.keys where states[id]?.nextRefreshAt != nil {
             states[id]?.nextRefreshAt = nil
             cleared = true
         }
@@ -441,7 +457,8 @@ public final class EInkSyncService: ObservableObject {
         cancelLoops()
         if let pending = deferFirstPassFor { deferredFirstPass[pending] = configurationGeneration }
         guard canSync else { return }
-        for device in activeDevices {
+        for group in settings.groups where group.enabled { startGroupLoop(group) }
+        for device in activeDevices where settings.group(for: device.deviceID) == nil {
             let id = device.deviceID
             let deferFirst = deferredFirstPass[id] == configurationGeneration
             refreshLoops[id] = Task { [weak self] in
@@ -468,25 +485,24 @@ public final class EInkSyncService: ObservableObject {
                     }
                 }
             }
-            // Two slides at least, or there is nothing to advance to: a
-            // one-slide device on this driver re-pushed the same panel through
-            // the forced path — which skips the digest check — every
-            // `secondsPerSlide`, so a full visible refresh of identical
-            // content as often as every thirty seconds.
-            guard case let .carousel(driver, seconds) = device.playback,
-                  driver == .appTimer,
-                  device.slides.count > 1
-            else { continue }
-            carouselLoops[id] = Task { [weak self] in
-                while !Task.isCancelled {
-                    do {
-                        try await Task.sleep(for: .seconds(seconds))
-                    } catch {
-                        return
-                    }
-                    guard let self else { return }
-                    await self.advanceCarousel(deviceID: id)
-                }
+            reconcileCarousel(deviceID: id)
+        }
+    }
+
+    private func reconcileCarousel(deviceID: String) {
+        guard isRunning, canSync, settings.group(for: deviceID) == nil,
+              let configured = settings.device(id: deviceID), configured.enabled else { return }
+        let device = EInkAlertEvaluator.playbackDevice(configured, fieldID: state(for: deviceID).alertingFieldID)
+        guard device.playbackMode == .appTimer, device.slides.count > 1 else {
+            carouselLoops.removeValue(forKey: deviceID)?.cancel()
+            return
+        }
+        guard carouselLoops[deviceID] == nil else { return }
+        carouselLoops[deviceID] = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(device.secondsPerSlide)) } catch { return }
+                guard let self else { return }
+                await self.advanceCarousel(deviceID: deviceID)
             }
         }
     }
@@ -528,6 +544,7 @@ public final class EInkSyncService: ObservableObject {
     /// day — on the old picture. A stale run is waited out and then replaced.
     @discardableResult
     public func refresh(deviceID: String) async -> EInkPushOutcome {
+        if let group = settings.group(for: deviceID) { return await runGroup(group, force: false, advance: false) }
         while let existing = activeRuns[deviceID] {
             let outcome = await existing.task.value
             if existing.generation == configurationGeneration { return outcome }
@@ -571,6 +588,7 @@ public final class EInkSyncService: ObservableObject {
     /// even when the numbers happen to be identical.
     @discardableResult
     public func pushNow(deviceID: String) async -> EInkPushOutcome {
+        if let group = settings.group(for: deviceID) { return await runGroup(group, force: true, advance: false) }
         // Drain, not "await once": a loop cancelled by `apply` is still parked
         // inside `refresh`, and when the run it joined finishes it can start a
         // fresh one before this waiter resumes. Starting the forced run on top
@@ -609,6 +627,10 @@ public final class EInkSyncService: ObservableObject {
 
     /// Moves the app-timer carousel on by one slide and pushes it.
     public func advanceCarousel(deviceID: String) async {
+        if let group = settings.group(for: deviceID) {
+            _ = await runGroup(group, force: false, advance: true)
+            return
+        }
         // Wait out the pass in flight before touching the index. That pass
         // captured the old one and writes its whole state back at the end, so
         // incrementing underneath it would be undone and the panel would show
@@ -618,27 +640,183 @@ public final class EInkSyncService: ObservableObject {
         // enough for the user to have switched the device off, or moved it to
         // a driver that does not want a forced redraw.
         guard !Task.isCancelled,
-              let device = settings.device(id: deviceID),
-              device.enabled,
-              case let .carousel(driver, _) = device.playback,
-              driver == .appTimer,
-              !device.slides.isEmpty
+              let configured = settings.device(id: deviceID), configured.enabled
         else { return }
+        let device = EInkAlertEvaluator.playbackDevice(configured, fieldID: state(for: deviceID).alertingFieldID)
+        guard device.playbackMode == .appTimer, device.slides.count > 1 else { return }
         var state = self.state(for: deviceID)
         state.slideIndex = (state.slideIndex + 1) % device.slides.count
         states[deviceID] = state
         _ = await pushNow(deviceID: deviceID)
     }
 
+    // MARK: - Group playback
+
+    private struct GroupPrepared {
+        var slide: EInkSlide
+        var assembly: EInkAssemblyOutcome
+        var alertFieldID: String?
+        var payloads: [String: DotCanvasPayload]
+    }
+    private var groupLoops: [String: Task<Void, Never>] = [:]
+    private var groupRuns: [String: RefreshRun] = [:]
+    private var groupPendingIndex: [String: Int] = [:]
+
+    private func groupInterval(_ group: EInkScreenGroup) -> TimeInterval {
+        let battery = group.screens.contains { state(for: $0.deviceID).onBattery }
+        return TimeInterval((battery ? group.batteryRefreshMinutes : group.dataRefreshMinutes) * 60)
+    }
+
+    /// One loop and one deadline per group. Slow requests never create a
+    /// backlog of stale frames: the next frame waits for this wave to finish.
+    private func startGroupLoop(_ group: EInkScreenGroup) {
+        guard group.screens.count >= 2,
+              group.screens.allSatisfy({ settings.device(id: $0.deviceID)?.enabled == true }) else { return }
+        let deferFirst = group.screens.contains { deferredFirstPass[$0.deviceID] == configurationGeneration }
+        groupLoops[group.id] = Task { [weak self] in
+            guard let self else { return }
+            if !deferFirst { _ = await self.runGroup(group, force: false, advance: false) }
+            var refreshAt = self.clock().addingTimeInterval(self.groupInterval(group))
+            var advanceAt = self.clock().addingTimeInterval(TimeInterval(group.secondsPerFrame))
+            while !Task.isCancelled {
+                let rotating = group.frames.count > 1 || group.screens.contains { self.state(for: $0.deviceID).alertingFieldID != nil }
+                // Keep a cheap clock tick even with one page: an alert may
+                // arrive through Push now or wake while this loop sleeps.
+                let deadline = min(refreshAt, advanceAt)
+                for screen in group.screens {
+                    var state = self.state(for: screen.deviceID)
+                    state.nextRefreshAt = rotating ? deadline : refreshAt
+                    self.states[screen.deviceID] = state
+                }
+                self.persist()
+                do { try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSince(self.clock())))) } catch { return }
+                let rotatesNow = group.frames.count > 1 || group.screens.contains { self.state(for: $0.deviceID).alertingFieldID != nil }
+                let advance = rotatesNow && self.clock() >= advanceAt
+                if advance || self.clock() >= refreshAt {
+                    _ = await self.runGroup(group, force: false, advance: advance)
+                }
+                if self.clock() >= refreshAt { refreshAt = self.clock().addingTimeInterval(self.groupInterval(group)) }
+                if self.clock() >= advanceAt { advanceAt = self.clock().addingTimeInterval(TimeInterval(group.secondsPerFrame)) }
+            }
+        }
+    }
+
+    private func runGroup(_ group: EInkScreenGroup, force: Bool, advance: Bool) async -> EInkPushOutcome {
+        while let existing = groupRuns[group.id] {
+            let outcome = await existing.task.value
+            guard !Task.isCancelled else { return EInkPushOutcome() }
+            if existing.generation == configurationGeneration, !force { return outcome }
+            if groupRuns[group.id] === existing { groupRuns.removeValue(forKey: group.id) }
+        }
+        guard !Task.isCancelled, force || syncPermitted,
+              let current = settings.groups.first(where: { $0.id == group.id }), current.enabled else { return EInkPushOutcome() }
+        let generation = configurationGeneration
+        let run = RefreshRun(generation: generation, task: Task { [weak self] in
+            guard let self else { return EInkPushOutcome() }
+            return await self.performGroup(current, force: force, advance: advance, generation: generation)
+        })
+        groupRuns[group.id] = run
+        busyDeviceIDs.formUnion(current.screens.map(\.deviceID))
+        let outcome = await run.task.value
+        if groupRuns[group.id] === run {
+            groupRuns.removeValue(forKey: group.id)
+            busyDeviceIDs.subtract(current.screens.map(\.deviceID))
+        }
+        return outcome
+    }
+
+    private func performGroup(_ group: EInkScreenGroup, force: Bool, advance: Bool, generation: Int) async -> EInkPushOutcome {
+        let ids = group.screens.map(\.deviceID)
+        guard let leader = ids.first, !group.frames.isEmpty else { return EInkPushOutcome(failure: .noSlides) }
+        // Drain any standalone run still winding down after a grouping edit.
+        for id in ids { if let run = activeRuns[id] { _ = await run.task.value } }
+        guard !Task.isCancelled, generation == configurationGeneration else { return EInkPushOutcome() }
+        guard force || ids.allSatisfy({ settings.device(id: $0)?.enabled == true }) else { return EInkPushOutcome() }
+        do {
+            try EInkScreenGroupRenderer.validate(group, devices: settings.devices)
+            let slides = group.frames.flatMap { $0.regions.map(\.slide) }
+            let assembly = try await assembleSnapshot(includesUsage: slides.contains { $0.needsUsageData(layouts: layouts) })
+            guard !Task.isCancelled, generation == configurationGeneration else { return EInkPushOutcome() }
+            var alerts: [String: String] = [:]
+            for id in ids {
+                guard var device = settings.device(id: id) else { continue }
+                device.slides = group.frames.flatMap { $0.regions.filter { $0.deviceIDs.contains(id) }.map(\.slide) }
+                if let field = EInkAlertEvaluator.offendingFieldID(device: device, snapshot: assembly.snapshot, layouts: layouts) {
+                    alerts[id] = field
+                }
+            }
+            let count = group.frames.count + (alerts.isEmpty ? 0 : 1)
+            let oldIndex = state(for: leader).slideIndex
+            let hadAlert = ids.contains { state(for: $0).alertingFieldID != nil }
+            var index = groupPendingIndex[group.id] ?? ((oldIndex + (advance ? 1 : 0)) % count)
+            if !hadAlert, !alerts.isEmpty { index = count - 1 }
+            if hadAlert, alerts.isEmpty { index = 0 }
+            index %= count
+            let isAlert = !alerts.isEmpty && index == group.frames.count
+            let frame = group.frames[isAlert ? 0 : index]
+            var boxes = try EInkScreenGroupRenderer.boxes(group: group, frame: frame, devices: settings.devices,
+                                                          snapshot: assembly.snapshot, layouts: layouts)
+            if isAlert {
+                // Only a screen that watches the offending bucket draws its
+                // alert. The others keep their normal first-frame content.
+                for (id, fieldID) in alerts {
+                    guard let device = settings.device(id: id) else { continue }
+                    let size = device.profile.frameSize(for: device.orientation)
+                    let tree = try EInkRenderer.tree(slide: EInkAlertEvaluator.alertSlide(fieldID: fieldID),
+                        orientation: .degrees0, profile: EInkDeviceProfile(width: size.width, height: size.height),
+                        snapshot: assembly.snapshot)
+                    boxes[id] = EInkBoxLayout.resolve(tree, in: EInkRect(x: 0, y: 0, width: size.width, height: size.height))
+                }
+            }
+            // Prepare and validate EVERY panel before the first write. A bad
+            // custom layout must never update half of a combined picture.
+            if assembly.usageUnavailable, frame.regions.contains(where: { $0.slide.needsUsageData(layouts: layouts) }) {
+                return EInkPushOutcome(failure: .usageUnavailable)
+            }
+            var prepared: [String: GroupPrepared] = [:]
+            for id in ids {
+                guard let device = settings.device(id: id) else { continue }
+                let slide = EInkSlide(id: frame.id, title: frame.title, kind: .preset(.quotaLedger))
+                let payload = try DotCanvasEncoder.encode(boxes: boxes[id] ?? [], orientation: device.orientation,
+                    profile: device.profile, refreshNow: true, taskKey: device.taskKeys.first,
+                    taskAlias: "Vibe Bar · Group · \(group.name)", generatedAtISO: assembly.snapshot.generatedAtISO,
+                    border: alerts[id] == nil ? 0 : 1, link: device.tapLink.url(remoteDashboard: remoteDashboardURL())?.absoluteString)
+                prepared[id] = GroupPrepared(slide: slide, assembly: assembly, alertFieldID: alerts[id],
+                                            payloads: [device.taskKeys.first ?? "": payload])
+            }
+            var result = EInkPushOutcome()
+            for id in ids {
+                guard !Task.isCancelled, generation == configurationGeneration else { return result }
+                let outcome = await performRun(deviceID: id, generation: generation, force: force, prepared: prepared[id])
+                result.pushed += outcome.pushed; result.skipped += outcome.skipped
+                if let failure = outcome.failure { result.failure = failure; result.errorDetail = outcome.errorDetail }
+                if credentialInvalid { break }
+            }
+            guard !Task.isCancelled, generation == configurationGeneration else { return result }
+            if result.succeeded {
+                for id in ids { var state = state(for: id); state.slideIndex = index; states[id] = state }
+                groupPendingIndex.removeValue(forKey: group.id)
+            } else { groupPendingIndex[group.id] = index }
+            persist()
+            return result
+        } catch {
+            for id in ids {
+                _ = record(deviceID: id, failure: .render, detail: SafeLog.sanitize(String(describing: error)), generation: generation)
+            }
+            return EInkPushOutcome(failure: .render, errorDetail: SafeLog.sanitize(String(describing: error)))
+        }
+    }
+
     // MARK: - One pass
 
-    private func performRun(deviceID: String, generation: Int, force: Bool) async -> EInkPushOutcome {
+    private func performRun(deviceID: String, generation: Int, force: Bool,
+                            prepared: GroupPrepared? = nil) async -> EInkPushOutcome {
         // `force` is the Push now button, and it works on a device whose
         // per-device switch is still off. A freshly fetched panel starts
         // disabled, so requiring the switch here made the button report
         // "pushed 0, skipped 0" without ever contacting the panel — the worst
         // kind of answer, because it looks like a successful no-op.
-        guard let device = settings.device(id: deviceID), device.enabled || force else {
+        guard var device = settings.device(id: deviceID), device.enabled || force else {
             return EInkPushOutcome()
         }
         guard !credentialInvalid, let key = await currentAPIKey() else {
@@ -649,7 +827,8 @@ public final class EInkSyncService: ObservableObject {
 
         var state = self.state(for: deviceID)
         state.lastAttemptAt = clock()
-        let plan = EInkPushPlan.make(for: device, slideIndex: state.slideIndex)
+        if let prepared { device.slides = [prepared.slide]; device.playbackMode = .appTimer }
+        var plan = EInkPushPlan.make(for: device, slideIndex: state.slideIndex)
         guard !plan.items.isEmpty else {
             return record(deviceID: deviceID, failure: plan.failure ?? .noSlides, detail: nil, generation: generation)
         }
@@ -661,7 +840,8 @@ public final class EInkSyncService: ObservableObject {
         }
         let assembly: EInkAssemblyOutcome
         do {
-            assembly = try await assembleSnapshot(includesUsage: needsUsage)
+            if let prepared { assembly = prepared.assembly }
+            else { assembly = try await assembleSnapshot(includesUsage: needsUsage) }
         } catch {
             return record(
                 deviceID: deviceID,
@@ -672,17 +852,21 @@ public final class EInkSyncService: ObservableObject {
         }
         guard generation == configurationGeneration else { return EInkPushOutcome() }
 
-        // Alerts are edges: the panel flips the moment a bucket crosses, and
-        // the state remembers which bucket so a relaunch does not push the
-        // same news again. `border: 1` rides on every payload while it stands,
-        // which is what turns the screen's frame black.
-        let alertingFieldID = EInkAlertEvaluator.offendingFieldID(
-            device: device,
-            snapshot: assembly.snapshot,
-            layouts: layouts
-        )
-        let alertIsNew = alertingFieldID != nil && alertingFieldID != state.alertingFieldID
+        let alertingFieldID = prepared?.alertFieldID ?? (prepared == nil
+            ? EInkAlertEvaluator.offendingFieldID(device: device, snapshot: assembly.snapshot, layouts: layouts) : nil)
+        let previousAlert = state.alertingFieldID
         state.alertingFieldID = alertingFieldID
+        if prepared == nil {
+            let wasDeviceLoop = device.playbackMode == .deviceLoop
+            device = EInkAlertEvaluator.playbackDevice(device, fieldID: alertingFieldID)
+            if previousAlert == nil, alertingFieldID != nil, device.playbackMode == .appTimer {
+                state.slideIndex = device.slides.count - 1
+            } else if previousAlert != nil, alertingFieldID == nil {
+                state.slideIndex = 0
+            }
+            plan = EInkPushPlan.make(for: device, slideIndex: state.slideIndex,
+                                    mirrorAppTimerTasks: wasDeviceLoop && device.playbackMode == .appTimer)
+        }
         let border = alertingFieldID == nil ? 0 : 1
         let link = device.tapLink.url(remoteDashboard: remoteDashboardURL())?.absoluteString
         // A reset the last pass was waiting for has happened, so the figures
@@ -703,7 +887,7 @@ public final class EInkSyncService: ObservableObject {
         var aborted = false
 
         let snapshot = assembly.snapshot
-        if assembly.usageUnavailable { failure = .usageUnavailable }
+        if assembly.usageUnavailable, prepared == nil { failure = .usageUnavailable }
 
         for item in plan.items {
             if Task.isCancelled || generation != configurationGeneration {
@@ -716,14 +900,7 @@ public final class EInkSyncService: ObservableObject {
             }
 
             let payload: DotCanvasPayload
-            // An alert takes over the single slide and the first loop slot,
-            // and nothing else: the rest of a carousel keeps saying what it
-            // says, so the reader still has the context the alert lacks.
-            let isFirstSlide = item.slideID == plan.items.first(where: { !$0.isUnusedSlot })?.slideID
-            let alertSlide = alertingFieldID
-                .map(EInkAlertEvaluator.alertSlide(fieldID:))
-                .flatMap { isFirstSlide && !item.isUnusedSlot ? $0 : nil }
-            let refreshNow = item.refreshNow || boundaryPassed || (alertIsNew && alertSlide != nil)
+            let refreshNow = item.refreshNow || boundaryPassed
             do {
                 switch item.content {
                 case .unusedSlot:
@@ -736,10 +913,13 @@ public final class EInkSyncService: ObservableObject {
                     )
                 case let .slide(slideID):
                     guard let configured = device.slide(id: slideID) else { continue }
-                    let slide = alertSlide ?? configured
+                    let slide = configured
                     // A usage slide drawn from an empty set would print "$0
                     // today" and be believed. Skip it and say why instead.
                     if assembly.usageUnavailable, slide.needsUsageData(layouts: layouts) { continue }
+                    if let prepared {
+                        payload = prepared.payloads[item.digestKey]!
+                    } else {
                     payload = try EInkRenderer.render(
                         slide: slide,
                         device: device,
@@ -751,6 +931,7 @@ public final class EInkSyncService: ObservableObject {
                         border: border,
                         link: link
                     )
+                    }
                 }
             } catch {
                 failure = .render
@@ -874,8 +1055,11 @@ public final class EInkSyncService: ObservableObject {
         // fields this pass never looked at, and writing the whole struct back
         // would silently undo them — the pane would drop back to "the loop has
         // not been scanned yet" seconds after a scan.
-        states[deviceID] = state.committing(over: self.state(for: deviceID))
+        var committed = state.committing(over: self.state(for: deviceID))
+        if prepared == nil { committed.slideIndex = state.slideIndex }
+        states[deviceID] = committed
         persist()
+        reconcileCarousel(deviceID: deviceID)
         return EInkPushOutcome(pushed: pushed, skipped: skipped, failure: failure, errorDetail: detail)
     }
 
@@ -1288,6 +1472,7 @@ public final class EInkSyncService: ObservableObject {
 
     /// Cancels the pass in flight for this device, if any. The UI's Cancel.
     public func cancelRun(deviceID: String) {
+        if let group = settings.group(for: deviceID) { groupRuns[group.id]?.task.cancel() }
         activeRuns[deviceID]?.task.cancel()
     }
 

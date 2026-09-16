@@ -246,6 +246,7 @@ public enum DotCanvasEncoder {
         let panelHeight = profile.height
         var rootStyle: [String: DotCanvasValue] = [
             "position": .string("relative"),
+            "overflow": .string("hidden"),
             "width": .int(panelWidth),
             "height": .int(panelHeight)
         ]

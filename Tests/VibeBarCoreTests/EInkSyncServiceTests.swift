@@ -169,6 +169,8 @@ private final class RequestedFields: @unchecked Sendable {
         values.append(request)
     }
 
+    var count: Int { lock.lock(); defer { lock.unlock() }; return values.count }
+
     var last: EInkSnapshotRequest? {
         lock.lock(); defer { lock.unlock() }
         return values.last
@@ -189,6 +191,194 @@ final class EInkSyncServiceTests: XCTestCase {
         try? FileManager.default.removeItem(at: temporaryHome)
     }
 
+    func testAppCarouselAddsExactlyOneAlertAndStillVisitsBothPages() async {
+        let client = FakeDotClient()
+        var config = alertDevice()
+        config.playbackMode = .appTimer
+        config.taskKeys = ["k1"]
+        let service = service(client: client, device: config, snapshot: alertingSnapshot(remaining: 4), requestSpacing: .zero)
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertEqual(service.state(for: "panel-1").slideIndex, 2)
+        await service.advanceCarousel(deviceID: "panel-1")
+        await service.advanceCarousel(deviceID: "panel-1")
+        await service.advanceCarousel(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.count, 4)
+        XCTAssertTrue(client.pushes[0].payload.taskAlias?.contains("Alert") == true)
+        XCTAssertFalse(client.pushes[1].payload.taskAlias?.contains("Alert") == true)
+        XCTAssertFalse(client.pushes[2].payload.taskAlias?.contains("Alert") == true)
+        XCTAssertTrue(client.pushes[3].payload.taskAlias?.contains("Alert") == true)
+        XCTAssertEqual(Set(client.pushes.prefix(3).map(\.windowDataDigest)).count, 3)
+    }
+
+    func testSinglePageAndShortDeviceLoopUseTemporaryCarousel() async {
+        for mode in [EInkPlaybackMode.single, .deviceLoop] {
+            let client = FakeDotClient()
+            var config = alertDevice()
+            config.playbackMode = mode
+            config.taskKeys = ["k1"]
+            let service = service(client: client, device: config, snapshot: alertingSnapshot(remaining: 4), requestSpacing: .zero)
+            service.start()
+            for _ in 0..<100 where client.pushes.isEmpty { await Task.yield() }
+            _ = await service.refresh(deviceID: "panel-1")
+            XCTAssertTrue(service.hasCarouselLoop(deviceID: "panel-1"))
+            client.reset()
+            await service.advanceCarousel(deviceID: "panel-1")
+            XCTAssertFalse(client.pushes.first?.payload.taskAlias?.contains("Alert") == true)
+            service.stop()
+        }
+    }
+
+    private func groupedSettings() -> EInkSyncSettings {
+        var a = alertDevice(); a.alerts.enabled = false; a.taskKeys = ["k1"]
+        var b = a; b.deviceID = "panel-2"
+        let separate = EInkScreenFrame(id: "separate", regions: [
+            .init(deviceIDs: [a.id], slide: a.slides[0]), .init(deviceIDs: [b.id], slide: a.slides[1])
+        ])
+        let spanning = EInkScreenFrame(id: "spanning", regions: [.init(deviceIDs: [a.id, b.id], slide: a.slides[0])])
+        let group = EInkScreenGroup(id: "group", enabled: true,
+            screens: [.init(deviceID: a.id), .init(deviceID: b.id, y: 152)], frames: [separate, spanning])
+        return EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [a, b], groups: [group])
+    }
+
+    func testGroupUsesOneSnapshotAndOneIndexForEveryScreen() async {
+        let client = FakeDotClient()
+        let requested = RequestedFields()
+        let settings = groupedSettings()
+        let service = service(client: client, device: settings.devices[0], snapshot: { request in
+            requested.record(request)
+            return EInkAssemblyOutcome(snapshot: EInkFixtures.snapshot())
+        }, requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:])
+        let outcome = await service.refresh(deviceID: "panel-2")
+        XCTAssertEqual(outcome.pushed, 2)
+        XCTAssertEqual(requested.count, 1)
+        XCTAssertEqual(Set(client.pushes.map(\.deviceID)), ["panel-1", "panel-2"])
+        XCTAssertEqual(client.pushes[0].payload.data, client.pushes[1].payload.data)
+        client.reset()
+        await service.advanceCarousel(deviceID: "panel-2")
+        XCTAssertEqual(service.state(for: "panel-1").slideIndex, 1)
+        XCTAssertEqual(service.state(for: "panel-2").slideIndex, 1)
+        XCTAssertEqual(client.pushes.count, 2)
+    }
+
+    func testGroupFailureRetriesTheSameFrameInsteadOfAdvancing() async {
+        let client = FakeDotClient()
+        let settings = groupedSettings()
+        let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:])
+        _ = await service.refresh(deviceID: "panel-1")
+        client.reset()
+        client.sendErrors = [.network("synthetic connection loss")]
+        await service.advanceCarousel(deviceID: "panel-1")
+        XCTAssertEqual(service.state(for: "panel-1").slideIndex, 0)
+        let failedFrame = client.pushes.first!.windowDataDigest
+        client.reset()
+        await service.advanceCarousel(deviceID: "panel-1")
+        XCTAssertEqual(service.state(for: "panel-1").slideIndex, 1)
+        XCTAssertEqual(service.state(for: "panel-2").slideIndex, 1)
+        XCTAssertEqual(client.pushes.first?.windowDataDigest, failedFrame)
+    }
+
+    func testGroupPreflightsAllPagesBeforeSendingAnyPanel() async {
+        let client = FakeDotClient()
+        var settings = groupedSettings()
+        settings.groups[0].frames[0].regions[1].slide.kind = .custom(layoutID: "missing")
+        let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:])
+        let outcome = await service.refresh(deviceID: "panel-1")
+        XCTAssertEqual(outcome.failure, .render)
+        XCTAssertTrue(client.pushes.isEmpty)
+    }
+
+    func testGroupConcurrentTriggersJoinTheWave() async {
+        let client = FakeDotClient(); client.sendDelay = .milliseconds(30)
+        let settings = groupedSettings()
+        let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:])
+        async let first = service.refresh(deviceID: "panel-1")
+        async let second = service.refresh(deviceID: "panel-2")
+        _ = await (first, second)
+        XCTAssertEqual(client.pushes.count, 2)
+    }
+
+    func testGroupAlertIsOneExtraFrameAndDoesNotTakeOverOtherScreens() async {
+        let client = FakeDotClient()
+        var settings = groupedSettings()
+        settings.devices[0].alerts.enabled = true
+        let service = service(client: client, device: settings.devices[0], snapshot: alertingSnapshot(remaining: 4), requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:])
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertEqual(service.state(for: "panel-1").slideIndex, 2)
+        XCTAssertEqual(service.state(for: "panel-2").slideIndex, 2)
+        let alertTitle = "ALERT · \(EInkFixtures.snapshot().generatedAtLabel)"
+        XCTAssertTrue(client.pushes[0].payload.windowData.allStrings.contains(alertTitle))
+        XCTAssertFalse(client.pushes[1].payload.windowData.allStrings.contains(alertTitle))
+        client.reset()
+        await service.advanceCarousel(deviceID: "panel-1")
+        XCTAssertEqual(service.state(for: "panel-1").slideIndex, 0)
+        XCTAssertFalse(client.pushes.contains { $0.payload.windowData.allStrings.contains(alertTitle) })
+        settings.devices[0].alerts.enabled = false
+        service.apply(settings: settings, layouts: [:])
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertNil(service.state(for: "panel-1").alertingFieldID)
+    }
+
+    func testGroupHasOneDeadlineAndNoStandaloneCarousels() async {
+        let client = FakeDotClient()
+        let settings = groupedSettings()
+        let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:])
+        service.start()
+        for _ in 0..<200 where service.state(for: "panel-1").nextRefreshAt == nil { await Task.yield() }
+        XCTAssertNotNil(service.state(for: "panel-1").nextRefreshAt)
+        XCTAssertEqual(service.state(for: "panel-1").nextRefreshAt, service.state(for: "panel-2").nextRefreshAt)
+        XCTAssertFalse(service.hasCarouselLoop(deviceID: "panel-1"))
+        XCTAssertFalse(service.hasCarouselLoop(deviceID: "panel-2"))
+        service.stop()
+        XCTAssertNil(service.state(for: "panel-1").nextRefreshAt)
+        XCTAssertNil(service.state(for: "panel-2").nextRefreshAt)
+    }
+
+    func testTurningOffAMemberPausesTheWholeGroup() async {
+        let client = FakeDotClient()
+        var settings = groupedSettings()
+        settings.devices[1].enabled = false
+        let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:])
+        service.start()
+        for _ in 0..<30 { await Task.yield() }
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertTrue(client.pushes.isEmpty)
+        service.stop()
+    }
+
+    func testAlertFallbackMirrorsEveryLiveLoopSlotAndRestoresTheirPages() async {
+        let client = FakeDotClient()
+        var config = alertDevice()
+        config.taskKeys = ["k1", "k2"]
+        let service = service(client: client, device: config, snapshot: alertingSnapshot(remaining: 4), requestSpacing: .zero)
+        await service.refresh(deviceID: "panel-1")
+        for tick in 0..<4 {
+            if tick > 0 { client.reset(); await service.advanceCarousel(deviceID: "panel-1") }
+            XCTAssertEqual(client.pushes.count, 2)
+            XCTAssertEqual(client.pushes.map(\.taskKey), ["k1", "k2"])
+            XCTAssertEqual(client.pushes[0].windowDataDigest, client.pushes[1].windowDataDigest,
+                           "firmware must see the same card whichever live task it rotates to")
+            XCTAssertFalse(client.pushes.contains { $0.payload.taskAlias == EInkRenderer.unusedSlotTaskAlias })
+            XCTAssertEqual(service.state(for: "panel-1").surplusTaskCount, 0)
+            XCTAssertEqual(client.pushes[0].refreshNow, true)
+            XCTAssertEqual(client.pushes[1].refreshNow, false)
+        }
+        config.alerts.enabled = false
+        service.apply(settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [config]), layouts: [:])
+        client.reset()
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.count, 2)
+        XCTAssertNotEqual(client.pushes[0].windowDataDigest, client.pushes[1].windowDataDigest)
+        XCTAssertTrue(client.pushes.allSatisfy { $0.border == 0 && !$0.refreshNow })
+        XCTAssertNil(service.state(for: "panel-1").alertingFieldID)
+    }
+
     // MARK: - Helpers
 
     private func slide(_ id: String, preset: EInkPreset = .quotaLedger) -> EInkSlide {
@@ -200,7 +390,7 @@ final class EInkSyncServiceTests: XCTestCase {
         taskKeys: [String],
         playback: EInkPlayback
     ) -> EInkDeviceConfig {
-        EInkDeviceConfig(
+        var config = EInkDeviceConfig(
             deviceID: "panel-1",
             alias: "Test Panel",
             enabled: true,
@@ -209,6 +399,8 @@ final class EInkSyncServiceTests: XCTestCase {
             taskKeys: taskKeys,
             slides: slides
         )
+        config.alerts.enabled = false
+        return config
     }
 
     private func service(
@@ -1757,7 +1949,7 @@ final class EInkSyncServiceTests: XCTestCase {
                 EInkSlide(id: "a", title: "a", kind: .preset(.quotaLedger), quotaFieldIDs: ["claude.five_hour"]),
                 EInkSlide(id: "b", title: "b", kind: .preset(.quotaRings), quotaFieldIDs: ["claude.five_hour"])
             ],
-            taskKeys: ["k1", "k2"],
+            taskKeys: ["k1", "k2", "k3"],
             playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300)
         )
         config.alerts = EInkAlertConfig(enabled: true, thresholdPercent: threshold)
@@ -1767,14 +1959,17 @@ final class EInkSyncServiceTests: XCTestCase {
 
     /// The whole point of the alert: the panel says the one thing that
     /// matters, framed in black, and says it *once*.
-    func testABucketCrossingTheThresholdReplacesTheSlideAndBlackensTheBorder() async {
+    func testDeviceLoopAppendsAlertWithoutReplacingConfiguredPages() async {
         let client = FakeDotClient()
         let service = service(client: client, device: alertDevice(), snapshot: alertingSnapshot(remaining: 4))
         await service.refresh(deviceID: "panel-1")
 
-        let push = try? XCTUnwrap(client.pushes.first)
+        let push = try? XCTUnwrap(client.pushes.last)
         XCTAssertEqual(push?.border, 1)
-        XCTAssertEqual(push?.refreshNow, true, "a new alert redraws immediately")
+        XCTAssertEqual(push?.refreshNow, false, "the device keeps rotating on its own clock")
+        XCTAssertEqual(client.pushes.count, 3)
+        XCTAssertFalse(client.pushes[0].payload.taskAlias?.contains("Alert") == true)
+        XCTAssertFalse(client.pushes[1].payload.taskAlias?.contains("Alert") == true)
         let strings = push?.payload.windowData.allStrings ?? []
         XCTAssertTrue(strings.contains("ALERT · \(EInkFixtures.snapshot().generatedAtLabel)"))
         XCTAssertTrue(strings.contains("CLAUDE"))

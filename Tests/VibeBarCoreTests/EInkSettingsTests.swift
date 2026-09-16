@@ -60,7 +60,7 @@ final class EInkSettingsTests: XCTestCase {
     func testEncodedKeysAreLockedDown() throws {
         let data = try encoder().encode(EInkSyncSettings(apiKeyPresent: true, syncEnabled: false, devices: [EInkDeviceConfig(deviceID: "x")]))
         let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(Set(object.keys), ["apiKeyPresent", "syncEnabled", "devices"])
+        XCTAssertEqual(Set(object.keys), ["apiKeyPresent", "syncEnabled", "devices", "groups"])
         let device = try XCTUnwrap((object["devices"] as? [[String: Any]])?.first)
         XCTAssertEqual(
             Set(device.keys),

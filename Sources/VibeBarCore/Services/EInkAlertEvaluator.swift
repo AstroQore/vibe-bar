@@ -1,6 +1,6 @@
 import Foundation
 
-/// Decides when a panel should drop what it is showing and shout.
+/// Decides when a temporary alert card joins a panel's gallery.
 ///
 /// Pure, and separate from the sync engine, because it is the part that is
 /// easy to get subtly wrong and impossible to eyeball on a panel across the
@@ -95,6 +95,23 @@ public enum EInkAlertEvaluator {
     }
 
     public static let alertSlideID = "vibe-bar-alert"
+
+    /// A temporary card, never a replacement for an authored page. A single
+    /// page alternates with the alert; a device loop with no spare task uses
+    /// the Mac timer until the alert clears (the API cannot create tasks).
+    public static func playbackDevice(_ device: EInkDeviceConfig, fieldID: String?) -> EInkDeviceConfig {
+        guard let fieldID, !device.slides.isEmpty else { return device }
+        var copy = device
+        if device.playbackMode == .single {
+            copy.slides = device.resolvedSingleSlide.map { [$0] } ?? []
+        }
+        copy.slides.append(alertSlide(fieldID: fieldID))
+        if device.playbackMode == .single ||
+            (device.playbackMode == .deviceLoop && device.taskKeys.count < copy.slides.count) {
+            copy.playbackMode = .appTimer
+        }
+        return copy
+    }
 
     /// The soonest reset ahead of `now`, which is when the numbers behind the
     /// panel will next jump on their own.
