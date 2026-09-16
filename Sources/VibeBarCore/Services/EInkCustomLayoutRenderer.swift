@@ -455,7 +455,7 @@ public extension EInkSyncSettings {
     /// still pointing at it.
     func referencedQuotaFieldIDs(layouts: [String: EInkCanvasLayout]) -> Set<String> {
         var result = referencedQuotaFieldIDs
-        for device in devices {
+        for device in devices + groupContentDevices {
             for slide in device.slides {
                 for layout in slide.allLayouts(in: layouts) {
                     for element in layout.elements {
@@ -473,7 +473,7 @@ public extension EInkSyncSettings {
         for fieldID in selectedQuotaFieldIDs where seen.insert(fieldID).inserted {
             result.append(fieldID)
         }
-        for device in devices {
+        for device in devices + groupContentDevices {
             for slide in device.slides {
                 for layout in slide.allLayouts(in: layouts) {
                     for element in layout.elements {

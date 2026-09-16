@@ -15,15 +15,18 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
     public var apiKeyPresent: Bool
     public var syncEnabled: Bool
     public var devices: [EInkDeviceConfig]
+    public var groups: [EInkScreenGroup]
 
     public init(
         apiKeyPresent: Bool = false,
         syncEnabled: Bool = false,
-        devices: [EInkDeviceConfig] = []
+        devices: [EInkDeviceConfig] = [],
+        groups: [EInkScreenGroup] = []
     ) {
         self.apiKeyPresent = apiKeyPresent
         self.syncEnabled = syncEnabled
         self.devices = devices
+        self.groups = groups
     }
 
     public static let `default` = EInkSyncSettings()
@@ -33,7 +36,7 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
     public var selectedQuotaFieldIDs: [String] {
         var seen = Set<String>()
         var result: [String] = []
-        for device in devices {
+        for device in devices + groupContentDevices {
             for slide in device.slides where slide.kind.preset?.isQuotaPreset ?? false {
                 for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
                     result.append(fieldID)
@@ -52,7 +55,7 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
     /// today would empty the picker the moment the user switched back.
     public var referencedQuotaFieldIDs: Set<String> {
         var result = Set<String>()
-        for device in devices {
+        for device in devices + groupContentDevices {
             for slide in device.slides {
                 result.formUnion(slide.quotaFieldIDs)
             }
@@ -71,11 +74,16 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
         copy.devices = devices
             .filter { !$0.deviceID.isEmpty && seen.insert($0.deviceID).inserted }
             .map(\.sanitized)
+        var claimed = Set<String>()
+        var groupIDs = Set<String>()
+        copy.groups = groups.filter { groupIDs.insert($0.id).inserted }.map { group in
+            group.sanitized(devices: copy.devices, claimed: &claimed)
+        }
         return copy
     }
 
     private enum CodingKeys: String, CodingKey {
-        case apiKeyPresent, syncEnabled, devices
+        case apiKeyPresent, syncEnabled, devices, groups
     }
 
     public init(from decoder: Decoder) throws {
@@ -83,7 +91,8 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
         self.init(
             apiKeyPresent: c.lenient(Bool.self, .apiKeyPresent, false),
             syncEnabled: c.lenient(Bool.self, .syncEnabled, false),
-            devices: c.lenient([EInkDeviceConfig].self, .devices, [])
+            devices: c.lenient([EInkDeviceConfig].self, .devices, []),
+            groups: c.lenient([EInkScreenGroup].self, .groups, [])
         )
     }
 
@@ -92,6 +101,7 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
         try c.encode(apiKeyPresent, forKey: .apiKeyPresent)
         try c.encode(syncEnabled, forKey: .syncEnabled)
         try c.encode(devices, forKey: .devices)
+        try c.encode(groups, forKey: .groups)
     }
 }
 
@@ -261,7 +271,7 @@ public enum EInkPlaybackMode: String, Codable, CaseIterable, Sendable {
 
 // MARK: - Alerts, tap link, quiet hours
 
-/// When the engine replaces the panel with the alert slide.
+/// When the engine adds a temporary alert card to playback.
 public struct EInkAlertConfig: Codable, Equatable, Sendable {
     public var enabled: Bool
     /// A bucket at or below this much quota left alerts. `atRisk` alerts

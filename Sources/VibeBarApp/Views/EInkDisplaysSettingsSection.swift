@@ -79,7 +79,11 @@ struct EInkDisplaysSettingsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
             accessCard
+            EInkScreenGroupsSettingsSection(density: density, service: service)
             if let device = selectedDevice {
+                if sync.group(for: device.deviceID) != nil {
+                    Text(L10n.Settings.Eink.ScreenGroups.grouped).font(.caption).foregroundStyle(.secondary)
+                }
                 deviceCard(device)
                 slidesCard(device)
             }
@@ -244,10 +248,12 @@ struct EInkDisplaysSettingsSection: View {
             Divider().padding(.vertical, 2)
 
             cadenceFields(device)
+                .disabled(sync.group(for: device.deviceID) != nil)
 
             Divider().padding(.vertical, 2)
 
             playbackControls(device)
+                .disabled(sync.group(for: device.deviceID) != nil)
             loopTasks(device, state: state)
 
             Divider().padding(.vertical, 2)
@@ -487,7 +493,7 @@ struct EInkDisplaysSettingsSection: View {
                 .disabled(!device.alerts.enabled)
                 Spacer(minLength: 0)
             }
-            Text(L10n.Settings.Eink.alertsDetail)
+            Text(L10n.Settings.Eink.ScreenGroups.alertDetail)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

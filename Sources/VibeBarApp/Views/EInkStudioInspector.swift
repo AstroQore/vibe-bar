@@ -27,6 +27,8 @@ struct EInkStudioInspector: View {
     /// The sync engine draws `device.orientation`, so the push would send a
     /// different panel from the one being edited.
     var canPush: Bool = true
+    var showsPush: Bool = true
+    var pending: PendingEditQueue? = nil
     var onPush: () -> Void
 
     private var selected: EInkCanvasElement? {
@@ -85,6 +87,7 @@ struct EInkStudioInspector: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
+            if showsPush {
             Button(action: onPush) {
                 Label(L10n.Settings.Eink.Studio.push, systemImage: "arrow.up.circle")
             }
@@ -94,6 +97,7 @@ struct EInkStudioInspector: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
             }
         }
     }
@@ -210,11 +214,13 @@ struct EInkStudioInspector: View {
                 if e.kind == .statTile {
                     DebouncedSettingsTextField(
                         prompt: L10n.Settings.Eink.Studio.caption,
+                        pending: pending, pendingKey: "caption-\(e.id)",
                         value: value(e, \.text)
                     )
                     .id("caption-\(e.id)")
                     DebouncedSettingsTextField(
                         prompt: L10n.Settings.Eink.Studio.subValue,
+                        pending: pending, pendingKey: "sub-\(e.id)",
                         value: value(e, \.subText)
                     )
                     .id("sub-\(e.id)")
@@ -248,6 +254,7 @@ struct EInkStudioInspector: View {
             Text(L10n.Settings.Eink.slotLabel).font(.caption).foregroundStyle(.secondary)
             DebouncedSettingsTextField(
                 prompt: L10n.Settings.Eink.slotLabel,
+                pending: pending, pendingKey: "label-\(fieldID)",
                 value: Binding(
                     get: { customLabels[fieldID] ?? "" },
                     set: { value in
@@ -327,7 +334,7 @@ struct EInkStudioInspector: View {
             }
         case .custom:
             if e.kind != .statTile {
-                DebouncedSettingsTextField(prompt: L10n.MenuBar.Composer.Block.text, value: value(e, \.text))
+                DebouncedSettingsTextField(prompt: L10n.MenuBar.Composer.Block.text, pending: pending, pendingKey: "text-\(e.id)", value: value(e, \.text))
                     .id("text-\(e.id)")
             }
         case .clock, .date:
