@@ -34,6 +34,7 @@ struct SettingsSidebarView: View {
         .miniWindow,
         .layout,
         .einkDisplays,
+        .einkScreenGroups,
     ]
 
     var body: some View {

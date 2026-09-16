@@ -301,7 +301,7 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(client.pushes.count, 2)
     }
 
-    func testGroupAlertIsOneExtraFrameAndDoesNotTakeOverOtherScreens() async {
+    func testGroupUsesSharedAlertSettingsAndAddsOneExtraFrame() async {
         let client = FakeDotClient()
         var settings = groupedSettings()
         settings.devices[0].alerts.enabled = true
@@ -312,7 +312,7 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(service.state(for: "panel-2").slideIndex, 2)
         let alertTitle = "ALERT · \(EInkFixtures.snapshot().generatedAtLabel)"
         XCTAssertTrue(client.pushes[0].payload.windowData.allStrings.contains(alertTitle))
-        XCTAssertFalse(client.pushes[1].payload.windowData.allStrings.contains(alertTitle))
+        XCTAssertTrue(client.pushes[1].payload.windowData.allStrings.contains(alertTitle))
         client.reset()
         await service.advanceCarousel(deviceID: "panel-1")
         XCTAssertEqual(service.state(for: "panel-1").slideIndex, 0)
@@ -339,7 +339,7 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertNil(service.state(for: "panel-2").nextRefreshAt)
     }
 
-    func testTurningOffAMemberPausesTheWholeGroup() async {
+    func testGroupEnableSwitchOwnsPlaybackRegardlessOfOldMemberFlags() async {
         let client = FakeDotClient()
         var settings = groupedSettings()
         settings.devices[1].enabled = false
@@ -348,7 +348,7 @@ final class EInkSyncServiceTests: XCTestCase {
         service.start()
         for _ in 0..<30 { await Task.yield() }
         await service.refresh(deviceID: "panel-1")
-        XCTAssertTrue(client.pushes.isEmpty)
+        XCTAssertEqual(Set(client.pushes.map(\.deviceID)), ["panel-1", "panel-2"])
         service.stop()
     }
 
@@ -377,6 +377,40 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertNotEqual(client.pushes[0].windowDataDigest, client.pushes[1].windowDataDigest)
         XCTAssertTrue(client.pushes.allSatisfy { $0.border == 0 && !$0.refreshNow })
         XCTAssertNil(service.state(for: "panel-1").alertingFieldID)
+    }
+
+    func testOneSavedSlideCyclesThroughAllSelectedQuotaPages() async {
+        let client = FakeDotClient()
+        var snapshot = EInkFixtures.snapshot()
+        let seed = snapshot.quota[0]
+        snapshot.quota = (1...12).map { index in
+            var row = seed; row.fieldID = "codex.demo-\(index)"
+            row.windowTitle = "Quota \(index)"; row.remainingPercent = index * 5; row.forecast = nil
+            return row
+        }
+        let finalSnapshot = snapshot
+        let page = EInkSlide(id: "one-slide", kind: .preset(.quotaRings), quotaFieldIDs: snapshot.quota.map(\.fieldID))
+        let config = device(slides: [page], taskKeys: ["task"], playback: .single(slideID: page.id))
+        let service = service(client: client, device: config, snapshot: { _ in .init(snapshot: finalSnapshot) }, requestSpacing: .zero)
+        await service.refresh(deviceID: config.id)
+        await service.advanceCarousel(deviceID: config.id)
+        await service.advanceCarousel(deviceID: config.id)
+        XCTAssertEqual(client.pushes.count, 3)
+        XCTAssertEqual(Set(client.pushes.map(\.windowDataDigest)).count, 3)
+        XCTAssertEqual(service.state(for: config.id).slideIndex, 2)
+        await service.advanceCarousel(deviceID: config.id)
+        XCTAssertEqual(service.state(for: config.id).slideIndex, 0)
+    }
+
+    func testDisabledGroupDoesNotFallBackToIndividualDevicePlayback() async {
+        let client = FakeDotClient()
+        var settings = groupedSettings(); settings.groups[0].enabled = false
+        let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:]); service.start()
+        await service.refresh(deviceID: "panel-1")
+        await service.refresh(deviceID: "panel-2")
+        XCTAssertTrue(client.pushes.isEmpty)
+        service.stop()
     }
 
     // MARK: - Helpers
@@ -1458,10 +1492,10 @@ final class EInkSyncServiceTests: XCTestCase {
         slide.kind = .preset(.usageSplit)
         let fitted = slide.fitted(to: .degrees0)
         XCTAssertEqual(fitted.quotaFieldIDs.count, 5)
-        XCTAssertEqual(fitted.usagePeriods.count, 3, "its own axis is still trimmed")
+        XCTAssertEqual(fitted.usagePeriods.count, 4, "selection survives; playback derives pages")
     }
 
-    func testRotatingToASmallerFrameTrimsTheSelectionToWhatFits() {
+    func testRotatingKeepsTheSelectionAndPaginationHandlesCapacity() {
         var slide = EInkSlide(
             id: "a",
             kind: .preset(.quotaLedger),
@@ -1469,10 +1503,10 @@ final class EInkSyncServiceTests: XCTestCase {
         )
         // Portrait holds six, landscape five.
         XCTAssertEqual(slide.fitted(to: .degrees90).quotaFieldIDs.count, 6)
-        XCTAssertEqual(slide.fitted(to: .degrees0).quotaFieldIDs.count, 5)
+        XCTAssertEqual(slide.fitted(to: .degrees0).quotaFieldIDs.count, 6)
 
         slide = EInkSlide(id: "b", kind: .preset(.usageSplit), usagePeriods: EInkUsagePeriod.allCases)
-        XCTAssertEqual(slide.fitted(to: .degrees0).usagePeriods.count, 3)
+        XCTAssertEqual(slide.fitted(to: .degrees0).usagePeriods.count, 4)
 
         // …and the device applies it, so a rotation cannot leave a slide
         // counting rows the panel will never print.
@@ -1485,7 +1519,7 @@ final class EInkSyncServiceTests: XCTestCase {
                 quotaFieldIDs: ["f1", "f2", "f3", "f4", "f5", "f6"]
             )]
         ).sanitized
-        XCTAssertEqual(device.slides[0].quotaFieldIDs.count, 5)
+        XCTAssertEqual(device.slides[0].quotaFieldIDs.count, 6)
     }
 
     // MARK: - Digest

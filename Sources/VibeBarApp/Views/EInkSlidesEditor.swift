@@ -22,6 +22,16 @@ struct EInkSlidesEditor: View {
     /// The preview snapshot, for the live percentage beside each slot. `nil`
     /// before the first assembly, and the rows simply say nothing then.
     let snapshot: EInkDataSnapshot?
+    var showsSlideList = true
+    var showsPreview = true
+    var showsTitleEditor = true
+    var onDeviceChange: ((EInkDeviceConfig) -> Void)?
+    var onOpenStudio: ((EInkSlide) -> Void)?
+    @State private var contentRequest: EInkContentPicker.Request?
+    @State private var previewPages: [EInkPreviewPlan] = []
+    @State private var previewPage = 0
+    @State private var confirmingStudioPages = false
+    @State private var studioSlide: EInkSlide?
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -62,6 +72,8 @@ struct EInkSlidesEditor: View {
         // pane at the Workbench's default width — and the paper may not be
         // shrunk to make it (`docs/DESIGN.md`: whole pixels). So the preview
         // goes under the editor instead of beside it.
+        Group {
+            if showsPreview {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 16) {
                 editorColumn
@@ -72,6 +84,8 @@ struct EInkSlidesEditor: View {
                 previewColumn
             }
         }
+            } else { editorColumn }
+        }
         .onAppear { rebuildCaches() }
         // The *resolved* order, so a slot moved with the arrows rebuilds the
         // tree too: `slotOrder` is what an up / down click writes, and
@@ -80,7 +94,22 @@ struct EInkSlidesEditor: View {
         .onChange(of: selectedSlide?.orderedQuotaFieldIDs ?? []) { _, _ in rebuildCaches() }
         .onChange(of: selectedSlide?.id) { _, _ in rebuildCaches() }
         .onChange(of: quotaService.fieldRegistry) { _, _ in rebuildCaches() }
-        .onChange(of: snapshot?.generatedAtISO) { _, _ in rebuildPercentages() }
+        .onChange(of: snapshot) { _, _ in rebuildCaches() }
+        .onChange(of: selectedSlide) { _, _ in rebuildCaches() }
+        .onChange(of: device.orientation) { _, _ in rebuildCaches() }
+        .onChange(of: device.profile) { _, _ in rebuildCaches() }
+        .onChange(of: settingsStore.settings.einkCanvasLayouts) { _, _ in rebuildCaches() }
+        .confirmationDialog(L10n.Settings.Eink.Workflow.editPages, isPresented: $confirmingStudioPages, titleVisibility: .visible, presenting: studioSlide) { slide in
+            Button(L10n.Settings.Eink.Workflow.materializePages) { materializeAndEdit(slide) }
+            Button(L10n.Common.cancel, role: .cancel) {}
+        } message: { _ in Text(L10n.Settings.Eink.Workflow.editPagesDetail) }
+        .sheet(item: $contentRequest) { request in
+            EInkContentPicker(request: request, onSave: { fields in
+                updateSlide(request.slideID) { $0.quotaFieldIDs = fields; $0.options.slotOrder = fields }
+                contentRequest = nil
+            }, onCancel: { contentRequest = nil })
+            .vibeBarNoInitialFocus()
+        }
     }
 
     private func rebuildCaches() {
@@ -89,6 +118,13 @@ struct EInkSlidesEditor: View {
             registry: quotaService.fieldRegistry
         )
         rebuildPercentages()
+        if let slide = selectedSlide, let snapshot {
+            previewPages = EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot).map {
+                EInkPreviewPlanner.plan(slide: $0, orientation: device.orientation, profile: device.profile,
+                    snapshot: snapshot, layouts: settingsStore.settings.einkCanvasLayouts)
+            }
+            previewPage = min(previewPage, max(0, previewPages.count - 1))
+        }
     }
 
     private func rebuildPercentages() {
@@ -106,7 +142,7 @@ struct EInkSlidesEditor: View {
     @ViewBuilder
     private var editorColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
-            slideList
+            if showsSlideList { slideList }
             if let slide = selectedSlide {
                 Divider().padding(.vertical, 2)
                 slideEditor(slide)
@@ -217,6 +253,7 @@ struct EInkSlidesEditor: View {
     private func slideEditor(_ slide: EInkSlide) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
+                if showsTitleEditor {
                 Text(L10n.Common.name)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -231,6 +268,7 @@ struct EInkSlidesEditor: View {
                 )
                 .frame(width: 160)
                 .id("title-\(slide.id)")
+                }
 
                 layoutPicker(slide)
                 Spacer(minLength: 0)
@@ -465,7 +503,7 @@ struct EInkSlidesEditor: View {
                 Text(L10n.Settings.Eink.buckets)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(L10n.Quota.History.curvesSome(shown: ids.count, total: capacity))
+                Text(L10n.Settings.Eink.Workflow.selectionSummary(items: ids.count, pages: max(1, previewPages.count)))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
@@ -652,67 +690,29 @@ struct EInkSlidesEditor: View {
     /// Only what the account actually exposes: round 2 offered the whole
     /// static catalog, so a Gemini-only Mac could tick five Claude rows that
     /// never drew.
-    @ViewBuilder
     private func candidateList(_ slide: EInkSlide, shown: [String], capacity: Int) -> some View {
-        let isFull = shown.count >= capacity
         VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.Common.add)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            if isFull {
-                Text(L10n.Settings.Eink.capacityFull(count: capacity))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            ForEach(candidateSections(shown: shown)) { section in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        QuotaBrandIconView(
-                            tool: section.tool,
-                            bucketID: section.bucketID,
-                            size: 13
-                        )
-                        .opacity(0.85)
-                        Text(section.title)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.tertiary)
-                            .textCase(.uppercase)
-                            .tracking(0.4)
-                    }
-                    ForEach(section.fieldIDs, id: \.self) { fieldID in
-                        Button {
-                            setBucket(slide, fieldID: fieldID, selected: true, capacity: capacity)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 8, weight: .semibold))
-                                Text(candidateName(fieldID))
-                                    .font(.system(size: 11.5))
-                                    .lineLimit(1)
-                                Spacer(minLength: 0)
-                            }
-                        }
-                        .buttonStyle(.vibeBar(cornerRadius: 6))
-                        .disabled(isFull)
-                        .help(fieldID)
-                    }
+            Button(L10n.Settings.Eink.Workflow.chooseContent) {
+                let groups = candidateSections(shown: []).map { section in
+                    EInkContentPicker.Section(id: section.id, title: section.title,
+                        choices: section.fieldIDs.map { EInkContentPicker.Choice(id: $0, title: candidateName($0)) })
                 }
-                .padding(.leading, 14)
+                contentRequest = EInkContentPicker.Request(slideID: slide.id, initial: slide.orderedQuotaFieldIDs, sections: groups)
             }
+            Text(L10n.Settings.Eink.Workflow.automaticPages)
+                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 
     private func periodPicker(_ slide: EInkSlide, capacity: Int) -> some View {
         let selected = slide.usagePeriods
-        let isFull = selected.count >= capacity
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Text(L10n.Usage.Breakdown.periods)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
-                Text(L10n.Quota.History.curvesSome(shown: selected.count, total: capacity))
+                Text(L10n.Settings.Eink.Workflow.selectionSummary(items: selected.count, pages: max(1, previewPages.count)))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
@@ -724,8 +724,7 @@ struct EInkSlidesEditor: View {
                 .toggleStyle(.checkbox)
                 .controlSize(.small)
                 .disabled(
-                    (isFull && !selected.contains(period))
-                        || (selected.count == 1 && selected.contains(period))
+                    selected.count == 1 && selected.contains(period)
                 )
             }
         }
@@ -738,7 +737,14 @@ struct EInkSlidesEditor: View {
             Text(L10n.Settings.Eink.uprightPreview)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            if let plan {
+            if previewPages.count > 1 {
+                HStack {
+                    Button { previewPage = max(0, previewPage - 1) } label: { Image(systemName: "chevron.left") }.disabled(previewPage == 0)
+                    Text("\(previewPage + 1) / \(previewPages.count)").monospacedDigit()
+                    Button { previewPage = min(previewPages.count - 1, previewPage + 1) } label: { Image(systemName: "chevron.right") }.disabled(previewPage == previewPages.count - 1)
+                }
+            }
+            if let plan = (previewPages.indices.contains(previewPage) ? previewPages[previewPage] : plan) {
                 let size = device.orientation.physicalFrame(device.profile)
                 // 2x of a landscape device is about 1,260 pt, which a narrow
                 // window cannot hold; fall back to device pixels rather than
@@ -819,8 +825,7 @@ struct EInkSlidesEditor: View {
     private func setBucket(_ slide: EInkSlide, fieldID: String, selected: Bool, capacity: Int) {
         updateSlide(slide.id) { current in
             if selected {
-                guard current.quotaFieldIDs.count < capacity,
-                      !current.quotaFieldIDs.contains(fieldID) else { return }
+                guard !current.quotaFieldIDs.contains(fieldID) else { return }
                 current.quotaFieldIDs.append(fieldID)
             } else {
                 guard current.quotaFieldIDs.count > 1 else { return }
@@ -869,8 +874,7 @@ struct EInkSlidesEditor: View {
             set: { [slideID = slide.id] value in
                 updateSlide(slideID) { current in
                     if value {
-                        guard current.usagePeriods.count < capacity,
-                              !current.usagePeriods.contains(period) else { return }
+                        guard !current.usagePeriods.contains(period) else { return }
                         current.usagePeriods.append(period)
                     } else {
                         // The renderer reads an empty selection as "all four",
@@ -1087,6 +1091,10 @@ struct EInkSlidesEditor: View {
     /// Studio opens on the panel that was already there rather than on blank
     /// paper. A slide that is already custom just opens.
     private func openInStudio(_ slide: EInkSlide) {
+        if let onOpenStudio { onOpenStudio(slide); return }
+        if let snapshot, EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot).count > 1 {
+            studioSlide = slide; confirmingStudioPages = true; return
+        }
         if slide.kind.preset != nil { explode(slide) }
         LayoutStudioWindowController.shared.open(
             subject: .einkSlide(deviceID: device.deviceID, slideID: slide.id),
@@ -1094,8 +1102,27 @@ struct EInkSlidesEditor: View {
         )
     }
 
-    private func explode(_ slide: EInkSlide) {
-        guard let snapshot = environment.einkSyncService?.previewSnapshot else { return }
+    private func materializeAndEdit(_ original: EInkSlide) {
+        guard let snapshot else { return }
+        var settings = settingsStore.settings
+        guard settings.einkSync.owningGroup(for: device.id) == nil,
+              let di = settings.einkSync.devices.firstIndex(where: { $0.id == device.id }),
+              let si = settings.einkSync.devices[di].slides.firstIndex(where: { $0.id == original.id }) else { return }
+        var pages = EInkPagination.materializedPages(original, orientation: device.orientation, profile: device.profile, snapshot: snapshot)
+        let index = min(previewPage, pages.count - 1)
+        for i in pages.indices {
+            pages[i].title = original.title.isEmpty ? L10n.Settings.Eink.Workflow.slideNumber(number: i + 1) : original.title + " · " + String(i + 1)
+        }
+        settings.einkSync.devices[di].slides.replaceSubrange(si...si, with: pages)
+        if settings.einkSync.devices[di].playbackMode == .single { settings.einkSync.devices[di].singleSlideID = pages[index].id }
+        settingsStore.settings = settings
+        selectedSlideID = pages[index].id
+        explode(pages[index], snapshot: snapshot)
+        LayoutStudioWindowController.shared.open(subject: .einkSlide(deviceID: device.id, slideID: pages[index].id), environment: environment)
+    }
+
+    private func explode(_ slide: EInkSlide, snapshot supplied: EInkDataSnapshot? = nil) {
+        guard let snapshot = supplied ?? environment.einkSyncService?.previewSnapshot else { return }
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == device.deviceID }),
               let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slide.id })
@@ -1122,6 +1149,10 @@ struct EInkSlidesEditor: View {
     /// orientations' worth of edits sat invisibly in `settings.json`, ready to
     /// reappear the next time somebody pressed Edit in Studio.
     private func resetToPreset(_ slide: EInkSlide, preset: EInkPreset? = nil) {
+        if onDeviceChange != nil {
+            updateSlide(slide.id) { $0.kind = .preset(preset ?? slide.options.sourcePreset ?? .quotaLedger) }
+            return
+        }
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == device.deviceID }),
               let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slide.id })
@@ -1143,6 +1174,9 @@ struct EInkSlidesEditor: View {
     // MARK: - Mutation
 
     private func updateDevice(_ mutate: (inout EInkDeviceConfig) -> Void) {
+        if let onDeviceChange {
+            var copy = device; mutate(&copy); onDeviceChange(copy.sanitized); return
+        }
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == device.deviceID }) else {
             return
@@ -1251,9 +1285,10 @@ struct EInkSlidesEditor: View {
     /// is no heading above it saying which group it belongs to.
     private func candidateName(_ fieldID: String) -> String {
         let parts = EInkSlotLabel.parts(for: fieldID, registry: quotaService.fieldRegistry)
-        return QuotaGroupLabelLocalizer.display(
-            parts.dropFirst().joined(separator: EInkSlotLabel.separator)
-        )
+        let detail = parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+        let fallback = MenuBarFieldCatalog.field(id: fieldID, registry: quotaService.fieldRegistry)?.title
+            ?? parts.joined(separator: EInkSlotLabel.separator)
+        return QuotaGroupLabelLocalizer.display(detail.isEmpty ? (fallback.isEmpty ? fieldID : fallback) : detail)
     }
 
     /// One provider's worth of buckets the slide could still add.

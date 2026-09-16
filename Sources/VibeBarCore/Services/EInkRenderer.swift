@@ -108,8 +108,8 @@ public enum EInkRenderer {
         fieldIDs: [String]? = nil,
         periods: [EInkUsagePeriod]? = nil
     ) -> EInkNode {
-        let capacity = preset.capacity(for: orientation)
-        let portrait = orientation.isPortrait
+        let capacity = preset.pageCapacity(for: orientation, width: frame.width, height: frame.height)
+        let portrait = preset.layoutOrientation(orientation, width: frame.width, height: frame.height).isPortrait
         let options = slide.options
         let selected = fieldIDs ?? slide.orderedQuotaFieldIDs
         func quotaRows() -> [EInkQuotaRow] {

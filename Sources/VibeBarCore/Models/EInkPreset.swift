@@ -81,6 +81,21 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// Larger combined canvases can carry more rows. This is an upper bound;
+    /// pagination asks the renderer and Canvas limits what actually fits.
+    public func pageCapacity(for orientation: EInkOrientation, width: Int, height: Int) -> Int {
+        let shape = layoutOrientation(orientation, width: width, height: height)
+        guard selectionAxis == .quotaFields else { return capacity(for: shape) }
+        let screens = max(1, width * height / (296 * 152))
+        return min(40, capacity(for: shape) * screens)
+    }
+
+    public func layoutOrientation(_ orientation: EInkOrientation, width: Int, height: Int) -> EInkOrientation {
+        guard width * height >= 296 * 152 else { return orientation }
+        if self == .quotaLedger, width >= 296 { return .degrees0 }
+        return height > width ? .degrees90 : .degrees0
+    }
+
     /// English identifier used in logs and in the task alias sent to the
     /// device. User-visible naming lands with the settings UI in phase 2.
     public var identifierName: String {

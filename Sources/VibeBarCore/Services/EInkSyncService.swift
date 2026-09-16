@@ -375,7 +375,7 @@ public final class EInkSyncService: ObservableObject {
         for group in settings.groups where group.enabled {
             Task { [weak self] in _ = await self?.runGroup(group, force: false, advance: false) }
         }
-        for device in activeDevices where settings.group(for: device.deviceID) == nil {
+        for device in activeDevices where settings.owningGroup(for: device.deviceID) == nil {
             Task { [weak self] in _ = await self?.refresh(deviceID: device.deviceID) }
         }
     }
@@ -458,7 +458,7 @@ public final class EInkSyncService: ObservableObject {
         if let pending = deferFirstPassFor { deferredFirstPass[pending] = configurationGeneration }
         guard canSync else { return }
         for group in settings.groups where group.enabled { startGroupLoop(group) }
-        for device in activeDevices where settings.group(for: device.deviceID) == nil {
+        for device in activeDevices where settings.owningGroup(for: device.deviceID) == nil {
             let id = device.deviceID
             let deferFirst = deferredFirstPass[id] == configurationGeneration
             refreshLoops[id] = Task { [weak self] in
@@ -490,9 +490,10 @@ public final class EInkSyncService: ObservableObject {
     }
 
     private func reconcileCarousel(deviceID: String) {
-        guard isRunning, canSync, settings.group(for: deviceID) == nil,
+        guard isRunning, canSync, settings.owningGroup(for: deviceID) == nil,
               let configured = settings.device(id: deviceID), configured.enabled else { return }
-        let device = EInkAlertEvaluator.playbackDevice(configured, fieldID: state(for: deviceID).alertingFieldID)
+        let paginated = EInkPagination.playbackDevice(configured, snapshot: cachedSnapshot?.outcome.snapshot)
+        let device = EInkAlertEvaluator.playbackDevice(paginated, fieldID: state(for: deviceID).alertingFieldID)
         guard device.playbackMode == .appTimer, device.slides.count > 1 else {
             carouselLoops.removeValue(forKey: deviceID)?.cancel()
             return
@@ -544,7 +545,7 @@ public final class EInkSyncService: ObservableObject {
     /// day — on the old picture. A stale run is waited out and then replaced.
     @discardableResult
     public func refresh(deviceID: String) async -> EInkPushOutcome {
-        if let group = settings.group(for: deviceID) { return await runGroup(group, force: false, advance: false) }
+        if let group = settings.owningGroup(for: deviceID) { return await runGroup(group, force: false, advance: false) }
         while let existing = activeRuns[deviceID] {
             let outcome = await existing.task.value
             if existing.generation == configurationGeneration { return outcome }
@@ -588,7 +589,7 @@ public final class EInkSyncService: ObservableObject {
     /// even when the numbers happen to be identical.
     @discardableResult
     public func pushNow(deviceID: String) async -> EInkPushOutcome {
-        if let group = settings.group(for: deviceID) { return await runGroup(group, force: true, advance: false) }
+        if let group = settings.owningGroup(for: deviceID) { return await runGroup(group, force: true, advance: false) }
         // Drain, not "await once": a loop cancelled by `apply` is still parked
         // inside `refresh`, and when the run it joined finishes it can start a
         // fresh one before this waiter resumes. Starting the forced run on top
@@ -627,7 +628,7 @@ public final class EInkSyncService: ObservableObject {
 
     /// Moves the app-timer carousel on by one slide and pushes it.
     public func advanceCarousel(deviceID: String) async {
-        if let group = settings.group(for: deviceID) {
+        if let group = settings.owningGroup(for: deviceID) {
             _ = await runGroup(group, force: false, advance: true)
             return
         }
@@ -642,7 +643,8 @@ public final class EInkSyncService: ObservableObject {
         guard !Task.isCancelled,
               let configured = settings.device(id: deviceID), configured.enabled
         else { return }
-        let device = EInkAlertEvaluator.playbackDevice(configured, fieldID: state(for: deviceID).alertingFieldID)
+        let paginated = EInkPagination.playbackDevice(configured, snapshot: cachedSnapshot?.outcome.snapshot)
+        let device = EInkAlertEvaluator.playbackDevice(paginated, fieldID: state(for: deviceID).alertingFieldID)
         guard device.playbackMode == .appTimer, device.slides.count > 1 else { return }
         var state = self.state(for: deviceID)
         state.slideIndex = (state.slideIndex + 1) % device.slides.count
@@ -657,10 +659,16 @@ public final class EInkSyncService: ObservableObject {
         var assembly: EInkAssemblyOutcome
         var alertFieldID: String?
         var payloads: [String: DotCanvasPayload]
+        var behavior: EInkGroupBehavior
     }
     private var groupLoops: [String: Task<Void, Never>] = [:]
     private var groupRuns: [String: RefreshRun] = [:]
     private var groupPendingIndex: [String: Int] = [:]
+
+    private func groupPageCount(_ group: EInkScreenGroup) -> Int {
+        guard let snapshot = cachedSnapshot?.outcome.snapshot else { return group.frames.count }
+        return EInkPagination.frames(group, devices: settings.devices, snapshot: snapshot).count
+    }
 
     private func groupInterval(_ group: EInkScreenGroup) -> TimeInterval {
         let battery = group.screens.contains { state(for: $0.deviceID).onBattery }
@@ -670,8 +678,7 @@ public final class EInkSyncService: ObservableObject {
     /// One loop and one deadline per group. Slow requests never create a
     /// backlog of stale frames: the next frame waits for this wave to finish.
     private func startGroupLoop(_ group: EInkScreenGroup) {
-        guard group.screens.count >= 2,
-              group.screens.allSatisfy({ settings.device(id: $0.deviceID)?.enabled == true }) else { return }
+        guard group.screens.count >= 2 else { return }
         let deferFirst = group.screens.contains { deferredFirstPass[$0.deviceID] == configurationGeneration }
         groupLoops[group.id] = Task { [weak self] in
             guard let self else { return }
@@ -679,7 +686,7 @@ public final class EInkSyncService: ObservableObject {
             var refreshAt = self.clock().addingTimeInterval(self.groupInterval(group))
             var advanceAt = self.clock().addingTimeInterval(TimeInterval(group.secondsPerFrame))
             while !Task.isCancelled {
-                let rotating = group.frames.count > 1 || group.screens.contains { self.state(for: $0.deviceID).alertingFieldID != nil }
+                let rotating = self.groupPageCount(group) > 1 || group.screens.contains { self.state(for: $0.deviceID).alertingFieldID != nil }
                 // Keep a cheap clock tick even with one page: an alert may
                 // arrive through Push now or wake while this loop sleeps.
                 let deadline = min(refreshAt, advanceAt)
@@ -690,7 +697,7 @@ public final class EInkSyncService: ObservableObject {
                 }
                 self.persist()
                 do { try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSince(self.clock())))) } catch { return }
-                let rotatesNow = group.frames.count > 1 || group.screens.contains { self.state(for: $0.deviceID).alertingFieldID != nil }
+                let rotatesNow = self.groupPageCount(group) > 1 || group.screens.contains { self.state(for: $0.deviceID).alertingFieldID != nil }
                 let advance = rotatesNow && self.clock() >= advanceAt
                 if advance || self.clock() >= refreshAt {
                     _ = await self.runGroup(group, force: false, advance: advance)
@@ -731,7 +738,7 @@ public final class EInkSyncService: ObservableObject {
         // Drain any standalone run still winding down after a grouping edit.
         for id in ids { if let run = activeRuns[id] { _ = await run.task.value } }
         guard !Task.isCancelled, generation == configurationGeneration else { return EInkPushOutcome() }
-        guard force || ids.allSatisfy({ settings.device(id: $0)?.enabled == true }) else { return EInkPushOutcome() }
+        let behavior = group.resolvedBehavior(devices: settings.devices)
         do {
             try EInkScreenGroupRenderer.validate(group, devices: settings.devices)
             let slides = group.frames.flatMap { $0.regions.map(\.slide) }
@@ -740,20 +747,22 @@ public final class EInkSyncService: ObservableObject {
             var alerts: [String: String] = [:]
             for id in ids {
                 guard var device = settings.device(id: id) else { continue }
+                device.alerts = behavior.alerts
                 device.slides = group.frames.flatMap { $0.regions.filter { $0.deviceIDs.contains(id) }.map(\.slide) }
                 if let field = EInkAlertEvaluator.offendingFieldID(device: device, snapshot: assembly.snapshot, layouts: layouts) {
                     alerts[id] = field
                 }
             }
-            let count = group.frames.count + (alerts.isEmpty ? 0 : 1)
+            let frames = EInkPagination.frames(group, devices: settings.devices, snapshot: assembly.snapshot)
+            let count = frames.count + (alerts.isEmpty ? 0 : 1)
             let oldIndex = state(for: leader).slideIndex
             let hadAlert = ids.contains { state(for: $0).alertingFieldID != nil }
             var index = groupPendingIndex[group.id] ?? ((oldIndex + (advance ? 1 : 0)) % count)
             if !hadAlert, !alerts.isEmpty { index = count - 1 }
             if hadAlert, alerts.isEmpty { index = 0 }
             index %= count
-            let isAlert = !alerts.isEmpty && index == group.frames.count
-            let frame = group.frames[isAlert ? 0 : index]
+            let isAlert = !alerts.isEmpty && index == frames.count
+            let frame = frames[isAlert ? 0 : index]
             var boxes = try EInkScreenGroupRenderer.boxes(group: group, frame: frame, devices: settings.devices,
                                                           snapshot: assembly.snapshot, layouts: layouts)
             if isAlert {
@@ -780,9 +789,9 @@ public final class EInkSyncService: ObservableObject {
                 let payload = try DotCanvasEncoder.encode(boxes: boxes[id] ?? [], orientation: device.orientation,
                     profile: device.profile, refreshNow: true, taskKey: device.taskKeys.first,
                     taskAlias: "Vibe Bar · Group · \(group.name)", generatedAtISO: assembly.snapshot.generatedAtISO,
-                    border: alerts[id] == nil ? 0 : 1, link: device.tapLink.url(remoteDashboard: remoteDashboardURL())?.absoluteString)
+                    border: alerts[id] == nil ? 0 : 1, link: behavior.tapLink.url(remoteDashboard: remoteDashboardURL())?.absoluteString)
                 prepared[id] = GroupPrepared(slide: slide, assembly: assembly, alertFieldID: alerts[id],
-                                            payloads: [device.taskKeys.first ?? "": payload])
+                                            payloads: [device.taskKeys.first ?? "": payload], behavior: behavior)
             }
             var result = EInkPushOutcome()
             for id in ids {
@@ -816,7 +825,7 @@ public final class EInkSyncService: ObservableObject {
         // disabled, so requiring the switch here made the button report
         // "pushed 0, skipped 0" without ever contacting the panel — the worst
         // kind of answer, because it looks like a successful no-op.
-        guard var device = settings.device(id: deviceID), device.enabled || force else {
+        guard var device = settings.device(id: deviceID), device.enabled || force || prepared != nil else {
             return EInkPushOutcome()
         }
         guard !credentialInvalid, let key = await currentAPIKey() else {
@@ -827,7 +836,12 @@ public final class EInkSyncService: ObservableObject {
 
         var state = self.state(for: deviceID)
         state.lastAttemptAt = clock()
-        if let prepared { device.slides = [prepared.slide]; device.playbackMode = .appTimer }
+        if let prepared {
+            device.slides = [prepared.slide]; device.playbackMode = .appTimer
+            device.alerts = prepared.behavior.alerts
+            device.tapLink = prepared.behavior.tapLink
+            device.quietHours = prepared.behavior.quietHours
+        }
         var plan = EInkPushPlan.make(for: device, slideIndex: state.slideIndex)
         guard !plan.items.isEmpty else {
             return record(deviceID: deviceID, failure: plan.failure ?? .noSlides, detail: nil, generation: generation)
@@ -858,14 +872,17 @@ public final class EInkSyncService: ObservableObject {
         state.alertingFieldID = alertingFieldID
         if prepared == nil {
             let wasDeviceLoop = device.playbackMode == .deviceLoop
+            let wasSingle = device.playbackMode == .single
+            device = EInkPagination.playbackDevice(device, snapshot: assembly.snapshot)
             device = EInkAlertEvaluator.playbackDevice(device, fieldID: alertingFieldID)
             if previousAlert == nil, alertingFieldID != nil, device.playbackMode == .appTimer {
                 state.slideIndex = device.slides.count - 1
             } else if previousAlert != nil, alertingFieldID == nil {
                 state.slideIndex = 0
             }
+            state.slideIndex %= max(1, device.slides.count)
             plan = EInkPushPlan.make(for: device, slideIndex: state.slideIndex,
-                                    mirrorAppTimerTasks: wasDeviceLoop && device.playbackMode == .appTimer)
+                                    mirrorAppTimerTasks: (wasDeviceLoop || wasSingle) && device.playbackMode == .appTimer)
         }
         let border = alertingFieldID == nil ? 0 : 1
         let link = device.tapLink.url(remoteDashboard: remoteDashboardURL())?.absoluteString
@@ -1472,7 +1489,7 @@ public final class EInkSyncService: ObservableObject {
 
     /// Cancels the pass in flight for this device, if any. The UI's Cancel.
     public func cancelRun(deviceID: String) {
-        if let group = settings.group(for: deviceID) { groupRuns[group.id]?.task.cancel() }
+        if let group = settings.owningGroup(for: deviceID) { groupRuns[group.id]?.task.cancel() }
         activeRuns[deviceID]?.task.cancel()
     }
 

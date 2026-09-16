@@ -29,12 +29,12 @@ import VibeBarCore
 struct EInkDisplaysSettingsSection: View {
     let density: Theme.Density
     @ObservedObject var service: EInkSyncService
+    var deviceID: String? = nil
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
     @EnvironmentObject private var quotaService: QuotaService
 
-    @State private var selectedDeviceID: String?
     @State private var selectedSlideID: String?
     @State private var isFetchingDevices = false
     @State private var fetchStatus: String?
@@ -66,7 +66,7 @@ struct EInkDisplaysSettingsSection: View {
     private var sync: EInkSyncSettings { settingsStore.settings.einkSync }
 
     private var selectedDevice: EInkDeviceConfig? {
-        if let selectedDeviceID, let match = sync.device(id: selectedDeviceID) { return match }
+        if let deviceID { return sync.device(id: deviceID) }
         return sync.devices.first
     }
 
@@ -78,25 +78,30 @@ struct EInkDisplaysSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
-            accessCard
-            EInkScreenGroupsSettingsSection(density: density, service: service)
-            if let device = selectedDevice {
-                if sync.group(for: device.deviceID) != nil {
-                    Text(L10n.Settings.Eink.ScreenGroups.grouped).font(.caption).foregroundStyle(.secondary)
+            if deviceID == nil {
+                accessCard
+                ForEach(sync.devices.filter { sync.owningGroup(for: $0.id) == nil }) { device in
+                    EInkStandaloneDevicePanel(device: device, density: density, service: service)
                 }
+                if !sync.devices.isEmpty, sync.devices.allSatisfy({ sync.owningGroup(for: $0.id) != nil }) {
+                    Text(L10n.Settings.Eink.Workflow.allGrouped).font(.caption).foregroundStyle(.secondary)
+                }
+            } else if let device = selectedDevice {
                 deviceCard(device)
                 slidesCard(device)
             }
         }
         .onAppear {
+            guard deviceID != nil else { return }
             rebuildPickerSections()
             Task { await loadSnapshotAndPreviews() }
         }
         .onChange(of: quotaService.fieldRegistry) { _, _ in rebuildPickerSections() }
         .onChange(of: previewSignature) { _, _ in
-            Task { await refreshPreview() }
+            if deviceID != nil { Task { await refreshPreview() } }
         }
         .onChange(of: selectedDevice?.deviceID) { _, _ in
+            guard deviceID != nil else { return }
             renderImage = nil
             uprightRenderImage = nil
             pushStatus = nil
@@ -167,52 +172,8 @@ struct EInkDisplaysSettingsSection: View {
                 Text(L10n.Settings.Eink.noDevices)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-            } else {
-                deviceChips
             }
         }
-    }
-
-    private var deviceChips: some View {
-        HStack(spacing: 6) {
-            ForEach(sync.devices) { device in
-                deviceChip(device)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(4)
-        .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.045)))
-    }
-
-    private func deviceChip(_ device: EInkDeviceConfig) -> some View {
-        let isSelected = selectedDevice?.deviceID == device.deviceID
-        return HStack(spacing: 6) {
-            Button {
-                selectedDeviceID = device.deviceID
-                selectedSlideID = device.slides.first?.id
-            } label: {
-                Text(device.alias.isEmpty ? device.deviceID : device.alias)
-                    .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
-                    .lineLimit(1)
-            }
-            .buttonStyle(.vibeBar(cornerRadius: 12))
-
-            Toggle("", isOn: deviceEnabledBinding(device.deviceID))
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .labelsHidden()
-                .help(L10n.Settings.Eink.deviceSyncHelp)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(
-            Capsule(style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.20) : Color.clear)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(Color.accentColor.opacity(isSelected ? 0.34 : 0), lineWidth: 0.7)
-        )
     }
 
     // MARK: - Device detail
@@ -799,7 +760,6 @@ struct EInkDisplaysSettingsSection: View {
                 )
                 settingsStore.settings = settings
                 fetchStatus = L10n.Settings.Eink.devicesFound(count: devices.count)
-                if selectedDeviceID == nil { selectedDeviceID = devices.first?.id }
             } catch let error as DotDeviceError {
                 fetchStatus = message(for: EInkSyncService.failure(for: error))
             } catch {
@@ -1041,7 +1001,7 @@ struct EInkDisplaysSettingsSection: View {
 
     private func playbackDetail(_ device: EInkDeviceConfig) -> String {
         switch device.playbackMode {
-        case .single: L10n.Settings.Eink.Playback.singleDetail
+        case .single: L10n.Settings.Eink.Workflow.singleSlideDetail
         case .deviceLoop: L10n.Settings.Eink.Playback.deviceLoopDetail
         case .appTimer: L10n.Settings.Eink.Playback.appTimerDetail
         }
