@@ -80,7 +80,7 @@ public struct EInkPushPlan: Equatable, Sendable {
 
     /// `slideIndex` is only read by the app-timer carousel; the other two
     /// playback modes ignore it.
-    public static func make(for device: EInkDeviceConfig, slideIndex: Int) -> EInkPushPlan {
+    public static func make(for device: EInkDeviceConfig, slideIndex: Int, mirrorAppTimerTasks: Bool = false) -> EInkPushPlan {
         let slides = device.slides
         guard !slides.isEmpty else { return EInkPushPlan(failure: .noSlides) }
         let keys = device.taskKeys
@@ -138,6 +138,15 @@ public struct EInkPushPlan: Equatable, Sendable {
                 let index = slides.isEmpty ? 0 : ((slideIndex % slides.count) + slides.count) % slides.count
                 // Same as `single`: this driver uses one task, so any others
                 // in the loop are slots nobody is writing to any more.
+                if mirrorAppTimerTasks, !keys.isEmpty {
+                    // The firmware loop remains active during a temporary
+                    // alert fallback. Fill every live task with this card so
+                    // firmware rotation cannot insert an unused placeholder.
+                    return EInkPushPlan(items: keys.enumerated().map { indexAndKey in
+                        Item(slideID: slides[index].id, taskKey: indexAndKey.element,
+                             refreshNow: indexAndKey.offset == 0)
+                    })
+                }
                 let surplus = keys.dropFirst()
                 return EInkPushPlan(
                     items: [Item(slideID: slides[index].id, taskKey: keys.first, refreshNow: true)]
@@ -848,13 +857,15 @@ public final class EInkSyncService: ObservableObject {
         let previousAlert = state.alertingFieldID
         state.alertingFieldID = alertingFieldID
         if prepared == nil {
+            let wasDeviceLoop = device.playbackMode == .deviceLoop
             device = EInkAlertEvaluator.playbackDevice(device, fieldID: alertingFieldID)
             if previousAlert == nil, alertingFieldID != nil, device.playbackMode == .appTimer {
                 state.slideIndex = device.slides.count - 1
             } else if previousAlert != nil, alertingFieldID == nil {
                 state.slideIndex = 0
             }
-            plan = EInkPushPlan.make(for: device, slideIndex: state.slideIndex)
+            plan = EInkPushPlan.make(for: device, slideIndex: state.slideIndex,
+                                    mirrorAppTimerTasks: wasDeviceLoop && device.playbackMode == .appTimer)
         }
         let border = alertingFieldID == nil ? 0 : 1
         let link = device.tapLink.url(remoteDashboard: remoteDashboardURL())?.absoluteString

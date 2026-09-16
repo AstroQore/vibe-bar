@@ -40,7 +40,8 @@ Alerts add a temporary gallery card. Two authored pages become three while
 an alert stands, then return to two when it clears. A single-page display
 alternates its selected page with the alert. Device-driven playback uses a
 spare Canvas task when available; otherwise it temporarily uses the Mac
-carousel. In a group, the alert is one extra shared frame, and only screens
+carousel and mirrors its current card into every existing task, so firmware
+rotation does not show empty placeholders. In a group, the alert is one extra shared frame, and only screens
 watching an offending bucket show it.
 
 The feature does not change the credential or privacy boundary: every write

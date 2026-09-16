@@ -60,6 +60,7 @@ private struct EInkScreenGroupEditor: View {
     @State private var plans: [String: EInkPreviewPlan] = [:]
     @State private var invalid = false
     @State private var pushResult: String?
+    @State private var previewRevision = 0
 
     private var devices: [EInkDeviceConfig] { settingsStore.settings.einkSync.devices }
     private var frame: EInkScreenFrame? { group.frames.first { $0.id == selectedFrameID } ?? group.frames.first }
@@ -99,7 +100,11 @@ private struct EInkScreenGroupEditor: View {
                 if let pushResult { Text(pushResult).font(.caption) }
             }
         }
-        .task(id: previewKey) { await rebuildPreview() }
+        .task(id: previewRevision) { await rebuildPreview() }
+        .onChange(of: group) { _, _ in previewRevision += 1 }
+        .onChange(of: devices) { _, _ in previewRevision += 1 }
+        .onChange(of: settingsStore.settings.einkCanvasLayouts) { _, _ in previewRevision += 1 }
+        .onChange(of: selectedFrameID) { _, _ in previewRevision += 1 }
         .sheet(item: Binding(get: { editingRegionID.map(RegionSelection.init) }, set: { editingRegionID = $0?.id })) { selection in
             if let region = frame?.regions.first(where: { $0.id == selection.id }),
                let size = group.bounds(for: region.deviceIDs, devices: devices) {
@@ -117,13 +122,6 @@ private struct EInkScreenGroupEditor: View {
     }
 
     private struct RegionSelection: Identifiable { let id: String }
-    private var previewKey: String {
-        // Codable values keep this key sensitive to page and geometry changes.
-        let data = (try? JSONEncoder().encode(group)) ?? Data()
-        let layouts = (try? JSONEncoder().encode(settingsStore.settings.einkCanvasLayouts)) ?? Data()
-        let deviceData = (try? JSONEncoder().encode(devices)) ?? Data()
-        return data.base64EncodedString() + layouts.base64EncodedString() + deviceData.base64EncodedString() + (frame?.id ?? "")
-    }
 
     private var arrangement: some View {
         VStack(alignment: .leading, spacing: 10) {

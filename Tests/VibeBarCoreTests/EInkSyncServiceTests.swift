@@ -352,6 +352,33 @@ final class EInkSyncServiceTests: XCTestCase {
         service.stop()
     }
 
+    func testAlertFallbackMirrorsEveryLiveLoopSlotAndRestoresTheirPages() async {
+        let client = FakeDotClient()
+        var config = alertDevice()
+        config.taskKeys = ["k1", "k2"]
+        let service = service(client: client, device: config, snapshot: alertingSnapshot(remaining: 4), requestSpacing: .zero)
+        await service.refresh(deviceID: "panel-1")
+        for tick in 0..<4 {
+            if tick > 0 { client.reset(); await service.advanceCarousel(deviceID: "panel-1") }
+            XCTAssertEqual(client.pushes.count, 2)
+            XCTAssertEqual(client.pushes.map(\.taskKey), ["k1", "k2"])
+            XCTAssertEqual(client.pushes[0].windowDataDigest, client.pushes[1].windowDataDigest,
+                           "firmware must see the same card whichever live task it rotates to")
+            XCTAssertFalse(client.pushes.contains { $0.payload.taskAlias == EInkRenderer.unusedSlotTaskAlias })
+            XCTAssertEqual(service.state(for: "panel-1").surplusTaskCount, 0)
+            XCTAssertEqual(client.pushes[0].refreshNow, true)
+            XCTAssertEqual(client.pushes[1].refreshNow, false)
+        }
+        config.alerts.enabled = false
+        service.apply(settings: EInkSyncSettings(apiKeyPresent: true, syncEnabled: true, devices: [config]), layouts: [:])
+        client.reset()
+        await service.refresh(deviceID: "panel-1")
+        XCTAssertEqual(client.pushes.count, 2)
+        XCTAssertNotEqual(client.pushes[0].windowDataDigest, client.pushes[1].windowDataDigest)
+        XCTAssertTrue(client.pushes.allSatisfy { $0.border == 0 && !$0.refreshNow })
+        XCTAssertNil(service.state(for: "panel-1").alertingFieldID)
+    }
+
     // MARK: - Helpers
 
     private func slide(_ id: String, preset: EInkPreset = .quotaLedger) -> EInkSlide {
