@@ -78,7 +78,7 @@ public enum EInkRenderer {
                 )
             }
             return EInkCustomLayoutRenderer.tree(
-                layout: layout,
+                layout: pageLayout(layout, slide: slide),
                 slide: slide,
                 orientation: orientation,
                 profile: profile,
@@ -95,6 +95,26 @@ public enum EInkRenderer {
         )
     }
 
+    private static func pageLayout(_ layout: EInkCanvasLayout, slide: EInkSlide) -> EInkCanvasLayout {
+        guard !slide.renderSourceFieldIDs.isEmpty else { return layout }
+        let source = Set(slide.renderSourceFieldIDs)
+        var copy = layout
+        copy.elements = layout.elements.compactMap { element in
+            guard !Set(element.quotaFieldIDs).isDisjoint(with: source) else { return element }
+            var element = element
+            if let id = element.fieldID, source.contains(id) {
+                guard let replacement = slide.renderFieldMap[id] else { return nil }
+                element.fieldID = replacement
+            }
+            if !element.fieldIDs.isEmpty {
+                element.fieldIDs = element.fieldIDs.compactMap { source.contains($0) ? slide.renderFieldMap[$0] : $0 }
+                if element.fieldIDs.isEmpty { return nil }
+            }
+            return element
+        }
+        return copy
+    }
+
     /// One preset laid out inside `frame`, honouring the slide's composition
     /// options. Shared with the Studio's whole-preset element and with the
     /// exploder, so the three cannot drift.
@@ -108,8 +128,8 @@ public enum EInkRenderer {
         fieldIDs: [String]? = nil,
         periods: [EInkUsagePeriod]? = nil
     ) -> EInkNode {
-        let capacity = preset.capacity(for: orientation)
-        let portrait = orientation.isPortrait
+        let capacity = preset.pageCapacity(for: orientation, width: frame.width, height: frame.height)
+        let portrait = preset.layoutOrientation(orientation, width: frame.width, height: frame.height).isPortrait
         let options = slide.options
         let selected = fieldIDs ?? slide.orderedQuotaFieldIDs
         func quotaRows() -> [EInkQuotaRow] {

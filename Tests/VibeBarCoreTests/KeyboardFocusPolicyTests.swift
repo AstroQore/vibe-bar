@@ -25,6 +25,7 @@ final class KeyboardFocusPolicyTests: XCTestCase {
 
         let presentationCount = sources.values.reduce(into: 0) { count, source in
             count += source.numberOfOccurrences(of: ".sheet(isPresented")
+            count += source.numberOfOccurrences(of: ".sheet(item:")
             count += source.numberOfOccurrences(of: ".popover(isPresented")
         }
 

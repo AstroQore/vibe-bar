@@ -37,7 +37,8 @@ public struct EInkSyncSettings: Codable, Equatable, Sendable {
         var seen = Set<String>()
         var result: [String] = []
         for device in devices + groupContentDevices {
-            for slide in device.slides where slide.kind.preset?.isQuotaPreset ?? false {
+            for slide in device.slides where (slide.kind.preset?.isQuotaPreset ?? false) ||
+                (slide.kind.layoutID != nil && slide.options.sourcePreset?.isQuotaPreset == true) {
                 for fieldID in slide.quotaFieldIDs where seen.insert(fieldID).inserted {
                     result.append(fieldID)
                 }
@@ -687,6 +688,10 @@ public struct EInkSlide: Codable, Equatable, Identifiable, Sendable {
     public var kind: Kind
     /// `MenuBarFieldCatalog` field IDs ("claude.weekly"), in display order.
     public var quotaFieldIDs: [String]
+    /// Transient bindings for a derived page of an exploded preset. These
+    /// are intentionally absent from CodingKeys: saved slides own selections.
+    public var renderFieldMap: [String: String] = [:]
+    public var renderSourceFieldIDs: [String] = []
     public var usagePeriods: [EInkUsagePeriod]
     /// Header / footer / slot order / per-slot labels. `.default` reproduces
     /// the round 1 panel exactly.
@@ -775,29 +780,9 @@ public struct EInkSlide: Codable, Equatable, Identifiable, Sendable {
         )
     }
 
-    /// Trims the selection to what the layout has room for at this
-    /// orientation.
-    ///
-    /// Capacity is orientation-dependent — the quota layouts hold six in
-    /// portrait and five in landscape — so a rotation can leave a slide
-    /// carrying more than it can draw. The renderer already takes a prefix, so
-    /// the extra rows were invisible; what they were not is *honest*, because
-    /// the picker kept counting them and the reader kept looking for a row the
-    /// panel was never going to print.
-    public func fitted(to orientation: EInkOrientation) -> EInkSlide {
-        guard let preset = kind.preset else { return self }
-        let capacity = max(0, preset.capacity(for: orientation))
-        var copy = self
-        switch preset.selectionAxis {
-        case .quotaFields:
-            copy.quotaFieldIDs = Array(quotaFieldIDs.prefix(capacity))
-        case .usagePeriods:
-            copy.usagePeriods = Array(usagePeriods.prefix(capacity))
-        case .harnessRows, .none:
-            break
-        }
-        return copy
-    }
+    /// Rotation preserves selection. The playback planner derives as many
+    /// pages as the selected content needs in the new orientation.
+    public func fitted(to orientation: EInkOrientation) -> EInkSlide { self }
 
     private enum CodingKeys: String, CodingKey {
         case id, title, kind, quotaFieldIDs, usagePeriods, options
