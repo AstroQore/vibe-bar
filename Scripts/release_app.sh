@@ -128,7 +128,9 @@ echo "==> building Vibe Bar $VERSION ($BUILD_NUMBER)"
 (cd "$ROOT" && ./Scripts/build_app.sh release)
 
 echo "==> verifying bundled pricing resources"
-if [[ ! -f "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle/pricing.json" ]]; then
+# Flat from the native build system, `Contents/Resources` from Swift Build.
+CORE_BUNDLE="$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle"
+if [[ ! -f "$CORE_BUNDLE/pricing.json" && ! -f "$CORE_BUNDLE/Contents/Resources/pricing.json" ]]; then
     echo "Refusing to release an app without the VibeBarCore resource bundle." >&2
     exit 1
 fi

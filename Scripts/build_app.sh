@@ -17,6 +17,20 @@ echo "==> swift build -c $CONFIG"
 swift build -c "$CONFIG"
 
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+
+# Where a SwiftPM resource bundle keeps its files. The native build system
+# writes the bundle flat (`X.bundle/pricing.json`); Swift Build — `swift
+# build`'s default from Swift 6.4 — writes a real macOS bundle
+# (`X.bundle/Contents/Resources/pricing.json`). Foundation's `Bundle` reads
+# both, so the app's own lookups are unaffected; only this script's file
+# checks have to ask which layout it was handed.
+resource_root() {
+    if [[ -d "$1/Contents/Resources" ]]; then
+        printf '%s\n' "$1/Contents/Resources"
+    else
+        printf '%s\n' "$1"
+    fi
+}
 EXEC_PATH="$BIN_DIR/VibeBar"
 CORE_RESOURCE_BUNDLE="$BIN_DIR/VibeBar_VibeBarCore.bundle"
 # The shared string catalogue's bundle, built from the `vibe-bar-i18n`
@@ -34,7 +48,7 @@ if [[ ! -x "$EXEC_PATH" ]]; then
     echo "Executable not found at $EXEC_PATH" >&2
     exit 1
 fi
-if [[ ! -f "$CORE_RESOURCE_BUNDLE/pricing.json" ]]; then
+if [[ ! -f "$(resource_root "$CORE_RESOURCE_BUNDLE")/pricing.json" ]]; then
     echo "Core resource bundle not found at $CORE_RESOURCE_BUNDLE" >&2
     exit 1
 fi
@@ -77,7 +91,7 @@ cp -R "$CORE_RESOURCE_BUNDLE" \
 # the way in; the lookup matches case-insensitively so both copies answer.
 cp -R "$I18N_RESOURCE_BUNDLE" \
     "$APP_DIR/Contents/Resources/vibe-bar-i18n_VibeBarLocalization.bundle"
-for lproj in "$I18N_RESOURCE_BUNDLE"/*.lproj; do
+for lproj in "$(resource_root "$I18N_RESOURCE_BUNDLE")"/*.lproj; do
     [[ -d "$lproj" ]] || continue
     case "$(basename "$lproj")" in
         zh-hans.lproj) canonical="zh-Hans.lproj" ;;
@@ -128,7 +142,7 @@ cp "$ROOT/Scripts/fix_menu_bar_allowlist.py" \
 PkgInfo="APPL????"
 printf '%s' "$PkgInfo" > "$APP_DIR/Contents/PkgInfo"
 
-if [[ ! -f "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle/pricing.json" ]]; then
+if [[ ! -f "$(resource_root "$APP_DIR/Contents/Resources/VibeBar_VibeBarCore.bundle")/pricing.json" ]]; then
     echo "Packaged core resource bundle is incomplete." >&2
     exit 1
 fi
