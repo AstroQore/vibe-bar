@@ -274,14 +274,7 @@ struct SkillHarnessConfigManager: Sendable {
             atPath: museSettingsURL.deletingLastPathComponent().path,
             isDirectory: &isDirectory
         ), isDirectory.boolValue else { return }
-        let target = resolvedConfigTarget(museSettingsURL)
-        // A symlinked settings file is followed only while it stays inside
-        // the home directory: the lock and the rewrite land beside the target.
-        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true).standardizedFileURL
-        let parent = target.deletingLastPathComponent().standardizedFileURL
-        guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
-            throw SkillError.writeOutsideAllowedRoots(target.path)
-        }
+        let target = try museWriteTarget()
         try withMuseSettingsLock(directory: target.deletingLastPathComponent()) {
             let existed = FileManager.default.fileExists(atPath: target.path)
             if enabled, !existed { return }
@@ -390,9 +383,23 @@ struct SkillHarnessConfigManager: Sendable {
         }
     }
 
+    /// The settings file a write may touch. A symlinked `settings.json` is
+    /// followed only while it stays inside the home directory: the lock and
+    /// the rewrite land beside the resolved target.
+    private func museWriteTarget() throws -> URL {
+        let target = resolvedConfigTarget(museSettingsURL)
+        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true).standardizedFileURL
+        let parent = target.deletingLastPathComponent().standardizedFileURL
+        guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
+            throw SkillError.writeOutsideAllowedRoots(target.path)
+        }
+        return target
+    }
+
     private func validateMuseSettingsWritable() throws {
         let target = resolvedConfigTarget(museSettingsURL)
         guard FileManager.default.fileExists(atPath: target.path) else { return }
+        _ = try museWriteTarget()
         guard let data = try? Data(contentsOf: target),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               Self.museSchemaIsKnown(root),
