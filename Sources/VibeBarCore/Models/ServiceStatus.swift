@@ -132,6 +132,21 @@ public struct ServiceComponentGroup: Codable, Sendable, Hashable, Identifiable {
         self.id = id
         self.name = name
     }
+
+    /// Group id for a sub-provider section of a merged company snapshot.
+    public static func subProviderID(_ tool: ToolType) -> String {
+        "\(subProviderPrefix)\(tool.rawValue)"
+    }
+
+    /// The tool whose own status page backs this group, when the group is one
+    /// of those sections. A section named after something that is not a tool
+    /// of its own (Grok Bot, published on Cursor's page) answers nil.
+    public var subProviderTool: ToolType? {
+        guard id.hasPrefix(Self.subProviderPrefix) else { return nil }
+        return ToolType(rawValue: String(id.dropFirst(Self.subProviderPrefix.count)))
+    }
+
+    private static let subProviderPrefix = "subprovider:"
 }
 
 public struct IncidentSummary: Codable, Sendable, Hashable, Identifiable {
@@ -405,7 +420,7 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
             recentIncidents: []
         )
         if grok != nil {
-            let groupID = "subprovider:grok"
+            let groupID = ServiceComponentGroup.subProviderID(.grok)
             base = ServiceStatusSnapshot(
                 tool: base.tool,
                 indicator: base.indicator,
@@ -432,7 +447,7 @@ public struct ServiceStatusSnapshot: Sendable, Hashable, Codable {
         // published on Cursor's.
         return base.mergingSubProvider(
             cursor,
-            groupID: "subprovider:cursor",
+            groupID: ServiceComponentGroup.subProviderID(.cursor),
             groupName: "Cursor",
             breakouts: [
                 SubProviderBreakout(

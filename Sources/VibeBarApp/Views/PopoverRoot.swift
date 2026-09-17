@@ -2003,9 +2003,20 @@ private struct ProviderPageModule: View {
     let context: ProviderPageContext
     let density: Theme.Density
     let mode: DisplayMode
+    @EnvironmentObject private var environment: AppEnvironment
     /// Tick from the page's single clock. Plain data — this view never starts
     /// a timer, however many quota groups the page ends up arranging.
     let now: Date
+
+    /// A provider whose account exists before it is connected (the
+    /// cookie-backed ones) says how to connect it, rather than reporting the
+    /// empty quota as missing utilization.
+    private var awaitingSetupHint: String? {
+        guard let account = environment.account(for: context.pageTool),
+              account.source == .notConfigured
+        else { return nil }
+        return ProviderQuotaCard.loginHint(for: context.pageTool)
+    }
 
     var body: some View {
         switch descriptor.kind {
@@ -2022,7 +2033,7 @@ private struct ProviderPageModule: View {
                         ? PageModuleCatalog.quotaRefreshTools(for: context.pageTool)
                         : [],
                     emptyMessage: group.rows.isEmpty
-                        ? L10n.Quota.Group.noUtilization
+                        ? (awaitingSetupHint ?? L10n.Quota.Group.noUtilization)
                         : nil
                 )
             }
@@ -2368,7 +2379,8 @@ struct ProviderQuotaCard: View {
     private var resolvedLiveError: QuotaError? {
         displayableError(
             resolvedAccount.flatMap { quotaService.lastErrorByAccount[$0.id] },
-            with: resolvedQuota
+            with: resolvedQuota,
+            account: resolvedAccount
         )
     }
 
@@ -2377,8 +2389,17 @@ struct ProviderQuotaCard: View {
     }
 
     private var currentFreshnessWarning: QuotaFreshnessLabel.Description? {
-        guard showsFreshnessWarning else { return nil }
+        guard showsFreshnessWarning, !isAwaitingSetup else { return nil }
         return resolvedAccount.flatMap { freshnessWarning(for: $0, now: Date()) }
+    }
+
+    /// A provider whose card exists before it is set up — the cookie-backed
+    /// ones, whose account is always present so Settings can offer the import
+    /// — and which has never returned a quota. There is nothing stale and
+    /// nothing to re-login to, so the card shows its setup hint instead of a
+    /// failed refresh.
+    private var isAwaitingSetup: Bool {
+        resolvedAccount?.source == .notConfigured && (resolvedQuota?.buckets.isEmpty ?? true)
     }
 
     private var resolvedPlanBadge: String? {
@@ -2478,7 +2499,10 @@ struct ProviderQuotaCard: View {
         }
     }
 
-    private var emptyMessage: String {
+    private var emptyMessage: String { Self.loginHint(for: tool) }
+
+    /// What a provider's quota card says when it has nothing to show yet.
+    static func loginHint(for tool: ToolType) -> String {
         switch tool {
         case .chatgptChat: return L10n.Quota.Chat.connectionHelp
         case .codex:  return L10n.Quota.Login.codex
@@ -2508,8 +2532,20 @@ struct ProviderQuotaCard: View {
         .padding(.vertical, 2)
     }
 
-    private func displayableError(_ error: QuotaError?, with quota: AccountQuota?) -> QuotaError? {
+    private func displayableError(
+        _ error: QuotaError?,
+        with quota: AccountQuota?,
+        account: AccountIdentity? = nil
+    ) -> QuotaError? {
         guard let error else { return nil }
+        // Never set up: the card's own hint says what to do, and "No account
+        // found" on a provider the user has not connected yet reads as a
+        // failure rather than the next step.
+        if error.isCredentialState,
+           account?.source == .notConfigured,
+           quota?.buckets.isEmpty ?? true {
+            return nil
+        }
         // A credential route can disappear temporarily when an account source
         // reloads, even though the last successful quota remains complete and
         // usable until its next reset. Do not turn that transient routing state
