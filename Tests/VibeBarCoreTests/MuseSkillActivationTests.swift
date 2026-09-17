@@ -131,6 +131,41 @@ final class MuseSkillActivationTests: XCTestCase {
         XCTAssertEqual(home.contents(of: settingsURL(home)), original)
     }
 
+    /// A container of the wrong type is a file the setter refuses, so it is
+    /// not read as "every skill on" either.
+    func testAMalformedActivationTreeReadsAsUnknown() throws {
+        let home = try SkillTestHome()
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+        for body in [#"{"schema_version":1,"skills":[]}"#,
+                     #"{"schema_version":1,"skills":{"activation":"on"}}"#,
+                     #"{"schema_version":1,"skills":{"activation":{"user":[]}}}"#] {
+            try home.write(body, to: settingsURL(home))
+            XCTAssertEqual(manager.museStates(for: [skill("alpha")])["alpha"], .unknown, body)
+            XCTAssertThrowsError(try manager.validateCanDisable(.muse), body)
+        }
+    }
+
+    /// A symlinked settings file is followed only inside the home directory;
+    /// neither the lock nor the rewrite may land outside it.
+    func testASettingsLinkLeavingTheHomeIsNotWritten() throws {
+        let home = try SkillTestHome()
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VibeBarMuseOutside-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outside) }
+        let external = outside.appendingPathComponent("settings.json")
+        try Data(#"{"schema_version":1}"#.utf8).write(to: external)
+        try museDirectory(home)
+        try FileManager.default.createSymbolicLink(at: settingsURL(home), withDestinationURL: external)
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+
+        XCTAssertThrowsError(
+            try manager.setNativeEnabled(false, directoryName: "alpha", skillName: "Alpha", app: .muse)
+        ) { XCTAssertEqual($0 as? SkillError, .writeOutsideAllowedRoots(external.resolvingSymlinksInPath().path)) }
+        XCTAssertEqual(try String(contentsOf: external, encoding: .utf8), #"{"schema_version":1}"#)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent(".settings.json.lock").path))
+    }
+
     func testAnUnrecognisedActivationValueReadsAsUnknown() throws {
         let home = try SkillTestHome()
         try home.write(#"{"schema_version":1,"skills":{"activation":{"user":{"$HOME/.agents/skills/alpha/SKILL.md":"sometimes"}}}}"#,
@@ -188,5 +223,26 @@ final class MuseSkillActivationTests: XCTestCase {
 
         _ = try await service.uninstall(alpha.id)
         XCTAssertFalse(home.exists(home.appDirectory(.muse)))
+    }
+
+    /// Muse sees a copy in the shared root at once, so an install that could
+    /// not switch it off there fails before copying anything.
+    func testAnInstallMuseCannotRecordFailsBeforeTheCopy() async throws {
+        let home = try SkillTestHome()
+        let original = #"{"schema_version":2}"#
+        try home.write(original, to: settingsURL(home))
+        let service = SkillsService(homeDirectory: home.path)
+
+        let source = try home.makeSkillDirectory(at: home.url.appendingPathComponent("staging/alpha"))
+        do {
+            _ = try await service.install(from: .localDirectory(source), enableFor: [.claude])
+            XCTFail("the install should have been refused")
+        } catch {
+            XCTAssertEqual(error as? SkillError, .nativeConfigUnreadable(.muse))
+        }
+        XCTAssertFalse(home.exists(home.url.appendingPathComponent(".agents/skills/alpha")))
+        XCTAssertEqual(home.contents(of: settingsURL(home)), original)
+        let installed = await service.installedSkills()
+        XCTAssertTrue(installed.isEmpty)
     }
 }

@@ -109,11 +109,11 @@ struct SkillHarnessConfigManager: Sendable {
         }
         guard let data = try? Data(contentsOf: target),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              Self.museSchemaIsKnown(root)
+              Self.museSchemaIsKnown(root),
+              let activations = Self.museUserActivations(in: root)
         else {
             return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
         }
-        let activations = Self.museUserActivations(in: root)
         return Dictionary(uniqueKeysWithValues: skills.map { skill in
             let keys = museActivationKeys(directoryName: skill.directory)
             let values = activations.filter { keys.contains($0.key) }.map(\.value)
@@ -160,12 +160,7 @@ struct SkillHarnessConfigManager: Sendable {
     /// every other skill too, so the narrower operation explains the blocker.
     func validateCanEnable(_ app: SkillAppTarget) throws {
         if app == .muse {
-            let target = resolvedConfigTarget(museSettingsURL)
-            guard FileManager.default.fileExists(atPath: target.path) else { return }
-            guard let data = try? Data(contentsOf: target),
-                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  Self.museSchemaIsKnown(root)
-            else { throw SkillError.nativeConfigUnreadable(.muse) }
+            try validateMuseSettingsWritable()
             return
         }
         guard app == .gemini else { return }
@@ -280,6 +275,13 @@ struct SkillHarnessConfigManager: Sendable {
             isDirectory: &isDirectory
         ), isDirectory.boolValue else { return }
         let target = resolvedConfigTarget(museSettingsURL)
+        // A symlinked settings file is followed only while it stays inside
+        // the home directory: the lock and the rewrite land beside the target.
+        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true).standardizedFileURL
+        let parent = target.deletingLastPathComponent().standardizedFileURL
+        guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
+            throw SkillError.writeOutsideAllowedRoots(target.path)
+        }
         try withMuseSettingsLock(directory: target.deletingLastPathComponent()) {
             let existed = FileManager.default.fileExists(atPath: target.path)
             if enabled, !existed { return }
@@ -363,13 +365,39 @@ struct SkillHarnessConfigManager: Sendable {
         return number.doubleValue == 1
     }
 
-    private static func museUserActivations(in root: [String: Any]) -> [String: String] {
+    /// `skills.activation.user`, or nil when any container on the way is not
+    /// an object — a file the setter would refuse is not read as "all on".
+    private static func museUserActivations(in root: [String: Any]) -> [String: String]? {
+        guard root["skills"] == nil || root["skills"] is [String: Any] else { return nil }
         let skills = root["skills"] as? [String: Any]
+        guard skills?["activation"] == nil || skills?["activation"] is [String: Any] else { return nil }
         let activation = skills?["activation"] as? [String: Any]
+        guard activation?["user"] == nil || activation?["user"] is [String: Any] else { return nil }
         let user = activation?["user"] as? [String: Any] ?? [:]
         return user.reduce(into: [:]) { result, entry in
             result[entry.key] = (entry.value as? String) ?? ""
         }
+    }
+
+    /// Fail before an install copies anything when an unselected harness that
+    /// reads the shared root on its own could not record the new skill as off.
+    func validateCanDisable(_ app: SkillAppTarget) throws {
+        switch app {
+        case .muse:
+            try validateMuseSettingsWritable()
+        default:
+            return
+        }
+    }
+
+    private func validateMuseSettingsWritable() throws {
+        let target = resolvedConfigTarget(museSettingsURL)
+        guard FileManager.default.fileExists(atPath: target.path) else { return }
+        guard let data = try? Data(contentsOf: target),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Self.museSchemaIsKnown(root),
+              Self.museUserActivations(in: root) != nil
+        else { throw SkillError.nativeConfigUnreadable(.muse) }
     }
 
     private static func museCanonicalKey(directoryName: String) -> String {
