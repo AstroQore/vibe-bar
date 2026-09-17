@@ -47,7 +47,12 @@ public enum MuseResponseParser {
         if active == false {
             throw QuotaError.parseFailure("No active Muse Code subscription on this account")
         }
-        let usage = root["subs_usage"] as? [String: Any]
+        // `null` is the idle account; a missing or non-object value is a
+        // response this parser does not understand, not an idle one.
+        guard let rawUsage = root["subs_usage"], rawUsage is NSNull || rawUsage is [String: Any] else {
+            throw QuotaError.parseFailure("Muse Code usage response has no subs_usage object")
+        }
+        let usage = rawUsage as? [String: Any]
         var buckets: [QuotaBucket] = []
         if let window = usage?["window"] as? [String: Any], let used = number(window["used_percent"]) {
             let minutes = number(window["window_duration_mins"]).map { Int($0) }

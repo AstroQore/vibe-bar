@@ -179,8 +179,15 @@ public actor SkillsService {
     }
 
     func validateNativeInstallationSelection(_ selectedApps: [SkillAppTarget]) throws {
-        for app in selectedApps where app.supportsNativeSkillActivation {
-            try harnessConfig.validateCanEnable(app)
+        let selected = Set(selectedApps)
+        for app in SkillAppTarget.managedHarnesses where app.supportsNativeSkillActivation {
+            if selected.contains(app) {
+                try harnessConfig.validateCanEnable(app)
+            } else if app.discoversSharedSkillRoot {
+                // The copy into the shared root is visible to this harness at
+                // once, so its disable must be possible before the copy.
+                try harnessConfig.validateCanDisable(app)
+            }
         }
     }
 

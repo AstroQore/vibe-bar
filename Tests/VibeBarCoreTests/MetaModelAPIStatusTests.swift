@@ -77,4 +77,12 @@ final class MetaModelAPIStatusTests: XCTestCase {
     func testNonJSONIsABadResponse() {
         XCTAssertThrowsError(try parse("<html>Service Unavailable</html>"))
     }
+
+    /// Every field is optional, so an error body decodes; with no health
+    /// signal in it, it must not become a green snapshot.
+    func testAPayloadWithoutAnyHealthSignalIsABadResponse() {
+        XCTAssertThrowsError(try parse("{}"))
+        XCTAssertThrowsError(try parse(#"{"error":"unavailable","incident_history":[]}"#))
+        XCTAssertNoThrow(try parse(#"{"model_statuses":[{"id":"muse-spark-1.3","status":"operational"}]}"#))
+    }
 }

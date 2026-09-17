@@ -762,6 +762,13 @@ public actor ServiceStatusClient {
         } catch {
             throw ServiceStatusError.badResponse
         }
+        // Every field is optional, so a 2xx error body decodes too. Without
+        // any health signal there is nothing to show, and a green row would
+        // replace the last real status.
+        let hasModelStatus = (page.model_statuses ?? []).contains { nonEmpty($0.id) != nil && nonEmpty($0.status) != nil }
+        guard page.is_alive != nil || nonEmpty(page.service_status) != nil || hasModelStatus else {
+            throw ServiceStatusError.badResponse
+        }
         var serviceLevel = metaComponentStatus(page.service_status)
         if page.is_alive == false {
             serviceLevel = .majorOutage
