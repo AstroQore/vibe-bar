@@ -127,6 +127,7 @@ private struct OnboardingCoreProviderCard: View {
         case .claude: L10n.Onboarding.Subscriptions.ProductLine.claude
         case .gemini: L10n.Onboarding.Subscriptions.ProductLine.gemini
         case .grok: L10n.Onboarding.Subscriptions.ProductLine.grok
+        case .muse: L10n.Onboarding.Subscriptions.ProductLine.muse
         default: tool.subtitle
         }
     }
@@ -170,6 +171,15 @@ private struct OnboardingCoreProviderCard: View {
                     systemImage: "exclamationmark.circle",
                     tint: .secondary
                 )
+            }
+        case .muse:
+            // Detection reads only `~/.config/muse/auth.json`; whether macOS
+            // still has to allow the Keychain read is the Meta AI settings
+            // page's question, not this step's.
+            if environment.account(for: .muse) != nil {
+                hintLabel(L10n.Settings.Muse.allowKeychainAccessHelp, systemImage: "checkmark.circle", tint: .green)
+            } else {
+                hintLabel(L10n.Settings.Muse.noLogin, systemImage: "exclamationmark.circle", tint: .secondary)
             }
         default:
             EmptyView()
@@ -387,8 +397,8 @@ struct OnboardingAPIKeyProvidersStep: View {
 
     @EnvironmentObject private var settingsStore: SettingsStore
     /// Rows whose credential controls are unfolded. Kept apart from
-    /// visibility so a page with every provider on (the default) does not
-    /// open twenty credential forms at once.
+    /// visibility so ticking several providers does not open that many
+    /// credential forms at once.
     @State private var expanded: Set<String> = []
 
     var body: some View {

@@ -11,6 +11,7 @@ enum SettingsSectionID: String {
     case anthropic
     case googleAI
     case xAI
+    case metaAI
     case miscProviders
     case system
     case costData
@@ -33,6 +34,7 @@ enum SettingsSectionID: String {
         case .anthropic: "Anthropic"
         case .googleAI: "Google AI"
         case .xAI: "SpaceXAI"
+        case .metaAI: "Meta AI"
         case .miscProviders: L10n.Popover.Tab.misc
         case .system: L10n.Settings.Section.system
         case .costData: L10n.Settings.Section.costData
@@ -55,6 +57,7 @@ enum SettingsSectionID: String {
         case .anthropic: "sparkles"
         case .googleAI: "diamond"
         case .xAI: "circle.hexagongrid"
+        case .metaAI: "infinity"
         case .miscProviders: "square.grid.2x2"
         case .system: "desktopcomputer"
         case .costData: "chart.bar.xaxis"
@@ -81,6 +84,7 @@ enum SettingsDestination: Hashable {
             case .claude: .anthropic
             case .gemini: .googleAI
             case .grok: .xAI
+            case .muse: .metaAI
             default: .openAI
             }
         case .miscProvider: .miscProviders
@@ -96,6 +100,7 @@ enum SettingsDestination: Hashable {
             case .claude: return "Anthropic"
             case .gemini: return "Google AI"
             case .grok: return "SpaceXAI"
+            case .muse: return "Meta AI"
             default: return tool.vendorName
             }
         case let .miscProvider(id):
@@ -130,6 +135,8 @@ struct SettingsView: View {
     @State private var claudeCookieDeleteFailed: Bool = false
     @State private var geminiCookieDeleteFailed: Bool = false
     @State private var grokCookieDeleteFailed: Bool = false
+    @State private var museKeychainAuthorizing: Bool = false
+    @State private var museKeychainDenied: Bool = false
     @State private var costDataClearStatus: String?
     @State private var launchAtLoginStatusText: String = LoginItemController.statusText
     @State private var launchAtLoginError: String?
@@ -616,6 +623,39 @@ struct SettingsView: View {
                     .id(SettingsSectionID.xAI.id)
                     }
 
+                    if selectedSection == .metaAI {
+                    settingsSection("Meta AI") {
+                        coreProviderSummary(
+                            representative: .muse,
+                            healthProviders: [.muse]
+                        )
+                        coreProviderPlanBadgeRows(for: [.muse])
+                        Divider()
+                            .padding(.vertical, 2)
+                        Text(L10n.Settings.metaAIIntro)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        sourceSummary(label: L10n.Settings.usageSource, value: L10n.Settings.Route.museKeychain)
+                        museKeychainControls
+
+                        Text(L10n.Settings.Muse.networkNote)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Divider()
+                            .padding(.vertical, 2)
+                        connectionHealthRows(provider: .muse)
+                        Button {
+                            environment.recheckPrimaryRouteHealth(provider: .muse)
+                        } label: {
+                            Label(L10n.Settings.checkConnections(company: "Meta AI"), systemImage: "checkmark.circle")
+                        }
+                    }
+                    .id(SettingsSectionID.metaAI.id)
+                    }
+
                     if selectedSection == .miscProviders {
                     if case let .miscProvider(instanceID) = selectedDestination,
                        let instance = settingsStore.settings.miscProviderInstance(id: instanceID) {
@@ -766,6 +806,57 @@ struct SettingsView: View {
                         .fill(healthColor(health.status).opacity(health.status == .ok ? 0.08 : 0.04))
                 )
             }
+        }
+    }
+
+    /// The Muse Code login lives in a Keychain item the `muse` CLI owns, so
+    /// macOS has to be asked once before background refreshes may read it.
+    /// The route health row already says which state it is in; this adds the
+    /// one control that changes it.
+    @ViewBuilder
+    private var museKeychainControls: some View {
+        let health = environment.routeHealth[.museKeychain]
+        if health?.status == .ok {
+            Label(L10n.Settings.Muse.keychainAccessAllowed, systemImage: "checkmark.circle")
+                .font(.caption2)
+                .foregroundStyle(.green)
+        } else if health?.status == .missing {
+            Label(L10n.Settings.Muse.noLogin, systemImage: "exclamationmark.circle")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        } else {
+            Button {
+                authorizeMuseKeychainAccess()
+            } label: {
+                Label(L10n.Settings.Muse.allowKeychainAccess, systemImage: "key")
+            }
+            .disabled(museKeychainAuthorizing)
+            Text(L10n.Settings.Muse.allowKeychainAccessHelp)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if museKeychainDenied {
+                Text(L10n.Settings.Muse.keychainAccessDenied)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    /// Runs the one Keychain read allowed to prompt. The system dialog blocks
+    /// the calling thread until it is answered, so it never runs on the main
+    /// actor.
+    private func authorizeMuseKeychainAccess() {
+        museKeychainAuthorizing = true
+        museKeychainDenied = false
+        Task {
+            let allowed = await Task.detached(priority: .userInitiated) { () -> Bool in
+                (try? MuseCredentialReader.authorizeKeychainAccess()) != nil
+            }.value
+            museKeychainAuthorizing = false
+            museKeychainDenied = !allowed
+            environment.recheckPrimaryRouteHealth(provider: .muse)
+            if allowed { environment.refresh(.muse) }
         }
     }
 
@@ -1381,6 +1472,7 @@ struct MiniWindowFieldProviderSection: Identifiable {
             tool: .cursor,
             title: ToolType.cursor.quotaSubProviderName(bucketID: "grok_bot_weekly"),
             fields: MenuBarFieldCatalog.grokBotFields
-        )
+        ),
+        .init(tool: .muse,        title: ToolType.muse.productName,        fields: MenuBarFieldCatalog.museFields)
     ]
 }

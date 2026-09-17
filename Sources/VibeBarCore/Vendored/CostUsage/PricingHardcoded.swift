@@ -31,7 +31,8 @@ enum PricingHardcoded {
             claude: claude,
             gemini: gemini,
             grok: grok,
-            antigravity: antigravity
+            antigravity: antigravity,
+            muse: muse
         )
     )
 
@@ -161,6 +162,22 @@ enum PricingHardcoded {
             "grok-3":           .init(input: 3e-6,    output: 1.5e-5,  cacheRead: 7.5e-7),
             "grok-3-mini":      .init(input: 3e-7,    output: 5e-7,    cacheRead: 7.5e-8),
             "grok-code-fast-1": .init(input: 2e-7,    output: 1.5e-6,  cacheRead: 2e-8)
+        ]
+    )
+
+    /// Meta Model API rates for Muse Spark (dev.meta.ai pricing, 2026-09):
+    /// standard $1.25 / $4.25 per 1M with cached input at $0.15; the
+    /// contributor variants — whose content may be used for product
+    /// improvement — at $0.10 / $0.20 with cached input at $0.002. No cache
+    /// write charge and no long-context premium; reasoning bills as output.
+    private static let muse = PricingDataSet.ProviderTable<PricingDataSet.MuseEntry>(
+        displayName: "Meta AI",
+        models: [
+            "muse-spark-1.3":             .init(input: 1.25e-6, output: 4.25e-6, cacheRead: 1.5e-7),
+            "muse-spark-1.2":             .init(input: 1.25e-6, output: 4.25e-6, cacheRead: 1.5e-7),
+            "muse-spark-1.1":             .init(input: 1.25e-6, output: 4.25e-6, cacheRead: 1.5e-7),
+            "muse-spark-1.3-contributor": .init(input: 1e-7,    output: 2e-7,    cacheRead: 2e-9),
+            "muse-spark-1.2-contributor": .init(input: 1e-7,    output: 2e-7,    cacheRead: 2e-9)
         ]
     )
 

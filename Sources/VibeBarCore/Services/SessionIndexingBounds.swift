@@ -27,7 +27,7 @@ public enum SessionIndexingBounds {
     /// providers cannot be truncated at a byte offset, so they are listed
     /// out.
     static let headTruncatableProviders: Set<SessionProvider> = [
-        .codex, .claude, .claudeCowork
+        .codex, .claude, .claudeCowork, .muse
     ]
 
     /// `registry`, with every adapter wrapped in the indexing bounds.

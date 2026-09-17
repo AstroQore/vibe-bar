@@ -74,6 +74,9 @@ public final class AccountStore: ObservableObject {
         if let grok = autoDetectGrok() {
             detected.append(grok)
         }
+        if let muse = autoDetectMuse() {
+            detected.append(muse)
+        }
         // Cursor is a linked Grok-family surface. Keep its stable account
         // present even while signed out so the xAI Settings cookie controls can
         // establish a session without first creating a legacy Misc instance.
@@ -334,6 +337,25 @@ public final class AccountStore: ObservableObject {
             allowsWebFallback: true,
             allowsCLIFallback: false,
             allowsOAuthFallback: false,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    /// Muse Code registers once `muse login` has left
+    /// `~/.config/muse/auth.json` behind. The file carries the account's
+    /// email without the token, so detection never touches the Keychain —
+    /// the adapter reads the secret, and reports when macOS has not yet
+    /// allowed it to.
+    private func autoDetectMuse() -> AccountIdentity? {
+        guard let authFile = MuseCredentialReader.readAuthFile() else { return nil }
+        return AccountIdentity(
+            id: "oauth-muse",
+            tool: .muse,
+            email: authFile.email,
+            alias: ToolType.muse.productName,
+            source: .oauthCLI,
+            allowsOAuthFallback: true,
             createdAt: Date(),
             updatedAt: Date()
         )

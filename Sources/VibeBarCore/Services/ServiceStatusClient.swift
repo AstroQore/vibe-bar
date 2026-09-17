@@ -33,6 +33,8 @@ public actor ServiceStatusClient {
             return try await fetchXAIStatus(dayCount: dayCount, now: now)
         case .cursor:
             return try await fetchClassicStatuspage(tool: .cursor, dayCount: dayCount, now: now)
+        case .muse:
+            return try await fetchMetaModelAPIStatus(now: now)
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose known machine-readable status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
@@ -506,6 +508,156 @@ public actor ServiceStatusClient {
         if impact.contains("DEGRADED") || impact.contains("DELAY")  { return .minor }
         if impact.contains("MAINTENANCE") { return .maintenance }
         return .minor
+    }
+
+    // MARK: - Meta Model API status (api.meta.ai/v1/status)
+
+    /// Meta's own, unauthenticated status endpoint for the Model API that
+    /// Muse Code talks to (`https://api.meta.ai/v1`). A trailing slash turns
+    /// it into a 401, so the URL is spelled exactly.
+    static let metaModelAPIStatusURL = URL(string: "https://api.meta.ai/v1/status")!
+
+    private func fetchMetaModelAPIStatus(now: Date) async throws -> ServiceStatusSnapshot {
+        var request = URLRequest(url: Self.metaModelAPIStatusURL)
+        request.timeoutInterval = 8
+        request.setValue("Vibe Bar/1", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await HTTPResponseLimit.boundedData(from: session, for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ServiceStatusError.badResponse
+        }
+        return try Self.parseMetaModelAPIStatus(data: data, now: now)
+    }
+
+    /// The whole page in one object: a service-wide `service_status`, an
+    /// optional per-model list and an incident history. Every field is read
+    /// as optional and every date as a string first — today the endpoint
+    /// sends `"updated_at": ""`, which a date decoder would reject outright.
+    ///
+    /// No uptime and no day strip: an incident carries a date and nothing
+    /// else, so there is no duration to subtract and a 90-day all-green
+    /// strip would claim history the feed never published.
+    nonisolated static func parseMetaModelAPIStatus(data: Data, now: Date) throws -> ServiceStatusSnapshot {
+        let page: MetaModelAPIStatus
+        do {
+            page = try JSONDecoder().decode(MetaModelAPIStatus.self, from: data)
+        } catch {
+            throw ServiceStatusError.badResponse
+        }
+        // Every field is optional, so a 2xx error body decodes too. Without
+        // any health signal there is nothing to show, and a green row would
+        // replace the last real status.
+        let hasModelStatus = (page.model_statuses ?? []).contains { nonEmpty($0.id) != nil && nonEmpty($0.status) != nil }
+        guard page.is_alive != nil || nonEmpty(page.service_status) != nil || hasModelStatus else {
+            throw ServiceStatusError.badResponse
+        }
+        var serviceLevel = metaComponentStatus(page.service_status)
+        if page.is_alive == false {
+            serviceLevel = .majorOutage
+        }
+        var components = [
+            ServiceComponentSummary(id: "model-api", name: "Model API", status: serviceLevel)
+        ]
+        for model in page.model_statuses ?? [] {
+            guard let id = nonEmpty(model.id) else { continue }
+            components.append(ServiceComponentSummary(
+                id: "model:\(id)", name: id, status: metaComponentStatus(model.status)
+            ))
+        }
+        let worst = components.max { $0.status.severity < $1.status.severity }?.status ?? .operational
+
+        let incidents: [IncidentSummary] = (page.incident_history ?? [])
+            .compactMap { incident -> IncidentSummary? in
+                guard let raw = nonEmpty(incident.date), let day = metaIncidentDate(raw),
+                      let name = nonEmpty(incident.title) ?? nonEmpty(incident.message)
+                else { return nil }
+                let status = incident.status?.lowercased() ?? ""
+                let resolved = status.contains("resolv") || status.contains("complet")
+                return IncidentSummary(
+                    id: "meta:\(raw):\(name)",
+                    name: name,
+                    // `status` is the incident's lifecycle ("resolved"), so
+                    // the severity has to come from what it says happened.
+                    impact: metaIncidentImpact(
+                        [incident.title, incident.message, incident.status]
+                            .compactMap { $0?.lowercased() }
+                            .joined(separator: " ")
+                    ),
+                    createdAt: day,
+                    resolvedAt: resolved ? day : nil,
+                    url: ToolType.muse.statusPageURL
+                )
+            }
+            .sorted { $0.createdAt > $1.createdAt }
+
+        return ServiceStatusSnapshot(
+            tool: .muse,
+            indicator: xAIIndicator(for: worst),
+            // Meta's own words, verbatim; empty when all is well.
+            description: nonEmpty(page.service_message) ?? "",
+            updatedAt: nonEmpty(page.updated_at).flatMap(flexibleDate(from:)) ?? now,
+            groups: [],
+            components: components,
+            recentIncidents: Array(incidents.prefix(4))
+        )
+    }
+
+    private struct MetaModelAPIStatus: Decodable {
+        let is_alive: Bool?
+        let service_status: String?
+        let service_message: String?
+        let updated_at: String?
+        let model_statuses: [Model]?
+        let incident_history: [Incident]?
+
+        struct Model: Decodable {
+            let id: String?
+            let status: String?
+        }
+
+        struct Incident: Decodable {
+            let date: String?
+            let title: String?
+            let status: String?
+            let message: String?
+        }
+    }
+
+    /// Documented values are `operational`, `degraded` and `outage`; anything
+    /// else is matched by keyword so a new spelling degrades to the nearest
+    /// level instead of reading as healthy.
+    private nonisolated static func metaComponentStatus(_ raw: String?) -> ComponentStatusLevel {
+        let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if value.isEmpty || value == "operational" || value == "ok" { return .operational }
+        if value.contains("maint") { return .underMaintenance }
+        if value.contains("partial") { return .partialOutage }
+        if value.contains("outage") || value.contains("down") { return .majorOutage }
+        return .degradedPerformance
+    }
+
+    private nonisolated static func metaIncidentImpact(_ text: String) -> IncidentImpact {
+        if text.contains("maint") { return .maintenance }
+        if text.contains("outage") || text.contains("down") { return .major }
+        return .minor
+    }
+
+    /// Incident dates are calendar days (`2026-09-01`); a full timestamp is
+    /// accepted too.
+    private nonisolated static func metaIncidentDate(_ raw: String) -> Date? {
+        if let date = flexibleDate(from: raw) { return date }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: raw)
+    }
+
+    private nonisolated static func nonEmpty(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 
     // MARK: - Classic Statuspage (summary/incidents + embedded uptimeData)

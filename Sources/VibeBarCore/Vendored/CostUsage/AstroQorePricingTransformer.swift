@@ -6,6 +6,33 @@ public enum AstroQorePricingTransformer {
     struct Document: Decodable {
         let schemaVersion: Int
         let models: [Model]
+
+        private enum CodingKeys: String, CodingKey { case schemaVersion, models }
+
+        /// An entry for a provider family this build does not know is
+        /// skipped, not fatal: the supplement grows families before every
+        /// installed build has them, and one such entry used to reject the
+        /// whole document for everyone else's rates.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+            models = try c.decode([KnownFamilyModel].self, forKey: .models).compactMap(\.model)
+        }
+    }
+
+    private struct KnownFamilyModel: Decodable {
+        let model: Model?
+
+        private enum CodingKeys: String, CodingKey { case provider }
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.container(keyedBy: CodingKeys.self).decode(String.self, forKey: .provider)
+            guard PricingProviderFamily(rawValue: raw) != nil else {
+                model = nil
+                return
+            }
+            model = try Model(from: decoder)
+        }
     }
 
     struct Model: Decodable {
@@ -17,8 +44,18 @@ public enum AstroQorePricingTransformer {
     }
 
     struct ModelReference: Decodable {
-        let provider: PricingProviderFamily
+        /// `nil` for a family this build does not know; the inheritance then
+        /// simply finds nothing.
+        let provider: PricingProviderFamily?
         let model: String
+
+        private enum CodingKeys: String, CodingKey { case provider, model }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            provider = PricingProviderFamily(rawValue: try c.decode(String.self, forKey: .provider))
+            model = try c.decode(String.self, forKey: .model)
+        }
     }
 
     struct Pricing: Decodable {
@@ -60,6 +97,7 @@ public enum AstroQorePricingTransformer {
         var gemini: [String: PricingDataSet.GeminiEntry] = [:]
         var grok: [String: PricingDataSet.GrokEntry] = [:]
         var antigravity: [String: PricingDataSet.AntigravityEntry] = [:]
+        var muse: [String: PricingDataSet.MuseEntry] = [:]
 
         for model in document.models {
             let id = model.model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -129,6 +167,20 @@ public enum AstroQorePricingTransformer {
                     cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
                     displayLabel: model.displayLabel
                 )
+            case .muse:
+                if let inherited = inheritedMuse(model.inherits, from: inheritanceBase) {
+                    muse[id] = copy(inherited, displayLabel: model.displayLabel)
+                    continue
+                }
+                muse[id] = .init(
+                    input: perToken(price.input), output: perToken(price.output),
+                    cacheRead: price.cacheRead.map(perToken),
+                    thresholdTokens: price.threshold?.tokens,
+                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                    displayLabel: model.displayLabel
+                )
             case .antigravity:
                 if let inherited = inheritedAntigravity(model.inherits, from: inheritanceBase) {
                     antigravity[id] = .init(
@@ -149,7 +201,7 @@ public enum AstroQorePricingTransformer {
         }
 
         guard !codex.isEmpty || !claude.isEmpty || !gemini.isEmpty
-                || !grok.isEmpty || !antigravity.isEmpty
+                || !grok.isEmpty || !antigravity.isEmpty || !muse.isEmpty
         else { return nil }
         return PricingDataSet(
             schemaVersion: PricingDataSet.currentSchemaVersion,
@@ -160,7 +212,8 @@ public enum AstroQorePricingTransformer {
                 claude: .init(displayName: "Anthropic", models: claude),
                 gemini: .init(displayName: "Google", models: gemini),
                 grok: .init(displayName: "xAI", models: grok),
-                antigravity: .init(displayName: "AntiGravity", models: antigravity)
+                antigravity: .init(displayName: "AntiGravity", models: antigravity),
+                muse: .init(displayName: "Meta AI", models: muse)
             )
         )
     }
@@ -195,6 +248,13 @@ public enum AstroQorePricingTransformer {
     ) -> PricingDataSet.GrokEntry? {
         guard reference?.provider == .grok, let id = reference?.model.lowercased() else { return nil }
         return base?.providers.grok.models[id]
+    }
+
+    private static func inheritedMuse(
+        _ reference: ModelReference?, from base: PricingDataSet?
+    ) -> PricingDataSet.MuseEntry? {
+        guard reference?.provider == .muse, let id = reference?.model.lowercased() else { return nil }
+        return base?.providers.muse.models[id]
     }
 
     private static func inheritedAntigravity(

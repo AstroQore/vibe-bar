@@ -85,7 +85,8 @@
       "claude": "claude.all-models",
       "codex": "codex.all-models",
       "gemini": "gemini.all-models",
-      "grok": "grok.all-models"
+      "grok": "grok.all-models",
+      "muse": "muse.all-models"
     },
     "exact": [
       {
@@ -159,7 +160,8 @@
     "gemini.flash": "Flash",
     "gemini.flash-lite": "Flash Lite",
     "gemini.pro": "Pro",
-    "grok.all-models": "All"
+    "grok.all-models": "All",
+    "muse.all-models": "All"
   },
   "hierarchy": {
     "alibaba": {
@@ -229,6 +231,10 @@
     "minimax": {
       "company": "MiniMax",
       "subProvider": "MiniMax"
+    },
+    "muse": {
+      "company": "Meta AI",
+      "subProvider": "Muse Code"
     },
     "ollama": {
       "company": "Ollama",

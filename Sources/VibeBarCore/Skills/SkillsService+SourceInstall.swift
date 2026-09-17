@@ -117,7 +117,7 @@ extension SkillsService {
                 throw SkillError.directoryConflict(directoryName)
             }
             var skill = existing
-            for app in apps {
+            for app in apps where app.supportsProjection {
                 skill.apps[app] = try engine.materialize(
                     skillDirectoryName: skill.directory,
                     into: app,

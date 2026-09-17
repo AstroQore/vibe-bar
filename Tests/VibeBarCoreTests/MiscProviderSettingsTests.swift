@@ -136,16 +136,19 @@ final class MiscProviderSettingsTests: XCTestCase {
 }
 
 final class AppSettingsMiscProviderTests: XCTestCase {
-    func testDefaultsIncludeEveryMiscPageProvider() {
+    func testDefaultsIncludeEveryMiscPageProviderAndShowNone() {
         // Partial-primary providers (`.gemini`, `.antigravity`) live in
         // top-level `*UsageMode` fields after the dedicated-card upgrade
         // and are intentionally absent from `miscProviders` defaults.
+        // A fresh install lists every misc provider and shows none of them:
+        // onboarding asks which ones the user has.
         let settings = AppSettings.default
         for tool in ToolType.miscPageProviders {
             XCTAssertNotNil(settings.miscProviders[tool], "default settings missing entry for \(tool)")
             XCTAssertEqual(settings.miscProviders[tool], .default)
-            XCTAssertTrue(settings.isMiscProviderVisible(tool), "default settings should show \(tool)")
+            XCTAssertFalse(settings.isMiscProviderVisible(tool), "default settings should not show \(tool)")
         }
+        XCTAssertTrue(settings.visibleMiscProviderInstances.isEmpty)
     }
 
     func testMissingMiscProvidersFieldFillsDefaults() throws {
@@ -163,7 +166,9 @@ final class AppSettingsMiscProviderTests: XCTestCase {
         """
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
         XCTAssertEqual(settings.miscProviders.count, ToolType.miscPageProviders.count)
-        XCTAssertEqual(settings.visibleMiscProviders, AppSettings.defaultVisibleMiscProviders)
+        // A file from before misc visibility existed showed every provider,
+        // and still does.
+        XCTAssertEqual(settings.visibleMiscProviders, AppSettings.legacyVisibleMiscProviders)
     }
 
     func testVisibleMiscProvidersRoundTripAndDropsUnknowns() throws {
@@ -214,6 +219,7 @@ final class AppSettingsMiscProviderTests: XCTestCase {
     func testClonedMiscProviderInstancesAreIndependentAndReorderable() {
         var settings = AppSettings.default
         let originalID = ToolType.volcengine.rawValue
+        settings.setMiscProviderInstanceVisible(true, forID: originalID)
 
         guard let clone = settings.cloneMiscProviderInstance(id: originalID) else {
             return XCTFail("expected Volcengine clone")

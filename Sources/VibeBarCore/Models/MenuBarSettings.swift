@@ -521,9 +521,14 @@ public enum MenuBarFieldCatalog {
         option(.cursor, "grok_bot_weekly", "Grok Bot · Weekly", "Grok Bot")
     ]
 
+    public static let museFields: [MenuBarFieldOption] = [
+        option(.muse, "five_hour", "5 Hours", "5 Hours"),
+        option(.muse, "weekly", "Weekly", "Weekly")
+    ]
+
     public static let allFields: [MenuBarFieldOption] =
         chatGPTChatFields + codexFields + claudeFields + geminiFields + antigravityFields
-            + grokFields + cursorFields + grokBotFields
+            + grokFields + cursorFields + grokBotFields + museFields
 
     public static func fields(for kind: MenuBarItemKind) -> [MenuBarFieldOption] {
         allFields

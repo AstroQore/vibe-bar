@@ -1396,6 +1396,13 @@ public actor UsageEventLedger: CostUsageEventSink {
                 cacheCreationInputTokens: cacheCreation,
                 outputTokens: output
             )
+        case .muse:
+            CostUsagePricing.museCostUSD(
+                model: row.model,
+                inputTokens: inputWithCache,
+                cachedInputTokens: cacheRead,
+                outputTokens: output
+            )
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
              .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,

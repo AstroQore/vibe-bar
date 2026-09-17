@@ -83,6 +83,12 @@ public enum CostUsagePricing {
         case .antigravity:
             let models = dataSet.providers.antigravity.models
             return models[normalizeAntigravityModel(model, models: models)] != nil
+        case .muse:
+            let models = dataSet.providers.muse.models
+            guard let pricing = models[normalizeMuseModel(model, models: models)] else {
+                return false
+            }
+            return pricing.thresholdTokens == nil
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
              .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
@@ -463,6 +469,40 @@ public enum CostUsagePricing {
         )
     }
 
+    // MARK: - Muse Code
+
+    /// Muse logs the bare API id (`muse-spark-1.3-contributor`); LiteLLM
+    /// spells the same model `meta/muse-spark-1.3-contributor`. The
+    /// contributor variants are separate rows — they bill at a tenth of
+    /// the standard rate — so a suffix is never stripped to reach a base
+    /// model's price.
+    static func normalizeMuseModel(
+        _ raw: String,
+        models muse: [String: PricingDataSet.MuseEntry]
+    ) -> String {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.hasPrefix("meta/") {
+            trimmed = String(trimmed.dropFirst("meta/".count))
+        }
+        return trimmed
+    }
+
+    static func museCostUSD(
+        model: String,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int
+    ) -> Double? {
+        let muse = PricingResolver.active.providers.muse.models
+        guard let pricing = muse[normalizeMuseModel(model, models: muse)] else { return nil }
+        return grokCostUSD(
+            pricing: pricing,
+            inputTokens: inputTokens,
+            cachedInputTokens: cachedInputTokens,
+            outputTokens: outputTokens
+        )
+    }
+
     // MARK: - AntiGravity
 
     static func normalizeAntigravityModel(_ raw: String) -> String {
@@ -553,6 +593,7 @@ final class CostPricingContext {
     private var geminiNames: [String: String] = [:]
     private var grokNames: [String: String] = [:]
     private var antigravityNames: [String: String] = [:]
+    private var museNames: [String: String] = [:]
 
     init(dataSet: PricingDataSet = PricingResolver.active) {
         self.dataSet = dataSet
@@ -587,6 +628,14 @@ final class CostPricingContext {
         if let hit = grokNames[model] { return models[hit] }
         let name = CostUsagePricing.normalizeGrokModel(model, models: models)
         grokNames[model] = name
+        return models[name]
+    }
+
+    func museEntry(for model: String) -> PricingDataSet.MuseEntry? {
+        let models = dataSet.providers.muse.models
+        if let hit = museNames[model] { return models[hit] }
+        let name = CostUsagePricing.normalizeMuseModel(model, models: models)
+        museNames[model] = name
         return models[name]
     }
 

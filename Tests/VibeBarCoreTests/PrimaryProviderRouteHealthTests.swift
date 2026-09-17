@@ -17,6 +17,22 @@ final class PrimaryProviderRouteHealthTests: XCTestCase {
         )
     }
 
+    /// Muse Code's one route is the CLI's Keychain item, and its health comes
+    /// from a no-UI preflight: the state that matters most is "exists, but
+    /// macOS has not let Vibe Bar read it yet", which is not a missing login.
+    func testMuseKeychainHealthSeparatesPermissionFromLogin() {
+        XCTAssertEqual(PrimaryProviderRoute.routes(for: .muse), [.museKeychain])
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func status(_ state: MuseCredentialReader.AccessState) -> PrimaryProviderRouteHealthStatus {
+            PrimaryProviderRouteHealthChecker.museKeychainHealth(state: state, now: now).status
+        }
+        XCTAssertEqual(status(.authorized), .ok)
+        XCTAssertEqual(status(.needsAuthorization), .blocked)
+        XCTAssertEqual(status(.noLogin), .missing)
+        XCTAssertEqual(status(.missingSecret), .missing)
+        XCTAssertEqual(status(.keychainUnavailable), .failed)
+    }
+
     func testProcessOutputDrainsLargeStdoutBeforeWaiting() throws {
         let result = try XCTUnwrap(
             PrimaryProviderRouteHealthChecker.captureProcessOutput(

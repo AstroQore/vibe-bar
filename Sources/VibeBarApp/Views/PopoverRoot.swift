@@ -160,6 +160,8 @@ struct PopoverRoot: View {
             GeminiTabPage(density: density)
         case .grok:
             GrokPage(density: density)
+        case .metaAI:
+            ProviderDetailView(tool: .muse, density: density)
         case .misc:
             MiscProvidersPage(density: density)
         case .machines:
@@ -169,13 +171,14 @@ struct PopoverRoot: View {
 
     private var headerTitle: String {
         switch overviewPage {
-        // The four company names are quota-axis identifiers — AGENTS.md
+        // The company names are quota-axis identifiers — AGENTS.md
         // § 7.1 — and stay as their owners spell them in every language.
         case .overview: return L10n.Popover.Tab.overview
         case .openAI: return "OpenAI"
         case .claude: return "Anthropic"
         case .googleAI: return "Google AI"
         case .grok: return "SpaceXAI"
+        case .metaAI: return "Meta AI"
         case .misc: return L10n.Popover.Tab.misc
         case .machines: return L10n.Popover.Tab.machines
         }
@@ -184,7 +187,7 @@ struct PopoverRoot: View {
     private var headerSubtitle: String? {
         switch overviewPage {
         case .overview: return L10n.Popover.Header.overviewSubtitle
-        case .openAI, .claude, .googleAI, .grok: return nil
+        case .openAI, .claude, .googleAI, .grok, .metaAI: return nil
         case .misc: return L10n.Popover.Header.miscSubtitle
         case .machines: return L10n.Popover.Header.machinesSubtitle
         }
@@ -215,6 +218,7 @@ struct PopoverRoot: View {
         case .claude: return [.claude]
         case .googleAI: return ToolType.googleAIPair
         case .grok: return ToolType.grokFamily
+        case .metaAI: return [.muse]
         case .misc: return settingsStore.settings.visibleMiscProviderList
         case .machines: return []
         }
@@ -301,6 +305,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
     case claude
     case googleAI
     case grok
+    case metaAI
     case misc
     case machines
 
@@ -333,6 +338,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude:   return .detail(.claude)
         case .googleAI: return .detail(.gemini)
         case .grok:     return .detail(.grok)
+        case .metaAI:   return .detail(.muse)
         case .misc:     return nil
         case .machines: return nil
         }
@@ -347,6 +353,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude:   return "Anthropic"
         case .googleAI: return "Google AI"
         case .grok:     return "SpaceXAI"
+        case .metaAI:   return "Meta AI"
         case .misc:     return L10n.Popover.Tab.miscShort
         case .machines: return L10n.Popover.Tab.machines
         }
@@ -358,6 +365,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude: return .claude
         case .googleAI: return .gemini
         case .grok: return .grok
+        case .metaAI: return .muse
         case .overview, .misc, .machines: return nil
         }
     }
@@ -368,6 +376,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude: return .claude
         case .gemini: return .googleAI
         case .grok: return .grok
+        case .muse: return .metaAI
         default: return nil
         }
     }
@@ -387,35 +396,75 @@ private struct OverviewPageSwitch: View {
         )
     }
 
+    /// Marks only, in three groups — Overview, the companies, then Machines
+    /// and Misc. The header title beside the strip already names the page, so
+    /// a label on the selected tab said it twice and cost the width a
+    /// seventh or eighth company needs; every tab keeps its name in the
+    /// tooltip and for VoiceOver.
+    ///
+    /// When even the marks do not fit, companies fold into a menu from the
+    /// end of the strip, one at a time, never the one being shown.
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(visiblePages) { page in
-                let isSelected = selection == page
-                BorderlessRowButton(action: {
-                    selection = page
-                }) {
-                    HStack(spacing: 5) {
-                        OverviewSwitchIcon(page: page, isSelected: isSelected)
-                        Text(page.label)
-                            .font(.system(size: max(9.5, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                    .padding(.horizontal, 10)
-                    .frame(height: 24)
-                    .background {
-                        if isSelected {
-                            Capsule(style: .continuous)
-                                .fill(Color.accentColor.opacity(0.20))
-                                .overlay(
-                                    Capsule(style: .continuous)
-                                        .stroke(Color.accentColor.opacity(0.34), lineWidth: 0.7)
-                                )
-                        }
-                    }
-                }
-                .help(L10n.Popover.showPage(page: page.label))
+        let pages = visiblePages
+        let companyCount = pages.filter { $0.coreProvider != nil }.count
+        ViewThatFits(in: .horizontal) {
+            ForEach(0...companyCount, id: \.self) { folded in
+                strip(Self.arrangement(pages: pages, selection: selection, folded: folded))
+            }
+        }
+        .onChange(of: settingsStore.settings.visibleCoreProviders) { _, _ in
+            fallBackIfSelectionVanished()
+        }
+        // Disconnecting a workspace removes a tab while the user is standing
+        // on it, so the same fallback has to watch configuration too.
+        .onChange(of: remoteProbeService.isConfigured) { _, _ in
+            fallBackIfSelectionVanished()
+        }
+    }
+
+    struct Arrangement: Equatable {
+        var leading: [OverviewPage]
+        var companies: [OverviewPage]
+        /// Companies folded out of the strip, in strip order. Their menu sits
+        /// at the end of the company group, even when no company is left
+        /// showing beside it.
+        var overflow: [OverviewPage]
+        var trailing: [OverviewPage]
+    }
+
+    /// Splits the strip into its groups and folds the last `folded` companies
+    /// into the overflow menu. A folded selection swaps places with the last
+    /// company still showing, so the tab you are on is always on the strip.
+    static func arrangement(pages: [OverviewPage], selection: OverviewPage, folded: Int) -> Arrangement {
+        let companies = pages.filter { $0.coreProvider != nil }
+        let leading = pages.filter { $0 == .overview }
+        let trailing = pages.filter { $0.coreProvider == nil && $0 != .overview }
+        let keep = max(0, companies.count - max(0, folded))
+        var shown = Array(companies.prefix(keep))
+        var overflow = Array(companies.dropFirst(keep))
+        if let index = overflow.firstIndex(of: selection) {
+            overflow.remove(at: index)
+            if let last = shown.popLast() {
+                overflow.append(last)
+            }
+            shown.append(selection)
+            overflow = companies.filter(overflow.contains)
+        }
+        return Arrangement(leading: leading, companies: shown, overflow: overflow, trailing: trailing)
+    }
+
+    private func strip(_ arrangement: Arrangement) -> some View {
+        let hasCompanyGroup = !arrangement.companies.isEmpty || !arrangement.overflow.isEmpty
+        return HStack(spacing: 3) {
+            ForEach(arrangement.leading) { page in tab(page) }
+            if hasCompanyGroup {
+                if !arrangement.leading.isEmpty { groupDivider }
+                ForEach(arrangement.companies) { page in tab(page) }
+                if !arrangement.overflow.isEmpty { overflowMenu(arrangement.overflow) }
+            }
+            if !arrangement.trailing.isEmpty {
+                if hasCompanyGroup || !arrangement.leading.isEmpty { groupDivider }
+                ForEach(arrangement.trailing) { page in tab(page) }
             }
         }
         .padding(3)
@@ -427,14 +476,57 @@ private struct OverviewPageSwitch: View {
                         .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
                 )
         )
-        .onChange(of: settingsStore.settings.visibleCoreProviders) { _, _ in
-            fallBackIfSelectionVanished()
+        .fixedSize()
+    }
+
+    private var groupDivider: some View {
+        Capsule(style: .continuous)
+            .fill(Color.primary.opacity(0.12))
+            .frame(width: 1, height: 14)
+            .padding(.horizontal, 2)
+    }
+
+    private func tab(_ page: OverviewPage) -> some View {
+        let isSelected = selection == page
+        return BorderlessRowButton(action: {
+            selection = page
+        }) {
+            OverviewSwitchIcon(page: page, isSelected: isSelected)
+                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                .frame(width: 30, height: 24)
+                .background {
+                    if isSelected {
+                        Capsule(style: .continuous)
+                            .fill(Color.accentColor.opacity(0.20))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.accentColor.opacity(0.34), lineWidth: 0.7)
+                            )
+                    }
+                }
         }
-        // Disconnecting a workspace removes a tab while the user is standing
-        // on it, so the same fallback has to watch configuration too.
-        .onChange(of: remoteProbeService.isConfigured) { _, _ in
-            fallBackIfSelectionVanished()
+        .help(L10n.Popover.showPage(page: page.label))
+        .accessibilityLabel(page.label)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func overflowMenu(_ pages: [OverviewPage]) -> some View {
+        Menu {
+            ForEach(pages) { page in
+                Button(page.label) { selection = page }
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.secondary)
+                .frame(width: 20, height: 24)
+                .contentShape(Rectangle())
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        // Company names are identifiers, not copy.
+        .help(pages.map(\.label).joined(separator: ", "))
     }
 
     private func fallBackIfSelectionVanished() {
@@ -460,7 +552,7 @@ private struct OverviewSwitchIcon: View {
         // they aren't single-provider tabs.
         //
         // The strip labels L1 companies, so it draws L1 marks:
-        // `CompanyBrandIconView` gives Anthropic, Google AI and SpaceXAI
+        // `CompanyBrandIconView` gives Anthropic, Google AI, SpaceXAI and Meta AI
         // their own rather than borrowing Claude's, Gemini's and Grok's.
         Group {
             switch page {
@@ -481,6 +573,8 @@ private struct OverviewSwitchIcon: View {
                 CompanyBrandIconView(tool: .gemini, size: Self.iconSize)
             case .grok:
                 CompanyBrandIconView(tool: .grok, size: Self.iconSize)
+            case .metaAI:
+                CompanyBrandIconView(tool: .muse, size: Self.iconSize)
             }
         }
         .opacity(isSelected ? 1 : 0.72)
@@ -661,7 +755,7 @@ private struct OverviewWaterfall: View {
             OverviewStatusSummaryCard(
                 density: density,
                 minHeight: density.overviewSummaryHeight,
-                tools: settingsStore.settings.visibleCoreProviderList
+                tools: settingsStore.settings.visibleCoreProviderList.filter(\.supportsStatusPage)
             )
         case let .overviewQuotaPart(partition):
             OverviewQuotaPartitionCard(partition: partition, density: density)
@@ -1322,19 +1416,17 @@ private struct OverviewStatusSummaryCard: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
-                let columnCount = min(2, max(1, tools.count))
-                let rowCount = Int(ceil(Double(tools.count) / Double(columnCount)))
-                let tileHeight = statusTileHeight(rowCount: rowCount)
+                let plan = statusGridPlan(toolCount: tools.count)
                 LazyVGrid(
                     columns: Array(
                         repeating: GridItem(.flexible(), spacing: density.cardSpacing, alignment: .top),
-                        count: columnCount
+                        count: plan.columns
                     ),
                     alignment: .leading,
                     spacing: density.cardSpacing
                 ) {
                     ForEach(tools, id: \.self) { tool in
-                        providerStatusTile(tool, height: tileHeight)
+                        providerStatusTile(tool, plan: plan)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -1362,6 +1454,45 @@ private struct OverviewStatusSummaryCard: View {
         )
     }
 
+    /// How the tiles share the pinned card. Each tile keeps two lines — the
+    /// state row and the provider's own words — while that fits; past four
+    /// companies the rows get too short for two lines, so a tile collapses to
+    /// its state row and keeps the words in its tooltip, and past six a third
+    /// column (with no state word, the icon already says it) keeps the rows
+    /// tall enough for that one line. The card never grows: it is pinned
+    /// beside the cost summary.
+    private struct StatusGridPlan {
+        let columns: Int
+        let tileHeight: CGFloat
+        let showsDetail: Bool
+        let showsStateLabel: Bool
+    }
+
+    private func statusGridPlan(toolCount: Int) -> StatusGridPlan {
+        let count = max(1, toolCount)
+        let iconRow = density.bucketTitleFontSize + 6
+        let verticalPadding = max(4, density.cardPadding - 9) * 2
+        let detailLine = ceil(max(9, density.subtitleFontSize - 1) * 1.25)
+        let twoLines = iconRow + density.bucketRowSpacing + detailLine + verticalPadding
+        let oneLine = iconRow + verticalPadding
+        func rows(_ columns: Int) -> Int { Int(ceil(Double(count) / Double(min(columns, count)))) }
+
+        let twoColumns = min(2, count)
+        let twoColumnHeight = statusTileHeight(rowCount: rows(2))
+        if twoColumnHeight >= twoLines {
+            return StatusGridPlan(columns: twoColumns, tileHeight: twoColumnHeight, showsDetail: true, showsStateLabel: true)
+        }
+        if twoColumnHeight >= oneLine {
+            return StatusGridPlan(columns: twoColumns, tileHeight: twoColumnHeight, showsDetail: false, showsStateLabel: true)
+        }
+        return StatusGridPlan(
+            columns: min(3, count),
+            tileHeight: max(oneLine, statusTileHeight(rowCount: rows(3))),
+            showsDetail: false,
+            showsStateLabel: false
+        )
+    }
+
     private func statusTileHeight(rowCount: Int) -> CGFloat {
         let rows = max(1, rowCount)
         // The refresh button keeps the header at least 22 pt tall regardless
@@ -1375,16 +1506,17 @@ private struct OverviewStatusSummaryCard: View {
             - gridSpacing
         // The card's pinned height is authoritative — the tiles divide what is
         // left rather than growing the card past the cost summary beside it.
-        // The floor is a last-resort legibility guard: the core-provider list
-        // caps at four tools (two rows), so at every density two rows fit and
-        // the floor only bites in degenerate configurations.
-        return max(44, available / CGFloat(rows))
+        // `statusGridPlan` picks a column count and tile shape that fit.
+        return max(0, available / CGFloat(rows))
     }
 
-    private func providerStatusTile(_ tool: ToolType, height: CGFloat) -> some View {
+    private func providerStatusTile(_ tool: ToolType, plan: StatusGridPlan) -> some View {
         let projection = serviceStatus.projection(for: tool)
         let state = statusState(projection)
-        let snapshot = projection.snapshot
+        let detail = statusDetail(projection, state: state)
+        let uptime = projection.snapshot.flatMap {
+            $0.aggregateUptimePercent > 0 ? $0.aggregateUptimePercent : nil
+        }
         return VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(spacing: 7) {
                 Image(systemName: state.iconName)
@@ -1407,22 +1539,26 @@ private struct OverviewStatusSummaryCard: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(state.label)
-                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold, design: .rounded))
-                    .foregroundStyle(state.color)
-                    .lineLimit(1)
+                if plan.showsStateLabel {
+                    Text(state.label)
+                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold, design: .rounded))
+                        .foregroundStyle(state.color)
+                        .lineLimit(1)
+                }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(statusDetail(projection, state: state))
-                    .font(.system(size: max(9, density.subtitleFontSize - 1)))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                if let snapshot, snapshot.aggregateUptimePercent > 0 {
-                    Text(String(format: "%.2f%%", snapshot.aggregateUptimePercent))
-                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium, design: .rounded).monospacedDigit())
+            if plan.showsDetail {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(detail)
+                        .font(.system(size: max(9, density.subtitleFontSize - 1)))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 4)
+                    if let uptime {
+                        Text(String(format: "%.2f%%", uptime))
+                            .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium, design: .rounded).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -1433,7 +1569,7 @@ private struct OverviewStatusSummaryCard: View {
         // With the old max(6, padding − 4) the interior needed more than the
         // pin allowed and the detail line was compressed to nothing.
         .padding(.vertical, max(4, density.cardPadding - 9))
-        .frame(minHeight: height, maxHeight: height, alignment: .center)
+        .frame(minHeight: plan.tileHeight, maxHeight: plan.tileHeight, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(state.color.opacity(0.12))
@@ -1441,6 +1577,12 @@ private struct OverviewStatusSummaryCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .stroke(state.color.opacity(0.18), lineWidth: 0.6)
+        )
+        // Whatever a collapsed tile leaves out is still one hover away.
+        .help(
+            ([statusTitle(for: tool), state.label, detail]
+                + [uptime.map { String(format: "%.2f%%", $0) }].compactMap { $0 })
+                .joined(separator: " · ")
         )
     }
 
@@ -1645,6 +1787,7 @@ private struct OverviewCostCard: View {
         case .gemini: return L10n.Cost.Empty.gemini
         case .antigravity: return L10n.Cost.Empty.antigravity
         case .grok: return L10n.Cost.Empty.grok
+        case .muse: return L10n.Cost.Empty.muse
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
@@ -1887,6 +2030,13 @@ private struct ProviderPageModule: View {
         case .costEmpty:
             if context.pageTool == .gemini {
                 GeminiCostEmptyCard(density: density)
+            } else if context.pageTool == .muse {
+                Text(L10n.Cost.Empty.muse)
+                    .font(.system(size: density.subtitleFontSize))
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.vertical, 24)
+                    .frame(maxWidth: .infinity)
             } else if context.pageTool == .grok {
                 Text(L10n.Cost.SpaceXAI.empty)
                     .font(.system(size: density.subtitleFontSize))
@@ -2286,6 +2436,7 @@ struct ProviderQuotaCard: View {
         case .claude: return L10n.Quota.Login.claude
         case .grok: return L10n.Quota.Login.grok
         case .cursor: return L10n.Quota.Login.cursor
+        case .muse: return L10n.Quota.Login.muse
         case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers route through the Misc page's per-card
             // setup CTA. This empty-message path is only reachable from

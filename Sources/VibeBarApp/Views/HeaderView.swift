@@ -40,7 +40,10 @@ struct HeaderView: View {
             .layoutPriority(2)
             Spacer(minLength: 6)
             if let accessory {
-                accessory.fixedSize(horizontal: true, vertical: false)
+                // Offered what the title leaves rather than pinned at its
+                // ideal width, so an accessory that adapts (the page strip
+                // folds companies into a menu) gets the chance to.
+                accessory.layoutPriority(1)
             }
             if plan?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
                 PlanBadgeView(text: plan, fontSize: max(9, subtitleFontSize - 1))

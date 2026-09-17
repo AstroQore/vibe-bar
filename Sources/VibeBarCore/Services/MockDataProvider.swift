@@ -173,7 +173,7 @@ public enum MockDataProvider {
                 extraUsageEnabled: true,
                 updatedAt: now
             )
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc / partial-primary providers don't carry credits or
             // overage extras in the mock. The Cursor card surfaces
             // on-demand budget through a different field on
@@ -299,6 +299,14 @@ public enum MockDataProvider {
                 QuotaBucket(id: "grok_bot_weekly", title: "Weekly", shortLabel: "Grok Bot",
                             usedPercent: 5, resetAt: weeklyReset, rawWindowSeconds: 604_800,
                             groupTitle: "Grok Bot")
+            ]
+        case .muse:
+            buckets = [
+                QuotaBucket(id: "five_hour", title: "5 Hours", shortLabel: "5h",
+                            usedPercent: 18, resetAt: fiveHourReset,
+                            rawWindowSeconds: 18_000),
+                QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "Weekly",
+                            usedPercent: 27, resetAt: weeklyReset, rawWindowSeconds: 604_800)
             ]
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' mock data lands in subsequent phases as

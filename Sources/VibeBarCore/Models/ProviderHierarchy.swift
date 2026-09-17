@@ -4,9 +4,9 @@ import Foundation
 /// UI needs to identify a provider at a single, consistent level.
 ///
 /// - `vendor` (L1) — the enterprise / brand owner shown by Vibe Bar
-///   (OpenAI, Anthropic, Google AI, SpaceXAI).
+///   (OpenAI, Anthropic, Google AI, SpaceXAI, Meta AI).
 /// - `product` (L2) — the SubProvider users consume inside that owner
-///   (ChatGPT Agentic, Claude, Gemini Web, AntiGravity, Grok, Cursor).
+///   (ChatGPT Agentic, Claude, Gemini Web, AntiGravity, Grok, Cursor, Muse Code).
 /// - `tool` (L3) — the concrete local or web surface Vibe Bar tracks
 ///   (Codex, Claude Code, Gemini Web, AntiGravity, Grok, Cursor).
 ///
@@ -34,9 +34,9 @@ public struct ProviderHierarchy: Sendable, Equatable, Hashable {
 public enum ProviderHierarchyCatalog {
     // MARK: - Dedicated and linked tool hierarchy
     //
-    //   L1 vendor      : OpenAI         | Anthropic   | Google AI | Google AI   | SpaceXAI | SpaceXAI
-    //   L2 SubProvider : ChatGPT Agentic| Claude      | Gemini Web| AntiGravity | Grok     | Cursor
-    //   L3 tool        : Codex          | Claude Code | Gemini Web| AntiGravity | Grok     | Cursor
+    //   L1 vendor      : OpenAI         | Anthropic   | Google AI | Google AI   | SpaceXAI | SpaceXAI | Meta AI
+    //   L2 SubProvider : ChatGPT Agentic| Claude      | Gemini Web| AntiGravity | Grok     | Cursor   | Muse Code
+    //   L3 tool        : Codex          | Claude Code | Gemini Web| AntiGravity | Grok     | Cursor   | Muse Code
 
     public static let chatgptChat = ProviderHierarchy(vendor: "OpenAI", product: "ChatGPT Chat", tool: "ChatGPT Chat")
     public static let codex       = ProviderHierarchy(vendor: "OpenAI",    product: "ChatGPT Agentic", tool: "Codex")
@@ -45,6 +45,7 @@ public enum ProviderHierarchyCatalog {
     public static let antigravity = ProviderHierarchy(vendor: "Google AI", product: "AntiGravity",     tool: "AntiGravity")
     public static let grok        = ProviderHierarchy(vendor: "SpaceXAI",  product: "Grok",    tool: "Grok")
     public static let cursor      = ProviderHierarchy(vendor: "SpaceXAI",  product: "Cursor",  tool: "Cursor")
+    public static let muse        = ProviderHierarchy(vendor: "Meta AI",   product: "Muse Code", tool: "Muse Code")
 
     // MARK: - Misc providers
     //

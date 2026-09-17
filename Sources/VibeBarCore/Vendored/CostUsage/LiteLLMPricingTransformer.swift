@@ -65,18 +65,25 @@ public enum LiteLLMPricingTransformer {
     }
 
     private enum Family {
-        case codex, claude, gemini, grok
+        case codex, claude, gemini, grok, muse
     }
 
     /// Classifies a LiteLLM key into a provider family and the canonical
     /// model key Vibe Bar's normalizers expect, or `nil` to drop it.
     private static func classify(_ rawKey: String) -> (Family, String)? {
         if rawKey.contains("/") {
-            // The only prefixed family Vibe Bar normalizes back to a bare
-            // key is xAI Grok (`xai/grok-…`). Everything else (vertex_ai,
-            // azure, bedrock, openrouter, anthropic.) is an alias we drop.
-            guard rawKey.hasPrefix("xai/grok-") else { return nil }
-            return (.grok, String(rawKey.dropFirst("xai/".count)))
+            // The prefixed families Vibe Bar normalizes back to a bare key
+            // are xAI Grok (`xai/grok-…`) and Meta's first-party Muse Spark
+            // (`meta/muse-…`). Everything else (vertex_ai, azure, bedrock,
+            // openrouter, together_ai, aihubmix…) is an alias or a resale
+            // we drop.
+            if rawKey.hasPrefix("xai/grok-") {
+                return (.grok, String(rawKey.dropFirst("xai/".count)))
+            }
+            if rawKey.hasPrefix("meta/muse-") {
+                return (.muse, String(rawKey.dropFirst("meta/".count)))
+            }
+            return nil
         }
         if rawKey.hasPrefix("gpt-") { return (.codex, rawKey) }
         if rawKey.hasPrefix("claude-") { return (.claude, rawKey) }
@@ -97,6 +104,7 @@ public enum LiteLLMPricingTransformer {
         var claude = base.providers.claude.models
         var gemini = base.providers.gemini.models
         var grok = base.providers.grok.models
+        var muse = base.providers.muse.models
         var loaded = 0
 
         for (rawKey, entry) in raw {
@@ -156,6 +164,16 @@ public enum LiteLLMPricingTransformer {
                     outputAboveThreshold: entry.outputCostPerTokenAbove200k,
                     cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
                     displayLabel: grok[key]?.displayLabel)
+            case .muse:
+                muse[key] = PricingDataSet.MuseEntry(
+                    input: input,
+                    output: output,
+                    cacheRead: entry.cacheReadInputTokenCost,
+                    thresholdTokens: threshold,
+                    inputAboveThreshold: entry.inputCostPerTokenAbove200k,
+                    outputAboveThreshold: entry.outputCostPerTokenAbove200k,
+                    cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
+                    displayLabel: muse[key]?.displayLabel)
             }
             loaded += 1
         }
@@ -174,6 +192,7 @@ public enum LiteLLMPricingTransformer {
                 claude: .init(displayName: base.providers.claude.displayName, models: claude),
                 gemini: .init(displayName: base.providers.gemini.displayName, models: gemini),
                 grok: .init(displayName: base.providers.grok.displayName, models: grok),
-                antigravity: base.providers.antigravity))
+                antigravity: base.providers.antigravity,
+                muse: .init(displayName: base.providers.muse.displayName, models: muse)))
     }
 }

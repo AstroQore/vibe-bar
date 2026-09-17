@@ -1,18 +1,23 @@
 import Foundation
 
-/// Adding a new case requires updating these switch sites:
-/// - ToolType.swift (computed vars below)
-/// - MenuBarSettings.swift: MenuBarFieldCatalog.fields(for:)
+/// Adding a new case requires updating these switch sites (the compiler
+/// finds the exhaustive ones; the rest fall through a `default:` silently):
+/// - ToolType.swift (computed vars below), ProviderHierarchy.swift
+/// - Harness+Quota.swift: `defaultHarness(for:)`
+/// - MenuBarSettings.swift: MenuBarFieldCatalog slices + `allFields`
+/// - MenuBarQuotaGrouping.swift: `namingGroupKey`
 /// - QuotaService.swift: makeDefault adapter map
-/// - MockDataProvider.swift: sampleQuota
+/// - MockDataProvider.swift: sampleQuota / extras
 /// - ServiceStatusClient.swift: fetch (or short-circuit on `!supportsStatusPage`)
 /// - AccountStore.swift: autoDetect helper
-/// - MiscCookieSpecCatalog.swift: cookie-sourced or not
-/// - PopoverRoot.swift: emptyMessage / sections
-/// - SettingsView.swift: menuItemIcon
-/// - StatusItemController.swift: status item tag mapping
-/// - MiniQuotaWindowView.swift: providerAccent / providerTitle
-/// - ProviderBrandIcon.swift: SF symbol + brand SVG mapping
+/// - MiscCookieSpecCatalog.swift, MiscProviderConsoleLinks.swift
+/// - CostUsageScanner.swift / CostUsagePricing.swift / UsageEventLedger.swift
+/// - PopoverRoot.swift: `OverviewPage`, emptyMessage, overview cost/quota cards
+/// - PageModuleCatalog.swift: family helpers and overview cost providers
+/// - SettingsView.swift / SettingsSidebarView.swift: company section
+/// - MiniQuotaWindowView.swift: providerTitle / primary group key
+/// - Theme.swift: providerAccent (+ docs/contracts/design-tokens-v1.json)
+/// - ProviderBrandIcon.swift: SF symbol + brand SVG mapping, `BrandMark`
 ///
 /// Adding a *partial-primary* case (dedicated card outside the two
 /// historical primary menu-bar items) also requires:
@@ -24,9 +29,9 @@ import Foundation
 /// Tools split into three tiers:
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
-/// - **Partial-Primary** (`.gemini`, `.antigravity`, `.grok`, `.cursor`) —
-///   dedicated product surfaces. Gemini+AntiGravity share Google AI;
-///   Grok CLI + Cursor share SpaceXAI. These can still opt into token-cost
+/// - **Partial-Primary** (`.gemini`, `.antigravity`, `.grok`, `.cursor`,
+///   `.muse`) — dedicated product surfaces. Gemini+AntiGravity share Google
+///   AI; Grok CLI + Cursor share SpaceXAI; Muse Code is Meta AI's. These can still opt into token-cost
 ///   scanning and status polling as provider data becomes known.
 /// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.copilot`, `.zai`,
 ///   `.minimax`, `.kimi`, `.mimo`, `.iflytek`,
@@ -57,6 +62,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case minimax
     case kimi
     case cursor
+    /// Meta AI's Muse Code CLI (`muse`).
+    case muse
     case mimo
     case iflytek
     case tencentHunyuan
@@ -76,7 +83,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -86,10 +93,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// True for providers that get a dedicated popover card, a SettingsView
     /// panel, and multi-source credential fallback. Primary providers are a
     /// proper subset of this set; partial-primary providers (Gemini,
-    /// Antigravity, Grok, Cursor) live here without dedicated menu-bar item kinds.
+    /// Antigravity, Grok, Cursor, Muse Code) live here without dedicated menu-bar item kinds.
     public var supportsDedicatedCard: Bool {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor: return true
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse: return true
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
@@ -149,13 +156,14 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// One representative tool for each L1 provider shown in Overview and
     /// Settings. Google AI is represented by Gemini; AntiGravity maps back to
     /// the same provider so one visibility switch controls the combined card.
+    /// Meta AI has one SubProvider, so Muse Code represents itself.
     public static var coreProviderRepresentatives: [ToolType] {
-        [.codex, .claude, .gemini, .grok]
+        [.codex, .claude, .gemini, .grok, .muse]
     }
 
     public var coreProviderRepresentative: ToolType? {
         switch self {
-        case .codex, .claude, .gemini, .grok:
+        case .codex, .claude, .gemini, .grok, .muse:
             return self
         case .chatgptChat:
             return .codex
@@ -176,6 +184,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         switch coreProviderRepresentative ?? self {
         case .codex: [.chatgptChat, .codex]
         case .claude: [.claude]
+        case .muse: [.muse]
         case .gemini: [.gemini, .antigravity]
         case .grok: [.grok, .cursor]
         default: [self]
@@ -217,9 +226,15 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// - `.cursor` reads account usage events from Cursor's dashboard API.
     ///   Local Cursor transcripts do not expose stable token/cost counters;
     ///   each dashboard event carries token counts and `totalCents`.
+    /// - `.muse` reads Muse Code's session logs under
+    ///   `~/.local/share/muse/sessions/**/session.jsonl`; every
+    ///   `model_completed` run event carries input / cached / output /
+    ///   reasoning token counts and the model id. The subscription has no
+    ///   per-token bill; events are priced at the Meta Model API's rates for
+    ///   the same model, as an API-equivalent cost.
     public var supportsTokenCost: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse: return true
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
@@ -232,9 +247,11 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Grok reads the SpaceXAI service-status HTML at `https://status.x.ai/`;
     /// Cursor reads its Statuspage v2 JSON feed.
     /// Codex / Claude use their own Atlassian / incident.io feeds.
+    /// Muse Code reads Meta's Model API status JSON at
+    /// `https://api.meta.ai/v1/status`, the API the CLI itself calls.
     public var supportsStatusPage: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse: return true
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
@@ -276,6 +293,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:          return ProviderHierarchyCatalog.minimax
         case .kimi:             return ProviderHierarchyCatalog.kimi
         case .cursor:           return ProviderHierarchyCatalog.cursor
+        case .muse:             return ProviderHierarchyCatalog.muse
         case .mimo:             return ProviderHierarchyCatalog.mimo
         case .iflytek:          return ProviderHierarchyCatalog.iflytek
         case .tencentHunyuan:   return ProviderHierarchyCatalog.tencentHunyuan
@@ -316,7 +334,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// "Alibaba Bailian Coding Plan" vs "Alibaba Bailian Token Plan".
     public var displayName: String {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
             return hierarchy.tool
         case .alibaba:          return "Alibaba Bailian Coding Plan"
         case .alibabaTokenPlan: return "Alibaba Bailian Token Plan"
@@ -349,7 +367,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Plan vs Token Plan).
     public var subtitle: String {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
             return hierarchy.tool
         case .alibaba:          return "Coding Plan"
         case .alibabaTokenPlan: return "Token Plan"
@@ -382,7 +400,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// "Hunyuan", which would clash with other Tencent surfaces).
     public var menuTitle: String {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
             return hierarchy.product
         case .alibaba, .alibabaTokenPlan: return "Bailian"
         case .copilot:          return "Copilot"
@@ -410,7 +428,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// for quota/cost and contributes a nested Cursor Status group.
     public var statusProviderName: String {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
             return hierarchy.vendor
         case .alibaba, .alibabaTokenPlan: return "Alibaba"
         case .copilot:          return "GitHub"
@@ -449,6 +467,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .minimax:     return URL(string: "https://platform.minimax.io/")!
         case .kimi:        return URL(string: "https://www.kimi.com/")!
         case .cursor:      return URL(string: "https://status.cursor.com/")!
+        // No status feed; the click-through lands on the developer console.
+        case .muse:        return URL(string: "https://dev.meta.ai/status")!
         case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
         case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
         case .tencentHunyuan:   return URL(string: "https://console.cloud.tencent.com/tokenhub/codingplan")!

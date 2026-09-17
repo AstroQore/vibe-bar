@@ -92,6 +92,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
     case opencode
     case antigravity
     case cursor
+    case muse
 
     /// Harnesses Vibe Bar can actually project a local skill directory into.
     ///
@@ -100,7 +101,8 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
     /// They therefore stay out of the toggle row instead of pretending a link
     /// can enable them. Hermes and OpenCode remain decodable for old
     /// `skills.json` files and safe uninstall cleanup; the managed core
-    /// harnesses are listed below.
+    /// harnesses are listed below. Muse Code is managed without a projection
+    /// — see `supportsProjection`.
     public static let managedHarnesses: [SkillAppTarget] = [
         .codex,
         .claude,
@@ -108,6 +110,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         .antigravity,
         .grok,
         .cursor,
+        .muse,
     ]
 
     public var displayName: String {
@@ -120,14 +123,27 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         case .opencode: return "OpenCode"
         case .antigravity: return "AntiGravity"
         case .cursor: return "Cursor"
+        case .muse: return "Muse Code"
         }
+    }
+
+    /// Whether Vibe Bar may create a link or copy in this harness's own skills
+    /// directory.
+    ///
+    /// Muse Code may not. Its `~/.config/muse/skills` belongs to
+    /// `muse skills install`, and Muse keys a skill's on/off switch by the
+    /// path it was discovered at: a second copy there would be a different
+    /// skill to Muse, silently escaping the switch the user set on the
+    /// `~/.agents/skills` one Muse already reads.
+    public var supportsProjection: Bool {
+        self != .muse
     }
 
     /// Whether the harness has a real per-skill runtime switch in addition to
     /// its filesystem discovery root.
     public var supportsNativeSkillActivation: Bool {
         switch self {
-        case .codex, .claude, .gemini, .grok: true
+        case .codex, .claude, .gemini, .grok, .muse: true
         case .hermes, .opencode, .antigravity, .cursor: false
         }
     }
@@ -135,7 +151,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
     /// Harnesses that discover the shared `~/.agents/skills` root directly.
     public var discoversSharedSkillRoot: Bool {
         switch self {
-        case .codex, .gemini, .grok, .cursor: true
+        case .codex, .gemini, .grok, .cursor, .muse: true
         case .claude, .hermes, .opencode, .antigravity: false
         }
     }
@@ -150,6 +166,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         case .claude: ".claude/settings.json"
         case .gemini: ".gemini/settings.json"
         case .grok: ".grok/config.toml"
+        case .muse: ".config/muse/settings.json"
         case .hermes, .opencode, .antigravity, .cursor: nil
         }
     }
@@ -161,6 +178,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         case .claude: "skillOverrides"
         case .gemini: "skills.disabled"
         case .grok: "[skills] disabled"
+        case .muse: "skills.activation.user"
         case .hermes, .opencode, .antigravity, .cursor: nil
         }
     }
@@ -351,6 +369,7 @@ public enum SkillError: Error, Equatable, Sendable {
     case nativeActivationUnsupported(SkillAppTarget)
     case nativeConfigUnreadable(SkillAppTarget)
     case nativeSkillsGloballyDisabled(SkillAppTarget)
+    case projectionUnsupported(SkillAppTarget)
 }
 
 extension SkillError: LocalizedError {
@@ -386,6 +405,8 @@ extension SkillError: LocalizedError {
             return "\(app.displayName)'s skill configuration could not be read safely."
         case let .nativeSkillsGloballyDisabled(app):
             return "\(app.displayName) has Skills disabled globally. Enable its global Skills switch before enabling an individual skill."
+        case let .projectionUnsupported(app):
+            return "\(app.displayName) reads skills from ~/.agents/skills itself; Vibe Bar never writes into its own skills folder."
         }
     }
 }

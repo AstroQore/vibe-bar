@@ -91,7 +91,7 @@ final class MenuBarFieldCatalogTests: XCTestCase {
         let sliced = MenuBarFieldCatalog.chatGPTChatFields + MenuBarFieldCatalog.codexFields + MenuBarFieldCatalog.claudeFields
             + MenuBarFieldCatalog.geminiFields + MenuBarFieldCatalog.antigravityFields
             + MenuBarFieldCatalog.grokFields + MenuBarFieldCatalog.cursorFields
-            + MenuBarFieldCatalog.grokBotFields
+            + MenuBarFieldCatalog.grokBotFields + MenuBarFieldCatalog.museFields
         XCTAssertEqual(sliced.map(\.id), all)
     }
 
@@ -109,17 +109,18 @@ final class MenuBarFieldCatalogTests: XCTestCase {
     /// rides Cursor's adapter but must not sit inside Cursor's section.
     func testSubProviderGroupsFollowTheQuotaHierarchy() {
         let groups = allSelectedGroups()
-        XCTAssertEqual(groups.map(\.company), ["OpenAI", "Anthropic", "Google AI", "SpaceXAI"])
+        XCTAssertEqual(groups.map(\.company), ["OpenAI", "Anthropic", "Google AI", "SpaceXAI", "Meta AI"])
         XCTAssertEqual(
             groups.map { $0.subProviders.map(\.name) },
             [
                 ["ChatGPT Chat", "ChatGPT Agentic"],
                 ["Claude"],
                 ["Gemini Web", "AntiGravity"],
-                ["Grok", "Cursor", "Grok Bot"]
+                ["Grok", "Cursor", "Grok Bot"],
+                ["Muse Code"]
             ]
         )
-        XCTAssertEqual(groups.map(\.accentTool), [.codex, .claude, .gemini, .grok])
+        XCTAssertEqual(groups.map(\.accentTool), [.codex, .claude, .gemini, .grok, .muse])
     }
 
     func testSubProviderGroupsCarryTheirBucketsInCatalogOrder() throws {

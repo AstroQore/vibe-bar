@@ -47,6 +47,48 @@ final class MultiSourcePricingTests: XCTestCase {
         XCTAssertEqual(autoReview.output, 15e-6, accuracy: 1e-12)
     }
 
+    /// Only models.dev's own `meta` provider prices Muse Spark; a gateway's
+    /// copy under `openrouter` is ignored like every other alias.
+    func testModelsDevReadsMuseSparkFromMetaOnly() throws {
+        let data = Data(#"""
+        {
+          "meta": {"models": {"muse-spark-1.3": {"cost": {"input": 1.25, "output": 4.25, "cache_read": 0.15}}}},
+          "openrouter": {"models": {"meta/muse-spark-1.2": {"cost": {"input": 9, "output": 9}}}}
+        }
+        """#.utf8)
+        let set = try XCTUnwrap(ModelsDevPricingTransformer.transform(
+            data, updatedAt: "2026-09-17", calculationVersion: 1
+        ))
+        let spark = try XCTUnwrap(set.providers.muse.models["muse-spark-1.3"])
+        XCTAssertEqual(spark.input, 1.25e-6, accuracy: 1e-12)
+        XCTAssertEqual(spark.output, 4.25e-6, accuracy: 1e-12)
+        XCTAssertEqual(spark.cacheRead ?? 0, 0.15e-6, accuracy: 1e-12)
+        XCTAssertEqual(set.providers.muse.models.count, 1)
+    }
+
+    /// The supplement can name a family this build has never heard of. That
+    /// row is skipped; it must not cost every other row its rate.
+    func testAstroQoreSkipsUnknownFamiliesAndReadsMuse() throws {
+        let data = Data(#"""
+        {
+          "schemaVersion": 1,
+          "models": [
+            {"provider": "devin", "model": "swe-1.6", "pricing": {"input": 1, "output": 2}},
+            {"provider": "muse", "model": "muse-spark-2.0", "pricing": {"input": 2, "output": 6, "cacheRead": 0.2}},
+            {"provider": "grok", "model": "grok-x", "inherits": {"provider": "devin", "model": "swe-1.6"},
+             "pricing": {"input": 3, "output": 15}}
+          ]
+        }
+        """#.utf8)
+        let set = try XCTUnwrap(AstroQorePricingTransformer.transform(
+            data, updatedAt: "2026-09-17", calculationVersion: 1, inheritanceBase: nil
+        ))
+        let spark = try XCTUnwrap(set.providers.muse.models["muse-spark-2.0"])
+        XCTAssertEqual(spark.input, 2e-6, accuracy: 1e-12)
+        XCTAssertEqual(spark.cacheRead ?? 0, 0.2e-6, accuracy: 1e-12)
+        XCTAssertEqual(set.providers.grok.models["grok-x"]?.input ?? 0, 3e-6, accuracy: 1e-12)
+    }
+
     func testModelsDevCarriesLongContextAndFastPricing() throws {
         let data = Data(#"""
         {

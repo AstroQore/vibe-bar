@@ -169,10 +169,10 @@ public enum MCPToolCatalog {
         title: "Read subscription quota",
         description: """
             Live subscription quota per account, straight from Vibe Bar's cache — no network call. \
-            This is the quota axis: L1 company (OpenAI, Anthropic, Google AI, SpaceXAI), L2 SubProvider \
-            (ChatGPT Agentic, Claude, Gemini Web, AntiGravity, Grok, Cursor), L3 buckets ('5 Hours', \
-            'Weekly', per-model groups). Answers 'how much Codex / Claude / Gemini / Grok / Cursor do I \
-            have left'. Percentages come back both used and remaining. 'lastUpdated' is when the numbers \
+            This is the quota axis: L1 company (OpenAI, Anthropic, Google AI, SpaceXAI, Meta AI), L2 \
+            SubProvider (ChatGPT Agentic, Claude, Gemini Web, AntiGravity, Grok, Cursor, Muse Code), L3 \
+            buckets ('5 Hours', 'Weekly', per-model groups). Answers 'how much Codex / Claude / Gemini / \
+            Grok / Cursor / Muse Code do I have left'. Percentages come back both used and remaining. 'lastUpdated' is when the numbers \
             were fetched; 'lastAttempted' is when a refresh last ran, successful or not — quote \
             'generatedAt' when reporting. For tokens spent or money, use usage.summary or cost.snapshot \
             instead: those speak harnesses, not quota.
@@ -402,7 +402,7 @@ public enum MCPToolCatalog {
             Each provider company's own status page, as Vibe Bar last read it: indicator \
             (none / minor / major / critical / maintenance) plus the page's own description. Rows are at \
             the L1 company level — Google AI covers Gemini and AntiGravity, SpaceXAI covers Grok and \
-            Cursor. Useful when a provider looks broken and you want to know whether it is them or the \
+            Cursor, Meta AI reads Meta's Model API status for Muse Code. Useful when a provider looks broken and you want to know whether it is them or the \
             local setup.
             """,
         inputSchema: object(properties: ["tools": toolFilter])

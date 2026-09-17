@@ -78,6 +78,16 @@ enum ModelPricingOverrideApplier {
                 cacheReadAboveThreshold: override.cacheReadAboveThresholdPerMillion.map(perToken),
                 displayLabel: override.displayLabel
             )])
+        case .muse:
+            return replacing(empty, muse: [id: .init(
+                input: input, output: output,
+                cacheRead: override.cacheReadPerMillion.map(perToken),
+                thresholdTokens: threshold,
+                inputAboveThreshold: override.inputAboveThresholdPerMillion.map(perToken),
+                outputAboveThreshold: override.outputAboveThresholdPerMillion.map(perToken),
+                cacheReadAboveThreshold: override.cacheReadAboveThresholdPerMillion.map(perToken),
+                displayLabel: override.displayLabel
+            )])
         case .antigravity:
             return replacing(empty, antigravity: [id: .init(
                 input: input, output: output,
@@ -94,7 +104,8 @@ enum ModelPricingOverrideApplier {
         claude: [String: PricingDataSet.ClaudeEntry] = [:],
         gemini: [String: PricingDataSet.GeminiEntry] = [:],
         grok: [String: PricingDataSet.GrokEntry] = [:],
-        antigravity: [String: PricingDataSet.AntigravityEntry] = [:]
+        antigravity: [String: PricingDataSet.AntigravityEntry] = [:],
+        muse: [String: PricingDataSet.MuseEntry] = [:]
     ) -> PricingDataSet {
         PricingDataSet(
             schemaVersion: dataSet.schemaVersion,
@@ -105,7 +116,8 @@ enum ModelPricingOverrideApplier {
                 claude: .init(displayName: "Anthropic", models: claude),
                 gemini: .init(displayName: "Google", models: gemini),
                 grok: .init(displayName: "xAI", models: grok),
-                antigravity: .init(displayName: "AntiGravity", models: antigravity)
+                antigravity: .init(displayName: "AntiGravity", models: antigravity),
+                muse: .init(displayName: "Meta AI", models: muse)
             )
         )
     }

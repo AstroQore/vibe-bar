@@ -365,6 +365,7 @@ struct SettingsSidebarView: View {
         case .claude: "Anthropic"
         case .gemini: "Google AI"
         case .grok: "SpaceXAI"
+        case .muse: "Meta AI"
         default: tool.vendorName
         }
     }
