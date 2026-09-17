@@ -75,6 +75,9 @@ public actor ServiceStatusClient {
         ("api-console", "API Console", "api-console")
     ]
 
+    /// The lazy showcase endpoint's own batch limit, from the loader script.
+    private static let statuspageShowcaseBatchLimit = 60
+
     private func fetchXAIStatus(dayCount: Int, now: Date) async throws -> ServiceStatusSnapshot {
         let overviewHTML = try await fetchHTML(url: ToolType.grok.statusPageURL)
         var componentPages: [(id: String, name: String, url: URL, html: String)] = []
@@ -881,14 +884,20 @@ public actor ServiceStatusClient {
     // MARK: - Classic Statuspage (summary/incidents + embedded uptimeData)
 
     /// Classic Statuspage-hosted providers (status.claude.com,
-    /// status.cursor.com) all publish the same three shapes: `summary.json`
-    /// for current component health and page indicator, `incidents.json` for
-    /// the incident feed, and a `window.uptimeData` blob inlined in the
-    /// status page HTML. Only that HTML blob carries the 90-day per-component
-    /// outage history — the v2 JSON APIs never expose it — so a provider that
-    /// skips the scrape renders empty gray strips with no uptime percentage.
-    /// Fetch all three and key the history off the same component ids the
-    /// summary uses.
+    /// status.cursor.com, www.devinstatus.com) all publish the same shapes:
+    /// `summary.json` for current component health and page indicator,
+    /// `incidents.json` for the incident feed, and the 90-day per-component
+    /// outage history — which the v2 JSON APIs never expose — in the status
+    /// page itself. A page that skips the history renders empty gray strips
+    /// with no uptime percentage.
+    ///
+    /// The history used to be one `window.uptimeData` blob inlined in the
+    /// HTML. Statuspage's lazy showcase (its own comment calls it STATUS-801)
+    /// now ships the page without that blob: each component renders a
+    /// `data-uptime-lazy="<code>"` placeholder, and the bars come from
+    /// `GET /uptime_showcase?components=<codes>`, which answers with the same
+    /// `{code: {component, days}}` timelines. Read the inline blob when a page
+    /// still has one, then ask the endpoint for whatever it did not cover.
     private func fetchClassicStatuspage(
         tool: ToolType,
         dayCount: Int,
@@ -903,7 +912,15 @@ public actor ServiceStatusClient {
         // `try?` must not swallow a cancelled refresh into a history-less
         // "success"; only ordinary scrape failures are best-effort.
         try Task.checkCancellation()
-        let uptimeMap = html.map { Self.parseStatuspageUptimeData(html: $0) } ?? [:]
+        var uptimeMap = html.map { Self.parseStatuspageUptimeData(html: $0) } ?? [:]
+        if let html {
+            let lazyCodes = Self.parseStatuspageLazyCodes(html: html).filter { uptimeMap[$0] == nil }
+            if !lazyCodes.isEmpty {
+                let fetched = await fetchStatuspageShowcase(tool: tool, codes: lazyCodes)
+                try Task.checkCancellation()
+                uptimeMap.merge(fetched) { existing, _ in existing }
+            }
+        }
 
         // Grouped pages (a `group: true` row owns the `group_id` children);
         // claude.com and cursor.com are both flat today, so this yields [].
@@ -1173,6 +1190,54 @@ public actor ServiceStatusClient {
     /// status.cursor.com ships the byte-identical shape, keyed by the same
     /// component ids its `summary.json` uses, so both providers share this
     /// parser.
+    /// The component codes a lazily-rendered Statuspage leaves behind in
+    /// place of its bars, in page order and without duplicates. The attribute
+    /// also appears inside the loader's own script (`'[data-uptime-lazy="' +
+    /// code + '"]'`), so only Statuspage's own code shape is accepted.
+    nonisolated static func parseStatuspageLazyCodes(html: String) -> [String] {
+        let marker = "data-uptime-lazy=\""
+        var codes: [String] = []
+        var seen: Set<String> = []
+        var search = html.startIndex..<html.endIndex
+        while let range = html.range(of: marker, range: search) {
+            search = range.upperBound..<html.endIndex
+            guard let end = html.range(of: "\"", range: search) else { break }
+            let code = String(html[range.upperBound..<end.lowerBound])
+            search = end.upperBound..<html.endIndex
+            guard !code.isEmpty, code.count <= 64,
+                  code.allSatisfy({ $0.isLowercase && $0.isLetter || $0.isNumber }),
+                  seen.insert(code).inserted
+            else { continue }
+            codes.append(code)
+        }
+        return codes
+    }
+
+    /// Ask the lazy showcase for the timelines those placeholders stand for.
+    ///
+    /// Best-effort, like the scrape it replaces: a batch that fails leaves
+    /// those components without bars rather than failing the whole snapshot.
+    /// Batches stay at the endpoint's own limit of 60 codes.
+    private func fetchStatuspageShowcase(
+        tool: ToolType,
+        codes: [String]
+    ) async -> [String: StatuspageUptimeEntry] {
+        var merged: [String: StatuspageUptimeEntry] = [:]
+        for batch in stride(from: 0, to: codes.count, by: Self.statuspageShowcaseBatchLimit) {
+            let slice = codes[batch..<min(batch + Self.statuspageShowcaseBatchLimit, codes.count)]
+            // Every code passed `parseStatuspageLazyCodes`, so the joined
+            // value is already URL-safe.
+            let joined = slice.joined(separator: ",")
+            guard let url = URL(string: "uptime_showcase?components=\(joined)", relativeTo: tool.statusPageURL)?
+                      .absoluteURL,
+                  let data = try? await fetchData(url: url),
+                  let decoded = try? JSONDecoder().decode(StatuspageShowcaseDTO.self, from: data)
+            else { continue }
+            merged.merge(decoded.timelines ?? [:]) { existing, _ in existing }
+        }
+        return merged
+    }
+
     nonisolated static func parseStatuspageUptimeData(html: String) -> [String: StatuspageUptimeEntry] {
         for anchor in ["window.uptimeData = ", "var uptimeData = "] {
             var search = html.startIndex..<html.endIndex
@@ -1441,6 +1506,13 @@ private struct IncidentsDTO: Decodable {
 }
 
 // MARK: - Classic Statuspage scraped uptime DTOs
+
+/// `GET <status page>/uptime_showcase?components=a,b,c`. The `components`
+/// (rendered markup) and `values` (30/60/90-day percentages) keys are for the
+/// page's own DOM; the timelines are the same shape the inline blob had.
+struct StatuspageShowcaseDTO: Decodable {
+    let timelines: [String: StatuspageUptimeEntry]?
+}
 
 struct StatuspageUptimeEntry: Decodable {
     let component: StatuspageComponentMeta

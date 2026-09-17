@@ -164,7 +164,14 @@ private struct ServiceStatusRow: View {
                             title: group.name,
                             components: comps,
                             density: density,
-                            defaultExpanded: defaultExpanded(forGroupName: group.name)
+                            defaultExpanded: defaultExpanded(forGroupName: group.name),
+                            // A merged company row carries one link, its own.
+                            // A sub-provider folded into it (Cursor under
+                            // SpaceXAI) publishes its own page, so its section
+                            // links there rather than leaving it unreachable.
+                            statusPageTool: group.subProviderTool.flatMap {
+                                $0 != tool && $0.supportsStatusPage ? $0 : nil
+                            }
                         )
                     }
                 }
@@ -213,6 +220,8 @@ private struct ComponentGroupBlock: View {
     /// incident footer.
     let incidentDays: [DayUptime]?
     let incidentAdjustedUptime: Double?
+    /// Set when this section is a sub-provider with a status page of its own.
+    let statusPageTool: ToolType?
     @State private var expanded: Bool
 
     init(
@@ -221,13 +230,15 @@ private struct ComponentGroupBlock: View {
         density: Theme.Density,
         defaultExpanded: Bool = false,
         incidentDays: [DayUptime]? = nil,
-        incidentAdjustedUptime: Double? = nil
+        incidentAdjustedUptime: Double? = nil,
+        statusPageTool: ToolType? = nil
     ) {
         self.title = title
         self.components = components
         self.density = density
         self.incidentDays = incidentDays
         self.incidentAdjustedUptime = incidentAdjustedUptime
+        self.statusPageTool = statusPageTool
         self._expanded = State(initialValue: defaultExpanded)
     }
 
@@ -261,6 +272,21 @@ private struct ComponentGroupBlock: View {
                             .font(.system(size: density.resetCountdownFontSize, weight: .medium, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+            .overlay(alignment: .trailing) {
+                // Outside the row button: a link inside it would open the page
+                // on every click meant for the disclosure.
+                if let statusPageTool {
+                    BorderlessIconButton(
+                        systemImage: "arrow.up.right.square",
+                        help: L10n.Status.Card.openStatusPage(
+                            host: statusPageTool.statusPageURL.host ?? L10n.Status.Card.statusPageFallback
+                        )
+                    ) {
+                        NSWorkspace.shared.open(statusPageTool.statusPageURL)
+                    }
+                    .offset(x: 2)
                 }
             }
 
