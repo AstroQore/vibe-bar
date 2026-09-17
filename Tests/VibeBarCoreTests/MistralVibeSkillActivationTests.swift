@@ -118,6 +118,25 @@ final class MistralVibeSkillActivationTests: XCTestCase {
         XCTAssertEqual(home.contents(of: configURL(home)), original)
     }
 
+    /// A pattern that would keep a newly installed skill off in Vibe refuses
+    /// the install before anything is copied into the shared root.
+    func testAnInstallAPatternWouldBlockFailsBeforeTheCopy() async throws {
+        let home = try SkillTestHome()
+        let original = "disabled_skills = [\"alph*\"]\n"
+        try home.write(original, to: configURL(home))
+        let service = SkillsService(homeDirectory: home.path)
+        let source = try home.makeSkillDirectory(at: home.url.appendingPathComponent("staging/alpha"))
+
+        do {
+            _ = try await service.install(from: .localDirectory(source), enableFor: [.mistralVibe])
+            XCTFail("the install should have been refused")
+        } catch {
+            XCTAssertEqual(error as? SkillError, .nativeSkillDisabledByPattern(.mistralVibe))
+        }
+        XCTAssertFalse(home.exists(home.url.appendingPathComponent(".agents/skills/alpha")))
+        XCTAssertEqual(home.contents(of: configURL(home)), original)
+    }
+
     /// Under an allow-list a skill it does not name is already off, so an
     /// install that switches it off there succeeds without editing anything.
     func testDisablingASkillTheAllowListOmitsIsDone() throws {

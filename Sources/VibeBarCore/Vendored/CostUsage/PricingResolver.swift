@@ -138,7 +138,9 @@ public enum PricingResolver {
               let decoded = try? JSONDecoder().decode(PricingDataSet.self, from: data),
               decoded.schemaVersion == PricingDataSet.currentSchemaVersion
         else { return nil }
-        return decoded
+        // A cache written before a family existed decodes it as empty; the
+        // bundled floor answers for it until the next rebuild writes it out.
+        return decoded.fillingEmptyAddedFamilies(from: loadBundled() ?? PricingHardcoded.fallback)
     }
 
     static func loadBundled() -> PricingDataSet? {

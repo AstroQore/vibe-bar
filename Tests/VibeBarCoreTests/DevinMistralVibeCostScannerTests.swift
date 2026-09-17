@@ -79,7 +79,10 @@ final class DevinMistralVibeCostScannerTests: XCTestCase {
         XCTAssertEqual(first.event.harness, .devin)
         XCTAssertEqual(first.event.sessionId, "quiet-harbor")
         XCTAssertEqual(first.event.projectPath, "/Users/example/proj")
-        let expected = (17_545 - 9_219) * 5e-7 + 9_219 * 2e-7 + 99 * 2.5e-6
+        let fresh: Double = Double(17_545 - 9_219) * 5e-7
+        let cacheRead: Double = 9_219 * 2e-7
+        let output: Double = 99 * 2.5e-6
+        let expected = fresh + cacheRead + output
         XCTAssertEqual(first.costMicros, PricedUsageEvent.micros(fromUSD: expected))
 
         let unlisted = try XCTUnwrap(events.first { $0.event.messageId == "req-2" })

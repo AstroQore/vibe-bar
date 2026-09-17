@@ -37,6 +37,29 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         self.providers = providers
     }
 
+    /// The families added after caches were already on disk (`muse`,
+    /// `mistral`, `cognition`) take `floor`'s table when this one has none.
+    func fillingEmptyAddedFamilies(from floor: PricingDataSet) -> PricingDataSet {
+        let current = providers
+        guard current.muse.models.isEmpty || current.mistral.models.isEmpty || current.cognition.models.isEmpty
+        else { return self }
+        return PricingDataSet(
+            schemaVersion: schemaVersion,
+            updatedAt: updatedAt,
+            calculationVersion: calculationVersion,
+            providers: Providers(
+                codex: current.codex,
+                claude: current.claude,
+                gemini: current.gemini,
+                grok: current.grok,
+                antigravity: current.antigravity,
+                muse: current.muse.models.isEmpty ? floor.providers.muse : current.muse,
+                mistral: current.mistral.models.isEmpty ? floor.providers.mistral : current.mistral,
+                cognition: current.cognition.models.isEmpty ? floor.providers.cognition : current.cognition
+            )
+        )
+    }
+
     public struct Providers: Codable, Sendable, Equatable {
         public let codex: ProviderTable<CodexEntry>
         public let claude: ProviderTable<ClaudeEntry>

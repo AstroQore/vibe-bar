@@ -191,18 +191,23 @@ struct SkillHarnessConfigManager: Sendable {
     /// harness cannot accept a per-skill enable. Gemini's user-level global
     /// switch is the only current case: silently turning it on would enable
     /// every other skill too, so the narrower operation explains the blocker.
-    func validateCanEnable(_ app: SkillAppTarget) throws {
+    /// `skillName` is the frontmatter name the install will register, when
+    /// the caller knows it; Mistral Vibe matches its lists against it.
+    func validateCanEnable(_ app: SkillAppTarget, skillName: String? = nil) throws {
         if app == .mistralVibe {
-            let target = resolvedConfigTarget(mistralVibeConfigURL)
-            guard FileManager.default.fileExists(atPath: target.path) else { return }
-            guard let data = try? Data(contentsOf: target),
-                  let text = String(data: data, encoding: .utf8),
-                  let enabledList = Self.topLevelTOMLStringArray("enabled_skills", in: text),
-                  Self.topLevelTOMLStringArray("disabled_skills", in: text) != nil
-            else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
+            guard let lists = try mistralVibeLists() else { return }
             // An allow-list decides for every skill; Vibe Bar does not edit it.
-            if enabledList.list?.isEmpty == false {
-                throw SkillError.nativeSkillsGloballyDisabled(.mistralVibe)
+            if let allowList = lists.enabled, !allowList.isEmpty {
+                guard let skillName, Self.vibeNameMatches(skillName, allowList) else {
+                    throw SkillError.nativeSkillsGloballyDisabled(.mistralVibe)
+                }
+                return
+            }
+            if let skillName, let names = lists.disabled {
+                let others = names.filter { $0.caseInsensitiveCompare(skillName) != .orderedSame }
+                if Self.vibeNameMatches(skillName, others) {
+                    throw SkillError.nativeSkillDisabledByPattern(.mistralVibe)
+                }
             }
             return
         }
@@ -426,20 +431,7 @@ struct SkillHarnessConfigManager: Sendable {
         case .muse:
             try validateMuseSettingsWritable()
         case .mistralVibe:
-            let target = resolvedConfigTarget(mistralVibeConfigURL)
-            guard FileManager.default.fileExists(atPath: target.path) else { return }
-            // The setter writes only inside the home directory; so must the
-            // file the preflight vouches for.
-            let home = URL(fileURLWithPath: homeDirectory, isDirectory: true).standardizedFileURL
-            let parent = target.deletingLastPathComponent().standardizedFileURL
-            guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
-                throw SkillError.writeOutsideAllowedRoots(target.path)
-            }
-            guard let data = try? Data(contentsOf: target),
-                  let text = String(data: data, encoding: .utf8),
-                  Self.topLevelTOMLStringArray("enabled_skills", in: text) != nil,
-                  Self.topLevelTOMLStringArray("disabled_skills", in: text) != nil
-            else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
+            _ = try mistralVibeLists()
         default:
             return
         }
@@ -500,6 +492,26 @@ struct SkillHarnessConfigManager: Sendable {
     /// is left as it was. A config that uses `enabled_skills` is refused —
     /// that list is an allow-list whose meaning Vibe Bar does not own.
     /// Without a `~/.vibe` directory there is no Vibe to configure.
+    /// Vibe's two top-level lists, or nil when there is no config file. The
+    /// file must sit inside the home directory, as the setter requires, and
+    /// both values must be readable string arrays.
+    private func mistralVibeLists() throws -> (enabled: [String]?, disabled: [String]?)? {
+        let target = resolvedConfigTarget(mistralVibeConfigURL)
+        guard FileManager.default.fileExists(atPath: target.path) else { return nil }
+        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .resolvingSymlinksInPath().standardizedFileURL
+        let parent = target.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+        guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
+            throw SkillError.writeOutsideAllowedRoots(target.path)
+        }
+        guard let data = try? Data(contentsOf: target),
+              let text = String(data: data, encoding: .utf8),
+              let enabled = Self.topLevelTOMLStringArray("enabled_skills", in: text),
+              let disabled = Self.topLevelTOMLStringArray("disabled_skills", in: text)
+        else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
+        return (enabled.list, disabled.list)
+    }
+
     private func setMistralVibeEnabled(_ enabled: Bool, name: String) throws {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(
@@ -517,9 +529,9 @@ struct SkillHarnessConfigManager: Sendable {
         else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
         if let allowList = enabledList.list, !allowList.isEmpty {
             // The allow-list decides for every skill and is never edited here.
-            // A skill it does not name is already off, so turning it off is
-            // done; anything else cannot be switched individually.
-            if !enabled, !Self.vibeNameMatches(name, allowList) { return }
+            // A skill already in the requested state needs nothing; anything
+            // else cannot be switched individually.
+            if Self.vibeNameMatches(name, allowList) == enabled { return }
             throw SkillError.nativeSkillsGloballyDisabled(.mistralVibe)
         }
 
