@@ -199,11 +199,7 @@ public final class SettingsStore: ObservableObject {
             // What was loaded is this process's starting position. A migration
             // that follows is a real change and writes only what it changed.
             Self.setLastMine(encoding: decoded)
-            // Evaluated on its own: `||` would skip it whenever another
-            // migration already needs a write, and that write alone would leave
-            // the file's order without the new company.
-            let adoptedCompany = Self.adoptIntroducedCoreProviders(from: existing)
-            if migrated != decoded || adoptedCompany {
+            if migrated != decoded {
                 persist()
             }
         } else if
@@ -236,40 +232,6 @@ public final class SettingsStore: ObservableObject {
         Self.setLastMine(encoding: existing == nil ? nil : settings)
         if existing == nil {
             persist()
-        }
-    }
-
-    /// Decoding appends a company this build introduced to the saved order —
-    /// and makes it visible, see `AppSettings`' decoder. That has to reach the
-    /// file once: otherwise hiding the new company would not survive a
-    /// relaunch, because the file's order would still lack it and the decoder
-    /// would introduce it again. Measuring the order against the file's own
-    /// value, rather than the decoded one, turns that into an ordinary change
-    /// the next write carries. Returns whether there is one to write.
-    private nonisolated static func adoptIntroducedCoreProviders(from existing: SettingsDocument.Object?) -> Bool {
-        let orderKey = "coreProviderOrder"
-        let visibleKey = "visibleCoreProviders"
-        return writeQueue.sync {
-            guard let existing,
-                  let savedOrder = existing[orderKey] as? [String],
-                  let decodedOrder = lastMine[orderKey] as? [String]
-            else { return false }
-            // Only a company this build added is adopted. A value this build
-            // cannot decode belongs to a newer client, and writing the decoded
-            // lists back would delete it just by launching — so a file holding
-            // one is left alone.
-            let known = Set(ToolType.allCases.map(\.rawValue))
-            let savedVisible = existing[visibleKey] as? [String] ?? []
-            guard savedOrder.allSatisfy(known.contains), savedVisible.allSatisfy(known.contains),
-                  decodedOrder.contains(where: { !savedOrder.contains($0) })
-            else { return false }
-            // The visible set travels with the order: written without it, the
-            // file would hold an order that already knows the company and a
-            // visible set that does not, and the next launch would hide it.
-            for key in [orderKey, visibleKey] {
-                if let saved = existing[key] { lastMine[key] = saved }
-            }
-            return true
         }
     }
 

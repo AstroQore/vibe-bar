@@ -28,7 +28,8 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.miniWindow.compactSelectedFieldIds.contains("claude.weekly"))
         XCTAssertTrue(settings.miniWindow.selectedFieldIds.contains("claude.daily_routines"))
         XCTAssertNil(settings.miniWindow.customLabels["codex.five_hour"])
-        XCTAssertEqual(settings.visibleCoreProviders, AppSettings.defaultVisibleCoreProviders)
+        // Written before the visibility switch existed: every company was shown.
+        XCTAssertEqual(settings.visibleCoreProviders, AppSettings.legacyVisibleCoreProviders)
         XCTAssertEqual(settings.coreProviderOrder, AppSettings.defaultCoreProviderOrder)
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.defaultRetentionDays)
         XCTAssertEqual(settings.costData.retentionDays, CostDataSettings.unlimitedRetentionDays)
@@ -1095,8 +1096,17 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(settings.planBadgeLabel(for: .codex))
     }
 
+    /// A fresh install shows no company until the user turns one on.
+    func testFreshDefaultsShowNoCompany() {
+        let settings = AppSettings.default
+        XCTAssertTrue(settings.visibleCoreProviders.isEmpty)
+        XCTAssertTrue(settings.visibleCoreProviderList.isEmpty)
+        XCTAssertEqual(settings.orderedCoreProviders, ToolType.coreProviderRepresentatives)
+    }
+
     func testCoreProviderVisibilityGroupsGeminiAndAntigravityAndRoundTrips() throws {
         var settings = AppSettings.default
+        settings.visibleCoreProviders = Set(ToolType.coreProviderRepresentatives)
 
         settings.setCoreProviderVisible(false, for: .antigravity)
 
@@ -1116,9 +1126,9 @@ final class AppSettingsTests: XCTestCase {
     }
 
     /// A company this build added is absent from both lists of a file an
-    /// older build wrote. The order is what tells "never existed" apart from
-    /// "hidden": such a company starts visible, as on a fresh install.
-    func testACompanyNewerThanTheSavedOrderStartsVisible() throws {
+    /// older build wrote. It starts hidden, as on a fresh install, and is
+    /// appended to the order so it is there to turn on.
+    func testACompanyNewerThanTheSavedOrderStartsHidden() throws {
         let json = """
         {
           "visibleCoreProviders": ["codex", "claude"],
@@ -1128,7 +1138,7 @@ final class AppSettingsTests: XCTestCase {
 
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
 
-        XCTAssertEqual(settings.visibleCoreProviders, Set([.codex, .claude, .muse]))
+        XCTAssertEqual(settings.visibleCoreProviders, Set([.codex, .claude]))
         XCTAssertEqual(settings.orderedCoreProviders, [.codex, .claude, .gemini, .grok, .muse])
     }
 
@@ -1172,6 +1182,7 @@ final class AppSettingsTests: XCTestCase {
 
     func testCoreProviderOrderMovesAndRoundTrips() throws {
         var settings = AppSettings.default
+        settings.visibleCoreProviders = Set(ToolType.coreProviderRepresentatives)
         settings.moveCoreProvider(.grok, before: .codex)
         settings.moveCoreProvider(.claude, before: .gemini)
         settings.setCoreProviderVisible(false, for: .codex)

@@ -397,8 +397,8 @@ struct OnboardingAPIKeyProvidersStep: View {
 
     @EnvironmentObject private var settingsStore: SettingsStore
     /// Rows whose credential controls are unfolded. Kept apart from
-    /// visibility so a page with every provider on (the default) does not
-    /// open twenty credential forms at once.
+    /// visibility so ticking several providers does not open that many
+    /// credential forms at once.
     @State private var expanded: Set<String> = []
 
     var body: some View {

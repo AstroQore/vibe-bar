@@ -300,7 +300,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let defaultProviderPlanLabels: [ToolType: String] = [:]
 
-    public static var defaultVisibleCoreProviders: Set<ToolType> {
+    /// Nothing is on until the user turns it on. There are too many
+    /// companies and plans for a fresh install to show them all: onboarding
+    /// asks which ones the user has, and a company a later build adds starts
+    /// hidden too.
+    public static var defaultVisibleCoreProviders: Set<ToolType> { [] }
+
+    /// What a settings file from before the visibility switch existed meant:
+    /// every company was shown. Only a file with no `visibleCoreProviders` key
+    /// at all decodes to this.
+    static var legacyVisibleCoreProviders: Set<ToolType> {
         Set(ToolType.coreProviderRepresentatives)
     }
 
@@ -321,7 +330,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         return out
     }
 
-    public static var defaultVisibleMiscProviders: Set<ToolType> {
+    /// Off until ticked, like the companies — see `defaultVisibleCoreProviders`.
+    public static var defaultVisibleMiscProviders: Set<ToolType> { [] }
+
+    /// A file from before misc visibility existed showed every misc provider.
+    static var legacyVisibleMiscProviders: Set<ToolType> {
         Set(ToolType.miscPageProviders)
     }
 
@@ -330,7 +343,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public static var defaultMiscProviderInstances: [MiscProviderInstance] {
-        ToolType.miscPageProviders.map { .defaultInstance(for: $0) }
+        ToolType.miscPageProviders.map { .defaultInstance(for: $0, isVisible: false) }
     }
 
     public init(
@@ -598,21 +611,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
 
         if let rawVisible = try c.decodeIfPresent([String].self, forKey: .visibleCoreProviders) {
-            var decoded = Set(rawVisible.compactMap(ToolType.init(rawValue:)))
-            // The visible set cannot tell "hidden" from "did not exist yet".
-            // The saved order can: every save writes every company this build
-            // knows, so a company missing from it arrived after the file was
-            // written, and starts visible as it would on a fresh install.
-            // Once the order is saved with it, hiding it sticks.
-            if let rawOrder = try c.decodeIfPresent([String].self, forKey: .coreProviderOrder) {
-                let known = Set(rawOrder)
-                for tool in ToolType.coreProviderRepresentatives where !known.contains(tool.rawValue) {
-                    decoded.insert(tool)
-                }
-            }
+            // A company this build added is in neither list, so it starts
+            // hidden — the same as on a fresh install. The order normalizer
+            // still appends it, so it is there to turn on.
+            let decoded = Set(rawVisible.compactMap(ToolType.init(rawValue:)))
             self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(decoded)
         } else {
-            self.visibleCoreProviders = Self.defaultVisibleCoreProviders
+            self.visibleCoreProviders = Self.legacyVisibleCoreProviders
         }
 
         if let rawOrder = try c.decodeIfPresent([String].self, forKey: .coreProviderOrder) {
@@ -650,7 +655,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             }
             decodedLegacyVisible = Self.normalizedVisibleMiscProviders(set)
         } else {
-            decodedLegacyVisible = Self.defaultVisibleMiscProviders
+            decodedLegacyVisible = Self.legacyVisibleMiscProviders
         }
 
         let decodedLegacyOrder: [ToolType]

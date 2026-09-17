@@ -95,59 +95,28 @@ final class SettingsStoreMergeTests: XCTestCase {
         XCTAssertEqual(try fileObject()["refreshIntervalSeconds"] as? Int, 900)
     }
 
+    /// A company added since the file was written starts hidden, and
+    /// loading alone writes nothing: turning it on later saves the visible set
+    /// and the order together, which is all it takes to stick.
+    func testACompanyNewerThanTheFileStartsHiddenAndTurningItOnSticks() throws {
+        try writeFile(#"{"visibleCoreProviders":["codex","claude"],"coreProviderOrder":["codex","claude","gemini","grok"]}"#)
+
+        let store = try makeStore()
+        XCTAssertFalse(store.settings.isCoreProviderVisible(.muse))
+        store.flush()
+        XCTAssertEqual(try fileObject()["coreProviderOrder"] as? [String], ["codex", "claude", "gemini", "grok"])
+
+        store.settings.setCoreProviderVisible(true, for: .muse)
+        store.flush()
+
+        let reopened = try makeStore()
+        XCTAssertTrue(reopened.settings.isCoreProviderVisible(.muse))
+    }
+
     /// A newer client's file, opened by an older build: the typed decode
     /// fails, and the fallback is defaults. Saving those over the file is the
     /// downgrade version of the loss this whole change exists to prevent, and
     /// it happens before the user has touched anything.
-    /// A company added since the file was written starts visible, and that
-    /// has to reach the file at load: otherwise hiding it later saves only the
-    /// visible set, the order still lacks the company, and the next launch
-    /// introduces it — visible — all over again.
-    func testACompanyNewerThanTheFileIsRecordedSoHidingItSticks() throws {
-        try writeFile(#"{"visibleCoreProviders":["codex","claude"],"coreProviderOrder":["codex","claude","gemini","grok"]}"#)
-
-        let store = try makeStore()
-        XCTAssertTrue(store.settings.isCoreProviderVisible(.muse))
-        store.flush()
-        let introduced = try fileObject()
-        XCTAssertEqual(introduced["coreProviderOrder"] as? [String], ["codex", "claude", "gemini", "grok", "muse"])
-        XCTAssertEqual(introduced["visibleCoreProviders"] as? [String], ["codex", "claude", "muse"])
-
-        store.settings.setCoreProviderVisible(false, for: .muse)
-        store.flush()
-
-        let reopened = try makeStore()
-        XCTAssertFalse(reopened.settings.isCoreProviderVisible(.muse))
-    }
-
-    /// Another load-time migration must not swallow the introduction: its
-    /// write alone would leave the order without the new company, and hiding
-    /// it would then not survive a relaunch.
-    func testTheIntroductionIsWrittenEvenWhenAnotherMigrationAlsoRuns() throws {
-        try writeFile(#"{"mockEnabled":true,"visibleCoreProviders":["codex"],"coreProviderOrder":["codex","claude","gemini","grok"]}"#)
-
-        let store = try makeStore()
-        store.flush()
-
-        let saved = try fileObject()
-        XCTAssertEqual(saved["coreProviderOrder"] as? [String], ["codex", "claude", "gemini", "grok", "muse"])
-        XCTAssertEqual(saved["visibleCoreProviders"] as? [String], ["codex", "muse"])
-    }
-
-    /// A company id this build cannot decode came from a newer client. The
-    /// introduction must not write the decoded lists back over it — that would
-    /// delete the other client's setting merely by launching.
-    func testIntroducingACompanyNeverDropsAnotherClientsUnknownCompany() throws {
-        try writeFile(#"{"visibleCoreProviders":["codex","futureCo"],"coreProviderOrder":["futureCo","codex","claude","gemini","grok"]}"#)
-
-        let store = try makeStore()
-        store.flush()
-
-        let saved = try fileObject()
-        XCTAssertEqual(saved["coreProviderOrder"] as? [String], ["futureCo", "codex", "claude", "gemini", "grok"])
-        XCTAssertEqual(saved["visibleCoreProviders"] as? [String], ["codex", "futureCo"])
-    }
-
     func testDefaultsAreNotSavedOverAFileThisBuildCannotDecode() throws {
         let original = #"{"displayMode":"aModeFromAFutureBuild","refreshIntervalSeconds":120}"#
         try writeFile(original)

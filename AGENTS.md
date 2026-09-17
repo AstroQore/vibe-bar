@@ -1040,6 +1040,13 @@ SubProvider → L3 quota / model group. Source of truth:
 | SpaceXAI   | Grok Bot              | Weekly (cloud-only SubProvider)           |
 | Meta AI    | Muse Code             | 5 Hours, Weekly                           |
 
+Every company and misc provider starts **hidden**: a fresh install shows
+none until onboarding or Settings turns one on
+(`AppSettings.defaultVisibleCoreProviders` and the misc instances are
+empty/off), and a company a later build adds is appended to a saved
+`coreProviderOrder` without joining `visibleCoreProviders`. Only a settings
+file that predates the visibility keys decodes as "all shown".
+
 **Usage / cost axis** — where the tokens were actually spent. The unit is
 the local **harness**: the CLI or app that produced the sessions we
 scanned. It is neither the company nor the quota SubProvider. Source of
