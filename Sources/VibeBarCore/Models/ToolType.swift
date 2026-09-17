@@ -242,6 +242,15 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
+    /// False for a cost-aware provider whose tokens have no per-token price to
+    /// multiply by — Muse Code is subscription-only. Its usage is real and is
+    /// counted, but every dollar surface would have to print `$0.00`, which
+    /// reads as "free" rather than "not priced", so those surfaces leave it
+    /// out and Usage Stats marks its rows unpriced.
+    public var hasPerTokenPrice: Bool {
+        supportsTokenCost && self != .muse
+    }
+
     /// True for providers we can poll a status feed for. `.gemini` and
     /// `.antigravity` share the Google Apps Status dashboard feed
     /// (`https://www.google.com/appsstatus/dashboard/incidents.json`,

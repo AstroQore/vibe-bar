@@ -120,6 +120,20 @@ final class SettingsStoreMergeTests: XCTestCase {
         XCTAssertFalse(reopened.settings.isCoreProviderVisible(.muse))
     }
 
+    /// Another load-time migration must not swallow the introduction: its
+    /// write alone would leave the order without the new company, and hiding
+    /// it would then not survive a relaunch.
+    func testTheIntroductionIsWrittenEvenWhenAnotherMigrationAlsoRuns() throws {
+        try writeFile(#"{"mockEnabled":true,"visibleCoreProviders":["codex"],"coreProviderOrder":["codex","claude","gemini","grok"]}"#)
+
+        let store = try makeStore()
+        store.flush()
+
+        let saved = try fileObject()
+        XCTAssertEqual(saved["coreProviderOrder"] as? [String], ["codex", "claude", "gemini", "grok", "muse"])
+        XCTAssertEqual(saved["visibleCoreProviders"] as? [String], ["codex", "muse"])
+    }
+
     /// A company id this build cannot decode came from a newer client. The
     /// introduction must not write the decoded lists back over it — that would
     /// delete the other client's setting merely by launching.

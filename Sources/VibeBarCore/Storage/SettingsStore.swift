@@ -199,7 +199,11 @@ public final class SettingsStore: ObservableObject {
             // What was loaded is this process's starting position. A migration
             // that follows is a real change and writes only what it changed.
             Self.setLastMine(encoding: decoded)
-            if migrated != decoded || Self.adoptIntroducedCoreProviders(from: existing) {
+            // Evaluated on its own: `||` would skip it whenever another
+            // migration already needs a write, and that write alone would leave
+            // the file's order without the new company.
+            let adoptedCompany = Self.adoptIntroducedCoreProviders(from: existing)
+            if migrated != decoded || adoptedCompany {
                 persist()
             }
         } else if

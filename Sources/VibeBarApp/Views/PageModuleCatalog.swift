@@ -409,9 +409,39 @@ enum PageModuleCatalog {
             masonryPhase: .auxiliary,
             fallbackHeight: FallbackHeight.status
         )
-        guard let snapshot = detailCostSnapshot(tool: tool, environment: environment),
-              snapshot.jsonlFilesFound > 0
-        else {
+        let snapshot = detailCostSnapshot(tool: tool, environment: environment)
+        // No per-token price: one note in place of the dollar cards, then the
+        // token-based activity chart once there is usage to draw.
+        if !tool.hasPerTokenPrice {
+            result.append(
+                PageModuleDescriptor(
+                    id: .custom("cost-empty:\(tool.rawValue)"),
+                    kind: .costEmpty,
+                    displayName: "\(costTitle) Cost — not priced",
+                    defaultColumn: 1,
+                    accent: .cost,
+                    masonryPhase: .cost,
+                    fallbackHeight: FallbackHeight.placeholder
+                )
+            )
+            result.append(resetHistory)
+            if let snapshot, snapshot.jsonlFilesFound > 0 {
+                result.append(
+                    PageModuleDescriptor(
+                        id: .custom("heatmap-activity:\(tool.rawValue)"),
+                        kind: .activityHeatmap,
+                        displayName: "Activity Heatmap",
+                        defaultColumn: 1,
+                        accent: .cost,
+                        masonryPhase: .auxiliary,
+                        fallbackHeight: FallbackHeight.analytics
+                    )
+                )
+            }
+            if tool.supportsStatusPage { result.append(serviceStatus) }
+            return result
+        }
+        guard let snapshot, snapshot.jsonlFilesFound > 0 else {
             result.append(
                 PageModuleDescriptor(
                     id: .custom("cost-empty:\(tool.rawValue)"),
@@ -619,7 +649,7 @@ enum PageModuleCatalog {
     /// is not listed here.
     static func overviewCostProviders(settings: AppSettings) -> [ToolType] {
         settings.visibleCoreProviderList.filter { tool in
-            tool == .codex || tool == .claude || tool == .grok || tool == .muse
+            tool == .codex || tool == .claude || tool == .grok
         }
     }
 

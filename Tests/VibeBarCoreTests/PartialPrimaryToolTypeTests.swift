@@ -41,7 +41,11 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertEqual(ToolType.muse.productName, "Muse Code")
         XCTAssertEqual(ToolType.muse.quotaSubProviderName(), "Muse Code")
         XCTAssertTrue(ToolType.muse.supportsTokenCost)
+        XCTAssertFalse(ToolType.muse.hasPerTokenPrice, "subscription-only: counted, never priced")
         XCTAssertFalse(ToolType.muse.supportsStatusPage)
+        for tool in ToolType.costAwareProviders where tool != .muse {
+            XCTAssertTrue(tool.hasPerTokenPrice, "\(tool)")
+        }
     }
 
     func testGrokIsPartialPrimary() {
