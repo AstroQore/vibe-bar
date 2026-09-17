@@ -266,8 +266,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Muse Code reads Meta's Model API status JSON at
     /// `https://api.meta.ai/v1/status`, the API the CLI itself calls.
     /// Devin reads the Statuspage feeds at `www.devinstatus.com`; Mistral
-    /// Vibe reads Mistral's Checkly status page, whose `status.mistral.ai`
-    /// front sits behind a bot challenge.
+    /// Vibe reads `status.mistral.ai`, a Rootly page whose JSON carries the
+    /// page state and whose HTML carries the services and their bars.
     public var supportsStatusPage: Bool {
         switch self {
         case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe: return true
