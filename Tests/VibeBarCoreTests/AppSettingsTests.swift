@@ -1111,8 +1111,39 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(decoded.isCoreProviderVisible(.antigravity))
         XCTAssertEqual(
             decoded.visibleCoreProviders,
-            Set([.codex, .claude, .grok])
+            Set([.codex, .claude, .grok, .muse])
         )
+    }
+
+    /// A company this build added is absent from both lists of a file an
+    /// older build wrote. The order is what tells "never existed" apart from
+    /// "hidden": such a company starts visible, as on a fresh install.
+    func testACompanyNewerThanTheSavedOrderStartsVisible() throws {
+        let json = """
+        {
+          "visibleCoreProviders": ["codex", "claude"],
+          "coreProviderOrder": ["codex", "claude", "gemini", "grok"]
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.visibleCoreProviders, Set([.codex, .claude, .muse]))
+        XCTAssertEqual(settings.orderedCoreProviders, [.codex, .claude, .gemini, .grok, .muse])
+    }
+
+    /// Once the order carries the company, hiding it is a choice and sticks.
+    func testAHiddenCompanyTheSavedOrderKnowsStaysHidden() throws {
+        let json = """
+        {
+          "visibleCoreProviders": ["codex", "claude"],
+          "coreProviderOrder": ["codex", "claude", "gemini", "grok", "muse"]
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.visibleCoreProviders, Set([.codex, .claude]))
     }
 
     func testCoreProviderVisibilityDropsNonCoreValues() throws {
@@ -1136,7 +1167,7 @@ final class AppSettingsTests: XCTestCase {
 
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
 
-        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .gemini, .codex, .claude])
+        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .gemini, .codex, .claude, .muse])
     }
 
     func testCoreProviderOrderMovesAndRoundTrips() throws {
@@ -1145,8 +1176,8 @@ final class AppSettingsTests: XCTestCase {
         settings.moveCoreProvider(.claude, before: .gemini)
         settings.setCoreProviderVisible(false, for: .codex)
 
-        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .codex, .claude, .gemini])
-        XCTAssertEqual(settings.visibleCoreProviderList, [.grok, .claude, .gemini])
+        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .codex, .claude, .gemini, .muse])
+        XCTAssertEqual(settings.visibleCoreProviderList, [.grok, .claude, .gemini, .muse])
 
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)

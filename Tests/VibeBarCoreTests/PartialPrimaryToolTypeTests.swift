@@ -19,14 +19,29 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     }
 
     func testPartialPrimaryProvidersIncludeCursor() {
-        XCTAssertEqual(ToolType.partialPrimaryProviders, [.chatgptChat, .gemini, .antigravity, .grok, .cursor])
+        XCTAssertEqual(ToolType.partialPrimaryProviders, [.chatgptChat, .gemini, .antigravity, .grok, .cursor, .muse])
     }
 
     func testDedicatedCardProvidersIncludePrimaryAndPartialPrimary() {
         XCTAssertEqual(
             ToolType.dedicatedCardProviders,
-            [.chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor]
+            [.chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse]
         )
+    }
+
+    /// Meta AI is a company of one: Muse Code represents itself, reads token
+    /// usage from local session logs, and has no status feed to poll.
+    func testMuseCodeIsMetaAIsPartialPrimary() {
+        XCTAssertTrue(ToolType.muse.isPartialPrimary)
+        XCTAssertFalse(ToolType.muse.isPrimary)
+        XCTAssertFalse(ToolType.muse.isMiscPageProvider)
+        XCTAssertEqual(ToolType.muse.coreProviderRepresentative, .muse)
+        XCTAssertEqual(ToolType.muse.coreProviderMembers, [.muse])
+        XCTAssertEqual(ToolType.muse.vendorName, "Meta AI")
+        XCTAssertEqual(ToolType.muse.productName, "Muse Code")
+        XCTAssertEqual(ToolType.muse.quotaSubProviderName(), "Muse Code")
+        XCTAssertTrue(ToolType.muse.supportsTokenCost)
+        XCTAssertFalse(ToolType.muse.supportsStatusPage)
     }
 
     func testGrokIsPartialPrimary() {
@@ -89,14 +104,14 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     func testCostAwareProvidersIncludeGoogleAIAndGrokFamily() {
         XCTAssertEqual(
             ToolType.costAwareProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse]
         )
     }
 
     func testUsageStatsKeepsCursorAsSubProvider() {
         XCTAssertEqual(
             ToolType.usageStatsProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse]
         )
     }
 

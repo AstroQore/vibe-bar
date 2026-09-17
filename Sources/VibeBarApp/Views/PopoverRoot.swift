@@ -160,6 +160,8 @@ struct PopoverRoot: View {
             GeminiTabPage(density: density)
         case .grok:
             GrokPage(density: density)
+        case .metaAI:
+            ProviderDetailView(tool: .muse, density: density)
         case .misc:
             MiscProvidersPage(density: density)
         case .machines:
@@ -169,13 +171,14 @@ struct PopoverRoot: View {
 
     private var headerTitle: String {
         switch overviewPage {
-        // The four company names are quota-axis identifiers — AGENTS.md
+        // The company names are quota-axis identifiers — AGENTS.md
         // § 7.1 — and stay as their owners spell them in every language.
         case .overview: return L10n.Popover.Tab.overview
         case .openAI: return "OpenAI"
         case .claude: return "Anthropic"
         case .googleAI: return "Google AI"
         case .grok: return "SpaceXAI"
+        case .metaAI: return "Meta AI"
         case .misc: return L10n.Popover.Tab.misc
         case .machines: return L10n.Popover.Tab.machines
         }
@@ -184,7 +187,7 @@ struct PopoverRoot: View {
     private var headerSubtitle: String? {
         switch overviewPage {
         case .overview: return L10n.Popover.Header.overviewSubtitle
-        case .openAI, .claude, .googleAI, .grok: return nil
+        case .openAI, .claude, .googleAI, .grok, .metaAI: return nil
         case .misc: return L10n.Popover.Header.miscSubtitle
         case .machines: return L10n.Popover.Header.machinesSubtitle
         }
@@ -215,6 +218,7 @@ struct PopoverRoot: View {
         case .claude: return [.claude]
         case .googleAI: return ToolType.googleAIPair
         case .grok: return ToolType.grokFamily
+        case .metaAI: return [.muse]
         case .misc: return settingsStore.settings.visibleMiscProviderList
         case .machines: return []
         }
@@ -301,6 +305,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
     case claude
     case googleAI
     case grok
+    case metaAI
     case misc
     case machines
 
@@ -333,6 +338,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude:   return .detail(.claude)
         case .googleAI: return .detail(.gemini)
         case .grok:     return .detail(.grok)
+        case .metaAI:   return .detail(.muse)
         case .misc:     return nil
         case .machines: return nil
         }
@@ -347,6 +353,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude:   return "Anthropic"
         case .googleAI: return "Google AI"
         case .grok:     return "SpaceXAI"
+        case .metaAI:   return "Meta AI"
         case .misc:     return L10n.Popover.Tab.miscShort
         case .machines: return L10n.Popover.Tab.machines
         }
@@ -358,6 +365,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude: return .claude
         case .googleAI: return .gemini
         case .grok: return .grok
+        case .metaAI: return .muse
         case .overview, .misc, .machines: return nil
         }
     }
@@ -368,6 +376,7 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .claude: return .claude
         case .gemini: return .googleAI
         case .grok: return .grok
+        case .muse: return .metaAI
         default: return nil
         }
     }
@@ -387,22 +396,33 @@ private struct OverviewPageSwitch: View {
         )
     }
 
+    /// Tabs that fit with every label spelled out beside the header title.
+    /// Past it — five companies plus Machines — the strip is sized ahead of
+    /// the title and squeezes it to one letter, so the tabs you are not on
+    /// keep only their mark (the name stays in the tooltip).
+    private static let fullLabelLimit = 7
+
     var body: some View {
+        let pages = visiblePages
+        let compact = pages.count > Self.fullLabelLimit
         HStack(spacing: 3) {
-            ForEach(visiblePages) { page in
+            ForEach(pages) { page in
                 let isSelected = selection == page
+                let showsLabel = !compact || isSelected
                 BorderlessRowButton(action: {
                     selection = page
                 }) {
                     HStack(spacing: 5) {
                         OverviewSwitchIcon(page: page, isSelected: isSelected)
-                        Text(page.label)
-                            .font(.system(size: max(9.5, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                        if showsLabel {
+                            Text(page.label)
+                                .font(.system(size: max(9.5, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
                     }
                     .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, showsLabel ? 10 : 7)
                     .frame(height: 24)
                     .background {
                         if isSelected {
@@ -460,7 +480,7 @@ private struct OverviewSwitchIcon: View {
         // they aren't single-provider tabs.
         //
         // The strip labels L1 companies, so it draws L1 marks:
-        // `CompanyBrandIconView` gives Anthropic, Google AI and SpaceXAI
+        // `CompanyBrandIconView` gives Anthropic, Google AI, SpaceXAI and Meta AI
         // their own rather than borrowing Claude's, Gemini's and Grok's.
         Group {
             switch page {
@@ -481,6 +501,8 @@ private struct OverviewSwitchIcon: View {
                 CompanyBrandIconView(tool: .gemini, size: Self.iconSize)
             case .grok:
                 CompanyBrandIconView(tool: .grok, size: Self.iconSize)
+            case .metaAI:
+                CompanyBrandIconView(tool: .muse, size: Self.iconSize)
             }
         }
         .opacity(isSelected ? 1 : 0.72)
@@ -661,7 +683,7 @@ private struct OverviewWaterfall: View {
             OverviewStatusSummaryCard(
                 density: density,
                 minHeight: density.overviewSummaryHeight,
-                tools: settingsStore.settings.visibleCoreProviderList
+                tools: settingsStore.settings.visibleCoreProviderList.filter(\.supportsStatusPage)
             )
         case let .overviewQuotaPart(partition):
             OverviewQuotaPartitionCard(partition: partition, density: density)
@@ -1645,6 +1667,7 @@ private struct OverviewCostCard: View {
         case .gemini: return L10n.Cost.Empty.gemini
         case .antigravity: return L10n.Cost.Empty.antigravity
         case .grok: return L10n.Cost.Empty.grok
+        case .muse: return L10n.Cost.Empty.muse
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
@@ -2286,6 +2309,7 @@ struct ProviderQuotaCard: View {
         case .claude: return L10n.Quota.Login.claude
         case .grok: return L10n.Quota.Login.grok
         case .cursor: return L10n.Quota.Login.cursor
+        case .muse: return L10n.Quota.Login.muse
         case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers route through the Misc page's per-card
             // setup CTA. This empty-message path is only reachable from

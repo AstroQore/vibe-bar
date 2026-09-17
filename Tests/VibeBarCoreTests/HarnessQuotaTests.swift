@@ -26,7 +26,8 @@ final class HarnessQuotaTests: XCTestCase {
             .cursor:       (.cursor, .grok),
             // Grok Bot has no tool of its own — its weekly bucket arrives on
             // Cursor's adapter, so that is also where its company comes from.
-            .grokBot:      (.cursor, .grok)
+            .grokBot:      (.cursor, .grok),
+            .museCode:     (.muse, .muse)
         ]
         XCTAssertEqual(expected.count, Harness.allCases.count)
         for harness in Harness.allCases {
@@ -40,6 +41,7 @@ final class HarnessQuotaTests: XCTestCase {
         XCTAssertEqual(Harness.grokBot.companyName, "SpaceXAI")
         XCTAssertEqual(Harness.antigravity.companyName, "Google AI")
         XCTAssertEqual(Harness.cursor.companyName, "SpaceXAI")
+        XCTAssertEqual(Harness.museCode.companyName, "Meta AI")
     }
 
     func testDefaultHarnessCoversEveryCostAwareToolAndNothingElse() {
@@ -49,6 +51,7 @@ final class HarnessQuotaTests: XCTestCase {
         XCTAssertEqual(Harness.defaultHarness(for: .antigravity), .antigravity)
         XCTAssertEqual(Harness.defaultHarness(for: .grok), .grokBuild)
         XCTAssertEqual(Harness.defaultHarness(for: .cursor), .cursor)
+        XCTAssertEqual(Harness.defaultHarness(for: .muse), .museCode)
 
         for tool in ToolType.allCases {
             if tool.supportsTokenCost {
@@ -67,6 +70,7 @@ final class HarnessQuotaTests: XCTestCase {
         XCTAssertEqual(Harness.harnesses(forCompany: .claude), [.claudeCode, .claudeCowork])
         XCTAssertEqual(Harness.harnesses(forCompany: .gemini), [.geminiCLI, .antigravity])
         XCTAssertEqual(Harness.harnesses(forCompany: .grok), [.grokBuild, .cursor, .grokBot])
+        XCTAssertEqual(Harness.harnesses(forCompany: .muse), [.museCode])
         // A non-representative member resolves to the same company list.
         XCTAssertEqual(
             Harness.harnesses(forCompany: .cursor),
@@ -80,14 +84,15 @@ final class HarnessQuotaTests: XCTestCase {
     /// carry the members in display order.
     func testChipGroupsCoverEveryCompanyInOrder() {
         let groups = Harness.chipGroups(companies: ToolType.coreProviderRepresentatives)
-        XCTAssertEqual(groups.map(\.company), [.codex, .claude, .gemini, .grok])
+        XCTAssertEqual(groups.map(\.company), [.codex, .claude, .gemini, .grok, .muse])
         XCTAssertEqual(
             groups.map(\.harnesses),
             [
                 [.codex, .chatgptWork],
                 [.claudeCode, .claudeCowork],
                 [.geminiCLI, .antigravity],
-                [.grokBuild, .cursor, .grokBot]
+                [.grokBuild, .cursor, .grokBot],
+                [.museCode]
             ]
         )
         XCTAssertEqual(groups.flatMap(\.harnesses), Harness.allCases)

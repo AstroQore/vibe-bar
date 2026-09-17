@@ -169,7 +169,7 @@ there, not in the package.
 
 **Where it comes from.** `Package.swift` pins the package to an exact
 tag on GitHub (`.package(url: "https://github.com/AstroQore/agent-session-kit.git",
-exact: "0.8.1")`), so a plain clone builds and a release build resolves the
+exact: "0.9.0")`), so a plain clone builds and a release build resolves the
 same package the developer built against — `Package.resolved` is
 gitignored here, and the exact pin is what stands in for it.
 
@@ -1032,6 +1032,7 @@ SubProvider → L3 quota / model group. Source of truth:
 | SpaceXAI   | Grok                  | Weekly Credits                            |
 | SpaceXAI   | Cursor                | Cursor Models, Other Models               |
 | SpaceXAI   | Grok Bot              | Weekly (cloud-only SubProvider)           |
+| Meta AI    | Muse Code             | 5 Hours, Weekly                           |
 
 **Usage / cost axis** — where the tokens were actually spent. The unit is
 the local **harness**: the CLI or app that produced the sessions we
@@ -1052,6 +1053,7 @@ display names). The mapping from a harness onto the quota axis —
 | Grok Build    | SpaceXAI   | `~/.grok/sessions/**/updates.jsonl`                  |
 | Cursor        | SpaceXAI   | `~/.cursor/chats/**/store.db` for sessions; dashboard events for cost |
 | Grok Bot      | SpaceXAI   | `~/Library/Application Support/Grok Bot/sand-client-persistence` — sessions only; quota rides in on Cursor's `grok_bot_weekly` bucket |
+| Muse Code     | Meta AI    | `~/.local/share/muse/sessions/YYYY/MM/DD/<id>/session.jsonl`, plus `<id>/subagent/*` for reminder children |
 
 Consequences worth stating out loud:
 
@@ -1086,6 +1088,7 @@ Sessions page; "Delete" is § 5's read-only rule.
 | Grok Build    | ✅ `current_model_id`              | ✅ local session state    | ✅ `GrokSessionAdapter`      | ✅ |
 | Cursor        | ⚠️ when a turn recorded one        | ☁️ dashboard events only  | ✅ `CursorSessionAdapter`    | ❌ store stays open |
 | Grok Bot      | ❌ never recorded locally          | ❌ cloud-only             | ✅ `GrokBotSessionAdapter`, read-only | ❌ the app's own cloud cache |
+| Muse Code     | ✅ `model_completed.model`         | ✅ local logs, unpriced   | ✅ `MuseSessionAdapter`, read-only | ❌ the CLI indexes and locks it |
 
 Where a ⚠️ appears the log genuinely does not carry the value — an aborted
 Cursor conversation records no `modelName` at all, and old Gemini CLI
@@ -1113,6 +1116,26 @@ bucket. Roles are read from the transcript owner's point of view; the
 mapping, including why an agent-to-agent turn stays `.user` / `.assistant`
 rather than `.other`, is documented on `GrokBotSessionAdapter.message`
 (agent-session-kit — see § 2.1).
+
+Muse Code is Meta AI's only SubProvider and represents its own company.
+Quota comes from `POST https://api.meta.ai/muse-code/key` with the OAuth
+token `muse login` keeps in the login keychain (service
+`ai.meta.dev.credentials`, account `meta`; `~/.config/muse/auth.json` holds
+only the identity and says where the secret lives). The call is idempotent —
+it returns the account's existing API key rather than minting a new one — so
+polling it does not disturb the CLI; `MuseResponseParser` never decodes that
+key. The item belongs to `muse`, so macOS asks once before Vibe Bar may read
+it: background reads never prompt and report the wait as a
+`credentialRejected` state, and the Meta AI settings page holds the one
+user-initiated read that does (`MuseCredentialReader.authorizeKeychainAccess`).
+Nothing is written back. Token usage is each `model_completed` run event —
+the `goal_usage_attribution` event restates the same numbers and is skipped —
+with `input_tokens` including the cached prefix and `output_tokens`
+including reasoning, as OpenAI reports them. Muse Code is subscription-only,
+so its ledger rows stay unpriced. Meta's hosts can resolve to unreachable
+addresses on some networks; the adapter uses `URLSession`'s default
+configuration, which follows the macOS system proxy and hands it the host
+name, and there is no per-provider proxy setting.
 
 **Model names.** Display always uses the canonical vendor id —
 `gemini-3.5-flash-high`, not "Gemini 3.5 Flash (High)". Route every

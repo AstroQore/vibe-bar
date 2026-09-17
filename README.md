@@ -359,6 +359,7 @@ the room costs more than the pixels it saves.
 | Claude Code / Cowork | 5 Hours, Weekly, per-model weekly, Anthropic status | `~/.claude/projects/**/*.jsonl`, Claude.app's Cowork transcripts |
 | Gemini + AntiGravity | Gemini Web quotas, local AntiGravity language-server quotas | Local Gemini / AntiGravity usage records |
 | Grok + Cursor | Grok quota, Cursor Models and Other Models, Grok Bot weekly, SpaceXAI + Cursor status | Local Grok records, Cursor account usage events; Grok Bot is quota-only |
+| Muse Code | Meta AI's 5 Hours and Weekly windows, read with the `muse` CLI's login once macOS allows it | `~/.local/share/muse/sessions/**/session.jsonl` — tokens only, Muse Code has no per-token price |
 | Misc providers | Each provider's own coding- or token-plan endpoint | Quota-only unless an adapter exposes local usage |
 
 Provider contracts change without notice. Vibe Bar keeps refresh errors
@@ -457,7 +458,7 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | Resets: risk view | ● | ◐ | Desktop lists resets with each one's forecast; the calendar and the risk grouping are not ported |
 | Skills: install, import, discover, backups | ● | ◐ | Desktop is a read-only inventory |
 | **Cost and usage** |
-| Local usage scan | ● 7 harnesses | ◐ 3 | Codex, Claude Code, Gemini CLI. Counts harnesses with a local scanner: Cursor's usage comes from dashboard events and Grok Bot has no usage source at all, so neither is a local scan on either side |
+| Local usage scan | ● 8 harnesses | ◐ 3 | Codex, Claude Code, Gemini CLI. Counts harnesses with a local scanner: Cursor's usage comes from dashboard events and Grok Bot has no usage source at all, so neither is a local scan on either side |
 | Per-request ledger, multi-source pricing, history | ● | ○ | Desktop keeps an in-memory aggregate |
 | **Settings** |
 | Writable | ● | ○ | Shared writes need the cross-client storage contract |

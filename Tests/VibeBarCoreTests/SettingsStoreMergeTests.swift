@@ -99,6 +99,27 @@ final class SettingsStoreMergeTests: XCTestCase {
     /// fails, and the fallback is defaults. Saving those over the file is the
     /// downgrade version of the loss this whole change exists to prevent, and
     /// it happens before the user has touched anything.
+    /// A company added since the file was written starts visible, and that
+    /// has to reach the file at load: otherwise hiding it later saves only the
+    /// visible set, the order still lacks the company, and the next launch
+    /// introduces it — visible — all over again.
+    func testACompanyNewerThanTheFileIsRecordedSoHidingItSticks() throws {
+        try writeFile(#"{"visibleCoreProviders":["codex","claude"],"coreProviderOrder":["codex","claude","gemini","grok"]}"#)
+
+        let store = try makeStore()
+        XCTAssertTrue(store.settings.isCoreProviderVisible(.muse))
+        store.flush()
+        let introduced = try fileObject()
+        XCTAssertEqual(introduced["coreProviderOrder"] as? [String], ["codex", "claude", "gemini", "grok", "muse"])
+        XCTAssertEqual(introduced["visibleCoreProviders"] as? [String], ["codex", "claude", "muse"])
+
+        store.settings.setCoreProviderVisible(false, for: .muse)
+        store.flush()
+
+        let reopened = try makeStore()
+        XCTAssertFalse(reopened.settings.isCoreProviderVisible(.muse))
+    }
+
     func testDefaultsAreNotSavedOverAFileThisBuildCannotDecode() throws {
         let original = #"{"displayMode":"aModeFromAFutureBuild","refreshIntervalSeconds":120}"#
         try writeFile(original)

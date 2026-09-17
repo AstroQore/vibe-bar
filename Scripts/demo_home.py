@@ -16,8 +16,8 @@ builds that directory from a maintainer's live ``~/.vibebar`` store:
   copied. Request ids are rehashed and project paths are replaced with
   fabricated ``/Users/example/Code`` directories.
 * Agent sessions and a library of skills are **fabricated**: a dozen
-  sessions across Claude Code, Claude Cowork, Codex, ChatGPT Work and Grok
-  Build under ``/Users/example/Code``, and two dozen public skills linked
+  sessions across Claude Code, Claude Cowork, Codex, ChatGPT Work, Grok
+  Build and Muse Code under ``/Users/example/Code``, and two dozen public skills linked
   into every managed harness directory.
 
 The output is a throwaway: it is written to ``/tmp/vibebar-demo-home`` by
@@ -72,6 +72,7 @@ FIXED_PRIMARY_IDS = {
     "web-grok": ("grok", "Grok Web", "webCookie"),
     "misc-cursor": ("cursor", "Cursor", "cliDetected"),
     "web-chatgpt-chat": ("chatgptChat", "ChatGPT Chat", "webCookie"),
+    "oauth-muse": ("muse", "Muse Code", "oauthCLI"),
 }
 CODEX_SOURCES = {"oauth-codex": "oauthCLI", "web-codex": "webCookie", "cli-codex": "cliDetected"}
 
@@ -690,6 +691,21 @@ def demo_sessions(now: dt.datetime, rng: random.Random) -> list[dict]:
             ],
         },
         {
+            "harness": "muse-code",
+            "project": "storefront-web",
+            "model": "muse-spark-1.3",
+            "started": now - 6 * h - 18 * m,
+            "turns": [
+                ("user", "Product images on the category page load at full resolution on phones. Serve responsive sizes instead."),
+                ("tool", "read_file:src/components/ProductCard.tsx"),
+                ("tool", "export function ProductCard({ product }) { return <img src={product.imageUrl} alt={product.name} /> }"),
+                ("assistant", "The card renders the original upload directly. The image CDN already accepts a `w` parameter, so I'll build a `srcset` at 320, 640 and 960 px with `sizes` matching the grid breakpoints, and keep the original as the fallback `src`."),
+                ("tool", "edit_file:src/components/ProductCard.tsx"),
+                ("tool", "Applied 1 edit to src/components/ProductCard.tsx"),
+                ("assistant", "Done. On a 390 px viewport the category page now requests the 640 px rendition (2x) instead of the 2400 px original, which cuts the first-load image weight from 9.1 MB to 1.2 MB."),
+            ],
+        },
+        {
             "harness": "claude-code",
             "project": "ops-runbook",
             "model": "claude-sonnet-5",
@@ -1053,12 +1069,82 @@ def _write_jsonl(path: Path, lines: list[dict], session: dict) -> None:
     os.utime(path, (stamp, stamp))
 
 
+def write_muse_code(home: Path, session: dict) -> None:
+    """One `session.jsonl` record log, shaped like Muse Code 1.3 writes it:
+    `run` events carry the prompt, the committed reply, tool calls and their
+    results, and one `model_completed` usage event per model call."""
+    cwd = PROJECTS[session["project"]]
+    session_id = stable_uuid("muse:" + session["project"] + iso(session["started"]))
+    when = session["started"]
+    sequence = 0
+    lines: list[dict] = []
+
+    def record(payload_type: str, payload: dict, at: dt.datetime) -> None:
+        nonlocal sequence
+        sequence += 1
+        lines.append({
+            "schema_version": 1,
+            "id": stable_uuid(f"muse-record:{session_id}:{sequence}"),
+            "stream": {"kind": "session", "id": session_id},
+            "sequence": sequence,
+            "recorded_at": int(at.timestamp() * 1_000_000),
+            "record_type": "event",
+            "payload_type": payload_type,
+            "payload": payload,
+        })
+
+    def run_event(event: dict, at: dt.datetime) -> None:
+        record("runtime.session", {"kind": "run", "run_id": session_id, "event": event}, at)
+
+    record("runtime.session.metadata", {
+        "kind": "metadata",
+        "record": {"workspace_root": cwd, "provider_id": "meta", "model_id": session["model"]},
+    }, when)
+    call = 0
+    for index, (role, text) in enumerate(session["turns"]):
+        when = when + dt.timedelta(seconds=random.Random(index).randint(10, 120))
+        if role == "user":
+            run_event({"kind": "started", "prompt": text}, when)
+        elif role == "assistant":
+            run_event({
+                "kind": "model_completed",
+                "usage": {
+                    "input_tokens": 18_400 + 2_100 * index, "output_tokens": 420 + 60 * index,
+                    "cached_tokens": 12_800 + 1_900 * index, "cache_write_tokens": 0,
+                    "cache_read_tokens": 12_800 + 1_900 * index, "reasoning_tokens": 180,
+                },
+                "duration_ms": 3_400,
+                "model": session["model"],
+            }, when)
+            run_event({"kind": "assistant_message_committed", "text": text}, when)
+        elif ":" in text.split(" ", 1)[0]:
+            call += 1
+            name, _, argument = text.partition(":")
+            run_event({
+                "kind": "assistant_tool_calls_committed",
+                "tool_calls": [{
+                    "id": f"fc_{call}", "call_id": f"call_{call}", "name": name,
+                    "args": json.dumps({"path": argument}),
+                }],
+            }, when)
+        else:
+            run_event({
+                "kind": "tool_result_batch_committed",
+                "results": [{"tool_call_index": 0, "tool_call_id": f"call_{call}", "text": text}],
+            }, when)
+    session["last_active"] = when
+    stamp = session["started"].astimezone(dt.timezone.utc)
+    path = home / ".local/share/muse/sessions" / stamp.strftime("%Y/%m/%d") / session_id / "session.jsonl"
+    _write_jsonl(path, lines, session)
+
+
 SESSION_WRITERS = {
     "claude-code": write_claude_code,
     "claude-cowork": write_claude_cowork,
     "codex": write_codex,
     "chatgpt-work": write_chatgpt_work,
     "grok-build": write_grok_build,
+    "muse-code": write_muse_code,
 }
 
 

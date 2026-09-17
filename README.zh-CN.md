@@ -311,6 +311,7 @@ API Key 发到 `dot.mindreset.tech`，由那边画到你的设备上。在你填
 | Claude Code / Cowork | 5 Hours、Weekly、按模型的周窗口、Anthropic 状态 | `~/.claude/projects/**/*.jsonl`，以及 Claude.app 的 Cowork transcript |
 | Gemini + AntiGravity | Gemini Web 配额、本地 AntiGravity Language Server 配额 | 本地 Gemini / AntiGravity 用量记录 |
 | Grok + Cursor | Grok 配额、Cursor Models 与 Other Models、Grok Bot 周配额、SpaceXAI + Cursor 状态 | 本地 Grok 记录、Cursor 账户用量事件；Grok Bot 仅显示配额 |
+| Muse Code | Meta AI 的 5 Hours 与 Weekly 窗口，macOS 允许后读取 `muse` CLI 的登录信息 | `~/.local/share/muse/sessions/**/session.jsonl` —— 只计 token，Muse Code 没有按 token 计价 |
 | Misc Providers | 各服务商自己的 Coding/Token Plan 接口 | 除非 Adapter 能取得本地用量，否则仅显示额度 |
 
 服务商的接口随时可能变化。Vibe Bar 会明确显示刷新错误，保留上一次成功的快照，
@@ -393,7 +394,7 @@ Desktop 仍在向本 App 对齐，在达成之前使用自己的 `0.x` 版本号
 | 重置：风险视图 | ● | ◐ | 跨平台版列出各次重置及其预测；日历视图与风险分组尚未移植 |
 | 技能：安装、导入、发现、备份 | ● | ◐ | 跨平台版目前是只读清单 |
 | **成本与用量** |
-| 本地用量扫描 | ● 7 个 harness | ◐ 3 | Codex、Claude Code、Gemini CLI。只计有本地扫描器的 harness：Cursor 的用量来自 dashboard 事件，Grok Bot 根本没有用量来源，两者在任何一边都不算本地扫描 |
+| 本地用量扫描 | ● 8 个 harness | ◐ 3 | Codex、Claude Code、Gemini CLI。只计有本地扫描器的 harness：Cursor 的用量来自 dashboard 事件，Grok Bot 根本没有用量来源，两者在任何一边都不算本地扫描 |
 | 逐请求账本、多源价格、历史 | ● | ○ | 跨平台版只保留内存中的聚合 |
 | **设置** |
 | 可写 | ● | ○ | 写共享数据需要跨客户端存储契约 |

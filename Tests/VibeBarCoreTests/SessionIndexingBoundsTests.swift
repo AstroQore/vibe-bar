@@ -358,7 +358,7 @@ final class SessionIndexingBoundsTests: XCTestCase {
         }
         XCTAssertEqual(
             SessionIndexingBounds.headTruncatableProviders,
-            [.codex, .claude, .claudeCowork]
+            [.codex, .claude, .claudeCowork, .muse]
         )
     }
 

@@ -199,7 +199,7 @@ public final class SettingsStore: ObservableObject {
             // What was loaded is this process's starting position. A migration
             // that follows is a real change and writes only what it changed.
             Self.setLastMine(encoding: decoded)
-            if migrated != decoded {
+            if migrated != decoded || Self.adoptIntroducedCoreProviders(from: existing) {
                 persist()
             }
         } else if
@@ -232,6 +232,29 @@ public final class SettingsStore: ObservableObject {
         Self.setLastMine(encoding: existing == nil ? nil : settings)
         if existing == nil {
             persist()
+        }
+    }
+
+    /// Decoding appends a company this build introduced to the saved order —
+    /// and makes it visible, see `AppSettings`' decoder. That has to reach the
+    /// file once: otherwise hiding the new company would not survive a
+    /// relaunch, because the file's order would still lack it and the decoder
+    /// would introduce it again. Measuring the order against the file's own
+    /// value, rather than the decoded one, turns that into an ordinary change
+    /// the next write carries. Returns whether there is one to write.
+    private nonisolated static func adoptIntroducedCoreProviders(from existing: SettingsDocument.Object?) -> Bool {
+        let orderKey = "coreProviderOrder"
+        return writeQueue.sync {
+            guard let existing, let savedOrder = existing[orderKey], let decodedOrder = lastMine[orderKey],
+                  !SettingsDocument.equal(savedOrder, decodedOrder)
+            else { return false }
+            // The visible set travels with the order: written without it, the
+            // file would hold an order that already knows the company and a
+            // visible set that does not, and the next launch would hide it.
+            for key in [orderKey, "visibleCoreProviders"] {
+                if let saved = existing[key] { lastMine[key] = saved }
+            }
+            return true
         }
     }
 

@@ -77,6 +77,10 @@ public enum ProviderPlanDisplay {
             // still the right one and the rendered names do not change.
             // No brand prefix: the card is already titled "Cursor".
             return codexDisplayName(rawPlan)
+        case .muse:
+            // Meta names its tiers with the product already in front
+            // ("Muse Code High Usage"); `prefixed` keeps that from doubling.
+            return prefixed(codexDisplayName(rawPlan), brand: ToolType.muse.productName)
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers feed `plan` straight through. Each adapter
             // is responsible for normalizing the raw API response

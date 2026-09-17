@@ -598,7 +598,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
 
         if let rawVisible = try c.decodeIfPresent([String].self, forKey: .visibleCoreProviders) {
-            let decoded = Set(rawVisible.compactMap(ToolType.init(rawValue:)))
+            var decoded = Set(rawVisible.compactMap(ToolType.init(rawValue:)))
+            // The visible set cannot tell "hidden" from "did not exist yet".
+            // The saved order can: every save writes every company this build
+            // knows, so a company missing from it arrived after the file was
+            // written, and starts visible as it would on a fresh install.
+            // Once the order is saved with it, hiding it sticks.
+            if let rawOrder = try c.decodeIfPresent([String].self, forKey: .coreProviderOrder) {
+                let known = Set(rawOrder)
+                for tool in ToolType.coreProviderRepresentatives where !known.contains(tool.rawValue) {
+                    decoded.insert(tool)
+                }
+            }
             self.visibleCoreProviders = Self.normalizedVisibleCoreProviders(decoded)
         } else {
             self.visibleCoreProviders = Self.defaultVisibleCoreProviders

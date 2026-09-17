@@ -28,11 +28,13 @@ final class ProviderIconResourcesTests: XCTestCase {
             "kiro",
             "ollama",
             "openrouter",
+            "muse",
             // Brand marks that are not a tool's own — see `BrandMark`.
             "spacexai",
             "googleai",
             "anthropic",
             "grokbot",
+            "metaai",
             "codex-session"
         ]
 

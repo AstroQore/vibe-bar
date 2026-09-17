@@ -84,7 +84,7 @@ public enum CostUsagePricing {
             let models = dataSet.providers.antigravity.models
             return models[normalizeAntigravityModel(model, models: models)] != nil
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
-             .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
+             .cursor, .muse, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
              .kilo, .kiro, .ollama, .openRouter, .warp:
             return false

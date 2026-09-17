@@ -19,6 +19,7 @@ extension SessionProvider {
         // right one even though the mark is Grok Bot's own — see
         // `HarnessBrandIconView`.
         case .grokBot:               .grok
+        case .muse:                  .muse
         }
     }
 

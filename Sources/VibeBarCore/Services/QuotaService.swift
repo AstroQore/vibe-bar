@@ -151,6 +151,7 @@ public final class QuotaService: ObservableObject {
                 .cursor: CursorQuotaAdapter(),
                 .antigravity: AntigravityQuotaAdapter(),
                 .grok: GrokQuotaAdapter(),
+                .muse: MuseQuotaAdapter(),
                 .mimo: MimoQuotaAdapter(),
                 .iflytek: IFlyTekQuotaAdapter(),
                 .tencentHunyuan: TencentHunyuanQuotaAdapter(),

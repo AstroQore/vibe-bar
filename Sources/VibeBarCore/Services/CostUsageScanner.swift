@@ -40,6 +40,8 @@ public enum CostUsageScanner {
             return await scanGrok(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .antigravity:
             return await scanAntigravity(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
+        case .muse:
+            return await scanMuse(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose token-level cost data through
             // any documented public protocol. The cost-history pipeline
@@ -864,6 +866,219 @@ public enum CostUsageScanner {
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
+    /// Muse Code: one append-only record log per conversation at
+    /// `~/.local/share/muse/sessions/YYYY/MM/DD/<id>/session.jsonl`, plus
+    /// the reminder / verifier children the CLI runs beside a turn under
+    /// `<id>/subagent/<child>/session.jsonl`. Every model call writes one
+    /// `model_completed` run event carrying the call's usage and model — the
+    /// children's calls spend the same subscription, so both logs count.
+    ///
+    /// The log also carries a `goal_usage_attribution` event restating the
+    /// same numbers; only `model_completed` is read, or every call would
+    /// count twice. Muse reports usage the OpenAI way: `input_tokens`
+    /// includes the cached prefix and `output_tokens` includes reasoning.
+    /// Muse Code is subscription-only, so the events stay unpriced.
+    private static func scanMuse(
+        homeDirectory: String,
+        now: Date,
+        retentionDays: Int?,
+        pricing: CostPricingContext,
+        eventSink: (any CostUsageEventSink)? = nil
+    ) async -> CostSnapshot {
+        let root = URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent(".local/share/muse/sessions")
+        let files = collectMuseSessionLogs(under: root)
+        var aggregator = CostAggregator(tool: .muse, now: now)
+        var cache = CostUsageScanCacheStore.shared.checkout(
+            homeDirectory: homeDirectory, tool: .muse, retentionDays: retentionDays
+        )
+        let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+
+        for file in files {
+            if Task.isCancelled {
+                CostUsageScanCacheStore.shared.checkin(
+                    cache, homeDirectory: homeDirectory, tool: .muse,
+                    retentionDays: retentionDays, persist: false
+                )
+                return aggregator.snapshot(jsonlFilesFound: files.count)
+            }
+            let (mtime, size) = fileFingerprint(file)
+            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+                let priced: [PricedUsageEvent] = autoreleasepool {
+                    let retained = retainedEvents(cached, cutoff: cutoff)
+                    if retained.count != cached.count {
+                        cache.store(retained, for: file.path, mtime: mtime, size: size)
+                    }
+                    var priced: [PricedUsageEvent] = []
+                    priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
+                    for event in retained {
+                        if eventSink != nil {
+                            priced.append(PricedUsageEvent(event: event, costUSD: nil))
+                        }
+                        aggregator.add(at: event.date, model: event.model, input: event.input,
+                                       output: event.output, cache: event.cache, costUSD: 0)
+                    }
+                    return priced
+                }
+                await emit(eventSink, tool: .muse, file: file, mtime: mtime, size: size, events: priced)
+                continue
+            }
+
+            let outcome: ([PricedUsageEvent], Bool) = autoreleasepool {
+                let (parsed, didRead) = parseMuseSessionLog(file: file, cutoff: cutoff)
+                var priced: [PricedUsageEvent] = []
+                priced.reserveCapacity(eventSink == nil ? 0 : parsed.count)
+                for event in parsed {
+                    if eventSink != nil {
+                        priced.append(PricedUsageEvent(event: event, costUSD: nil))
+                    }
+                    aggregator.add(at: event.date, model: event.model, input: event.input,
+                                   output: event.output, cache: event.cache, costUSD: 0)
+                }
+                if didRead {
+                    cache.store(parsed, for: file.path, mtime: mtime, size: size)
+                }
+                return (priced, didRead)
+            }
+            if outcome.1 {
+                await emit(eventSink, tool: .muse, file: file, mtime: mtime, size: size, events: outcome.0)
+            }
+        }
+        cache.prune(known: Set(files.map(\.path)))
+        CostUsageScanCacheStore.shared.checkin(
+            cache, homeDirectory: homeDirectory, tool: .muse, retentionDays: retentionDays
+        )
+        return aggregator.snapshot(jsonlFilesFound: files.count)
+    }
+
+    static let museSubagentDirectoryName = "subagent"
+
+    /// Every `session.jsonl` under the Muse sessions root, children included.
+    /// Hidden directories (`.msp-view-v1`, lock markers) are skipped and
+    /// symlinks are never followed.
+    static func collectMuseSessionLogs(under root: URL) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path),
+              let enumerator = FileManager.default.enumerator(
+                  at: root,
+                  includingPropertiesForKeys: [
+                      .isRegularFileKey, .isSymbolicLinkKey,
+                      .contentModificationDateKey, .fileSizeKey
+                  ],
+                  options: [.skipsHiddenFiles]
+              )
+        else { return [] }
+        var out: [URL] = []
+        for case let url as URL in enumerator where url.lastPathComponent == "session.jsonl" {
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values?.isSymbolicLink != true, values?.isRegularFile == true else { continue }
+            out.append(url)
+        }
+        return out.sorted { $0.path < $1.path }
+    }
+
+    /// The conversation a log belongs to: its own directory, or — for a
+    /// child under `<parent>/subagent/<child>/` — the parent's.
+    static func museConversationDirectory(for log: URL) -> URL {
+        let directory = log.deletingLastPathComponent()
+        let container = directory.deletingLastPathComponent()
+        guard container.lastPathComponent == museSubagentDirectoryName else { return directory }
+        return container.deletingLastPathComponent()
+    }
+
+    static func parseMuseSessionLog(
+        file: URL,
+        cutoff: Date?
+    ) -> ([CostUsageScanCache.ParsedEvent], Bool) {
+        let conversation = museConversationDirectory(for: file)
+        let sessionId = conversation.lastPathComponent
+        // A child's log carries no workspace of its own; the parent's does.
+        var projectPath: String? = conversation.path == file.deletingLastPathComponent().path
+            ? nil
+            : museWorkspaceRoot(in: conversation.appendingPathComponent("session.jsonl"))
+        var parsed: [CostUsageScanCache.ParsedEvent] = []
+        let didRead = forEachJSONLLine(in: file) { lineData in
+            autoreleasepool {
+                // Unquoted: inside a `retained_frame` the record travels as an
+                // escaped string, where the name sits between `\"` pairs.
+                let isUsage = lineData.contains(asciiSequence: "model_completed")
+                let isMetadata = projectPath == nil
+                    && lineData.contains(asciiSequence: "runtime.session.metadata")
+                guard isUsage || isMetadata,
+                      let raw = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any]
+                else { return }
+                for record in museRecords(in: raw) {
+                    if projectPath == nil, let root = museWorkspaceRoot(record) {
+                        projectPath = root
+                    }
+                    guard let event = museUsageEvent(
+                        record, sessionId: sessionId, projectPath: projectPath
+                    ), isRetained(event.date, cutoff: cutoff) else { continue }
+                    parsed.append(event)
+                }
+            }
+        }
+        return (parsed, didRead)
+    }
+
+    /// The records one log line holds: itself, or a `retained_frame`'s
+    /// children, which travel as `record_json` strings.
+    private static func museRecords(in line: [String: Any]) -> [[String: Any]] {
+        guard let children = line["children"] as? [[String: Any]] else { return [line] }
+        return children.compactMap { child in
+            guard let json = child["record_json"] as? String else { return nil }
+            return (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any]
+        }
+    }
+
+    private static func museWorkspaceRoot(_ record: [String: Any]) -> String? {
+        guard record["payload_type"] as? String == "runtime.session.metadata",
+              let payload = record["payload"] as? [String: Any],
+              let inner = payload["record"] as? [String: Any]
+        else { return nil }
+        return UsageProjectIdentity.normalizedPath(inner["workspace_root"] as? String)
+    }
+
+    /// The parent's workspace, read from the head of its log only.
+    private static func museWorkspaceRoot(in log: URL) -> String? {
+        for line in JSONLHeadTail.headLines(url: log, count: 8) {
+            guard let raw = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] else { continue }
+            for record in museRecords(in: raw) {
+                if let root = museWorkspaceRoot(record) { return root }
+            }
+        }
+        return nil
+    }
+
+    private static func museUsageEvent(
+        _ record: [String: Any],
+        sessionId: String,
+        projectPath: String?
+    ) -> CostUsageScanCache.ParsedEvent? {
+        guard record["payload_type"] as? String == "runtime.session",
+              let payload = record["payload"] as? [String: Any],
+              payload["kind"] as? String == "run",
+              let event = payload["event"] as? [String: Any],
+              event["kind"] as? String == "model_completed",
+              let usage = event["usage"] as? [String: Any],
+              let recordedAt = record["recorded_at"] as? NSNumber
+        else { return nil }
+        let inputTotal = anyInt(usage["input_tokens"])
+        let cached = max(anyInt(usage["cached_tokens"]), anyInt(usage["cache_read_tokens"]))
+        let output = anyInt(usage["output_tokens"])
+        guard inputTotal > 0 || output > 0 else { return nil }
+        return CostUsageScanCache.ParsedEvent(
+            date: Date(timeIntervalSince1970: recordedAt.doubleValue / 1_000_000),
+            model: (event["model"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "muse-unknown",
+            input: max(0, inputTotal - cached),
+            output: output,
+            cache: cached,
+            sessionId: sessionId,
+            messageId: record["id"] as? String,
+            harness: .museCode,
+            projectPath: projectPath
+        )
+    }
+
     private struct GrokSnapshot {
         let date: Date
         let model: String
@@ -1643,7 +1858,8 @@ public enum CostUsageScanner {
                 cacheCreationInputTokens: cacheCreation,
                 outputTokens: event.output
             )
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        // Muse Code publishes no per-token price; its events stay unpriced.
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return nil
         }
     }

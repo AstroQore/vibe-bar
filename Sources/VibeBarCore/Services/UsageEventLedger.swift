@@ -1396,8 +1396,9 @@ public actor UsageEventLedger: CostUsageEventSink {
                 cacheCreationInputTokens: cacheCreation,
                 outputTokens: output
             )
+        // Muse Code is subscription-only: no per-token price to reprice with.
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
-             .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
+             .cursor, .muse, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
              .kilo, .kiro, .ollama, .openRouter, .warp:
             nil

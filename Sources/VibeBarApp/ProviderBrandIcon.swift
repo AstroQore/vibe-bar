@@ -255,7 +255,7 @@ enum ProviderBrandIcon {
         switch tool {
         case .codex, .chatgptChat:  return "sparkle.magnifyingglass"
         case .claude: return "sparkles"
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return tool.miscFallbackSymbol
         }
     }
@@ -585,6 +585,7 @@ enum BrandMark: String, CaseIterable, Hashable {
     case spaceXAI
     case googleAI
     case anthropic
+    case metaAI
     case grokBot
     /// The Codex **harness** — CLI, exec, the desktop app's Codex tab. On the
     /// quota axis the same adapter's SubProviders are ChatGPT Agentic and
@@ -603,6 +604,7 @@ enum BrandMark: String, CaseIterable, Hashable {
         case .claude: return .anthropic
         case .gemini: return .googleAI
         case .grok:   return .spaceXAI
+        case .muse:   return .metaAI
         default:      return nil
         }
     }
@@ -620,6 +622,7 @@ enum BrandMark: String, CaseIterable, Hashable {
         case .spaceXAI:  return "ProviderIcon-spacexai"
         case .googleAI:  return "ProviderIcon-googleai"
         case .anthropic: return "ProviderIcon-anthropic"
+        case .metaAI:    return "ProviderIcon-metaai"
         case .grokBot:   return "ProviderIcon-grokbot"
         case .codex:     return "ProviderIcon-codex-session"
         }
@@ -640,6 +643,7 @@ enum BrandMark: String, CaseIterable, Hashable {
         case .spaceXAI:  return "x.circle"
         case .googleAI:  return "g.circle"
         case .anthropic: return "a.circle"
+        case .metaAI:    return "m.circle"
         case .grokBot:   return "circle.dashed"
         case .codex:     return "terminal"
         }
@@ -655,6 +659,7 @@ enum BrandMark: String, CaseIterable, Hashable {
         case .spaceXAI, .grokBot: return .grok
         case .googleAI:           return .gemini
         case .anthropic:          return .claude
+        case .metaAI:             return .muse
         case .codex:              return .codex
         }
     }
@@ -853,6 +858,7 @@ extension ToolType {
         case .minimax:     return "ProviderIcon-minimax"
         case .kimi:        return "ProviderIcon-kimi"
         case .cursor:      return "ProviderIcon-cursor"
+        case .muse:        return "ProviderIcon-muse"
         case .mimo:        return "ProviderIcon-mimo"
         case .iflytek:     return "ProviderIcon-iflytek"
         case .tencentHunyuan:   return "ProviderIcon-tencentHunyuan"
@@ -895,7 +901,7 @@ extension ToolType {
         // the 1.25 brands (gemini/grok) overshot the canvas and got
         // clipped to crisp edges. Same scale → same edge treatment →
         // no halo on either pair.
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .copilot, .cursor:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .copilot, .cursor, .muse:
             return 1.25
         case .alibaba, .alibabaTokenPlan, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 1.36
@@ -922,6 +928,7 @@ extension ToolType {
         case .minimax:     return "function"
         case .kimi:        return "moon.stars"
         case .cursor:      return "cursorarrow.rays"
+        case .muse:        return "infinity"
         case .mimo:        return "m.square.fill"
         case .iflytek:     return "waveform"
         case .tencentHunyuan:   return "globe.asia.australia"

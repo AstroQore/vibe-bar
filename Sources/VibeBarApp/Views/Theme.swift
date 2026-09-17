@@ -343,6 +343,9 @@ enum Theme {
         // harnesses in one wedge, two of them from different companies.
         // Separated from Grok's mid slate by lightness, not by hue.
         case .cursor:      return adaptiveInkAccent
+        // Meta AI's ring runs blue to magenta; blue is Gemini's and violet
+        // AntiGravity's, so Muse Code takes the magenta end.
+        case .muse:        return Color(red: 0.85, green: 0.30, blue: 0.65)  // meta ai magenta
         case .mimo:        return Color(red: 0.97, green: 0.50, blue: 0.20)  // xiaomi orange
         case .iflytek:     return Color(red: 0.10, green: 0.37, blue: 0.75)  // iflytek blue
         case .tencentHunyuan:   return Color(red: 0.00, green: 0.49, blue: 0.91)  // tencent blue

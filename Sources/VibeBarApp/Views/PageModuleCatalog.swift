@@ -425,7 +425,7 @@ enum PageModuleCatalog {
             )
             // Neither card depends on cost data, so both still close the page.
             result.append(resetHistory)
-            result.append(serviceStatus)
+            if tool.supportsStatusPage { result.append(serviceStatus) }
             return result
         }
         result.append(
@@ -487,7 +487,9 @@ enum PageModuleCatalog {
                 fallbackHeight: FallbackHeight.analytics
             )
         )
-        result.append(serviceStatus)
+        // Muse Code has no status feed; a card that could only ever say
+        // "unknown" is not drawn.
+        if tool.supportsStatusPage { result.append(serviceStatus) }
         return result
     }
 
@@ -617,7 +619,7 @@ enum PageModuleCatalog {
     /// is not listed here.
     static func overviewCostProviders(settings: AppSettings) -> [ToolType] {
         settings.visibleCoreProviderList.filter { tool in
-            tool == .codex || tool == .claude || tool == .grok
+            tool == .codex || tool == .claude || tool == .grok || tool == .muse
         }
     }
 
