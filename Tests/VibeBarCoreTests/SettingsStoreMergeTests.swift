@@ -120,6 +120,20 @@ final class SettingsStoreMergeTests: XCTestCase {
         XCTAssertFalse(reopened.settings.isCoreProviderVisible(.muse))
     }
 
+    /// A company id this build cannot decode came from a newer client. The
+    /// introduction must not write the decoded lists back over it — that would
+    /// delete the other client's setting merely by launching.
+    func testIntroducingACompanyNeverDropsAnotherClientsUnknownCompany() throws {
+        try writeFile(#"{"visibleCoreProviders":["codex","futureCo"],"coreProviderOrder":["futureCo","codex","claude","gemini","grok"]}"#)
+
+        let store = try makeStore()
+        store.flush()
+
+        let saved = try fileObject()
+        XCTAssertEqual(saved["coreProviderOrder"] as? [String], ["futureCo", "codex", "claude", "gemini", "grok"])
+        XCTAssertEqual(saved["visibleCoreProviders"] as? [String], ["codex", "futureCo"])
+    }
+
     func testDefaultsAreNotSavedOverAFileThisBuildCannotDecode() throws {
         let original = #"{"displayMode":"aModeFromAFutureBuild","refreshIntervalSeconds":120}"#
         try writeFile(original)

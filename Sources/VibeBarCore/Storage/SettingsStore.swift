@@ -244,14 +244,25 @@ public final class SettingsStore: ObservableObject {
     /// the next write carries. Returns whether there is one to write.
     private nonisolated static func adoptIntroducedCoreProviders(from existing: SettingsDocument.Object?) -> Bool {
         let orderKey = "coreProviderOrder"
+        let visibleKey = "visibleCoreProviders"
         return writeQueue.sync {
-            guard let existing, let savedOrder = existing[orderKey], let decodedOrder = lastMine[orderKey],
-                  !SettingsDocument.equal(savedOrder, decodedOrder)
+            guard let existing,
+                  let savedOrder = existing[orderKey] as? [String],
+                  let decodedOrder = lastMine[orderKey] as? [String]
+            else { return false }
+            // Only a company this build added is adopted. A value this build
+            // cannot decode belongs to a newer client, and writing the decoded
+            // lists back would delete it just by launching — so a file holding
+            // one is left alone.
+            let known = Set(ToolType.allCases.map(\.rawValue))
+            let savedVisible = existing[visibleKey] as? [String] ?? []
+            guard savedOrder.allSatisfy(known.contains), savedVisible.allSatisfy(known.contains),
+                  decodedOrder.contains(where: { !savedOrder.contains($0) })
             else { return false }
             // The visible set travels with the order: written without it, the
             // file would hold an order that already knows the company and a
             // visible set that does not, and the next launch would hide it.
-            for key in [orderKey, "visibleCoreProviders"] {
+            for key in [orderKey, visibleKey] {
                 if let saved = existing[key] { lastMine[key] = saved }
             }
             return true

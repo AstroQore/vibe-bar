@@ -25,11 +25,14 @@ public struct MuseCredential: Sendable, Equatable {
 ///   `ai.meta.dev.credentials`, account `meta`, whose payload is JSON:
 ///   `{secret_schema_version, access_token, api_key}`.
 ///
-/// The keychain item belongs to `muse`, so macOS asks once before another
-/// app may read it. Background refreshes never raise that prompt: they read
-/// with UI disabled and report `KeychainStore.KeychainError.interactionNotAllowed`, and
-/// the Meta AI settings page offers the one user-initiated read that does
-/// (`authorizeKeychainAccess`). The minted `api_key` is ignored on purpose —
+/// The keychain item belongs to `muse`, so macOS may ask before another app
+/// reads it. Background refreshes never raise that prompt: they read with the
+/// no-UI *fail* policy and report
+/// `KeychainStore.KeychainError.interactionNotAllowed`, and the Meta AI
+/// settings page offers the one user-initiated read that does
+/// (`authorizeKeychainAccess`). The *skip* policy the shared store uses would
+/// be wrong here: it drops a prompt-gated item from the results, so a login
+/// waiting for permission would read as no login at all. The minted `api_key` is ignored on purpose —
 /// Vibe Bar only needs the OAuth token the quota endpoint accepts.
 public enum MuseCredentialReader {
     public static let keychainService = "ai.meta.dev.credentials"
@@ -97,9 +100,7 @@ public enum MuseCredentialReader {
     ///   access, `QuotaError.needsLogin` for a login with no token left.
     public static func load(
         homeDirectory: String = RealHomeDirectory.path,
-        readSecret: () throws -> String = {
-            try KeychainStore.readString(service: keychainService, account: keychainAccount)
-        }
+        readSecret: () throws -> String = { try readSecretWithoutPrompt() }
     ) throws -> MuseCredential {
         guard let authFile = readAuthFile(homeDirectory: homeDirectory) else {
             throw QuotaError.noCredential
@@ -119,8 +120,7 @@ public enum MuseCredentialReader {
         return MuseCredential(accessToken: token, email: authFile.email, fullName: authFile.fullName)
     }
 
-    /// Whether a background read would succeed right now, without reading
-    /// the secret or prompting.
+    /// Whether a background read would succeed right now, without prompting.
     public enum AccessState: Sendable, Equatable {
         case noLogin
         case authorized
@@ -134,16 +134,50 @@ public enum MuseCredentialReader {
         guard authFile.usesKeychain else {
             return authFile.inlineAccessToken == nil ? .missingSecret : .authorized
         }
-        guard !DemoMode.isEnabled else { return .missingSecret }
-        switch KeychainAccessPreflight.checkGenericPassword(
-            service: keychainService,
-            account: keychainAccount,
-            skipItemsRequiringUI: true
-        ) {
-        case .allowed: return .authorized
-        case .interactionRequired: return .needsAuthorization
-        case .notFound: return .missingSecret
-        case .failure: return .keychainUnavailable
+        // An attributes-only preflight is not enough: reading a legacy
+        // keychain item's attributes never needs its ACL, only its data does.
+        // So the probe reads the data — silently — and drops it.
+        do {
+            _ = try readSecretWithoutPrompt()
+            return .authorized
+        } catch KeychainStore.KeychainError.interactionNotAllowed {
+            return .needsAuthorization
+        } catch KeychainStore.KeychainError.itemNotFound {
+            return .missingSecret
+        } catch {
+            return .keychainUnavailable
+        }
+    }
+
+    /// The secret, read with UI disabled under the *fail* policy: an item
+    /// macOS would have to ask about answers `interactionNotAllowed` rather
+    /// than vanishing from the results.
+    public static func readSecretWithoutPrompt() throws -> String {
+        guard !DemoMode.isEnabled, !KeychainAccessGate.isDisabled else {
+            throw KeychainStore.KeychainError.itemNotFound
+        }
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnData as String: true
+        ]
+        KeychainNoUIQuery.apply(to: &query, uiPolicy: .fail)
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data, let raw = String(data: data, encoding: .utf8) else {
+                throw KeychainStore.KeychainError.itemNotFound
+            }
+            return raw
+        case errSecItemNotFound:
+            throw KeychainStore.KeychainError.itemNotFound
+        case errSecInteractionNotAllowed, errSecAuthFailed:
+            throw KeychainStore.KeychainError.interactionNotAllowed
+        default:
+            throw KeychainStore.KeychainError.unhandledStatus(status)
         }
     }
 
