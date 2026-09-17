@@ -43,6 +43,9 @@ public struct EInkScreenGroup: Codable, Equatable, Identifiable, Sendable {
     public var secondsPerFrame: Int
     public var dataRefreshMinutes: Int
     public var batteryRefreshMinutes: Int
+    public var behavior: EInkGroupBehavior? = nil
+    public var playbackMode: EInkPlaybackMode? = nil
+    public var singleSlideID: String? = nil
 
     public init(id: String = UUID().uuidString, name: String = "", enabled: Bool = false,
                 screens: [EInkScreenPlacement] = [], frames: [EInkScreenFrame] = [],
@@ -89,7 +92,27 @@ public extension EInkSyncSettings {
         groups.map { EInkDeviceConfig(deviceID: $0.id, slides: $0.frames.flatMap { $0.regions.map(\.slide) }) }
     }
 
+    func owningGroup(for deviceID: String) -> EInkScreenGroup? {
+        groups.first { $0.screens.contains { $0.deviceID == deviceID } }
+    }
+
     func group(for deviceID: String) -> EInkScreenGroup? {
         groups.first { $0.enabled && $0.screens.contains { $0.deviceID == deviceID } }
+    }
+}
+
+public struct EInkGroupBehavior: Codable, Equatable, Sendable {
+    public var alerts: EInkAlertConfig
+    public var tapLink: EInkTapLink
+    public var quietHours: EInkQuietHours
+
+    public init(device: EInkDeviceConfig) {
+        alerts = device.alerts; tapLink = device.tapLink; quietHours = device.quietHours
+    }
+}
+
+public extension EInkScreenGroup {
+    func resolvedBehavior(devices: [EInkDeviceConfig]) -> EInkGroupBehavior {
+        behavior ?? EInkGroupBehavior(device: devices.first { $0.id == screens.first?.id } ?? EInkDeviceConfig(deviceID: ""))
     }
 }

@@ -33,6 +33,7 @@ struct EInkGroupPageStudio: View {
                 Button(L10n.Common.save) {
                     pending.flush()
                     var saved = slide
+                    saved.options.sourcePreset = saved.kind.preset ?? saved.options.sourcePreset
                     saved.kind = .custom(layoutID: "group-region-" + region.id)
                     onSave(saved, layout.normalized())
                     dismiss()
