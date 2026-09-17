@@ -53,8 +53,10 @@ public enum MuseResponseParser {
             throw QuotaError.parseFailure("Muse Code usage response has no subs_usage object")
         }
         let usage = rawUsage as? [String: Any]
+        let window = try idleOrWindow(usage?["window"], name: "window")
+        let weekly = try idleOrWindow(usage?["weekly"], name: "weekly")
         var buckets: [QuotaBucket] = []
-        if let window = usage?["window"] as? [String: Any], let used = number(window["used_percent"]) {
+        if let window, let used = number(window["used_percent"]) {
             let minutes = number(window["window_duration_mins"]).map { Int($0) }
             let seconds = minutes.map { $0 * 60 }
             let id: String
@@ -90,7 +92,6 @@ public enum MuseResponseParser {
                 rawWindowSeconds: defaultWindowMinutes * 60
             ))
         }
-        let weekly = usage?["weekly"] as? [String: Any]
         buckets.append(QuotaBucket(
             id: "weekly",
             title: "Weekly",
@@ -105,6 +106,17 @@ public enum MuseResponseParser {
             email: string(root["user_email"]),
             isSubscriptionActive: active
         )
+    }
+
+    /// An absent or `null` window is idle. One that is present must be an
+    /// object with a numeric `used_percent`; anything else is a response this
+    /// parser does not understand, and must not read as a fully free window.
+    private static func idleOrWindow(_ value: Any?, name: String) throws -> [String: Any]? {
+        guard let value, !(value is NSNull) else { return nil }
+        guard let window = value as? [String: Any], number(window["used_percent"]) != nil else {
+            throw QuotaError.parseFailure("Muse Code usage response has a malformed \(name) window")
+        }
+        return window
     }
 
     private static func number(_ value: Any?) -> Double? {

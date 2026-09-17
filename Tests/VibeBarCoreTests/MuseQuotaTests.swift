@@ -90,7 +90,8 @@ final class MuseResponseParserTests: XCTestCase {
     /// Only an explicit `null` is the idle account. A body without the field
     /// (a 2xx error such as `{}`) or with another shape keeps the last quota.
     func testAMissingOrMalformedUsageFieldIsAParseFailure() {
-        for json in [#"{}"#, #"{"is_subs_active":true}"#, #"{"subs_usage":"busy"}"#] {
+        for json in [#"{}"#, #"{"is_subs_active":true}"#, #"{"subs_usage":"busy"}"#,
+                     #"{"subs_usage":{"weekly":"unavailable"}}"#, #"{"subs_usage":{"window":{}}}"#] {
             XCTAssertThrowsError(try MuseResponseParser.parse(data: Data(json.utf8)), json)
         }
     }

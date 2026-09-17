@@ -167,6 +167,27 @@ final class MuseSkillActivationTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent(".settings.json.lock").path))
     }
 
+    /// A linked `~/.config/muse` leaving the home is refused even before a
+    /// settings file exists there.
+    func testALinkedMuseDirectoryLeavingTheHomeIsNotWritten() throws {
+        let home = try SkillTestHome()
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VibeBarMuseDir-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outside) }
+        try home.makeDirectory(home.url.appendingPathComponent(".config", isDirectory: true))
+        try FileManager.default.createSymbolicLink(
+            at: home.url.appendingPathComponent(".config/muse"), withDestinationURL: outside
+        )
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+
+        XCTAssertThrowsError(try manager.validateCanDisable(.muse))
+        XCTAssertThrowsError(
+            try manager.setNativeEnabled(false, directoryName: "alpha", skillName: "Alpha", app: .muse)
+        )
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: outside.path), [])
+    }
+
     func testAnUnrecognisedActivationValueReadsAsUnknown() throws {
         let home = try SkillTestHome()
         try home.write(#"{"schema_version":1,"skills":{"activation":{"user":{"$HOME/.agents/skills/alpha/SKILL.md":"sometimes"}}}}"#,

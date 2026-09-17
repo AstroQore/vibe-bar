@@ -388,8 +388,12 @@ struct SkillHarnessConfigManager: Sendable {
     /// the rewrite land beside the resolved target.
     private func museWriteTarget() throws -> URL {
         let target = resolvedConfigTarget(museSettingsURL)
-        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true).standardizedFileURL
-        let parent = target.deletingLastPathComponent().standardizedFileURL
+        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .resolvingSymlinksInPath().standardizedFileURL
+        // The parent is resolved as well: a linked `~/.config/muse` would
+        // otherwise pass a lexical check while the lock and a first write
+        // follow it out of the home.
+        let parent = target.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
         guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
             throw SkillError.writeOutsideAllowedRoots(target.path)
         }
@@ -397,9 +401,14 @@ struct SkillHarnessConfigManager: Sendable {
     }
 
     private func validateMuseSettingsWritable() throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: museSettingsURL.deletingLastPathComponent().path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else { return }
+        _ = try museWriteTarget()
         let target = resolvedConfigTarget(museSettingsURL)
         guard FileManager.default.fileExists(atPath: target.path) else { return }
-        _ = try museWriteTarget()
         guard let data = try? Data(contentsOf: target),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               Self.museSchemaIsKnown(root),
