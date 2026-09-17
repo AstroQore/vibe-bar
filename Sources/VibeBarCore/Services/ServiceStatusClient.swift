@@ -77,6 +77,10 @@ public actor ServiceStatusClient {
 
     /// The lazy showcase endpoint's own batch limit, from the loader script.
     private static let statuspageShowcaseBatchLimit = 60
+    /// Wall clock for the whole history read. `timeoutInterval` only measures
+    /// silence, so a slow trickle would otherwise hold the current status and
+    /// the incident feed — both already fetched — behind an optional extra.
+    private static let statuspageShowcaseDeadline: Duration = .seconds(12)
 
     private func fetchXAIStatus(dayCount: Int, now: Date) async throws -> ServiceStatusSnapshot {
         let overviewHTML = try await fetchHTML(url: ToolType.grok.statusPageURL)
@@ -1222,8 +1226,25 @@ public actor ServiceStatusClient {
         tool: ToolType,
         codes: [String]
     ) async -> [String: StatuspageUptimeEntry] {
+        await withTaskGroup(of: [String: StatuspageUptimeEntry].self) { group in
+            group.addTask { await self.showcaseBatches(tool: tool, codes: codes) }
+            group.addTask {
+                try? await Task.sleep(for: Self.statuspageShowcaseDeadline)
+                return [:]
+            }
+            let first = await group.next() ?? [:]
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private func showcaseBatches(
+        tool: ToolType,
+        codes: [String]
+    ) async -> [String: StatuspageUptimeEntry] {
         var merged: [String: StatuspageUptimeEntry] = [:]
         for batch in stride(from: 0, to: codes.count, by: Self.statuspageShowcaseBatchLimit) {
+            if Task.isCancelled { return merged }
             let slice = codes[batch..<min(batch + Self.statuspageShowcaseBatchLimit, codes.count)]
             // Every code passed `parseStatuspageLazyCodes`, so the joined
             // value is already URL-safe.
