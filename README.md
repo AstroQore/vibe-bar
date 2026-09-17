@@ -51,7 +51,7 @@ Relay.
 
 Under the menu bar sits a Workbench: a per-request usage ledger across every
 harness, a searchable index of every local agent session with one-click
-resume, and a skills manager that reconciles one library across six
+resume, and a skills manager that reconciles one library across seven
 agent CLIs. All of it is read from files already on your Mac, and an MCP
 server lets your agents ask the same questions.
 
@@ -184,7 +184,7 @@ harness's session files, and only at your explicit request — see
 ### Skills
 
 One shared library at `~/.agents/skills/`, reconciled across Codex, Claude
-Code, Gemini CLI, AntiGravity, Grok Build and Cursor. Each row separates the
+Code, Gemini CLI, AntiGravity, Grok Build, Cursor and Muse Code. Each row separates the
 harness's effective state from Vibe Bar's symlink/copy: native-disabled skills
 show a pause badge, while a skill still visible through another compatibility
 root shows a link badge instead of a false “off”. Right-click a harness dot to
@@ -359,7 +359,7 @@ the room costs more than the pixels it saves.
 | Claude Code / Cowork | 5 Hours, Weekly, per-model weekly, Anthropic status | `~/.claude/projects/**/*.jsonl`, Claude.app's Cowork transcripts |
 | Gemini + AntiGravity | Gemini Web quotas, local AntiGravity language-server quotas | Local Gemini / AntiGravity usage records |
 | Grok + Cursor | Grok quota, Cursor Models and Other Models, Grok Bot weekly, SpaceXAI + Cursor status | Local Grok records, Cursor account usage events; Grok Bot is quota-only |
-| Muse Code | Meta AI's 5 Hours and Weekly windows, read with the `muse` CLI's login once macOS allows it | `~/.local/share/muse/sessions/**/session.jsonl` — tokens only, Muse Code has no per-token price |
+| Muse Code | Meta AI's 5 Hours and Weekly windows, read with the `muse` CLI's login once macOS allows it; Meta Model API status | `~/.local/share/muse/sessions/**/session.jsonl` — tokens, costed at Meta's API rates (a subscription has no per-token bill) |
 | Misc providers | Each provider's own coding- or token-plan endpoint | Quota-only unless an adapter exposes local usage |
 
 Provider contracts change without notice. Vibe Bar keeps refresh errors
@@ -531,8 +531,8 @@ audit metadata only. Derived state stays under:
   is whole-session deletion from the Workbench's Sessions page, performed
   only at your explicit request and never editing a session file's contents.
 - The Skills manager writes to `~/.agents/skills/`, six managed harness skill
-  roots, and the narrow native skill fields in Codex/Claude/Gemini/Grok user
-  config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
+  roots, and the narrow native skill fields in Codex/Claude/Gemini/Grok/Muse
+  Code user config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
 - E-ink displays are the only feature that sends your quota or usage figures

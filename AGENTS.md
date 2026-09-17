@@ -822,8 +822,11 @@ capture against § 8 before committing it — a screenshot is source content.
   directories, and only the native per-skill user-config fields below. The
   managed harnesses are Codex (`~/.codex/skills`), Claude Code
   (`~/.claude/skills`), Gemini CLI (`~/.gemini/skills`), AntiGravity
-  (`~/.gemini/config/skills`), Grok Build (`~/.grok/skills`), and Cursor
-  (`~/.cursor/skills`). Hermes and OpenCode roots remain in the allowlist only
+  (`~/.gemini/config/skills`), Grok Build (`~/.grok/skills`), Cursor
+  (`~/.cursor/skills`), and Muse Code, which has no projection directory:
+  Muse keys each skill's switch by the path it discovered it at, so a copy in
+  its own `~/.config/muse/skills` would be a second skill escaping that
+  switch, and that folder is excluded from the write roots. Hermes and OpenCode roots remain in the allowlist only
   so old `skills.json` files can be decoded and safely cleaned up. ChatGPT
   Work, Claude Cowork, and Grok Bot do not expose an independent, stable local
   skill directory this feature can safely write, so no fake toggles are shown.
@@ -839,13 +842,16 @@ capture against § 8 before committing it — a screenshot is source content.
   provenance and never writes it, and pre-uninstall snapshots stay under
   `~/.vibebar/skill_backups/`.
 
-  Projection is not activation. Codex, Gemini CLI, Grok Build, and Cursor all
-  discover `~/.agents/skills` directly; AntiGravity also discovers the Gemini
+  Projection is not activation. Codex, Gemini CLI, Grok Build, Cursor, and
+  Muse Code all discover `~/.agents/skills` directly; AntiGravity also discovers the Gemini
   CLI root. The visible page therefore derives separate projection, native,
   and effective states. It re-reads projections and these native user settings
   while open: Codex `~/.codex/config.toml` `[[skills.config]]`, Claude
   `~/.claude/settings.json.skillOverrides`, Gemini
-  `~/.gemini/settings.json.skills`, and Grok `~/.grok/config.toml [skills]`.
+  `~/.gemini/settings.json.skills`, Grok `~/.grok/config.toml [skills]`, and
+  Muse Code `~/.config/muse/settings.json` `skills.activation.user` (keyed
+  `$HOME/.agents/skills/<dir>/SKILL.md`, written under Muse's own
+  `.settings.json.lock`, refused when `schema_version` is not 1).
   Native config patches must be UTF-8/JSON/TOML-safe, preserve unknown fields,
   back up the original under `~/.vibebar/skill_backups/harness-config/`, and
   fail closed on parse errors. Cursor and standalone AntiGravity expose no
@@ -1088,7 +1094,7 @@ Sessions page; "Delete" is § 5's read-only rule.
 | Grok Build    | ✅ `current_model_id`              | ✅ local session state    | ✅ `GrokSessionAdapter`      | ✅ |
 | Cursor        | ⚠️ when a turn recorded one        | ☁️ dashboard events only  | ✅ `CursorSessionAdapter`    | ❌ store stays open |
 | Grok Bot      | ❌ never recorded locally          | ❌ cloud-only             | ✅ `GrokBotSessionAdapter`, read-only | ❌ the app's own cloud cache |
-| Muse Code     | ✅ `model_completed.model`         | ✅ local logs, unpriced   | ✅ `MuseSessionAdapter`, read-only | ❌ the CLI indexes and locks it |
+| Muse Code     | ✅ `model_completed.model`         | ✅ local logs, API rates  | ✅ `MuseSessionAdapter`, read-only | ❌ the CLI indexes and locks it |
 
 Where a ⚠️ appears the log genuinely does not carry the value — an aborted
 Cursor conversation records no `modelName` at all, and old Gemini CLI
@@ -1131,8 +1137,17 @@ user-initiated read that does (`MuseCredentialReader.authorizeKeychainAccess`).
 Nothing is written back. Token usage is each `model_completed` run event —
 the `goal_usage_attribution` event restates the same numbers and is skipped —
 with `input_tokens` including the cached prefix and `output_tokens`
-including reasoning, as OpenAI reports them. Muse Code is subscription-only,
-so its ledger rows stay unpriced. Meta's hosts can resolve to unreachable
+including reasoning, as OpenAI reports them. The subscription has no
+per-token bill, so its cost is API-equivalent: rows are priced at the Meta
+Model API's rates for the logged model (the `muse` pricing family, fed by
+LiteLLM's `meta/muse-*` rows and models.dev's `meta` provider; the
+`-contributor` variants are separate, cheaper rows and are never folded into
+their base model). The status row reads `https://api.meta.ai/v1/status`,
+Meta's unauthenticated Model API feed — it has no incident durations, so the
+card shows current state and incidents with no uptime strip. For Skills,
+Muse Code reads `~/.agents/skills` itself and is switched through
+`~/.config/muse/settings.json`; its own `~/.config/muse/skills` belongs to
+`muse skills install` and is never a write root. Meta's hosts can resolve to unreachable
 addresses on some networks; the adapter uses `URLSession`'s default
 configuration, which follows the macOS system proxy and hands it the host
 name, and there is no per-provider proxy setting.

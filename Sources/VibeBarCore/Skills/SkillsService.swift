@@ -67,6 +67,7 @@ public actor SkillsService {
             .claude: harnessConfig.claudeStates(for: snapshots),
             .gemini: harnessConfig.geminiStates(for: snapshots),
             .grok: harnessConfig.grokStates(for: snapshots),
+            .muse: harnessConfig.museStates(for: snapshots),
         ]
         var result: [Skill] = []
         var liveCopyKeys: Set<String> = []
@@ -310,7 +311,7 @@ public actor SkillsService {
         guard let skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
         let backupURL = try backups.createBackup(of: skill.directory, skill: skill)
         var removedByApp: [SkillAppTarget: Bool] = [:]
-        for app in SkillAppTarget.allCases {
+        for app in SkillAppTarget.allCases where app.supportsProjection {
             removedByApp[app] = try engine.unmaterialize(
                 skillDirectoryName: skill.directory,
                 from: app,
@@ -368,6 +369,7 @@ public actor SkillsService {
         method: SkillSyncMethod = .auto
     ) async throws -> Skill {
         try SkillPathValidator.validate(directoryName: directoryName)
+        guard app.supportsProjection else { throw SkillError.projectionUnsupported(app) }
         let source = SkillAppCatalog.skillsDirectory(for: app, homeDirectory: homeDirectory)
             .appendingPathComponent(directoryName, isDirectory: true)
         guard SkillFileSystem.kind(of: source) == .directory else {
@@ -379,7 +381,7 @@ public actor SkillsService {
         try copyIntoSSOT(from: source, directoryName: directoryName)
 
         var skill = try makeLocalSkill(directoryName: directoryName)
-        for target in apps {
+        for target in apps where target.supportsProjection {
             skill.apps[target] = try engine.materialize(
                 skillDirectoryName: directoryName,
                 into: target,

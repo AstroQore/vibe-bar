@@ -1344,19 +1344,17 @@ private struct OverviewStatusSummaryCard: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
-                let columnCount = min(2, max(1, tools.count))
-                let rowCount = Int(ceil(Double(tools.count) / Double(columnCount)))
-                let tileHeight = statusTileHeight(rowCount: rowCount)
+                let plan = statusGridPlan(toolCount: tools.count)
                 LazyVGrid(
                     columns: Array(
                         repeating: GridItem(.flexible(), spacing: density.cardSpacing, alignment: .top),
-                        count: columnCount
+                        count: plan.columns
                     ),
                     alignment: .leading,
                     spacing: density.cardSpacing
                 ) {
                     ForEach(tools, id: \.self) { tool in
-                        providerStatusTile(tool, height: tileHeight)
+                        providerStatusTile(tool, plan: plan)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -1384,6 +1382,45 @@ private struct OverviewStatusSummaryCard: View {
         )
     }
 
+    /// How the tiles share the pinned card. Each tile keeps two lines — the
+    /// state row and the provider's own words — while that fits; past four
+    /// companies the rows get too short for two lines, so a tile collapses to
+    /// its state row and keeps the words in its tooltip, and past six a third
+    /// column (with no state word, the icon already says it) keeps the rows
+    /// tall enough for that one line. The card never grows: it is pinned
+    /// beside the cost summary.
+    private struct StatusGridPlan {
+        let columns: Int
+        let tileHeight: CGFloat
+        let showsDetail: Bool
+        let showsStateLabel: Bool
+    }
+
+    private func statusGridPlan(toolCount: Int) -> StatusGridPlan {
+        let count = max(1, toolCount)
+        let iconRow = density.bucketTitleFontSize + 6
+        let verticalPadding = max(4, density.cardPadding - 9) * 2
+        let detailLine = ceil(max(9, density.subtitleFontSize - 1) * 1.25)
+        let twoLines = iconRow + density.bucketRowSpacing + detailLine + verticalPadding
+        let oneLine = iconRow + verticalPadding
+        func rows(_ columns: Int) -> Int { Int(ceil(Double(count) / Double(min(columns, count)))) }
+
+        let twoColumns = min(2, count)
+        let twoColumnHeight = statusTileHeight(rowCount: rows(2))
+        if twoColumnHeight >= twoLines {
+            return StatusGridPlan(columns: twoColumns, tileHeight: twoColumnHeight, showsDetail: true, showsStateLabel: true)
+        }
+        if twoColumnHeight >= oneLine {
+            return StatusGridPlan(columns: twoColumns, tileHeight: twoColumnHeight, showsDetail: false, showsStateLabel: true)
+        }
+        return StatusGridPlan(
+            columns: min(3, count),
+            tileHeight: max(oneLine, statusTileHeight(rowCount: rows(3))),
+            showsDetail: false,
+            showsStateLabel: false
+        )
+    }
+
     private func statusTileHeight(rowCount: Int) -> CGFloat {
         let rows = max(1, rowCount)
         // The refresh button keeps the header at least 22 pt tall regardless
@@ -1397,16 +1434,17 @@ private struct OverviewStatusSummaryCard: View {
             - gridSpacing
         // The card's pinned height is authoritative — the tiles divide what is
         // left rather than growing the card past the cost summary beside it.
-        // The floor is a last-resort legibility guard: the core-provider list
-        // caps at four tools (two rows), so at every density two rows fit and
-        // the floor only bites in degenerate configurations.
-        return max(44, available / CGFloat(rows))
+        // `statusGridPlan` picks a column count and tile shape that fit.
+        return max(0, available / CGFloat(rows))
     }
 
-    private func providerStatusTile(_ tool: ToolType, height: CGFloat) -> some View {
+    private func providerStatusTile(_ tool: ToolType, plan: StatusGridPlan) -> some View {
         let projection = serviceStatus.projection(for: tool)
         let state = statusState(projection)
-        let snapshot = projection.snapshot
+        let detail = statusDetail(projection, state: state)
+        let uptime = projection.snapshot.flatMap {
+            $0.aggregateUptimePercent > 0 ? $0.aggregateUptimePercent : nil
+        }
         return VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
             HStack(spacing: 7) {
                 Image(systemName: state.iconName)
@@ -1429,22 +1467,26 @@ private struct OverviewStatusSummaryCard: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(state.label)
-                    .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold, design: .rounded))
-                    .foregroundStyle(state.color)
-                    .lineLimit(1)
+                if plan.showsStateLabel {
+                    Text(state.label)
+                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold, design: .rounded))
+                        .foregroundStyle(state.color)
+                        .lineLimit(1)
+                }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(statusDetail(projection, state: state))
-                    .font(.system(size: max(9, density.subtitleFontSize - 1)))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                if let snapshot, snapshot.aggregateUptimePercent > 0 {
-                    Text(String(format: "%.2f%%", snapshot.aggregateUptimePercent))
-                        .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium, design: .rounded).monospacedDigit())
+            if plan.showsDetail {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(detail)
+                        .font(.system(size: max(9, density.subtitleFontSize - 1)))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 4)
+                    if let uptime {
+                        Text(String(format: "%.2f%%", uptime))
+                            .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium, design: .rounded).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -1455,7 +1497,7 @@ private struct OverviewStatusSummaryCard: View {
         // With the old max(6, padding − 4) the interior needed more than the
         // pin allowed and the detail line was compressed to nothing.
         .padding(.vertical, max(4, density.cardPadding - 9))
-        .frame(minHeight: height, maxHeight: height, alignment: .center)
+        .frame(minHeight: plan.tileHeight, maxHeight: plan.tileHeight, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(state.color.opacity(0.12))
@@ -1463,6 +1505,12 @@ private struct OverviewStatusSummaryCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .stroke(state.color.opacity(0.18), lineWidth: 0.6)
+        )
+        // Whatever a collapsed tile leaves out is still one hover away.
+        .help(
+            ([statusTitle(for: tool), state.label, detail]
+                + [uptime.map { String(format: "%.2f%%", $0) }].compactMap { $0 })
+                .joined(separator: " · ")
         )
     }
 

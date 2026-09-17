@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Owns the native per-skill switches exposed by agent harnesses.
@@ -96,6 +97,38 @@ struct SkillHarnessConfigManager: Sendable {
         })
     }
 
+    /// Muse Code keeps one activation per discovered `SKILL.md`, keyed by the
+    /// path as Muse spells it (`$HOME/.agents/skills/<dir>/SKILL.md`). A skill
+    /// with no entry is on. `on` and `user-invocable-only` both leave it
+    /// usable; `off` is the only disabled value.
+    func museStates(for skills: [Skill]) -> [String: NativeState] {
+        guard !skills.isEmpty else { return [:] }
+        let target = resolvedConfigTarget(museSettingsURL)
+        guard FileManager.default.fileExists(atPath: target.path) else {
+            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+        }
+        guard let data = try? Data(contentsOf: target),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Self.museSchemaIsKnown(root)
+        else {
+            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+        }
+        let activations = Self.museUserActivations(in: root)
+        return Dictionary(uniqueKeysWithValues: skills.map { skill in
+            let keys = museActivationKeys(directoryName: skill.directory)
+            let values = activations.filter { keys.contains($0.key) }.map(\.value)
+            let state: NativeState
+            if values.isEmpty {
+                state = .enabled
+            } else if values.contains(where: { !Self.museKnownActivations.contains($0) }) {
+                state = .unknown
+            } else {
+                state = values.contains("off") ? .disabled : .enabled
+            }
+            return (skill.directory, state)
+        })
+    }
+
     func setNativeEnabled(
         _ enabled: Bool,
         directoryName: String,
@@ -114,6 +147,8 @@ struct SkillHarnessConfigManager: Sendable {
             try setGeminiEnabled(enabled, name: skillName)
         case .grok:
             try setGrokEnabled(enabled, name: skillName)
+        case .muse:
+            try setMuseEnabled(enabled, directoryName: directoryName)
         case .hermes, .opencode, .antigravity, .cursor:
             throw SkillError.nativeActivationUnsupported(app)
         }
@@ -124,6 +159,15 @@ struct SkillHarnessConfigManager: Sendable {
     /// switch is the only current case: silently turning it on would enable
     /// every other skill too, so the narrower operation explains the blocker.
     func validateCanEnable(_ app: SkillAppTarget) throws {
+        if app == .muse {
+            let target = resolvedConfigTarget(museSettingsURL)
+            guard FileManager.default.fileExists(atPath: target.path) else { return }
+            guard let data = try? Data(contentsOf: target),
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  Self.museSchemaIsKnown(root)
+            else { throw SkillError.nativeConfigUnreadable(.muse) }
+            return
+        }
         guard app == .gemini else { return }
         let target = resolvedConfigTarget(geminiSettingsURL)
         guard FileManager.default.fileExists(atPath: target.path) else { return }
@@ -218,6 +262,131 @@ struct SkillHarnessConfigManager: Sendable {
         try backupConfig(original, sourceExists: existed, app: app, filename: target.lastPathComponent)
         try ensureConfigParent(target, app: app)
         try atomicWrite(normalized, to: target)
+    }
+
+    /// Enabling removes the entry, returning the skill to Muse's default
+    /// (which also restores a skill's own `user-invocable-only`); disabling
+    /// writes `off`. Only `skills.activation.user` is touched, under Muse's
+    /// own `.settings.json.lock`, and a settings file with a schema this code
+    /// was not written against is refused rather than rewritten.
+    ///
+    /// No Muse config directory means no Muse to switch off: the directory is
+    /// never created from here.
+    private func setMuseEnabled(_ enabled: Bool, directoryName: String) throws {
+        try SkillPathValidator.validate(directoryName: directoryName)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: museSettingsURL.deletingLastPathComponent().path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else { return }
+        let target = resolvedConfigTarget(museSettingsURL)
+        try withMuseSettingsLock(directory: target.deletingLastPathComponent()) {
+            let existed = FileManager.default.fileExists(atPath: target.path)
+            if enabled, !existed { return }
+            let original = existed ? (try? Data(contentsOf: target)) : Data()
+            guard let original else { throw SkillError.nativeConfigUnreadable(.muse) }
+            var root: [String: Any]
+            if original.isEmpty {
+                root = [:]
+            } else {
+                guard let decoded = try? JSONSerialization.jsonObject(with: original) as? [String: Any],
+                      Self.museSchemaIsKnown(decoded)
+                else { throw SkillError.nativeConfigUnreadable(.muse) }
+                root = decoded
+            }
+            guard root["skills"] == nil || root["skills"] is [String: Any] else {
+                throw SkillError.nativeConfigUnreadable(.muse)
+            }
+            var skills = root["skills"] as? [String: Any] ?? [:]
+            guard skills["activation"] == nil || skills["activation"] is [String: Any] else {
+                throw SkillError.nativeConfigUnreadable(.muse)
+            }
+            var activation = skills["activation"] as? [String: Any] ?? [:]
+            guard activation["user"] == nil || activation["user"] is [String: Any] else {
+                throw SkillError.nativeConfigUnreadable(.muse)
+            }
+            var user = activation["user"] as? [String: Any] ?? [:]
+
+            let keys = museActivationKeys(directoryName: directoryName)
+            for key in user.keys where keys.contains(key) { user[key] = nil }
+            if !enabled { user[Self.museCanonicalKey(directoryName: directoryName)] = "off" }
+
+            if user.isEmpty { activation["user"] = nil } else { activation["user"] = user }
+            if activation.isEmpty { skills["activation"] = nil } else { skills["activation"] = activation }
+            if skills.isEmpty { root["skills"] = nil } else { root["skills"] = skills }
+            if root["schema_version"] == nil { root["schema_version"] = 1 }
+
+            guard JSONSerialization.isValidJSONObject(root),
+                  let rewritten = try? JSONSerialization.data(
+                      withJSONObject: root,
+                      options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+                  )
+            else { throw SkillError.nativeConfigUnreadable(.muse) }
+            let normalized = rewritten + Data("\n".utf8)
+            guard normalized != original else { return }
+            try backupConfig(original, sourceExists: existed, app: .muse, filename: target.lastPathComponent)
+            try atomicWrite(normalized, to: target)
+        }
+    }
+
+    /// Muse takes an exclusive lock on this sibling file around every
+    /// settings write; holding it keeps a concurrent `muse skills disable`
+    /// from landing between this read and this write. A lock that stays busy
+    /// is reported as an unreadable config rather than waited on forever.
+    private func withMuseSettingsLock(directory: URL, _ body: () throws -> Void) throws {
+        let lockURL = directory.appendingPathComponent(".settings.json.lock")
+        let descriptor = open(lockURL.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        guard descriptor >= 0 else { throw SkillError.nativeConfigUnreadable(.muse) }
+        defer { close(descriptor) }
+        var acquired = false
+        for _ in 0..<40 {
+            if flock(descriptor, LOCK_EX | LOCK_NB) == 0 {
+                acquired = true
+                break
+            }
+            usleep(50_000)
+        }
+        guard acquired else { throw SkillError.nativeConfigUnreadable(.muse) }
+        defer { flock(descriptor, LOCK_UN) }
+        try body()
+    }
+
+    private static let museKnownActivations: Set<String> = ["on", "off", "user-invocable-only"]
+
+    /// Muse's settings carry `schema_version: 1`; a file without one is read
+    /// as that version, anything else is a format this code does not know.
+    private static func museSchemaIsKnown(_ root: [String: Any]) -> Bool {
+        guard let version = root["schema_version"] else { return true }
+        guard let number = version as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else {
+            return false
+        }
+        return number.doubleValue == 1
+    }
+
+    private static func museUserActivations(in root: [String: Any]) -> [String: String] {
+        let skills = root["skills"] as? [String: Any]
+        let activation = skills?["activation"] as? [String: Any]
+        let user = activation?["user"] as? [String: Any] ?? [:]
+        return user.reduce(into: [:]) { result, entry in
+            result[entry.key] = (entry.value as? String) ?? ""
+        }
+    }
+
+    private static func museCanonicalKey(directoryName: String) -> String {
+        "$HOME/\(SkillAppCatalog.ssotRelativePath)/\(directoryName)/SKILL.md"
+    }
+
+    /// Every spelling of the shared-root `SKILL.md` Muse could have keyed:
+    /// its own `$HOME/…` form, `~/…`, and the absolute path.
+    private func museActivationKeys(directoryName: String) -> Set<String> {
+        let relative = "\(SkillAppCatalog.ssotRelativePath)/\(directoryName)/SKILL.md"
+        let absolute = canonicalSkillMD(directoryName: directoryName)
+        return [
+            Self.museCanonicalKey(directoryName: directoryName),
+            "~/\(relative)",
+            absolute.standardizedFileURL.path,
+            absolute.resolvingSymlinksInPath().standardizedFileURL.path,
+        ]
     }
 
     private func setGrokEnabled(_ enabled: Bool, name: String) throws {
@@ -503,6 +672,13 @@ struct SkillHarnessConfigManager: Sendable {
     private var geminiSettingsURL: URL {
         URL(fileURLWithPath: homeDirectory, isDirectory: true)
             .appendingPathComponent(".gemini", isDirectory: true)
+            .appendingPathComponent("settings.json")
+    }
+
+    private var museSettingsURL: URL {
+        URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("muse", isDirectory: true)
             .appendingPathComponent("settings.json")
     }
 

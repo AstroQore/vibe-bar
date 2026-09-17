@@ -29,6 +29,8 @@ public enum SkillAppCatalog {
         case .opencode: return ".config/opencode/skills"
         case .antigravity: return ".gemini/config/skills"
         case .cursor: return ".cursor/skills"
+        // Display only: Muse's own folder is never a write root.
+        case .muse: return ".config/muse/skills"
         }
     }
 
@@ -47,12 +49,15 @@ public enum SkillAppCatalog {
         url(homeDirectory: homeDirectory, relativePath: relativePath(for: app))
     }
 
-    /// The SSOT plus every app skills dir. The sync engine hard-asserts that
-    /// each path it mutates sits under one of these, so a malformed skill name
-    /// can never reach into the rest of the home directory.
+    /// The SSOT plus every app skills dir Vibe Bar may project into. The sync
+    /// engine hard-asserts that each path it mutates sits under one of these,
+    /// so a malformed skill name can never reach into the rest of the home
+    /// directory.
     public static func allowedWriteRoots(homeDirectory: String = RealHomeDirectory.path) -> [URL] {
         [ssotDirectory(homeDirectory: homeDirectory)]
-            + SkillAppTarget.allCases.map { skillsDirectory(for: $0, homeDirectory: homeDirectory) }
+            + SkillAppTarget.allCases
+                .filter(\.supportsProjection)
+                .map { skillsDirectory(for: $0, homeDirectory: homeDirectory) }
     }
 
     /// Lexical containment check on standardized paths. Deliberately does not

@@ -273,7 +273,7 @@ extension SkillsService {
                 throw SkillError.directoryConflict(discovered.directory)
             }
             var skill = existing
-            for app in apps {
+            for app in apps where app.supportsProjection {
                 skill.apps[app] = try engine.materialize(
                     skillDirectoryName: skill.directory,
                     into: app,
@@ -308,7 +308,7 @@ extension SkillsService {
             installedAt: Date(),
             contentHash: try SkillDirectoryHasher.hash(directory: installed)
         )
-        for app in apps {
+        for app in apps where app.supportsProjection {
             skill.apps[app] = try engine.materialize(
                 skillDirectoryName: skill.directory,
                 into: app,
@@ -508,7 +508,7 @@ extension SkillsService {
         skill.repoBranch = branch
         skill.contentHash = try SkillDirectoryHasher.hash(directory: destination)
         skill.updatedAt = Date()
-        for (app, materialization) in existing.apps {
+        for (app, materialization) in existing.apps where app.supportsProjection {
             skill.apps[app] = try engine.materialize(
                 skillDirectoryName: skill.directory,
                 into: app,
@@ -552,7 +552,7 @@ extension SkillsService {
             installedAt: Date(),
             contentHash: try SkillDirectoryHasher.hash(directory: installed)
         )
-        for app in apps {
+        for app in apps where app.supportsProjection {
             skill.apps[app] = try engine.materialize(
                 skillDirectoryName: directoryName,
                 into: app,

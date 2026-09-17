@@ -136,6 +136,7 @@ public struct SkillSyncEngine: Sendable {
         method: SkillSyncMethod,
         recorded: SkillMaterialization? = nil
     ) throws -> SkillMaterialization {
+        guard app.supportsProjection else { throw SkillError.projectionUnsupported(app) }
         try SkillPathValidator.validate(directoryName: skillDirectoryName)
         let source = sourceDirectory(for: skillDirectoryName)
         switch SkillFileSystem.kind(of: source) {
@@ -222,6 +223,8 @@ public struct SkillSyncEngine: Sendable {
         from app: SkillAppTarget,
         recorded: SkillMaterialization?
     ) throws -> Bool {
+        // Nothing of Vibe Bar's can be in a folder it never writes.
+        guard app.supportsProjection else { return true }
         try SkillPathValidator.validate(directoryName: skillDirectoryName)
         let destination = destination(for: skillDirectoryName, app: app)
         guard SkillAppCatalog.isWriteAllowed(destination, homeDirectory: homeDirectory) else {
@@ -257,7 +260,7 @@ public struct SkillSyncEngine: Sendable {
     /// real directory returns `nil` — it is foreign until the user says
     /// otherwise.
     public func adoptionState(skillDirectoryName: String, app: SkillAppTarget) -> SkillMaterialization? {
-        guard SkillPathValidator.isValid(skillDirectoryName) else { return nil }
+        guard app.supportsProjection, SkillPathValidator.isValid(skillDirectoryName) else { return nil }
         let destination = destination(for: skillDirectoryName, app: app)
         guard SkillFileSystem.kind(of: destination) == .symlink else { return nil }
         guard let resolved = SkillFileSystem.lexicalSymlinkTarget(of: destination) else { return nil }
@@ -280,7 +283,7 @@ public struct SkillSyncEngine: Sendable {
         recorded: SkillMaterialization,
         currentCopyHash: String? = nil
     ) -> SkillMaterialization? {
-        guard SkillPathValidator.isValid(skillDirectoryName) else { return nil }
+        guard app.supportsProjection, SkillPathValidator.isValid(skillDirectoryName) else { return nil }
         let destination = destination(for: skillDirectoryName, app: app)
         switch SkillFileSystem.kind(of: destination) {
         case .symlink:
