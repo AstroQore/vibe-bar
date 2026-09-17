@@ -7,7 +7,6 @@ enum SettingsSectionID: String {
     case miniWindow
     case layout
     case einkDisplays
-    case einkScreenGroups
     case openAI
     case anthropic
     case googleAI
@@ -32,7 +31,6 @@ enum SettingsSectionID: String {
         case .menuBarHealth: L10n.Settings.Section.menuBarHealth
         case .miniWindow: L10n.Settings.Section.miniWindows
         case .layout: L10n.Settings.Section.layout
-        case .einkScreenGroups: L10n.Settings.Eink.ScreenGroups.title
         case .einkDisplays: L10n.Settings.Section.einkDisplays
         case .openAI: "OpenAI"
         case .anthropic: "Anthropic"
@@ -58,7 +56,6 @@ enum SettingsSectionID: String {
         case .menuBarHealth: "stethoscope"
         case .miniWindow: "rectangle.on.rectangle"
         case .layout: "rectangle.split.2x1"
-        case .einkScreenGroups: "rectangle.3.group"
         case .einkDisplays: "rectangle.dashed.badge.record"
         case .openAI: "brain.head.profile"
         case .anthropic: "sparkles"
@@ -825,11 +822,6 @@ struct SettingsView: View {
                     if selectedSection == .einkDisplays, let eink = environment.einkSyncService {
                     EInkDisplaysSettingsSection(density: density, service: eink)
                         .id(SettingsSectionID.einkDisplays.id)
-                    }
-
-                    if selectedSection == .einkScreenGroups, let eink = environment.einkSyncService {
-                        EInkScreenGroupsSettingsSection(density: density, service: eink)
-                            .id(SettingsSectionID.einkScreenGroups.id)
                     }
 
                     if selectedSection == .permissions {

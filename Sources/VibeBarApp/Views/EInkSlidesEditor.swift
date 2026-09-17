@@ -2,6 +2,44 @@ import AppKit
 import SwiftUI
 import VibeBarCore
 
+/// What a group hands the editor so its pages can be edited by the very same
+/// controls a single screen's slides are.
+///
+/// The editor stays one editor: the page list is the group's pages, the
+/// editor under it is the page's template on the screens the Screens control
+/// picks, and every write goes back out through these closures instead of
+/// straight into `AppSettings.einkSync.devices`.
+struct EInkSlidesGroupContext {
+    /// One region of the selected page — one screen, or the run of screens a
+    /// merged region covers.
+    struct Screen: Identifiable, Equatable {
+        let id: String
+        let name: String
+    }
+
+    var screens: [Screen]
+    var activeScreenID: String?
+    var mode: EInkScreenMode
+    /// Custom is a three-screen-and-up shape, and a page already in it.
+    var allowsCustom: Bool
+    var canSplitActive: Bool
+    var mergeTargets: [Screen]
+    var setMode: (EInkScreenMode) -> Void
+    var selectScreen: (String) -> Void
+    var splitActive: () -> Void
+    var mergeActive: (String) -> Void
+    /// Page id, and the template that page now draws on the active screens.
+    var updateSlide: (String, EInkSlide) -> Void
+    var addPage: () -> Void
+    var removePage: (String) -> Void
+    var reorderPages: ([String]) -> Void
+    var selectPage: (String) -> Void
+    var openStudio: (String) -> Void
+    /// The group's own preview: every screen in its arrangement, with the
+    /// page arrows for derived pages. Built above, never in this `body`.
+    var preview: AnyView
+}
+
 /// The slides half of Settings › E-ink Displays: the list on the left, the
 /// selected slide's editor on the right, and the panel it makes at 2x.
 ///
@@ -9,6 +47,10 @@ import VibeBarCore
 /// far more to say — composition, slot order, per-slot names, the Studio — and
 /// one view holding a device's cadence *and* a slide's header bar is a view
 /// nobody can read.
+///
+/// One editor serves a screen and a group. A group arrives as an
+/// `EInkSlidesGroupContext` whose page list stands in for the device's
+/// slides; without one, every path is the standalone path it has always been.
 ///
 /// Nothing here computes a layout. The preview plan arrives already resolved
 /// from the section above, which rebuilds it on a change rather than in
@@ -22,11 +64,8 @@ struct EInkSlidesEditor: View {
     /// The preview snapshot, for the live percentage beside each slot. `nil`
     /// before the first assembly, and the rows simply say nothing then.
     let snapshot: EInkDataSnapshot?
-    var showsSlideList = true
-    var showsPreview = true
-    var showsTitleEditor = true
-    var onDeviceChange: ((EInkDeviceConfig) -> Void)?
-    var onOpenStudio: ((EInkSlide) -> Void)?
+    /// `nil` for a screen on its own.
+    var group: EInkSlidesGroupContext?
     @State private var contentRequest: EInkContentPicker.Request?
     @State private var previewPages: [EInkPreviewPlan] = []
     @State private var previewPage = 0
@@ -72,8 +111,6 @@ struct EInkSlidesEditor: View {
         // pane at the Workbench's default width — and the paper may not be
         // shrunk to make it (`docs/DESIGN.md`: whole pixels). So the preview
         // goes under the editor instead of beside it.
-        Group {
-            if showsPreview {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 16) {
                 editorColumn
@@ -83,8 +120,6 @@ struct EInkSlidesEditor: View {
                 editorColumn
                 previewColumn
             }
-        }
-            } else { editorColumn }
         }
         .onAppear { rebuildCaches() }
         // The *resolved* order, so a slot moved with the arrows rebuilds the
@@ -142,13 +177,88 @@ struct EInkSlidesEditor: View {
     @ViewBuilder
     private var editorColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if showsSlideList { slideList }
+            slideList
+            if let group {
+                Divider().padding(.vertical, 2)
+                screensControl(group)
+            }
             if let slide = selectedSlide {
                 Divider().padding(.vertical, 2)
                 slideEditor(slide)
             }
         }
         .frame(minWidth: 440, maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Screens
+
+    /// Which screens this page uses, and — when they are not one canvas —
+    /// which of them the editor below is editing.
+    ///
+    /// The three shapes are read from the page itself (`screenMode`), so this
+    /// control never holds state of its own: switching merges or splits the
+    /// page's regions and the reading changes with it.
+    private func screensControl(_ group: EInkSlidesGroupContext) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(L10n.Settings.Eink.ScreenGroups.screens)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Picker(
+                    L10n.Settings.Eink.ScreenGroups.screens,
+                    selection: Binding(get: { group.mode }, set: { group.setMode($0) })
+                ) {
+                    Text(L10n.Settings.Eink.Screens.combined).tag(EInkScreenMode.combined)
+                    Text(L10n.Settings.Eink.Screens.separate).tag(EInkScreenMode.separate)
+                    if group.allowsCustom {
+                        Text(L10n.Settings.Eink.Screens.custom).tag(EInkScreenMode.custom)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: group.allowsCustom ? 300 : 220)
+                Spacer(minLength: 0)
+            }
+
+            if group.mode != .combined {
+                HStack(spacing: 6) {
+                    ForEach(group.screens) { screen in
+                        Button { group.selectScreen(screen.id) } label: {
+                            Text(screen.name)
+                                .font(.system(size: 11, weight: screen.id == group.activeScreenID ? .semibold : .regular))
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.vibeBar(cornerRadius: 6))
+                    }
+                    if group.mode == .custom {
+                        Button(L10n.Settings.Eink.Workflow.splitSlides) { group.splitActive() }
+                            .buttonStyle(.vibeBar)
+                            .disabled(!group.canSplitActive)
+                        Menu(L10n.Settings.Eink.Workflow.mergeSlides) {
+                            ForEach(group.mergeTargets) { target in
+                                Button(target.name) { group.mergeActive(target.id) }
+                            }
+                        }
+                        .frame(width: 130)
+                        .disabled(group.mergeTargets.isEmpty)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+
+            Text(screensDetail(group.mode))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func screensDetail(_ mode: EInkScreenMode) -> String {
+        switch mode {
+        case .combined: L10n.Settings.Eink.Screens.combinedDetail
+        case .separate: L10n.Settings.Eink.Screens.separateDetail
+        case .custom: L10n.Settings.Eink.Screens.customDetail
+        }
     }
 
     // MARK: - The list
@@ -204,12 +314,16 @@ struct EInkSlidesEditor: View {
                 .help(L10n.Common.dragToReorder)
 
             Button {
-                selectedSlideID = slide.id
-                // On a single-slide device the row *is* the active-slide
-                // control: there is no other one, and picking a row that the
-                // panel then ignores is a switch that does nothing.
-                if device.playbackMode == .single {
-                    updateDevice { $0.singleSlideID = slide.id }
+                if let group {
+                    group.selectPage(slide.id)
+                } else {
+                    selectedSlideID = slide.id
+                    // On a single-slide device the row *is* the active-slide
+                    // control: there is no other one, and picking a row that
+                    // the panel then ignores is a switch that does nothing.
+                    if device.playbackMode == .single {
+                        updateDevice { $0.singleSlideID = slide.id }
+                    }
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -253,7 +367,6 @@ struct EInkSlidesEditor: View {
     private func slideEditor(_ slide: EInkSlide) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                if showsTitleEditor {
                 Text(L10n.Common.name)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -268,7 +381,6 @@ struct EInkSlidesEditor: View {
                 )
                 .frame(width: 160)
                 .id("title-\(slide.id)")
-                }
 
                 layoutPicker(slide)
                 Spacer(minLength: 0)
@@ -732,7 +844,19 @@ struct EInkSlidesEditor: View {
 
     // MARK: - Preview
 
+    @ViewBuilder
     private var previewColumn: some View {
+        if let group {
+            // A group's picture is every screen in its arrangement, which only
+            // the section above can resolve — it owns the group's plans and
+            // rebuilds them on a change, never in a `body`.
+            group.preview
+        } else {
+            devicePreviewColumn
+        }
+    }
+
+    private var devicePreviewColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L10n.Settings.Eink.uprightPreview)
                 .font(.caption2)
@@ -1068,6 +1192,7 @@ struct EInkSlidesEditor: View {
     // MARK: - Actions
 
     private func addSlide() {
+        if let group { group.addPage(); return }
         let slide = EInkSlide.defaultQuotaSlide(
             orientation: device.orientation,
             available: availableQuotaFieldIDs
@@ -1077,6 +1202,7 @@ struct EInkSlidesEditor: View {
     }
 
     private func removeSlide(_ slideID: String) {
+        if let group { group.removePage(slideID); return }
         updateDevice { device in
             guard device.slides.count > 1 else { return }
             device.slides.removeAll { $0.id == slideID }
@@ -1091,7 +1217,10 @@ struct EInkSlidesEditor: View {
     /// Studio opens on the panel that was already there rather than on blank
     /// paper. A slide that is already custom just opens.
     private func openInStudio(_ slide: EInkSlide) {
-        if let onOpenStudio { onOpenStudio(slide); return }
+        // A group's page is authored on the region's own canvas, and turning a
+        // paginated page into pages is a group-shaped edit; the section owns
+        // both, so it opens the Studio for one.
+        if let group { group.openStudio(slide.id); return }
         if let snapshot, EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot).count > 1 {
             studioSlide = slide; confirmingStudioPages = true; return
         }
@@ -1149,7 +1278,7 @@ struct EInkSlidesEditor: View {
     /// orientations' worth of edits sat invisibly in `settings.json`, ready to
     /// reappear the next time somebody pressed Edit in Studio.
     private func resetToPreset(_ slide: EInkSlide, preset: EInkPreset? = nil) {
-        if onDeviceChange != nil {
+        if group != nil {
             updateSlide(slide.id) { $0.kind = .preset(preset ?? slide.options.sourcePreset ?? .quotaLedger) }
             return
         }
@@ -1174,9 +1303,6 @@ struct EInkSlidesEditor: View {
     // MARK: - Mutation
 
     private func updateDevice(_ mutate: (inout EInkDeviceConfig) -> Void) {
-        if let onDeviceChange {
-            var copy = device; mutate(&copy); onDeviceChange(copy.sanitized); return
-        }
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == device.deviceID }) else {
             return
@@ -1186,7 +1312,18 @@ struct EInkSlidesEditor: View {
         settingsStore.settings = settings
     }
 
+    /// One page's template, edited in place.
+    ///
+    /// For a group the "slide" is whatever the active screens draw, and the
+    /// section puts it back into that region — the editor never has to know
+    /// which region it is or where the group keeps it.
     private func updateSlide(_ slideID: String, _ mutate: (inout EInkSlide) -> Void) {
+        if let group {
+            guard var slide = device.slide(id: slideID) else { return }
+            mutate(&slide)
+            group.updateSlide(slideID, slide)
+            return
+        }
         updateDevice { device in
             guard let index = device.slides.firstIndex(where: { $0.id == slideID }) else { return }
             mutate(&device.slides[index])
@@ -1254,6 +1391,7 @@ struct EInkSlidesEditor: View {
 
     private func applySlideMove(_ slideID: String, to index: Int) {
         let order = reordered(device.slides.map(\.id), moving: slideID, to: index)
+        if let group { group.reorderPages(order); return }
         updateDevice { device in
             let byID = Dictionary(device.slides.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             device.slides = order.compactMap { byID[$0] }
