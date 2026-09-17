@@ -428,6 +428,13 @@ struct SkillHarnessConfigManager: Sendable {
         case .mistralVibe:
             let target = resolvedConfigTarget(mistralVibeConfigURL)
             guard FileManager.default.fileExists(atPath: target.path) else { return }
+            // The setter writes only inside the home directory; so must the
+            // file the preflight vouches for.
+            let home = URL(fileURLWithPath: homeDirectory, isDirectory: true).standardizedFileURL
+            let parent = target.deletingLastPathComponent().standardizedFileURL
+            guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
+                throw SkillError.writeOutsideAllowedRoots(target.path)
+            }
             guard let data = try? Data(contentsOf: target),
                   let text = String(data: data, encoding: .utf8),
                   Self.topLevelTOMLStringArray("enabled_skills", in: text) != nil,

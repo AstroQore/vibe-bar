@@ -142,6 +142,27 @@ final class MistralVibeSkillActivationTests: XCTestCase {
         }
     }
 
+    /// A config link leaving the home is refused by the setter and by the
+    /// install preflight alike, before anything is copied or written.
+    func testAConfigLinkLeavingTheHomeIsNotWritten() throws {
+        let home = try SkillTestHome()
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VibeBarVibeOutside-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outside) }
+        let external = outside.appendingPathComponent("config.toml")
+        try Data("theme = \"dark\"\n".utf8).write(to: external)
+        try home.makeDirectory(home.url.appendingPathComponent(".vibe", isDirectory: true))
+        try FileManager.default.createSymbolicLink(at: configURL(home), withDestinationURL: external)
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+
+        XCTAssertThrowsError(try manager.validateCanDisable(.mistralVibe))
+        XCTAssertThrowsError(
+            try manager.setNativeEnabled(false, directoryName: "pdf", skillName: "pdf", app: .mistralVibe)
+        )
+        XCTAssertEqual(try String(contentsOf: external, encoding: .utf8), "theme = \"dark\"\n")
+    }
+
     func testAValueThatIsNotAStringArrayIsUnknownAndUntouched() throws {
         let home = try SkillTestHome()
         let original = "disabled_skills = 'pdf'\n"
