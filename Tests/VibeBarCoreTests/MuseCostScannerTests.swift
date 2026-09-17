@@ -13,9 +13,12 @@ final class MuseCostScannerTests: XCTestCase {
         home = FileManager.default.temporaryDirectory
             .appendingPathComponent("VibeBarMuseScannerTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        // Price against the shipped table, never this Mac's pricing cache.
+        PricingResolver.testOverride = PricingHardcoded.fallback
     }
 
     override func tearDownWithError() throws {
+        PricingResolver.testOverride = nil
         try? FileManager.default.removeItem(at: home)
     }
 
@@ -126,9 +129,36 @@ final class MuseCostScannerTests: XCTestCase {
         XCTAssertEqual(child.projectPath, main.projectPath)
         XCTAssertNotNil(main.projectPath)
 
-        // Subscription-only: tokens are counted, nothing is priced.
+        // Priced at the API's rates for the same model: fresh input, cached
+        // input and output each at their own rate.
+        let expectedMain = 24_519 * 1.25e-6 + 29 * 4.25e-6
+        let expectedChild = 372 * 1.25e-6 + 2_801 * 1.5e-7 + 227 * 4.25e-6
         let priced = await sink.costs
-        XCTAssertTrue(priced.allSatisfy { $0 == nil })
+        XCTAssertEqual(priced, [expectedMain, expectedChild].map(PricedUsageEvent.micros(fromUSD:)))
+        XCTAssertEqual(snapshot.allTimeCostUSD, expectedMain + expectedChild, accuracy: 1e-9)
+    }
+
+    /// Meta Model API rates per 1M tokens: $1.25 input, $0.15 cached input,
+    /// $4.25 output; the contributor variants a tenth of that and less. The
+    /// CLI logs the bare id, LiteLLM the `meta/`-prefixed one.
+    func testMuseSparkRatesMatchTheModelAPI() throws {
+        let standard = try XCTUnwrap(CostUsagePricing.museCostUSD(
+            model: "muse-spark-1.3", inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 1_000_000
+        ))
+        XCTAssertEqual(standard, 1.25 + 4.25, accuracy: 1e-9)
+        let cached = try XCTUnwrap(CostUsagePricing.museCostUSD(
+            model: "meta/Muse-Spark-1.3", inputTokens: 1_000_000, cachedInputTokens: 1_000_000, outputTokens: 0
+        ))
+        XCTAssertEqual(cached, 0.15, accuracy: 1e-9)
+        let contributor = try XCTUnwrap(CostUsagePricing.museCostUSD(
+            model: "muse-spark-1.3-contributor", inputTokens: 1_000_000, cachedInputTokens: 0, outputTokens: 1_000_000
+        ))
+        XCTAssertEqual(contributor, 0.10 + 0.20, accuracy: 1e-9)
+        XCTAssertNil(
+            CostUsagePricing.museCostUSD(model: "muse-unknown", inputTokens: 1, cachedInputTokens: 0, outputTokens: 1),
+            "an unknown model stays unpriced rather than borrowing a sibling's rate"
+        )
+        XCTAssertTrue(CostUsagePricing.canRepriceAggregate(tool: .muse, model: "muse-spark-1.3-contributor"))
     }
 
     func testRecordsInsideARetainedFrameAreRead() async throws {

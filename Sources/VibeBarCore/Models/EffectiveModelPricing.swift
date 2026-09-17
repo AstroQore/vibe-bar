@@ -65,6 +65,7 @@ extension PricingProviderFamily {
         case .gemini: .gemini
         case .grok: .grok
         case .antigravity: .antigravity
+        case .muse: .muse
         }
     }
 }
@@ -135,6 +136,20 @@ extension PricingDataSet {
         for (model, entry) in providers.grok.models.sorted(by: { $0.key < $1.key }) {
             rows.append(EffectiveModelPricingRow(
                 provider: .grok,
+                model: model,
+                displayLabel: entry.displayLabel,
+                inputPerMillion: entry.input * million,
+                outputPerMillion: entry.output * million,
+                cacheReadPerMillion: entry.cacheRead.map { $0 * million },
+                thresholdTokens: entry.thresholdTokens,
+                inputAboveThresholdPerMillion: entry.inputAboveThreshold.map { $0 * million },
+                outputAboveThresholdPerMillion: entry.outputAboveThreshold.map { $0 * million },
+                cacheReadAboveThresholdPerMillion: entry.cacheReadAboveThreshold.map { $0 * million }
+            ))
+        }
+        for (model, entry) in providers.muse.models.sorted(by: { $0.key < $1.key }) {
+            rows.append(EffectiveModelPricingRow(
+                provider: .muse,
                 model: model,
                 displayLabel: entry.displayLabel,
                 inputPerMillion: entry.input * million,

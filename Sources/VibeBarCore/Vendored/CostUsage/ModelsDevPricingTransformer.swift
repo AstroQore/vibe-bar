@@ -77,6 +77,7 @@ public enum ModelsDevPricingTransformer {
         var claude: [String: PricingDataSet.ClaudeEntry] = [:]
         var gemini: [String: PricingDataSet.GeminiEntry] = [:]
         var grok: [String: PricingDataSet.GrokEntry] = [:]
+        var muse: [String: PricingDataSet.MuseEntry] = [:]
 
         for (providerID, provider) in providers {
             for (rawID, model) in provider.models {
@@ -134,13 +135,26 @@ public enum ModelsDevPricingTransformer {
                         outputAboveThreshold: tier.map { perToken($0.output) },
                         cacheReadAboveThreshold: tier?.cacheRead.map(perToken)
                     )
+                // Meta's own provider only; gateway copies (openrouter,
+                // vercel…) resell the same ids and are ignored like every
+                // other alias.
+                case "meta" where id.hasPrefix("muse-"):
+                    muse[id] = .init(
+                        input: perToken(cost.input),
+                        output: perToken(cost.output),
+                        cacheRead: cost.cacheRead.map(perToken),
+                        thresholdTokens: tier?.tokens,
+                        inputAboveThreshold: tier.map { perToken($0.input) },
+                        outputAboveThreshold: tier.map { perToken($0.output) },
+                        cacheReadAboveThreshold: tier?.cacheRead.map(perToken)
+                    )
                 default:
                     continue
                 }
             }
         }
 
-        guard !codex.isEmpty || !claude.isEmpty || !gemini.isEmpty || !grok.isEmpty else {
+        guard !codex.isEmpty || !claude.isEmpty || !gemini.isEmpty || !grok.isEmpty || !muse.isEmpty else {
             return nil
         }
         return PricingDataSet(
@@ -152,7 +166,8 @@ public enum ModelsDevPricingTransformer {
                 claude: .init(displayName: "Anthropic", models: claude),
                 gemini: .init(displayName: "Google", models: gemini),
                 grok: .init(displayName: "xAI", models: grok),
-                antigravity: .init(displayName: "AntiGravity", models: [:])
+                antigravity: .init(displayName: "AntiGravity", models: [:]),
+                muse: .init(displayName: "Meta AI", models: muse)
             )
         )
     }
@@ -210,7 +225,7 @@ public enum ModelsDevPricingTransformer {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         let catalog = (root["providers"] as? [String: Any]) ?? root
-        let wanted = ["openai", "anthropic", "google", "xai"]
+        let wanted = ["openai", "anthropic", "google", "xai", "meta"]
         let filtered = Dictionary(uniqueKeysWithValues: wanted.compactMap { key in
             catalog[key].map { (key, $0) }
         })

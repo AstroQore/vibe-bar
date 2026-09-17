@@ -63,8 +63,10 @@ portions is included in this repository at the local license link above.
   the viewBox cropped to the mark and the brand colours dropped because the
   renderer tints the shape. `ProviderIcon-metaai.svg` (Meta AI) and
   `ProviderIcon-muse.svg` (Meta's infinity mark, standing in for Muse Code)
-  come from its `packages/static-svg/icons/metaai.svg` and `meta.svg`, drawn
-  the same single-colour way with the viewBox padded. No other provider icon
+  come from its `icons/metaai.svg` and `icons/meta.svg` as published in the
+  npm package `@lobehub/icons-static-svg@1.95.0`, drawn the same
+  single-colour way with the viewBox padded. The marks themselves remain
+  Meta's trademarks. No other provider icon
   comes from this project.
 - License: [MIT](Resources/ThirdPartyLicenses/LobeIcons.txt)
   ([upstream](https://github.com/lobehub/lobe-icons/blob/master/LICENSE))

@@ -877,7 +877,9 @@ public enum CostUsageScanner {
     /// same numbers; only `model_completed` is read, or every call would
     /// count twice. Muse reports usage the OpenAI way: `input_tokens`
     /// includes the cached prefix and `output_tokens` includes reasoning.
-    /// Muse Code is subscription-only, so the events stay unpriced.
+    /// A Muse Code subscription has no per-token bill; events are priced at
+    /// the Meta Model API's published rates for the same model, as an
+    /// API-equivalent cost.
     private static func scanMuse(
         homeDirectory: String,
         now: Date,
@@ -912,11 +914,12 @@ public enum CostUsageScanner {
                     var priced: [PricedUsageEvent] = []
                     priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
                     for event in retained {
+                        let optionalCost = costUSDIfPriceable(tool: .muse, event: event, pricing: pricing)
                         if eventSink != nil {
-                            priced.append(PricedUsageEvent(event: event, costUSD: nil))
+                            priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
                         }
                         aggregator.add(at: event.date, model: event.model, input: event.input,
-                                       output: event.output, cache: event.cache, costUSD: 0)
+                                       output: event.output, cache: event.cache, costUSD: optionalCost ?? 0)
                     }
                     return priced
                 }
@@ -929,11 +932,12 @@ public enum CostUsageScanner {
                 var priced: [PricedUsageEvent] = []
                 priced.reserveCapacity(eventSink == nil ? 0 : parsed.count)
                 for event in parsed {
+                    let optionalCost = costUSDIfPriceable(tool: .muse, event: event, pricing: pricing)
                     if eventSink != nil {
-                        priced.append(PricedUsageEvent(event: event, costUSD: nil))
+                        priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
                     }
                     aggregator.add(at: event.date, model: event.model, input: event.input,
-                                   output: event.output, cache: event.cache, costUSD: 0)
+                                   output: event.output, cache: event.cache, costUSD: optionalCost ?? 0)
                 }
                 if didRead {
                     cache.store(parsed, for: file.path, mtime: mtime, size: size)
@@ -1858,8 +1862,15 @@ public enum CostUsageScanner {
                 cacheCreationInputTokens: cacheCreation,
                 outputTokens: event.output
             )
-        // Muse Code publishes no per-token price; its events stay unpriced.
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .muse:
+            guard let entry = pricing.museEntry(for: event.model) else { return nil }
+            return CostUsagePricing.grokCostUSD(
+                pricing: entry,
+                inputTokens: event.input + event.cache,
+                cachedInputTokens: event.cache,
+                outputTokens: event.output
+            )
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return nil
         }
     }

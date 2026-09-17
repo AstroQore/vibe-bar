@@ -182,6 +182,16 @@
           "cacheRead": 7.5e-8, "cacheCreation": 0
         }
       }
+    },
+    "muse": {
+      "displayName": "Meta AI",
+      "models": {
+        "muse-spark-1.3":             { "input": 1.25e-6, "output": 4.25e-6, "cacheRead": 1.5e-7 },
+        "muse-spark-1.2":             { "input": 1.25e-6, "output": 4.25e-6, "cacheRead": 1.5e-7 },
+        "muse-spark-1.1":             { "input": 1.25e-6, "output": 4.25e-6, "cacheRead": 1.5e-7 },
+        "muse-spark-1.3-contributor": { "input": 1e-7,    "output": 2e-7,    "cacheRead": 2e-9 },
+        "muse-spark-1.2-contributor": { "input": 1e-7,    "output": 2e-7,    "cacheRead": 2e-9 }
+      }
     }
   }
 }

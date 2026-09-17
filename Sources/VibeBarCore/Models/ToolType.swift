@@ -149,10 +149,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         allCases.filter { $0.supportsStatusPage }
     }
 
-    /// One status row per L1 company that has a feed. Meta AI publishes
-    /// none for Muse Code, so it has no row rather than a permanent "unknown".
     public static var combinedStatusPageProviders: [ToolType] {
-        coreProviderRepresentatives.filter(\.supportsStatusPage)
+        coreProviderRepresentatives
     }
 
     /// One representative tool for each L1 provider shown in Overview and
@@ -231,24 +229,15 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// - `.muse` reads Muse Code's session logs under
     ///   `~/.local/share/muse/sessions/**/session.jsonl`; every
     ///   `model_completed` run event carries input / cached / output /
-    ///   reasoning token counts and the model id. Muse Code is a
-    ///   subscription with no published per-token price, so its events land
-    ///   as unpriced tokens.
+    ///   reasoning token counts and the model id. The subscription has no
+    ///   per-token bill; events are priced at the Meta Model API's rates for
+    ///   the same model, as an API-equivalent cost.
     public var supportsTokenCost: Bool {
         switch self {
         case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse: return true
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
-    }
-
-    /// False for a cost-aware provider whose tokens have no per-token price to
-    /// multiply by — Muse Code is subscription-only. Its usage is real and is
-    /// counted, but every dollar surface would have to print `$0.00`, which
-    /// reads as "free" rather than "not priced", so those surfaces leave it
-    /// out and Usage Stats marks its rows unpriced.
-    public var hasPerTokenPrice: Bool {
-        supportsTokenCost && self != .muse
     }
 
     /// True for providers we can poll a status feed for. `.gemini` and
@@ -258,11 +247,12 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Grok reads the SpaceXAI service-status HTML at `https://status.x.ai/`;
     /// Cursor reads its Statuspage v2 JSON feed.
     /// Codex / Claude use their own Atlassian / incident.io feeds.
-    /// Meta AI publishes no status feed for Muse Code.
+    /// Muse Code reads Meta's Model API status JSON at
+    /// `https://api.meta.ai/v1/status`, the API the CLI itself calls.
     public var supportsStatusPage: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor: return true
-        case .muse, .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse: return true
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -478,7 +468,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kimi:        return URL(string: "https://www.kimi.com/")!
         case .cursor:      return URL(string: "https://status.cursor.com/")!
         // No status feed; the click-through lands on the developer console.
-        case .muse:        return URL(string: "https://dev.meta.ai/")!
+        case .muse:        return URL(string: "https://dev.meta.ai/status")!
         case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
         case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
         case .tencentHunyuan:   return URL(string: "https://console.cloud.tencent.com/tokenhub/codingplan")!

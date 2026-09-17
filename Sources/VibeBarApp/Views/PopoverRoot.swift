@@ -1911,7 +1911,7 @@ private struct ProviderPageModule: View {
             if context.pageTool == .gemini {
                 GeminiCostEmptyCard(density: density)
             } else if context.pageTool == .muse {
-                Text((context.snapshot?.jsonlFilesFound ?? 0) > 0 ? L10n.Cost.Muse.unpriced : L10n.Cost.Empty.muse)
+                Text(L10n.Cost.Empty.muse)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)

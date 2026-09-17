@@ -30,7 +30,7 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     }
 
     /// Meta AI is a company of one: Muse Code represents itself, reads token
-    /// usage from local session logs, and has no status feed to poll.
+    /// usage from local session logs, and polls Meta's Model API status.
     func testMuseCodeIsMetaAIsPartialPrimary() {
         XCTAssertTrue(ToolType.muse.isPartialPrimary)
         XCTAssertFalse(ToolType.muse.isPrimary)
@@ -41,11 +41,8 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertEqual(ToolType.muse.productName, "Muse Code")
         XCTAssertEqual(ToolType.muse.quotaSubProviderName(), "Muse Code")
         XCTAssertTrue(ToolType.muse.supportsTokenCost)
-        XCTAssertFalse(ToolType.muse.hasPerTokenPrice, "subscription-only: counted, never priced")
-        XCTAssertFalse(ToolType.muse.supportsStatusPage)
-        for tool in ToolType.costAwareProviders where tool != .muse {
-            XCTAssertTrue(tool.hasPerTokenPrice, "\(tool)")
-        }
+        XCTAssertTrue(ToolType.muse.supportsStatusPage)
+        XCTAssertEqual(ToolType.muse.statusPageURL.absoluteString, "https://dev.meta.ai/status")
     }
 
     func testGrokIsPartialPrimary() {
@@ -94,14 +91,14 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     func testDedicatedStatusProvidersIncludeGrok() {
         XCTAssertEqual(
             ToolType.statusPageProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse]
         )
     }
 
     func testCombinedStatusDisplayProvidersMergeGoogleAI() {
         XCTAssertEqual(
             ToolType.combinedStatusPageProviders,
-            [.codex, .claude, .gemini, .grok]
+            [.codex, .claude, .gemini, .grok, .muse]
         )
     }
 

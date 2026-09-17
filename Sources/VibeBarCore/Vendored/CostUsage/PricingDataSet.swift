@@ -43,19 +43,41 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         public let gemini: ProviderTable<GeminiEntry>
         public let grok: ProviderTable<GrokEntry>
         public let antigravity: ProviderTable<AntigravityEntry>
+        public let muse: ProviderTable<MuseEntry>
 
         public init(
             codex: ProviderTable<CodexEntry>,
             claude: ProviderTable<ClaudeEntry>,
             gemini: ProviderTable<GeminiEntry>,
             grok: ProviderTable<GrokEntry>,
-            antigravity: ProviderTable<AntigravityEntry>
+            antigravity: ProviderTable<AntigravityEntry>,
+            muse: ProviderTable<MuseEntry> = .init(displayName: "Meta AI", models: [:])
         ) {
             self.codex = codex
             self.claude = claude
             self.gemini = gemini
             self.grok = grok
             self.antigravity = antigravity
+            self.muse = muse
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case codex, claude, gemini, grok, antigravity, muse
+        }
+
+        /// `muse` arrived after caches and remote tables were already on disk
+        /// without it. A missing table is an empty one rather than a decoding
+        /// failure — which would otherwise throw every cached source away and
+        /// rebuild the pricing cache from the bundled table alone.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            codex = try c.decode(ProviderTable<CodexEntry>.self, forKey: .codex)
+            claude = try c.decode(ProviderTable<ClaudeEntry>.self, forKey: .claude)
+            gemini = try c.decode(ProviderTable<GeminiEntry>.self, forKey: .gemini)
+            grok = try c.decode(ProviderTable<GrokEntry>.self, forKey: .grok)
+            antigravity = try c.decode(ProviderTable<AntigravityEntry>.self, forKey: .antigravity)
+            muse = try c.decodeIfPresent(ProviderTable<MuseEntry>.self, forKey: .muse)
+                ?? .init(displayName: "Meta AI", models: [:])
         }
     }
 
@@ -210,6 +232,12 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         }
     }
 
+    /// Meta's Muse Spark rates have exactly Grok's shape: input, output and
+    /// a cached-input rate, no cache-write charge, no fast tier, and no long-
+    /// context premium today (the threshold fields stay available should one
+    /// appear).
+    public typealias MuseEntry = GrokEntry
+
     public struct AntigravityEntry: Codable, Sendable, Equatable {
         public let input: Double
         public let output: Double
@@ -242,7 +270,8 @@ extension PricingDataSet {
                 claude: .init(displayName: "Anthropic", models: [:]),
                 gemini: .init(displayName: "Google AI", models: [:]),
                 grok: .init(displayName: "SpaceXAI", models: [:]),
-                antigravity: .init(displayName: "Google AI", models: [:])
+                antigravity: .init(displayName: "Google AI", models: [:]),
+                muse: .init(displayName: "Meta AI", models: [:])
             )
         )
     }
@@ -253,5 +282,6 @@ extension PricingDataSet {
             + providers.gemini.models.count
             + providers.grok.models.count
             + providers.antigravity.models.count
+            + providers.muse.models.count
     }
 }

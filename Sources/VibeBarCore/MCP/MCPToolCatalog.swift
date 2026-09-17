@@ -402,7 +402,7 @@ public enum MCPToolCatalog {
             Each provider company's own status page, as Vibe Bar last read it: indicator \
             (none / minor / major / critical / maintenance) plus the page's own description. Rows are at \
             the L1 company level — Google AI covers Gemini and AntiGravity, SpaceXAI covers Grok and \
-            Cursor. Useful when a provider looks broken and you want to know whether it is them or the \
+            Cursor, Meta AI reads Meta's Model API status for Muse Code. Useful when a provider looks broken and you want to know whether it is them or the \
             local setup.
             """,
         inputSchema: object(properties: ["tools": toolFilter])
