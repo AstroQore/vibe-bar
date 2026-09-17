@@ -46,7 +46,9 @@
     "warp": "#948CB5",
     "zai": "#42BD8C",
     "chatgptChat": "#4DC7BD",
-    "muse": "#D94DA6"
+    "muse": "#D94DA6",
+    "devin": "#3869C9",
+    "mistralVibe": "#FA4F0F"
   },
   "quotaBar": {
     "remaining": {

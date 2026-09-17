@@ -567,7 +567,7 @@ final class MCPToolCallTests: XCTestCase {
         let result = try await call("status.get")
         let companies = try XCTUnwrap(result["companies"]?.arrayValue)
             .compactMap { $0["company"]?.stringValue }
-        XCTAssertEqual(companies, ["OpenAI", "Anthropic", "Google AI", "SpaceXAI", "Meta AI"])
+        XCTAssertEqual(companies, ["OpenAI", "Anthropic", "Google AI", "SpaceXAI", "Meta AI", "Cognition", "Mistral AI"])
     }
 
     /// AntiGravity has no feed of its own; asking for it must resolve to the

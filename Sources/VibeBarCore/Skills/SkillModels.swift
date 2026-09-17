@@ -93,6 +93,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
     case antigravity
     case cursor
     case muse
+    case mistralVibe
 
     /// Harnesses Vibe Bar can actually project a local skill directory into.
     ///
@@ -111,6 +112,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         .grok,
         .cursor,
         .muse,
+        .mistralVibe,
     ]
 
     public var displayName: String {
@@ -124,6 +126,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         case .antigravity: return "AntiGravity"
         case .cursor: return "Cursor"
         case .muse: return "Muse Code"
+        case .mistralVibe: return "Mistral Vibe"
         }
     }
 
@@ -135,15 +138,18 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
     /// path it was discovered at: a second copy there would be a different
     /// skill to Muse, silently escaping the switch the user set on the
     /// `~/.agents/skills` one Muse already reads.
+    ///
+    /// Mistral Vibe may not either: it reads `~/.agents/skills` itself, and
+    /// its own `~/.vibe/skills` is the user's.
     public var supportsProjection: Bool {
-        self != .muse
+        self != .muse && self != .mistralVibe
     }
 
     /// Whether the harness has a real per-skill runtime switch in addition to
     /// its filesystem discovery root.
     public var supportsNativeSkillActivation: Bool {
         switch self {
-        case .codex, .claude, .gemini, .grok, .muse: true
+        case .codex, .claude, .gemini, .grok, .muse, .mistralVibe: true
         case .hermes, .opencode, .antigravity, .cursor: false
         }
     }
@@ -151,7 +157,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
     /// Harnesses that discover the shared `~/.agents/skills` root directly.
     public var discoversSharedSkillRoot: Bool {
         switch self {
-        case .codex, .gemini, .grok, .cursor, .muse: true
+        case .codex, .gemini, .grok, .cursor, .muse, .mistralVibe: true
         case .claude, .hermes, .opencode, .antigravity: false
         }
     }
@@ -167,6 +173,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         case .gemini: ".gemini/settings.json"
         case .grok: ".grok/config.toml"
         case .muse: ".config/muse/settings.json"
+        case .mistralVibe: ".vibe/config.toml"
         case .hermes, .opencode, .antigravity, .cursor: nil
         }
     }
@@ -179,6 +186,7 @@ public enum SkillAppTarget: String, CaseIterable, Codable, Hashable, Sendable {
         case .gemini: "skills.disabled"
         case .grok: "[skills] disabled"
         case .muse: "skills.activation.user"
+        case .mistralVibe: "disabled_skills"
         case .hermes, .opencode, .antigravity, .cursor: nil
         }
     }

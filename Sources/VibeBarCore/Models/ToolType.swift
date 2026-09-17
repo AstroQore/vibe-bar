@@ -30,8 +30,10 @@ import Foundation
 /// - **Primary** (`.codex`, `.claude`) — full quota + cost + service-status
 ///   integration, dedicated popover pages, mini-window slots.
 /// - **Partial-Primary** (`.gemini`, `.antigravity`, `.grok`, `.cursor`,
-///   `.muse`) — dedicated product surfaces. Gemini+AntiGravity share Google
-///   AI; Grok CLI + Cursor share SpaceXAI; Muse Code is Meta AI's. These can still opt into token-cost
+///   `.muse`, `.devin`, `.mistralVibe`) — dedicated product surfaces.
+///   Gemini+AntiGravity share Google AI; Grok CLI + Cursor share SpaceXAI;
+///   Muse Code is Meta AI's, Devin is Cognition's, Mistral Vibe is Mistral
+///   AI's. These can still opt into token-cost
 ///   scanning and status polling as provider data becomes known.
 /// - **Misc** (`.alibaba`, `.alibabaTokenPlan`, `.copilot`, `.zai`,
 ///   `.minimax`, `.kimi`, `.mimo`, `.iflytek`,
@@ -64,6 +66,10 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     case cursor
     /// Meta AI's Muse Code CLI (`muse`).
     case muse
+    /// Cognition's Devin — the `devin` CLI and the Devin desktop app.
+    case devin
+    /// Mistral AI's Mistral Vibe CLI (`vibe`).
+    case mistralVibe
     case mimo
     case iflytek
     case tencentHunyuan
@@ -83,7 +89,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     public var isPrimary: Bool {
         switch self {
         case .codex, .claude: return true
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .devin, .mistralVibe, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
     }
@@ -93,10 +99,11 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// True for providers that get a dedicated popover card, a SettingsView
     /// panel, and multi-source credential fallback. Primary providers are a
     /// proper subset of this set; partial-primary providers (Gemini,
-    /// Antigravity, Grok, Cursor, Muse Code) live here without dedicated menu-bar item kinds.
+    /// Antigravity, Grok, Cursor, Muse Code, Devin, Mistral Vibe) live here
+    /// without dedicated menu-bar item kinds.
     public var supportsDedicatedCard: Bool {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse: return true
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe: return true
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
@@ -156,14 +163,15 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// One representative tool for each L1 provider shown in Overview and
     /// Settings. Google AI is represented by Gemini; AntiGravity maps back to
     /// the same provider so one visibility switch controls the combined card.
-    /// Meta AI has one SubProvider, so Muse Code represents itself.
+    /// Meta AI, Cognition and Mistral AI each have one SubProvider, which
+    /// represents its company.
     public static var coreProviderRepresentatives: [ToolType] {
-        [.codex, .claude, .gemini, .grok, .muse]
+        [.codex, .claude, .gemini, .grok, .muse, .devin, .mistralVibe]
     }
 
     public var coreProviderRepresentative: ToolType? {
         switch self {
-        case .codex, .claude, .gemini, .grok, .muse:
+        case .codex, .claude, .gemini, .grok, .muse, .devin, .mistralVibe:
             return self
         case .chatgptChat:
             return .codex
@@ -185,6 +193,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .codex: [.chatgptChat, .codex]
         case .claude: [.claude]
         case .muse: [.muse]
+        case .devin: [.devin]
+        case .mistralVibe: [.mistralVibe]
         case .gemini: [.gemini, .antigravity]
         case .grok: [.grok, .cursor]
         default: [self]
@@ -232,9 +242,15 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     ///   reasoning token counts and the model id. The subscription has no
     ///   per-token bill; events are priced at the Meta Model API's rates for
     ///   the same model, as an API-equivalent cost.
+    /// - `.devin` reads per-response token metrics from the one SQLite
+    ///   database the Devin CLI and desktop app share, priced by model through
+    ///   the same pricing pipeline (Cognition's SWE models, or another
+    ///   family's model when Devin ran one).
+    /// - `.mistralVibe` reads each Mistral Vibe session's running token
+    ///   totals from its `meta.json`, priced at Mistral's API rates.
     public var supportsTokenCost: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse: return true
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe: return true
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
@@ -249,9 +265,12 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Codex / Claude use their own Atlassian / incident.io feeds.
     /// Muse Code reads Meta's Model API status JSON at
     /// `https://api.meta.ai/v1/status`, the API the CLI itself calls.
+    /// Devin reads the Statuspage feeds at `www.devinstatus.com`; Mistral
+    /// Vibe reads Mistral's Checkly status page, whose `status.mistral.ai`
+    /// front sits behind a bot challenge.
     public var supportsStatusPage: Bool {
         switch self {
-        case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse: return true
+        case .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe: return true
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return false
         }
@@ -294,6 +313,8 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .kimi:             return ProviderHierarchyCatalog.kimi
         case .cursor:           return ProviderHierarchyCatalog.cursor
         case .muse:             return ProviderHierarchyCatalog.muse
+        case .devin:            return ProviderHierarchyCatalog.devin
+        case .mistralVibe:      return ProviderHierarchyCatalog.mistralVibe
         case .mimo:             return ProviderHierarchyCatalog.mimo
         case .iflytek:          return ProviderHierarchyCatalog.iflytek
         case .tencentHunyuan:   return ProviderHierarchyCatalog.tencentHunyuan
@@ -334,7 +355,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// "Alibaba Bailian Coding Plan" vs "Alibaba Bailian Token Plan".
     public var displayName: String {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
             return hierarchy.tool
         case .alibaba:          return "Alibaba Bailian Coding Plan"
         case .alibabaTokenPlan: return "Alibaba Bailian Token Plan"
@@ -367,7 +388,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// Plan vs Token Plan).
     public var subtitle: String {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
             return hierarchy.tool
         case .alibaba:          return "Coding Plan"
         case .alibabaTokenPlan: return "Token Plan"
@@ -400,7 +421,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// "Hunyuan", which would clash with other Tencent surfaces).
     public var menuTitle: String {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
             return hierarchy.product
         case .alibaba, .alibabaTokenPlan: return "Bailian"
         case .copilot:          return "Copilot"
@@ -428,7 +449,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// for quota/cost and contributes a nested Cursor Status group.
     public var statusProviderName: String {
         switch self {
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
             return hierarchy.vendor
         case .alibaba, .alibabaTokenPlan: return "Alibaba"
         case .copilot:          return "GitHub"
@@ -469,6 +490,9 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         case .cursor:      return URL(string: "https://status.cursor.com/")!
         // No status feed; the click-through lands on the developer console.
         case .muse:        return URL(string: "https://dev.meta.ai/status")!
+        // status.devin.ai redirects here; the Statuspage feeds live on this host.
+        case .devin:       return URL(string: "https://www.devinstatus.com/")!
+        case .mistralVibe: return URL(string: "https://status.mistral.ai/")!
         case .mimo:        return URL(string: "https://platform.xiaomimimo.com/")!
         case .iflytek:     return URL(string: "https://maas.xfyun.cn/")!
         case .tencentHunyuan:   return URL(string: "https://console.cloud.tencent.com/tokenhub/codingplan")!

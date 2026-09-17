@@ -19,13 +19,13 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     }
 
     func testPartialPrimaryProvidersIncludeCursor() {
-        XCTAssertEqual(ToolType.partialPrimaryProviders, [.chatgptChat, .gemini, .antigravity, .grok, .cursor, .muse])
+        XCTAssertEqual(ToolType.partialPrimaryProviders, [.chatgptChat, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe])
     }
 
     func testDedicatedCardProvidersIncludePrimaryAndPartialPrimary() {
         XCTAssertEqual(
             ToolType.dedicatedCardProviders,
-            [.chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse]
+            [.chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe]
         )
     }
 
@@ -43,6 +43,24 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertTrue(ToolType.muse.supportsTokenCost)
         XCTAssertTrue(ToolType.muse.supportsStatusPage)
         XCTAssertEqual(ToolType.muse.statusPageURL.absoluteString, "https://dev.meta.ai/status")
+    }
+
+    /// Cognition and Mistral AI are companies of one, like Meta AI.
+    func testCognitionAndMistralAIAreCompaniesOfOne() {
+        for (tool, company, product) in [
+            (ToolType.devin, "Cognition", "Devin"),
+            (ToolType.mistralVibe, "Mistral AI", "Mistral Vibe")
+        ] {
+            XCTAssertTrue(tool.isPartialPrimary)
+            XCTAssertFalse(tool.isPrimary)
+            XCTAssertEqual(tool.coreProviderRepresentative, tool)
+            XCTAssertEqual(tool.coreProviderMembers, [tool])
+            XCTAssertEqual(tool.vendorName, company)
+            XCTAssertEqual(tool.productName, product)
+            XCTAssertEqual(tool.quotaSubProviderName(), product)
+            XCTAssertTrue(tool.supportsTokenCost)
+            XCTAssertTrue(tool.supportsStatusPage)
+        }
     }
 
     func testGrokIsPartialPrimary() {
@@ -91,28 +109,28 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     func testDedicatedStatusProvidersIncludeGrok() {
         XCTAssertEqual(
             ToolType.statusPageProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe]
         )
     }
 
     func testCombinedStatusDisplayProvidersMergeGoogleAI() {
         XCTAssertEqual(
             ToolType.combinedStatusPageProviders,
-            [.codex, .claude, .gemini, .grok, .muse]
+            [.codex, .claude, .gemini, .grok, .muse, .devin, .mistralVibe]
         )
     }
 
     func testCostAwareProvidersIncludeGoogleAIAndGrokFamily() {
         XCTAssertEqual(
             ToolType.costAwareProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe]
         )
     }
 
     func testUsageStatsKeepsCursorAsSubProvider() {
         XCTAssertEqual(
             ToolType.usageStatsProviders,
-            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe]
         )
     }
 

@@ -226,7 +226,8 @@ final class EInkDataAssemblerTests: XCTestCase {
             EInkDataAssembler.defaultQuotaPriority.map(\.fieldID),
             [
                 "claude.five_hour", "claude.weekly", "codex.weekly", "grok.weekly",
-                "antigravity.claude_gpt_weekly", "gemini.weekly", "cursor.models", "muse.weekly"
+                "antigravity.claude_gpt_weekly", "gemini.weekly", "cursor.models", "muse.weekly",
+                "devin.weekly", "mistralVibe.monthly"
             ]
         )
     }

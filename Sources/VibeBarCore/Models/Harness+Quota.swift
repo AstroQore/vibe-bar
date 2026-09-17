@@ -31,6 +31,8 @@ extension Harness {
         // badge draws — see `HarnessBrandIconView` in the app target.
         case .grokBot:                  .cursor
         case .museCode:                 .muse
+        case .devin:                    .devin
+        case .mistralVibe:              .mistralVibe
         }
     }
 
@@ -62,6 +64,8 @@ extension Harness {
         case .grok:        .grokBuild
         case .cursor:      .cursor
         case .muse:        .museCode
+        case .devin:       .devin
+        case .mistralVibe: .mistralVibe
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
              .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine,
              .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro,

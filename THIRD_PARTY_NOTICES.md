@@ -78,6 +78,14 @@ to — in the menu bar, in the app's own surfaces, and, thresholded to 1-bit at
 14–16 px, on an e-ink panel the user has configured — and the license above
 covers only the copied vector artwork.
 
+The Cognition, Devin, Mistral AI and Mistral Vibe marks are the owners' own
+published vector files, reproduced without redrawing: `ProviderIcon-cognition.svg`
+from `cognition.com/icon.svg`, `ProviderIcon-devin.svg` from
+`devin.ai/favicon.svg`, `ProviderIcon-mistral.svg` from the emblem in Mistral's
+`mistralai/platform-docs-public` logo, and `ProviderIcon-mistral-vibe.svg` from
+`mistralai/mistral-vibe`'s `distribution/zed/icons/mistral_vibe.svg`. Only the
+canvas was squared for the icon renderer; each file names its source.
+
 ### Fusion Pixel 12px (缝合怪像素字体)
 
 - Project:

@@ -12,7 +12,7 @@ extension SkillAppTarget {
         switch self {
         case .hermes: return "cross.case"
         case .opencode: return "chevron.left.forwardslash.chevron.right"
-        case .claude, .codex, .gemini, .grok, .antigravity, .cursor, .muse:
+        case .claude, .codex, .gemini, .grok, .antigravity, .cursor, .muse, .mistralVibe:
             return "puzzlepiece.extension"
         }
     }

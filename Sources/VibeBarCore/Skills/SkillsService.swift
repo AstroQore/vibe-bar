@@ -68,6 +68,7 @@ public actor SkillsService {
             .gemini: harnessConfig.geminiStates(for: snapshots),
             .grok: harnessConfig.grokStates(for: snapshots),
             .muse: harnessConfig.museStates(for: snapshots),
+            .mistralVibe: harnessConfig.mistralVibeStates(for: snapshots),
         ]
         var result: [Skill] = []
         var liveCopyKeys: Set<String> = []

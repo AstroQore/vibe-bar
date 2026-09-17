@@ -84,8 +84,10 @@
     "defaultGroup": {
       "claude": "claude.all-models",
       "codex": "codex.all-models",
+      "devin": "devin.all-models",
       "gemini": "gemini.all-models",
       "grok": "grok.all-models",
+      "mistralVibe": "mistralVibe.all-models",
       "muse": "muse.all-models"
     },
     "exact": [
@@ -156,11 +158,13 @@
     "codex.spark": "Spark",
     "cursor.models": "Cursor",
     "cursor.other-models": "Other",
+    "devin.all-models": "All",
     "gemini.all-models": "All",
     "gemini.flash": "Flash",
     "gemini.flash-lite": "Flash Lite",
     "gemini.pro": "Pro",
     "grok.all-models": "All",
+    "mistralVibe.all-models": "All",
     "muse.all-models": "All"
   },
   "hierarchy": {
@@ -200,6 +204,10 @@
       "company": "SpaceXAI",
       "subProvider": "Cursor"
     },
+    "devin": {
+      "company": "Cognition",
+      "subProvider": "Devin"
+    },
     "gemini": {
       "company": "Google AI",
       "subProvider": "Gemini Web"
@@ -231,6 +239,10 @@
     "minimax": {
       "company": "MiniMax",
       "subProvider": "MiniMax"
+    },
+    "mistralVibe": {
+      "company": "Mistral AI",
+      "subProvider": "Mistral Vibe"
     },
     "muse": {
       "company": "Meta AI",

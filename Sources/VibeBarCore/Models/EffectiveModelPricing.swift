@@ -66,6 +66,8 @@ extension PricingProviderFamily {
         case .grok: .grok
         case .antigravity: .antigravity
         case .muse: .muse
+        case .mistral: .mistralVibe
+        case .cognition: .devin
         }
     }
 }
@@ -150,6 +152,34 @@ extension PricingDataSet {
         for (model, entry) in providers.muse.models.sorted(by: { $0.key < $1.key }) {
             rows.append(EffectiveModelPricingRow(
                 provider: .muse,
+                model: model,
+                displayLabel: entry.displayLabel,
+                inputPerMillion: entry.input * million,
+                outputPerMillion: entry.output * million,
+                cacheReadPerMillion: entry.cacheRead.map { $0 * million },
+                thresholdTokens: entry.thresholdTokens,
+                inputAboveThresholdPerMillion: entry.inputAboveThreshold.map { $0 * million },
+                outputAboveThresholdPerMillion: entry.outputAboveThreshold.map { $0 * million },
+                cacheReadAboveThresholdPerMillion: entry.cacheReadAboveThreshold.map { $0 * million }
+            ))
+        }
+        for (model, entry) in providers.mistral.models.sorted(by: { $0.key < $1.key }) {
+            rows.append(EffectiveModelPricingRow(
+                provider: .mistral,
+                model: model,
+                displayLabel: entry.displayLabel,
+                inputPerMillion: entry.input * million,
+                outputPerMillion: entry.output * million,
+                cacheReadPerMillion: entry.cacheRead.map { $0 * million },
+                thresholdTokens: entry.thresholdTokens,
+                inputAboveThresholdPerMillion: entry.inputAboveThreshold.map { $0 * million },
+                outputAboveThresholdPerMillion: entry.outputAboveThreshold.map { $0 * million },
+                cacheReadAboveThresholdPerMillion: entry.cacheReadAboveThreshold.map { $0 * million }
+            ))
+        }
+        for (model, entry) in providers.cognition.models.sorted(by: { $0.key < $1.key }) {
+            rows.append(EffectiveModelPricingRow(
+                provider: .cognition,
                 model: model,
                 displayLabel: entry.displayLabel,
                 inputPerMillion: entry.input * million,

@@ -38,6 +38,8 @@ final class PricingResolverTests: XCTestCase {
         XCTAssertGreaterThan(bundled?.providers.grok.models.count ?? 0, 0)
         XCTAssertGreaterThan(bundled?.providers.antigravity.models.count ?? 0, 0)
         XCTAssertGreaterThan(bundled?.providers.muse.models.count ?? 0, 0)
+        XCTAssertGreaterThan(bundled?.providers.mistral.models.count ?? 0, 0)
+        XCTAssertGreaterThan(bundled?.providers.cognition.models.count ?? 0, 0)
     }
 
     func testCacheOverridesBundle() throws {

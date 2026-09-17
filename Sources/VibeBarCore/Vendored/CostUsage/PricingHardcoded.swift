@@ -32,7 +32,9 @@ enum PricingHardcoded {
             gemini: gemini,
             grok: grok,
             antigravity: antigravity,
-            muse: muse
+            muse: muse,
+            mistral: mistral,
+            cognition: cognition
         )
     )
 
@@ -170,6 +172,34 @@ enum PricingHardcoded {
     /// contributor variants — whose content may be used for product
     /// improvement — at $0.10 / $0.20 with cached input at $0.002. No cache
     /// write charge and no long-context premium; reasoning bills as output.
+    /// Mistral La Plateforme rates for the models Mistral Vibe runs
+    /// (LiteLLM `mistral/…`, 2026-09): `mistral-vibe-cli-latest` is the
+    /// Medium 3.5 alias the CLI ships as its default.
+    private static let mistral = PricingDataSet.ProviderTable<PricingDataSet.MistralEntry>(
+        displayName: "Mistral AI",
+        models: [
+            "mistral-vibe-cli-latest":     .init(input: 1.5e-6,  output: 7.5e-6, cacheRead: 1.5e-7),
+            "mistral-vibe-cli-with-tools": .init(input: 1.5e-6,  output: 7.5e-6, cacheRead: 1.5e-7),
+            "mistral-vibe-cli-fast":       .init(input: 1.5e-7,  output: 6e-7,   cacheRead: 1.5e-8),
+            "mistral-medium-3.5":          .init(input: 1.5e-6,  output: 7.5e-6, cacheRead: 1.5e-7),
+            "devstral-latest":             .init(input: 4e-7,    output: 2e-6,   cacheRead: nil),
+            "devstral-small-latest":       .init(input: 1e-7,    output: 3e-7,   cacheRead: nil),
+            "codestral-latest":            .init(input: 3e-7,    output: 9e-7,   cacheRead: 3e-8)
+        ]
+    )
+
+    /// Cognition's SWE model rates as LiteLLM publishes them (`cognition/…`,
+    /// 2026-09). Newer SWE models Devin runs price as soon as a source lists
+    /// them.
+    private static let cognition = PricingDataSet.ProviderTable<PricingDataSet.CognitionEntry>(
+        displayName: "Cognition",
+        models: [
+            "swe-1.6":           .init(input: 5e-7,   output: 2.5e-6,  cacheRead: 2e-7),
+            "swe-1.7":           .init(input: 5e-7,   output: 2.5e-6,  cacheRead: 2e-7),
+            "swe-1.7-lightning": .init(input: 2.5e-6, output: 1.25e-5, cacheRead: 1e-6)
+        ]
+    )
+
     private static let muse = PricingDataSet.ProviderTable<PricingDataSet.MuseEntry>(
         displayName: "Meta AI",
         models: [

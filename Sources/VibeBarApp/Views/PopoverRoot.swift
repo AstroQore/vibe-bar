@@ -162,6 +162,10 @@ struct PopoverRoot: View {
             GrokPage(density: density)
         case .metaAI:
             ProviderDetailView(tool: .muse, density: density)
+        case .cognition:
+            ProviderDetailView(tool: .devin, density: density)
+        case .mistralAI:
+            ProviderDetailView(tool: .mistralVibe, density: density)
         case .misc:
             MiscProvidersPage(density: density)
         case .machines:
@@ -179,6 +183,8 @@ struct PopoverRoot: View {
         case .googleAI: return "Google AI"
         case .grok: return "SpaceXAI"
         case .metaAI: return "Meta AI"
+        case .cognition: return "Cognition"
+        case .mistralAI: return "Mistral AI"
         case .misc: return L10n.Popover.Tab.misc
         case .machines: return L10n.Popover.Tab.machines
         }
@@ -187,7 +193,7 @@ struct PopoverRoot: View {
     private var headerSubtitle: String? {
         switch overviewPage {
         case .overview: return L10n.Popover.Header.overviewSubtitle
-        case .openAI, .claude, .googleAI, .grok, .metaAI: return nil
+        case .openAI, .claude, .googleAI, .grok, .metaAI, .cognition, .mistralAI: return nil
         case .misc: return L10n.Popover.Header.miscSubtitle
         case .machines: return L10n.Popover.Header.machinesSubtitle
         }
@@ -219,6 +225,8 @@ struct PopoverRoot: View {
         case .googleAI: return ToolType.googleAIPair
         case .grok: return ToolType.grokFamily
         case .metaAI: return [.muse]
+        case .cognition: return [.devin]
+        case .mistralAI: return [.mistralVibe]
         case .misc: return settingsStore.settings.visibleMiscProviderList
         case .machines: return []
         }
@@ -306,6 +314,8 @@ enum OverviewPage: String, CaseIterable, Identifiable {
     case googleAI
     case grok
     case metaAI
+    case cognition
+    case mistralAI
     case misc
     case machines
 
@@ -339,6 +349,8 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .googleAI: return .detail(.gemini)
         case .grok:     return .detail(.grok)
         case .metaAI:   return .detail(.muse)
+        case .cognition: return .detail(.devin)
+        case .mistralAI: return .detail(.mistralVibe)
         case .misc:     return nil
         case .machines: return nil
         }
@@ -354,6 +366,8 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .googleAI: return "Google AI"
         case .grok:     return "SpaceXAI"
         case .metaAI:   return "Meta AI"
+        case .cognition: return "Cognition"
+        case .mistralAI: return "Mistral AI"
         case .misc:     return L10n.Popover.Tab.miscShort
         case .machines: return L10n.Popover.Tab.machines
         }
@@ -366,6 +380,8 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .googleAI: return .gemini
         case .grok: return .grok
         case .metaAI: return .muse
+        case .cognition: return .devin
+        case .mistralAI: return .mistralVibe
         case .overview, .misc, .machines: return nil
         }
     }
@@ -377,6 +393,8 @@ enum OverviewPage: String, CaseIterable, Identifiable {
         case .gemini: return .googleAI
         case .grok: return .grok
         case .muse: return .metaAI
+        case .devin: return .cognition
+        case .mistralVibe: return .mistralAI
         default: return nil
         }
     }
@@ -575,6 +593,10 @@ private struct OverviewSwitchIcon: View {
                 CompanyBrandIconView(tool: .grok, size: Self.iconSize)
             case .metaAI:
                 CompanyBrandIconView(tool: .muse, size: Self.iconSize)
+            case .cognition:
+                CompanyBrandIconView(tool: .devin, size: Self.iconSize)
+            case .mistralAI:
+                CompanyBrandIconView(tool: .mistralVibe, size: Self.iconSize)
             }
         }
         .opacity(isSelected ? 1 : 0.72)
@@ -1518,11 +1540,13 @@ private struct OverviewStatusSummaryCard: View {
             $0.aggregateUptimePercent > 0 ? $0.aggregateUptimePercent : nil
         }
         return VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
-            HStack(spacing: 7) {
-                Image(systemName: state.iconName)
-                    .font(.system(size: density.bucketTitleFontSize + 1, weight: .semibold))
-                    .foregroundStyle(state.color)
-                    .frame(width: 17, height: 17)
+            HStack(spacing: plan.showsStateLabel ? 7 : 8) {
+                if plan.showsStateLabel {
+                    Image(systemName: state.iconName)
+                        .font(.system(size: density.bucketTitleFontSize + 1, weight: .semibold))
+                        .foregroundStyle(state.color)
+                        .frame(width: 17, height: 17)
+                }
                 // Framed at its drawn size, not a fixed 22 pt box: the icon row
                 // sets the tile's tallest line, and the pinned card leaves each
                 // tile (height − chrome) / rows — at compact density that is
@@ -1534,11 +1558,24 @@ private struct OverviewStatusSummaryCard: View {
                         width: density.bucketTitleFontSize + 6,
                         height: density.bucketTitleFontSize + 6
                     )
+                    // A third-width tile has no room for the state icon beside
+                    // the mark and the company name, so the state rides on the
+                    // mark as a badge instead of truncating the name.
+                    .overlay(alignment: .bottomTrailing) {
+                        if !plan.showsStateLabel {
+                            Image(systemName: state.iconName)
+                                .font(.system(size: max(8, density.subtitleFontSize - 3), weight: .bold))
+                                .foregroundStyle(state.color)
+                                .background(Circle().fill(.background).padding(-1))
+                                .offset(x: 4, y: 3)
+                        }
+                    }
                 Text(statusTitle(for: tool))
                     .font(.system(size: density.subtitleFontSize + 1, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Spacer(minLength: 4)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: plan.showsStateLabel ? 4 : 0)
                 if plan.showsStateLabel {
                     Text(state.label)
                         .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .semibold, design: .rounded))
@@ -1562,7 +1599,7 @@ private struct OverviewStatusSummaryCard: View {
                 }
             }
         }
-        .padding(.horizontal, density.cardPadding - 2)
+        .padding(.horizontal, plan.showsStateLabel ? density.cardPadding - 2 : max(6, density.cardPadding - 6))
         // The vertical budget is fixed by the pinned card: icon row + row
         // spacing + one detail line + this padding must fit within
         // (summary height − card chrome) / 2 at every density — 45/54/66 pt.
@@ -1788,6 +1825,8 @@ private struct OverviewCostCard: View {
         case .antigravity: return L10n.Cost.Empty.antigravity
         case .grok: return L10n.Cost.Empty.grok
         case .muse: return L10n.Cost.Empty.muse
+        case .devin: return L10n.Cost.Empty.devin
+        case .mistralVibe: return L10n.Cost.Empty.mistralVibe
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
@@ -1950,6 +1989,16 @@ private struct ProviderPageContext {
 
 /// The one place a provider-page module identity turns back into its card.
 private struct ProviderPageModule: View {
+
+    /// The provider pages whose empty cost card is one sentence, keyed by tool.
+    static func emptyCostMessage(for tool: ToolType) -> String? {
+        switch tool {
+        case .muse: L10n.Cost.Empty.muse
+        case .devin: L10n.Cost.Empty.devin
+        case .mistralVibe: L10n.Cost.Empty.mistralVibe
+        default: nil
+        }
+    }
     let descriptor: PageModuleDescriptor
     let context: ProviderPageContext
     let density: Theme.Density
@@ -2030,8 +2079,8 @@ private struct ProviderPageModule: View {
         case .costEmpty:
             if context.pageTool == .gemini {
                 GeminiCostEmptyCard(density: density)
-            } else if context.pageTool == .muse {
-                Text(L10n.Cost.Empty.muse)
+            } else if let message = Self.emptyCostMessage(for: context.pageTool) {
+                Text(message)
                     .font(.system(size: density.subtitleFontSize))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
@@ -2437,6 +2486,8 @@ struct ProviderQuotaCard: View {
         case .grok: return L10n.Quota.Login.grok
         case .cursor: return L10n.Quota.Login.cursor
         case .muse: return L10n.Quota.Login.muse
+        case .devin: return L10n.Quota.Login.devin
+        case .mistralVibe: return L10n.Quota.Login.mistralVibe
         case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers route through the Misc page's per-card
             // setup CTA. This empty-message path is only reachable from

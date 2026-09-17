@@ -169,7 +169,7 @@ there, not in the package.
 
 **Where it comes from.** `Package.swift` pins the package to an exact
 tag on GitHub (`.package(url: "https://github.com/AstroQore/agent-session-kit.git",
-exact: "0.9.0")`), so a plain clone builds and a release build resolves the
+exact: "0.10.0-providers.1")`), so a plain clone builds and a release build resolves the
 same package the developer built against — `Package.resolved` is
 gitignored here, and the exact pin is what stands in for it.
 
@@ -823,10 +823,11 @@ capture against § 8 before committing it — a screenshot is source content.
   managed harnesses are Codex (`~/.codex/skills`), Claude Code
   (`~/.claude/skills`), Gemini CLI (`~/.gemini/skills`), AntiGravity
   (`~/.gemini/config/skills`), Grok Build (`~/.grok/skills`), Cursor
-  (`~/.cursor/skills`), and Muse Code, which has no projection directory:
-  Muse keys each skill's switch by the path it discovered it at, so a copy in
-  its own `~/.config/muse/skills` would be a second skill escaping that
-  switch, and that folder is excluded from the write roots. Hermes and OpenCode roots remain in the allowlist only
+  (`~/.cursor/skills`), Muse Code and Mistral Vibe. The last two have no
+  projection directory: Muse keys each skill's switch by the path it
+  discovered it at, so a copy in its own `~/.config/muse/skills` would be a
+  second skill escaping that switch, and Mistral Vibe's `~/.vibe/skills` is
+  the user's own; neither folder is a write root. Hermes and OpenCode roots remain in the allowlist only
   so old `skills.json` files can be decoded and safely cleaned up. ChatGPT
   Work, Claude Cowork, and Grok Bot do not expose an independent, stable local
   skill directory this feature can safely write, so no fake toggles are shown.
@@ -842,8 +843,8 @@ capture against § 8 before committing it — a screenshot is source content.
   provenance and never writes it, and pre-uninstall snapshots stay under
   `~/.vibebar/skill_backups/`.
 
-  Projection is not activation. Codex, Gemini CLI, Grok Build, Cursor, and
-  Muse Code all discover `~/.agents/skills` directly; AntiGravity also discovers the Gemini
+  Projection is not activation. Codex, Gemini CLI, Grok Build, Cursor, Muse
+  Code and Mistral Vibe all discover `~/.agents/skills` directly; AntiGravity also discovers the Gemini
   CLI root. The visible page therefore derives separate projection, native,
   and effective states. It re-reads projections and these native user settings
   while open: Codex `~/.codex/config.toml` `[[skills.config]]`, Claude
@@ -851,7 +852,11 @@ capture against § 8 before committing it — a screenshot is source content.
   `~/.gemini/settings.json.skills`, Grok `~/.grok/config.toml [skills]`, and
   Muse Code `~/.config/muse/settings.json` `skills.activation.user` (keyed
   `$HOME/.agents/skills/<dir>/SKILL.md`, written under Muse's own
-  `.settings.json.lock`, refused when `schema_version` is not 1).
+  `.settings.json.lock`, refused when `schema_version` is not 1), and Mistral
+  Vibe `~/.vibe/config.toml` top-level `disabled_skills` (exact names written;
+  a non-empty `enabled_skills` allow-list is read but never edited, and writes
+  are refused while it exists). Devin reads skills only from a project's
+  `.devin/skills/`, so it has no managed column.
   Native config patches must be UTF-8/JSON/TOML-safe, preserve unknown fields,
   back up the original under `~/.vibebar/skill_backups/harness-config/`, and
   fail closed on parse errors. Cursor and standalone AntiGravity expose no
@@ -1039,6 +1044,8 @@ SubProvider → L3 quota / model group. Source of truth:
 | SpaceXAI   | Cursor                | Cursor Models, Other Models               |
 | SpaceXAI   | Grok Bot              | Weekly (cloud-only SubProvider)           |
 | Meta AI    | Muse Code             | 5 Hours, Weekly                           |
+| Cognition  | Devin                 | Daily, Weekly                             |
+| Mistral AI | Mistral Vibe          | Monthly                                   |
 
 Every company and misc provider starts **hidden**: a fresh install shows
 none until onboarding or Settings turns one on
@@ -1067,6 +1074,8 @@ display names). The mapping from a harness onto the quota axis —
 | Cursor        | SpaceXAI   | `~/.cursor/chats/**/store.db` for sessions; dashboard events for cost |
 | Grok Bot      | SpaceXAI   | `~/Library/Application Support/Grok Bot/sand-client-persistence` — sessions only; quota rides in on Cursor's `grok_bot_weekly` bucket |
 | Muse Code     | Meta AI    | `~/.local/share/muse/sessions/YYYY/MM/DD/<id>/session.jsonl`, plus `<id>/subagent/*` for reminder children |
+| Devin         | Cognition  | `~/.local/share/devin/cli/sessions.db` — one database for every session of the `devin` CLI and the Devin app |
+| Mistral Vibe  | Mistral AI | `~/.vibe/logs/session/session_<utc>_<id8>/{meta.json,messages.jsonl}`, sub-agents under `agents/` |
 
 Consequences worth stating out loud:
 
@@ -1102,6 +1111,8 @@ Sessions page; "Delete" is § 5's read-only rule.
 | Cursor        | ⚠️ when a turn recorded one        | ☁️ dashboard events only  | ✅ `CursorSessionAdapter`    | ❌ store stays open |
 | Grok Bot      | ❌ never recorded locally          | ❌ cloud-only             | ✅ `GrokBotSessionAdapter`, read-only | ❌ the app's own cloud cache |
 | Muse Code     | ✅ `model_completed.model`         | ✅ local logs, API rates  | ✅ `MuseSessionAdapter`, read-only | ❌ the CLI indexes and locks it |
+| Devin         | ✅ `metadata.generation_model`     | ✅ per response, by model | ✅ `DevinSessionAdapter`, read-only | ❌ rows in another app's live database |
+| Mistral Vibe  | ⚠️ the session's last model only   | ✅ per session, API rates | ✅ `MistralVibeSessionAdapter`, read-only | ❌ |
 
 Where a ⚠️ appears the log genuinely does not carry the value — an aborted
 Cursor conversation records no `modelName` at all, and old Gemini CLI
@@ -1158,6 +1169,40 @@ Muse Code reads `~/.agents/skills` itself and is switched through
 addresses on some networks; the adapter uses `URLSession`'s default
 configuration, which follows the macOS system proxy and hands it the host
 name, and there is no per-provider proxy setting.
+
+Devin is Cognition's only SubProvider, for the `devin` CLI and the Devin
+desktop app together. Quota is read from the plan status the CLI caches at
+`~/.cache/devin/cli/user_status.<identity>.bin` — a JSON envelope around the
+base64 `GetUserStatus` protobuf, whose `PlanStatus` (field 13) carries the
+daily and weekly **remaining** percents (14, 15) and their resets (17, 18);
+proto3 omits a zero, so a spent window arrives with a reset and no percent.
+Nothing is fetched and nothing poses as Devin's client: the quota is as fresh
+as Devin's last run, and `queriedAt` is the cache's own time. Usage is each
+assistant row with `metadata.metrics` in the shared `sessions.db`, counted
+once per `request_id` because compaction copies nodes; `input_tokens`
+includes the cached prefix. Every response is priced by its model through the
+pipeline (`CostUsagePricing.devinCostUSD`): the `cognition` family (LiteLLM
+`cognition/…`, effort suffixes such as `-high` dropped), or the family of a
+model Devin ran from another lab; a model no source lists yet stays unpriced
+until one does. Status is Devin's Statuspage at `www.devinstatus.com`.
+
+Mistral Vibe is Mistral AI's only SubProvider. Its Monthly quota comes from
+the console's `billing.vibeUsage` tRPC query, authorised by the console
+session cookies — `ory_session_*` (a per-deployment suffix, matched by
+prefix in the cookie spec) and `csrftoken` — imported from a signed-in browser
+or pasted through the shared cookie slots, the route CodexBar also uses. Only
+those two cookies are sent, only to `console.mistral.ai`. The plan name comes
+from the CLI's `~/.vibe/whoami_cache.json` (`chat` + `INDIVIDUAL`/`EDU`/`TEAM`
+is Pro). Usage is each session's running totals in `meta.json`
+(`session_prompt_tokens` includes cached); the log has no per-turn usage, so a
+session is one event at its last save, and sub-agents keep their own totals.
+Priced at Mistral's API rates (the `mistral` family). `status.mistral.ai`
+challenges scripted requests, so status is read from the same Checkly page at
+`mistral-ai.checkly-status-page.com`.
+
+Cost follows the model, not the plan: a subscription harness's tokens carry
+the API-equivalent cost of the model that served them, from the same pricing
+pipeline as everyone else, with no per-provider "not priced" treatment.
 
 **Model names.** Display always uses the canonical vendor id —
 `gemini-3.5-flash-high`, not "Gemini 3.5 Flash (High)". Route every

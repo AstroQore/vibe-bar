@@ -25,7 +25,7 @@ let package = Package(
         // from a clean checkout with no Package.resolved (it is gitignored),
         // so the pin is the only thing that makes two builds of the same
         // Vibe Bar commit contain the same package. Bump it deliberately.
-        .package(url: "https://github.com/AstroQore/agent-session-kit.git", exact: "0.9.0"),
+        .package(url: "https://github.com/AstroQore/agent-session-kit.git", exact: "0.10.0-providers.1"),
         // SweetCookieKit encapsulates Chromium cookie + localStorage parsing,
         // "Chrome Safe Storage" Keychain decryption, and Safari
         // binarycookies / Firefox SQLite reads used by misc providers.
@@ -36,7 +36,7 @@ let package = Package(
         // `bump-vibe-bar-i18n.yml` opens the pull request that moves the pin.
         // `Package.resolved` is not committed, so the exact pin is what makes
         // two machines build the same strings.
-        .package(url: "https://github.com/AstroQore/vibe-bar-i18n.git", exact: "0.19.0-muse.3"),
+        .package(url: "https://github.com/AstroQore/vibe-bar-i18n.git", exact: "0.19.0-providers.1"),
         // Sparkle is the standard update framework for independently
         // distributed macOS applications. Pin the exact reviewed release:
         // update verification and installation are security-sensitive.

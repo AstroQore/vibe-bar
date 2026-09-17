@@ -88,6 +88,26 @@ enum ModelPricingOverrideApplier {
                 cacheReadAboveThreshold: override.cacheReadAboveThresholdPerMillion.map(perToken),
                 displayLabel: override.displayLabel
             )])
+        case .cognition:
+            return replacing(empty, cognition: [id: .init(
+                input: input, output: output,
+                cacheRead: override.cacheReadPerMillion.map(perToken),
+                thresholdTokens: threshold,
+                inputAboveThreshold: override.inputAboveThresholdPerMillion.map(perToken),
+                outputAboveThreshold: override.outputAboveThresholdPerMillion.map(perToken),
+                cacheReadAboveThreshold: override.cacheReadAboveThresholdPerMillion.map(perToken),
+                displayLabel: override.displayLabel
+            )])
+        case .mistral:
+            return replacing(empty, mistral: [id: .init(
+                input: input, output: output,
+                cacheRead: override.cacheReadPerMillion.map(perToken),
+                thresholdTokens: threshold,
+                inputAboveThreshold: override.inputAboveThresholdPerMillion.map(perToken),
+                outputAboveThreshold: override.outputAboveThresholdPerMillion.map(perToken),
+                cacheReadAboveThreshold: override.cacheReadAboveThresholdPerMillion.map(perToken),
+                displayLabel: override.displayLabel
+            )])
         case .antigravity:
             return replacing(empty, antigravity: [id: .init(
                 input: input, output: output,
@@ -105,7 +125,9 @@ enum ModelPricingOverrideApplier {
         gemini: [String: PricingDataSet.GeminiEntry] = [:],
         grok: [String: PricingDataSet.GrokEntry] = [:],
         antigravity: [String: PricingDataSet.AntigravityEntry] = [:],
-        muse: [String: PricingDataSet.MuseEntry] = [:]
+        muse: [String: PricingDataSet.MuseEntry] = [:],
+        mistral: [String: PricingDataSet.MistralEntry] = [:],
+        cognition: [String: PricingDataSet.CognitionEntry] = [:]
     ) -> PricingDataSet {
         PricingDataSet(
             schemaVersion: dataSet.schemaVersion,
@@ -117,7 +139,9 @@ enum ModelPricingOverrideApplier {
                 gemini: .init(displayName: "Google", models: gemini),
                 grok: .init(displayName: "xAI", models: grok),
                 antigravity: .init(displayName: "AntiGravity", models: antigravity),
-                muse: .init(displayName: "Meta AI", models: muse)
+                muse: .init(displayName: "Meta AI", models: muse),
+                mistral: .init(displayName: "Mistral AI", models: mistral),
+                cognition: .init(displayName: "Cognition", models: cognition)
             )
         )
     }

@@ -31,6 +31,7 @@ public enum SkillAppCatalog {
         case .cursor: return ".cursor/skills"
         // Display only: Muse's own folder is never a write root.
         case .muse: return ".config/muse/skills"
+        case .mistralVibe: return ".vibe/skills"
         }
     }
 

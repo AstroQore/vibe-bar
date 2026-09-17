@@ -51,7 +51,7 @@ Relay.
 
 Under the menu bar sits a Workbench: a per-request usage ledger across every
 harness, a searchable index of every local agent session with one-click
-resume, and a skills manager that reconciles one library across seven
+resume, and a skills manager that reconciles one library across eight
 agent CLIs. All of it is read from files already on your Mac, and an MCP
 server lets your agents ask the same questions.
 
@@ -359,6 +359,8 @@ the room costs more than the pixels it saves.
 | Claude Code / Cowork | 5 Hours, Weekly, per-model weekly, Anthropic status | `~/.claude/projects/**/*.jsonl`, Claude.app's Cowork transcripts |
 | Gemini + AntiGravity | Gemini Web quotas, local AntiGravity language-server quotas | Local Gemini / AntiGravity usage records |
 | Grok + Cursor | Grok quota, Cursor Models and Other Models, Grok Bot weekly, SpaceXAI + Cursor status | Local Grok records, Cursor account usage events; Grok Bot is quota-only |
+| Devin | Cognition's Daily and Weekly windows from the `devin` CLI's plan cache; Devin status | `~/.local/share/devin/cli/sessions.db` (CLI and Devin app), costed by model |
+| Mistral Vibe | Mistral AI's Monthly window from a console.mistral.ai browser session; Mistral status | `~/.vibe/logs/session/*/meta.json`, costed at Mistral's API rates |
 | Muse Code | Meta AI's 5 Hours and Weekly windows, read with the `muse` CLI's login once macOS allows it; Meta Model API status | `~/.local/share/muse/sessions/**/session.jsonl` — tokens, costed at Meta's API rates (a subscription has no per-token bill) |
 | Misc providers | Each provider's own coding- or token-plan endpoint | Quota-only unless an adapter exposes local usage |
 
@@ -458,11 +460,11 @@ Legend: ● full · ◐ partial · ○ not yet · — exempt
 | Resets: risk view | ● | ◐ | Desktop lists resets with each one's forecast; the calendar and the risk grouping are not ported |
 | Skills: install, import, discover, backups | ● | ◐ | Desktop is a read-only inventory |
 | **Cost and usage** |
-| Local usage scan | ● 8 harnesses | ◐ 3 | Codex, Claude Code, Gemini CLI. Counts harnesses with a local scanner: Cursor's usage comes from dashboard events and Grok Bot has no usage source at all, so neither is a local scan on either side |
+| Local usage scan | ● 10 harnesses | ◐ 3 | Codex, Claude Code, Gemini CLI. Counts harnesses with a local scanner: Cursor's usage comes from dashboard events and Grok Bot has no usage source at all, so neither is a local scan on either side |
 | Per-request ledger, multi-source pricing, history | ● | ○ | Desktop keeps an in-memory aggregate |
 | **Settings** |
 | Writable | ● | ○ | Shared writes need the cross-client storage contract |
-| Provider credential panes | ● 25 | ○ | |
+| Provider credential panes | ● 27 | ○ | |
 | **Platform** |
 | MCP tools | ● 12 | ◐ 5 | Read-only subset |
 | Remote probe sync | ● | ○ | |
@@ -532,7 +534,7 @@ audit metadata only. Derived state stays under:
   only at your explicit request and never editing a session file's contents.
 - The Skills manager writes to `~/.agents/skills/`, six managed harness skill
   roots, and the narrow native skill fields in Codex/Claude/Gemini/Grok/Muse
-  Code user config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
+  Code/Mistral Vibe user config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
 - E-ink displays are the only feature that sends your quota or usage figures

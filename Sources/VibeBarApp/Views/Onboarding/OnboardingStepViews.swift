@@ -128,6 +128,8 @@ private struct OnboardingCoreProviderCard: View {
         case .gemini: L10n.Onboarding.Subscriptions.ProductLine.gemini
         case .grok: L10n.Onboarding.Subscriptions.ProductLine.grok
         case .muse: L10n.Onboarding.Subscriptions.ProductLine.muse
+        case .devin: L10n.Onboarding.Subscriptions.ProductLine.devin
+        case .mistralVibe: L10n.Onboarding.Subscriptions.ProductLine.mistralVibe
         default: tool.subtitle
         }
     }
@@ -180,6 +182,18 @@ private struct OnboardingCoreProviderCard: View {
                 hintLabel(L10n.Settings.Muse.allowKeychainAccessHelp, systemImage: "checkmark.circle", tint: .green)
             } else {
                 hintLabel(L10n.Settings.Muse.noLogin, systemImage: "exclamationmark.circle", tint: .secondary)
+            }
+        case .devin:
+            if environment.account(for: .devin) != nil {
+                hintLabel(L10n.Settings.RouteHealth.cachedOnly, systemImage: "checkmark.circle", tint: .green)
+            } else {
+                hintLabel(L10n.Settings.Devin.noCache, systemImage: "exclamationmark.circle", tint: .secondary)
+            }
+        case .mistralVibe:
+            if environment.account(for: .mistralVibe)?.source == .browserCookie {
+                hintLabel(L10n.Settings.RouteHealth.savedInKeychain, systemImage: "checkmark.circle", tint: .green)
+            } else {
+                hintLabel(L10n.Quota.Login.mistralVibe, systemImage: "exclamationmark.circle", tint: .secondary)
             }
         default:
             EmptyView()

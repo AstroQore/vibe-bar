@@ -152,6 +152,8 @@ public final class QuotaService: ObservableObject {
                 .antigravity: AntigravityQuotaAdapter(),
                 .grok: GrokQuotaAdapter(),
                 .muse: MuseQuotaAdapter(),
+                .devin: DevinQuotaAdapter(),
+                .mistralVibe: MistralVibeQuotaAdapter(),
                 .mimo: MimoQuotaAdapter(),
                 .iflytek: IFlyTekQuotaAdapter(),
                 .tencentHunyuan: TencentHunyuanQuotaAdapter(),

@@ -35,6 +35,10 @@ public actor ServiceStatusClient {
             return try await fetchClassicStatuspage(tool: .cursor, dayCount: dayCount, now: now)
         case .muse:
             return try await fetchMetaModelAPIStatus(now: now)
+        case .devin:
+            return try await fetchClassicStatuspage(tool: .devin, dayCount: dayCount, now: now)
+        case .mistralVibe:
+            return try await fetchChecklyStatus(tool: .mistralVibe, dayCount: dayCount, now: now)
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose known machine-readable status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
@@ -508,6 +512,220 @@ public actor ServiceStatusClient {
         if impact.contains("DEGRADED") || impact.contains("DELAY")  { return .minor }
         if impact.contains("MAINTENANCE") { return .maintenance }
         return .minor
+    }
+
+    // MARK: - Checkly status pages (Mistral AI)
+
+    /// Mistral's status page is a Checkly page. Its `status.mistral.ai` front
+    /// answers scripted requests with a bot challenge, but the same page is
+    /// served without one from its Checkly host, whose public feeds are:
+    /// `summary.json` (page state and active incidents), `services.json`
+    /// (every service's current state) and the page's 90-day `uptime` history.
+    static let mistralChecklyHost = URL(string: "https://mistral-ai.checkly-status-page.com/")!
+
+    private func fetchChecklyStatus(tool: ToolType, dayCount: Int, now: Date) async throws -> ServiceStatusSnapshot {
+        let host = Self.mistralChecklyHost
+        let summary = try await fetchData(url: host.appendingPathComponent("api/v1/summary.json"))
+        let services = try await fetchData(url: host.appendingPathComponent("api/v1/services.json"))
+        // The history is best-effort, like the Statuspage uptime scrape: the
+        // current state still stands without it.
+        let uptime = try? await fetchData(url: host.appendingPathComponent("api/status-page/mistral-ai/uptime"))
+        try Task.checkCancellation()
+        return try Self.parseChecklyStatus(
+            tool: tool,
+            summary: summary,
+            services: services,
+            uptime: uptime,
+            dayCount: dayCount,
+            now: now
+        )
+    }
+
+    private func fetchData(url: URL) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue("Vibe Bar/1", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await HTTPResponseLimit.boundedData(from: session, for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ServiceStatusError.badResponse
+        }
+        return data
+    }
+
+    private struct ChecklySummary: Decodable {
+        struct Incident: Decodable {
+            let id: String?
+            let name: String?
+            let startedAt: String?
+            let status: String?
+            let severity: String?
+            let url: String?
+        }
+        let activeIncidents: [Incident]?
+        let activeMaintenances: [Incident]?
+    }
+
+    private struct ChecklyService: Decodable {
+        let id: String?
+        let name: String?
+        let status: String?
+        let group: String?
+    }
+
+    private struct ChecklyUptime: Decodable {
+        struct Group: Decodable {
+            let services: [Service]?
+        }
+        struct Service: Decodable {
+            let id: String?
+            let uptime: Double?
+            let days: [Day]?
+        }
+        struct Day: Decodable {
+            let date: String?
+            let events: [Event]?
+        }
+        struct Event: Decodable {
+            let id: String?
+            let name: String?
+            let duration: Double?
+            let severity: String?
+            let lastUpdateStatus: String?
+            let created_at: String?
+        }
+        let uptime: [Group]?
+    }
+
+    nonisolated static func parseChecklyStatus(
+        tool: ToolType,
+        summary summaryData: Data,
+        services servicesData: Data,
+        uptime uptimeData: Data?,
+        dayCount: Int,
+        now: Date
+    ) throws -> ServiceStatusSnapshot {
+        let decoder = JSONDecoder()
+        guard let summary = try? decoder.decode(ChecklySummary.self, from: summaryData),
+              let services = try? decoder.decode([ChecklyService].self, from: servicesData)
+        else { throw ServiceStatusError.badResponse }
+        let history = uptimeData.flatMap { try? decoder.decode(ChecklyUptime.self, from: $0) }
+        let historyByService = Dictionary(
+            (history?.uptime ?? []).flatMap { $0.services ?? [] }.compactMap { service in
+                service.id.map { ($0, service) }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        var groups: [ServiceComponentGroup] = []
+        var components: [ServiceComponentSummary] = []
+        for service in services {
+            guard let id = nonEmpty(service.id), let name = nonEmpty(service.name) else { continue }
+            let groupName = nonEmpty(service.group)
+            if let groupName, !groups.contains(where: { $0.id == groupName }) {
+                groups.append(ServiceComponentGroup(id: groupName, name: groupName))
+            }
+            let past = historyByService[id]
+            components.append(ServiceComponentSummary(
+                id: id,
+                name: name,
+                status: checklyComponentStatus(service.status),
+                groupId: groupName,
+                uptimePercent: past?.uptime,
+                recentDays: past.map { checklyDays($0.days ?? [], dayCount: dayCount, now: now) } ?? []
+            ))
+        }
+        let worst = components.max { $0.status.severity < $1.status.severity }?.status ?? .operational
+
+        var incidents: [String: IncidentSummary] = [:]
+        for incident in (summary.activeIncidents ?? []) + (summary.activeMaintenances ?? []) {
+            guard let id = nonEmpty(incident.id), let name = nonEmpty(incident.name),
+                  let started = incident.startedAt.flatMap(flexibleDate(from:))
+            else { continue }
+            let isMaintenance = summary.activeMaintenances?.contains { $0.id == incident.id } == true
+            incidents[id] = IncidentSummary(
+                id: id,
+                name: name,
+                impact: isMaintenance ? .maintenance : checklyImpact(incident.severity),
+                createdAt: started,
+                resolvedAt: nil,
+                url: incident.url.flatMap(URL.init(string:))
+            )
+        }
+        // Resolved incidents only exist in the uptime history, one entry per
+        // affected day; the first occurrence of an id is enough.
+        for service in historyByService.values {
+            for day in service.days ?? [] {
+                for event in day.events ?? [] {
+                    guard let id = nonEmpty(event.id), incidents[id] == nil,
+                          event.lastUpdateStatus?.uppercased() == "RESOLVED",
+                          let name = nonEmpty(event.name),
+                          let created = event.created_at.flatMap(flexibleDate(from:))
+                    else { continue }
+                    incidents[id] = IncidentSummary(
+                        id: id,
+                        name: name,
+                        impact: checklyImpact(event.severity),
+                        createdAt: created,
+                        resolvedAt: created.addingTimeInterval(max(0, event.duration ?? 0)),
+                        url: URL(string: "incident/\(id)", relativeTo: mistralChecklyHost)?.absoluteURL
+                    )
+                }
+            }
+        }
+        let recent = incidents.values.sorted { $0.createdAt > $1.createdAt }.prefix(4)
+
+        return ServiceStatusSnapshot(
+            tool: tool,
+            indicator: xAIIndicator(for: worst),
+            // Checkly's page state is a code (`HAS_ISSUES`), not words.
+            description: "",
+            updatedAt: now,
+            groups: groups,
+            components: components,
+            recentIncidents: Array(recent)
+        )
+    }
+
+    /// Checkly reports a service's state with the severity of what is
+    /// affecting it.
+    private nonisolated static func checklyComponentStatus(_ raw: String?) -> ComponentStatusLevel {
+        switch raw?.uppercased() ?? "" {
+        case "", "OPERATIONAL": return .operational
+        case "MAINTENANCE", "UNDER_MAINTENANCE": return .underMaintenance
+        case "MAJOR": return .partialOutage
+        case "CRITICAL": return .majorOutage
+        default: return .degradedPerformance
+        }
+    }
+
+    private nonisolated static func checklyImpact(_ raw: String?) -> IncidentImpact {
+        switch raw?.uppercased() ?? "" {
+        case "CRITICAL": return .critical
+        case "MAJOR": return .major
+        case "MAINTENANCE": return .maintenance
+        default: return .minor
+        }
+    }
+
+    private nonisolated static func checklyDays(_ days: [ChecklyUptime.Day], dayCount: Int, now: Date) -> [DayUptime] {
+        var worst: [Date: IncidentImpact] = [:]
+        for day in days {
+            guard let date = day.date.flatMap(flexibleDate(from:)) else { continue }
+            let start = calendar.startOfDay(for: date)
+            for event in day.events ?? [] {
+                let impact = checklyImpact(event.severity)
+                if impact.severity > (worst[start]?.severity ?? -1) {
+                    worst[start] = impact
+                }
+            }
+        }
+        let today = calendar.startOfDay(for: now)
+        return stride(from: dayCount - 1, through: 0, by: -1).compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: today).map {
+                DayUptime(date: $0, worstImpact: worst[$0])
+            }
+        }
     }
 
     // MARK: - Meta Model API status (api.meta.ai/v1/status)
