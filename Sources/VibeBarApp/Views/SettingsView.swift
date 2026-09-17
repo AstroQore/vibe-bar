@@ -12,6 +12,8 @@ enum SettingsSectionID: String {
     case googleAI
     case xAI
     case metaAI
+    case cognition
+    case mistralAI
     case miscProviders
     case system
     case costData
@@ -35,6 +37,8 @@ enum SettingsSectionID: String {
         case .googleAI: "Google AI"
         case .xAI: "SpaceXAI"
         case .metaAI: "Meta AI"
+        case .cognition: "Cognition"
+        case .mistralAI: "Mistral AI"
         case .miscProviders: L10n.Popover.Tab.misc
         case .system: L10n.Settings.Section.system
         case .costData: L10n.Settings.Section.costData
@@ -58,6 +62,8 @@ enum SettingsSectionID: String {
         case .googleAI: "diamond"
         case .xAI: "circle.hexagongrid"
         case .metaAI: "infinity"
+        case .cognition: "hexagon"
+        case .mistralAI: "square.grid.3x3"
         case .miscProviders: "square.grid.2x2"
         case .system: "desktopcomputer"
         case .costData: "chart.bar.xaxis"
@@ -85,6 +91,8 @@ enum SettingsDestination: Hashable {
             case .gemini: .googleAI
             case .grok: .xAI
             case .muse: .metaAI
+            case .devin: .cognition
+            case .mistralVibe: .mistralAI
             default: .openAI
             }
         case .miscProvider: .miscProviders
@@ -101,6 +109,8 @@ enum SettingsDestination: Hashable {
             case .gemini: return "Google AI"
             case .grok: return "SpaceXAI"
             case .muse: return "Meta AI"
+            case .devin: return "Cognition"
+            case .mistralVibe: return "Mistral AI"
             default: return tool.vendorName
             }
         case let .miscProvider(id):
@@ -654,6 +664,85 @@ struct SettingsView: View {
                         }
                     }
                     .id(SettingsSectionID.metaAI.id)
+                    }
+
+                    if selectedSection == .cognition {
+                    settingsSection("Cognition") {
+                        coreProviderSummary(
+                            representative: .devin,
+                            healthProviders: [.devin]
+                        )
+                        coreProviderPlanBadgeRows(for: [.devin])
+                        Divider()
+                            .padding(.vertical, 2)
+                        Text(L10n.Settings.cognitionIntro)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        sourceSummary(label: L10n.Settings.usageSource, value: L10n.Settings.Route.devinStatusCache)
+                        if environment.account(for: .devin) != nil {
+                            Label(L10n.Settings.RouteHealth.cachedOnly, systemImage: "checkmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                        } else {
+                            Label(L10n.Settings.Devin.noCache, systemImage: "exclamationmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Divider()
+                            .padding(.vertical, 2)
+                        connectionHealthRows(provider: .devin)
+                        Button {
+                            environment.recheckPrimaryRouteHealth(provider: .devin)
+                        } label: {
+                            Label(L10n.Settings.checkConnections(company: "Cognition"), systemImage: "checkmark.circle")
+                        }
+
+                        Link(L10n.Settings.openStatusPage(company: "Cognition"),
+                             destination: ToolType.devin.statusPageURL)
+                            .font(.caption2)
+                    }
+                    .id(SettingsSectionID.cognition.id)
+                    }
+
+                    if selectedSection == .mistralAI {
+                    settingsSection("Mistral AI") {
+                        coreProviderSummary(
+                            representative: .mistralVibe,
+                            healthProviders: [.mistralVibe]
+                        )
+                        coreProviderPlanBadgeRows(for: [.mistralVibe])
+                        Divider()
+                            .padding(.vertical, 2)
+                        Text(L10n.Settings.mistralAIIntro)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        sourceSummary(label: L10n.Settings.usageSource, value: L10n.Settings.Route.browserCookies)
+                        CookieSourceControls(
+                            tool: .mistralVibe,
+                            instanceID: ToolType.mistralVibe.rawValue,
+                            manualPrompt: "Paste console.mistral.ai Cookie header (ory_session_…=…; csrftoken=…)",
+                            emphasis: .standard
+                        )
+
+                        Divider()
+                            .padding(.vertical, 2)
+                        connectionHealthRows(provider: .mistralVibe)
+                        Button {
+                            environment.recheckPrimaryRouteHealth(provider: .mistralVibe)
+                        } label: {
+                            Label(L10n.Settings.checkConnections(company: "Mistral AI"), systemImage: "checkmark.circle")
+                        }
+
+                        Link(L10n.Settings.openStatusPage(company: "Mistral AI"),
+                             destination: ToolType.mistralVibe.statusPageURL)
+                            .font(.caption2)
+                    }
+                    .id(SettingsSectionID.mistralAI.id)
                     }
 
                     if selectedSection == .miscProviders {
@@ -1473,6 +1562,8 @@ struct MiniWindowFieldProviderSection: Identifiable {
             title: ToolType.cursor.quotaSubProviderName(bucketID: "grok_bot_weekly"),
             fields: MenuBarFieldCatalog.grokBotFields
         ),
-        .init(tool: .muse,        title: ToolType.muse.productName,        fields: MenuBarFieldCatalog.museFields)
+        .init(tool: .muse,        title: ToolType.muse.productName,        fields: MenuBarFieldCatalog.museFields),
+        .init(tool: .devin,       title: ToolType.devin.productName,       fields: MenuBarFieldCatalog.devinFields),
+        .init(tool: .mistralVibe, title: ToolType.mistralVibe.productName, fields: MenuBarFieldCatalog.mistralVibeFields)
     ]
 }

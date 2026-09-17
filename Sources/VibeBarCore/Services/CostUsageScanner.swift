@@ -1,4 +1,6 @@
 import Foundation
+import SQLite3
+import AgentSessionKit
 
 /// Scans local CLI session JSONL logs to compute per-tool cost / token usage
 /// across multiple windows (today / 7d / 30d / all-time) plus a per-day history
@@ -42,6 +44,10 @@ public enum CostUsageScanner {
             return await scanAntigravity(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .muse:
             return await scanMuse(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
+        case .devin:
+            return await scanDevin(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
+        case .mistralVibe:
+            return await scanMistralVibe(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose token-level cost data through
             // any documented public protocol. The cost-history pipeline
@@ -953,6 +959,303 @@ public enum CostUsageScanner {
             cache, homeDirectory: homeDirectory, tool: .muse, retentionDays: retentionDays
         )
         return aggregator.snapshot(jsonlFilesFound: files.count)
+    }
+
+    // MARK: - Devin
+
+    /// Devin: the CLI and the desktop app write every session into one
+    /// SQLite database, `~/.local/share/devin/cli/sessions.db`. Each model
+    /// response is an assistant row in `message_nodes` whose
+    /// `metadata.metrics` carries `input_tokens` (cached prefix included),
+    /// `cache_read_tokens`, `cache_creation_tokens` and `output_tokens`, with
+    /// the model id in `metadata.generation_model`.
+    ///
+    /// Compaction copies nodes, so one response can sit in several rows; the
+    /// response's `request_id` is what counts once. Each response is priced by
+    /// its model through the pricing pipeline (`CostUsagePricing.devinCostUSD`);
+    /// a model no price list knows yet stays unpriced until one does.
+    private static func scanDevin(
+        homeDirectory: String,
+        now: Date,
+        retentionDays: Int?,
+        pricing: CostPricingContext,
+        eventSink: (any CostUsageEventSink)? = nil
+    ) async -> CostSnapshot {
+        let database = devinDatabaseURL(homeDirectory: homeDirectory)
+        var aggregator = CostAggregator(tool: .devin, now: now)
+        guard FileManager.default.fileExists(atPath: database.path) else {
+            return aggregator.snapshot(jsonlFilesFound: 0)
+        }
+        var cache = CostUsageScanCacheStore.shared.checkout(
+            homeDirectory: homeDirectory, tool: .devin, retentionDays: retentionDays
+        )
+        let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+        let (mtime, size) = devinDatabaseFingerprint(database)
+
+        let events: [CostUsageScanCache.ParsedEvent]
+        var didRead = true
+        if let cached = cache.reusable(for: database.path, mtime: mtime, size: size) {
+            events = retainedEvents(cached, cutoff: cutoff)
+            if events.count != cached.count {
+                cache.store(events, for: database.path, mtime: mtime, size: size)
+            }
+        } else if let parsed = parseDevinDatabase(database, cutoff: cutoff) {
+            events = parsed
+            cache.store(parsed, for: database.path, mtime: mtime, size: size)
+        } else {
+            // A locked or unreadable database is a skipped pass, not an
+            // empty history: nothing is stored or emitted.
+            events = []
+            didRead = false
+        }
+
+        var priced: [PricedUsageEvent] = []
+        priced.reserveCapacity(eventSink == nil ? 0 : events.count)
+        for event in events {
+            let optionalCost = costUSDIfPriceable(tool: .devin, event: event, pricing: pricing)
+            if eventSink != nil {
+                priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
+            }
+            aggregator.add(at: event.date, model: event.model, input: event.input,
+                           output: event.output, cache: event.cache, costUSD: optionalCost ?? 0)
+        }
+        if didRead {
+            await emit(eventSink, tool: .devin, file: database, mtime: mtime, size: size, events: priced)
+        }
+        cache.prune(known: [database.path])
+        CostUsageScanCacheStore.shared.checkin(
+            cache, homeDirectory: homeDirectory, tool: .devin, retentionDays: retentionDays
+        )
+        return aggregator.snapshot(jsonlFilesFound: didRead ? 1 : 0)
+    }
+
+    static func devinDatabaseURL(homeDirectory: String) -> URL {
+        URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .appendingPathComponent(".local/share/devin/cli/sessions.db")
+    }
+
+    /// The database and its `-wal` together: a response lands in the WAL
+    /// long before a checkpoint touches the main file.
+    private static func devinDatabaseFingerprint(_ database: URL) -> (Date, Int64) {
+        let (mainTime, mainSize) = fileFingerprint(database)
+        let wal = database.deletingLastPathComponent().appendingPathComponent(database.lastPathComponent + "-wal")
+        guard FileManager.default.fileExists(atPath: wal.path) else { return (mainTime, mainSize) }
+        let (walTime, walSize) = fileFingerprint(wal)
+        return (max(mainTime, walTime), mainSize + walSize)
+    }
+
+    /// Every assistant response with token metrics, one per session and
+    /// request. `nil` when the database could not be read.
+    static func parseDevinDatabase(_ database: URL, cutoff: Date?) -> [CostUsageScanCache.ParsedEvent]? {
+        let sql = """
+            SELECT m.session_id,
+                   json_extract(m.chat_message, '$.metadata.request_id'),
+                   json_extract(m.chat_message, '$.metadata.metrics.input_tokens'),
+                   json_extract(m.chat_message, '$.metadata.metrics.cache_read_tokens'),
+                   json_extract(m.chat_message, '$.metadata.metrics.cache_creation_tokens'),
+                   json_extract(m.chat_message, '$.metadata.metrics.output_tokens'),
+                   json_extract(m.chat_message, '$.metadata.generation_model'),
+                   json_extract(m.chat_message, '$.metadata.created_at'),
+                   m.created_at,
+                   m.node_id,
+                   s.working_directory
+            FROM message_nodes m
+            JOIN sessions s ON s.id = m.session_id
+            WHERE json_extract(m.chat_message, '$.role') = 'assistant'
+              AND json_type(m.chat_message, '$.metadata.metrics') = 'object'
+            ORDER BY m.row_id
+            """
+        return LiveSQLiteReader.read(at: database) { handle -> [CostUsageScanCache.ParsedEvent] in
+            let statement = try LiveSQLiteReader.prepare(handle, sql)
+            defer { sqlite3_finalize(statement) }
+            var seen = Set<String>()
+            var events: [CostUsageScanCache.ParsedEvent] = []
+            var rows = 0
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW else { throw LiveSQLiteReader.ReadError.statement }
+                rows += 1
+                if rows > devinMaxRows { break }
+                guard let sessionID = LiveSQLiteReader.text(statement, 0), !sessionID.isEmpty else { continue }
+                let requestID = LiveSQLiteReader.text(statement, 1)
+                let nodeID = sqlite3_column_int64(statement, 9)
+                let key = "\(sessionID)|\(requestID ?? "node-\(nodeID)")"
+                guard seen.insert(key).inserted else { continue }
+
+                let inputTotal = max(0, Int(sqlite3_column_int64(statement, 2)))
+                let cacheRead = max(0, Int(sqlite3_column_int64(statement, 3)))
+                let cacheCreation = max(0, Int(sqlite3_column_int64(statement, 4)))
+                let output = max(0, Int(sqlite3_column_int64(statement, 5)))
+                guard inputTotal > 0 || output > 0 else { continue }
+
+                let stamped = LiveSQLiteReader.text(statement, 7).flatMap(SessionParsing.date)
+                let rowSeconds = sqlite3_column_int64(statement, 8)
+                let date = stamped ?? Date(timeIntervalSince1970: TimeInterval(rowSeconds))
+                if let cutoff, date < cutoff { continue }
+
+                let model = LiveSQLiteReader.text(statement, 6)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .flatMap { $0.isEmpty ? nil : $0 } ?? "devin-unknown"
+                let cached = min(inputTotal, cacheRead + cacheCreation)
+                events.append(CostUsageScanCache.ParsedEvent(
+                    date: date,
+                    model: model,
+                    input: inputTotal - cached,
+                    output: output,
+                    cache: cached,
+                    cacheCreation: cacheCreation > 0 ? min(cacheCreation, cached) : nil,
+                    sessionId: sessionID,
+                    messageId: requestID ?? "node-\(nodeID)",
+                    requestId: requestID,
+                    harness: .devin,
+                    projectPath: LiveSQLiteReader.text(statement, 10).flatMap { $0.isEmpty ? nil : $0 }
+                ))
+            }
+            return events
+        }
+    }
+
+    /// A ceiling on rows read per pass; a local session store past it is
+    /// pathological, and the pass stays bounded.
+    static let devinMaxRows = 2_000_000
+
+    // MARK: - Mistral Vibe
+
+    /// Mistral Vibe: each session is a directory
+    /// `~/.vibe/logs/session/session_<utc>_<id8>/` whose `meta.json` holds the
+    /// session's running totals (`stats.session_prompt_tokens`, cached prefix
+    /// included, `session_cached_tokens`, `session_completion_tokens`) and the
+    /// model its alias resolved to (`config.models[active_model].name`).
+    /// Sub-agents run their own loop and keep their own totals in
+    /// `<parent>/agents/<agent>_<utc>_<id8>/meta.json`, so both count.
+    ///
+    /// The log has no per-turn usage, so a session is one event dated at its
+    /// last save, replaced whole whenever `meta.json` changes. Priced at
+    /// Mistral's API rates as an API-equivalent cost.
+    private static func scanMistralVibe(
+        homeDirectory: String,
+        now: Date,
+        retentionDays: Int?,
+        pricing: CostPricingContext,
+        eventSink: (any CostUsageEventSink)? = nil
+    ) async -> CostSnapshot {
+        let root = URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .appendingPathComponent(".vibe/logs/session", isDirectory: true)
+        let files = collectMistralVibeMetaFiles(under: root)
+        var aggregator = CostAggregator(tool: .mistralVibe, now: now)
+        var cache = CostUsageScanCacheStore.shared.checkout(
+            homeDirectory: homeDirectory, tool: .mistralVibe, retentionDays: retentionDays
+        )
+        let cutoff = retentionCutoff(now: now, retentionDays: retentionDays)
+
+        for file in files {
+            if Task.isCancelled {
+                CostUsageScanCacheStore.shared.checkin(
+                    cache, homeDirectory: homeDirectory, tool: .mistralVibe,
+                    retentionDays: retentionDays, persist: false
+                )
+                return aggregator.snapshot(jsonlFilesFound: files.count)
+            }
+            let (mtime, size) = fileFingerprint(file)
+            let events: [CostUsageScanCache.ParsedEvent]
+            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+                events = retainedEvents(cached, cutoff: cutoff)
+                if events.count != cached.count {
+                    cache.store(events, for: file.path, mtime: mtime, size: size)
+                }
+            } else {
+                events = parseMistralVibeMeta(file: file, cutoff: cutoff)
+                cache.store(events, for: file.path, mtime: mtime, size: size)
+            }
+            var priced: [PricedUsageEvent] = []
+            priced.reserveCapacity(eventSink == nil ? 0 : events.count)
+            for event in events {
+                let optionalCost = costUSDIfPriceable(tool: .mistralVibe, event: event, pricing: pricing)
+                if eventSink != nil {
+                    priced.append(PricedUsageEvent(event: event, costUSD: optionalCost))
+                }
+                aggregator.add(at: event.date, model: event.model, input: event.input,
+                               output: event.output, cache: event.cache, costUSD: optionalCost ?? 0)
+            }
+            await emit(eventSink, tool: .mistralVibe, file: file, mtime: mtime, size: size, events: priced)
+        }
+        cache.prune(known: Set(files.map(\.path)))
+        CostUsageScanCacheStore.shared.checkin(
+            cache, homeDirectory: homeDirectory, tool: .mistralVibe, retentionDays: retentionDays
+        )
+        return aggregator.snapshot(jsonlFilesFound: files.count)
+    }
+
+    /// Every session `meta.json`, sub-agent sessions included; the `active/`
+    /// lease directory and anything symlinked are not sessions.
+    static func collectMistralVibeMetaFiles(under root: URL) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path),
+              let enumerator = FileManager.default.enumerator(
+                  at: root,
+                  includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+                  options: [.skipsHiddenFiles]
+              )
+        else { return [] }
+        var out: [URL] = []
+        for case let url as URL in enumerator {
+            if url.lastPathComponent == "active" {
+                enumerator.skipDescendants()
+                continue
+            }
+            guard url.lastPathComponent == "meta.json" else { continue }
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values?.isSymbolicLink != true, values?.isRegularFile == true else { continue }
+            out.append(url)
+        }
+        return out.sorted { $0.path < $1.path }
+    }
+
+    static let mistralVibeMaxMetaBytes = 16 * 1_048_576
+
+    static func parseMistralVibeMeta(file: URL, cutoff: Date?) -> [CostUsageScanCache.ParsedEvent] {
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.intValue,
+              size > 0, size <= mistralVibeMaxMetaBytes,
+              let data = try? Data(contentsOf: file),
+              let meta = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let sessionID = (meta["session_id"] as? String).flatMap({ $0.isEmpty ? nil : $0 }),
+              let stats = meta["stats"] as? [String: Any]
+        else { return [] }
+        let prompt = max(0, anyInt(stats["session_prompt_tokens"]))
+        let cached = min(prompt, max(0, anyInt(stats["session_cached_tokens"])))
+        let completion = max(0, anyInt(stats["session_completion_tokens"]))
+        guard prompt > 0 || completion > 0 else { return [] }
+        guard let date = [meta["end_time"], meta["start_time"]]
+            .compactMap({ ($0 as? String).flatMap(SessionParsing.date) })
+            .first
+        else { return [] }
+        if let cutoff, date < cutoff { return [] }
+
+        let config = meta["config"] as? [String: Any]
+        let alias = (config?["active_model"] as? String) ?? ""
+        // Vibe writes `models` keyed by alias; a list of `{alias, name}`
+        // entries is the other spelling its config accepts.
+        let entry: [String: Any]?
+        if let keyed = config?["models"] as? [String: Any] {
+            entry = keyed[alias] as? [String: Any]
+        } else if let listed = config?["models"] as? [[String: Any]] {
+            entry = listed.first { ($0["alias"] as? String) == alias }
+        } else {
+            entry = nil
+        }
+        let resolved = (entry?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let environment = meta["environment"] as? [String: Any]
+        return [CostUsageScanCache.ParsedEvent(
+            date: date,
+            model: resolved ?? (alias.isEmpty ? "mistral-vibe-unknown" : alias),
+            input: prompt - cached,
+            output: completion,
+            cache: cached,
+            sessionId: sessionID,
+            messageId: sessionID,
+            harness: .mistralVibe,
+            projectPath: (environment?["working_directory"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        )]
     }
 
     static let museSubagentDirectoryName = "subagent"
@@ -1868,6 +2171,23 @@ public enum CostUsageScanner {
                 pricing: entry,
                 inputTokens: event.input + event.cache,
                 cachedInputTokens: event.cache,
+                outputTokens: event.output
+            )
+        case .mistralVibe:
+            guard let entry = pricing.mistralEntry(for: event.model) else { return nil }
+            return CostUsagePricing.grokCostUSD(
+                pricing: entry,
+                inputTokens: event.input + event.cache,
+                cachedInputTokens: event.cache,
+                outputTokens: event.output
+            )
+        case .devin:
+            return CostUsagePricing.devinCostUSD(
+                dataSet: pricing.dataSet,
+                model: event.model,
+                inputTokens: event.input,
+                cacheTokens: event.cache,
+                cacheCreationTokens: event.cacheCreation ?? 0,
                 outputTokens: event.output
             )
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:

@@ -14,6 +14,8 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
     case grokAuthJSON
     case grokBrowserCookies
     case museKeychain
+    case devinStatusCache
+    case mistralBrowserCookies
 
     public var id: String { rawValue }
 
@@ -31,6 +33,10 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
             return .grok
         case .museKeychain:
             return .muse
+        case .devinStatusCache:
+            return .devin
+        case .mistralBrowserCookies:
+            return .mistralVibe
         }
     }
 
@@ -49,6 +55,8 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
         case .grokAuthJSON: return L10n.Settings.Route.grokAuthFile
         case .grokBrowserCookies: return L10n.Settings.Route.browserCookies
         case .museKeychain: return L10n.Settings.Route.museKeychain
+        case .devinStatusCache: return L10n.Settings.Route.devinStatusCache
+        case .mistralBrowserCookies: return L10n.Settings.Route.browserCookies
         }
     }
 
@@ -181,6 +189,23 @@ public enum PrimaryProviderRouteHealthChecker {
                 route: route,
                 state: MuseCredentialReader.accessState(),
                 now: now
+            )
+        case .devinStatusCache:
+            // The cache is the only route, and it is a cache by design.
+            let cached = DevinUserStatusCache.exists()
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: cached ? .ok : .missing,
+                detail: cached ? L10n.Settings.RouteHealth.cachedOnly : L10n.Settings.Devin.noCache,
+                checkedAt: now
+            )
+        case .mistralBrowserCookies:
+            let saved = MiscCookieSlotStore.hasAnySlot(for: .mistralVibe)
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: saved ? .ok : .missing,
+                detail: saved ? L10n.Settings.RouteHealth.savedInKeychain : L10n.Settings.RouteHealth.noSavedCookie,
+                checkedAt: now
             )
         }
     }

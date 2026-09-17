@@ -129,6 +129,37 @@ struct SkillHarnessConfigManager: Sendable {
         })
     }
 
+    /// Mistral Vibe filters skills by name with two top-level lists in
+    /// `~/.vibe/config.toml`: `enabled_skills`, which once non-empty admits
+    /// only what it matches, and `disabled_skills`. Both hold
+    /// case-insensitive globs or `re:` regexes.
+    func mistralVibeStates(for skills: [Skill]) -> [String: NativeState] {
+        guard !skills.isEmpty else { return [:] }
+        let target = resolvedConfigTarget(mistralVibeConfigURL)
+        guard FileManager.default.fileExists(atPath: target.path) else {
+            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+        }
+        guard let data = try? Data(contentsOf: target),
+              let text = String(data: data, encoding: .utf8),
+              let enabledList = Self.topLevelTOMLStringArray("enabled_skills", in: text),
+              let disabledList = Self.topLevelTOMLStringArray("disabled_skills", in: text)
+        else {
+            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+        }
+        return Dictionary(uniqueKeysWithValues: skills.map { skill in
+            let name = skill.name
+            let state: NativeState
+            if let enabledList = enabledList.list, !enabledList.isEmpty {
+                state = Self.vibeNameMatches(name, enabledList) ? .enabled : .disabled
+            } else if let disabledList = disabledList.list, Self.vibeNameMatches(name, disabledList) {
+                state = .disabled
+            } else {
+                state = .enabled
+            }
+            return (skill.directory, state)
+        })
+    }
+
     func setNativeEnabled(
         _ enabled: Bool,
         directoryName: String,
@@ -149,6 +180,8 @@ struct SkillHarnessConfigManager: Sendable {
             try setGrokEnabled(enabled, name: skillName)
         case .muse:
             try setMuseEnabled(enabled, directoryName: directoryName)
+        case .mistralVibe:
+            try setMistralVibeEnabled(enabled, name: skillName)
         case .hermes, .opencode, .antigravity, .cursor:
             throw SkillError.nativeActivationUnsupported(app)
         }
@@ -158,7 +191,26 @@ struct SkillHarnessConfigManager: Sendable {
     /// harness cannot accept a per-skill enable. Gemini's user-level global
     /// switch is the only current case: silently turning it on would enable
     /// every other skill too, so the narrower operation explains the blocker.
-    func validateCanEnable(_ app: SkillAppTarget) throws {
+    /// `skillName` is the frontmatter name the install will register, when
+    /// the caller knows it; Mistral Vibe matches its lists against it.
+    func validateCanEnable(_ app: SkillAppTarget, skillName: String? = nil) throws {
+        if app == .mistralVibe {
+            guard let lists = try mistralVibeLists() else { return }
+            // An allow-list decides for every skill; Vibe Bar does not edit it.
+            if let allowList = lists.enabled, !allowList.isEmpty {
+                guard let skillName, Self.vibeNameMatches(skillName, allowList) else {
+                    throw SkillError.nativeSkillsGloballyDisabled(.mistralVibe)
+                }
+                return
+            }
+            if let skillName, let names = lists.disabled {
+                let others = names.filter { $0.caseInsensitiveCompare(skillName) != .orderedSame }
+                if Self.vibeNameMatches(skillName, others) {
+                    throw SkillError.nativeSkillDisabledByPattern(.mistralVibe)
+                }
+            }
+            return
+        }
         if app == .muse {
             try validateMuseSettingsWritable()
             return
@@ -378,6 +430,8 @@ struct SkillHarnessConfigManager: Sendable {
         switch app {
         case .muse:
             try validateMuseSettingsWritable()
+        case .mistralVibe:
+            _ = try mistralVibeLists()
         default:
             return
         }
@@ -431,6 +485,181 @@ struct SkillHarnessConfigManager: Sendable {
             absolute.standardizedFileURL.path,
             absolute.resolvingSymlinksInPath().standardizedFileURL.path,
         ]
+    }
+
+    /// Only `disabled_skills` is ever written: the skill's exact name is
+    /// removed to enable it and added to disable it, and the rest of the file
+    /// is left as it was. A config that uses `enabled_skills` is refused —
+    /// that list is an allow-list whose meaning Vibe Bar does not own.
+    /// Without a `~/.vibe` directory there is no Vibe to configure.
+    /// Vibe's two top-level lists, or nil when there is no config file. The
+    /// file must sit inside the home directory, as the setter requires, and
+    /// both values must be readable string arrays.
+    private func mistralVibeLists() throws -> (enabled: [String]?, disabled: [String]?)? {
+        let target = resolvedConfigTarget(mistralVibeConfigURL)
+        guard FileManager.default.fileExists(atPath: target.path) else { return nil }
+        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .resolvingSymlinksInPath().standardizedFileURL
+        let parent = target.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+        guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
+            throw SkillError.writeOutsideAllowedRoots(target.path)
+        }
+        guard let data = try? Data(contentsOf: target),
+              let text = String(data: data, encoding: .utf8),
+              let enabled = Self.topLevelTOMLStringArray("enabled_skills", in: text),
+              let disabled = Self.topLevelTOMLStringArray("disabled_skills", in: text)
+        else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
+        return (enabled.list, disabled.list)
+    }
+
+    private func setMistralVibeEnabled(_ enabled: Bool, name: String) throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: mistralVibeConfigURL.deletingLastPathComponent().path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else { return }
+        let target = resolvedConfigTarget(mistralVibeConfigURL)
+        try ensureConfigParent(target, app: .mistralVibe)
+        let existed = FileManager.default.fileExists(atPath: target.path)
+        if enabled, !existed { return }
+        let originalData = existed ? (try? Data(contentsOf: target)) : Data()
+        guard let originalData, let original = String(data: originalData, encoding: .utf8),
+              let enabledList = Self.topLevelTOMLStringArray("enabled_skills", in: original),
+              let disabledList = Self.topLevelTOMLStringArray("disabled_skills", in: original)
+        else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
+        if let allowList = enabledList.list, !allowList.isEmpty {
+            // The allow-list decides for every skill and is never edited here.
+            // A skill already in the requested state needs nothing; anything
+            // else cannot be switched individually.
+            if Self.vibeNameMatches(name, allowList) == enabled { return }
+            throw SkillError.nativeSkillsGloballyDisabled(.mistralVibe)
+        }
+
+        var names = disabledList.list ?? []
+        names.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
+        if enabled, Self.vibeNameMatches(name, names) {
+            // A glob or `re:` entry still names the skill. Removing only the
+            // exact entry would report success while Vibe keeps it off.
+            throw SkillError.nativeSkillDisabledByPattern(.mistralVibe)
+        }
+        if !enabled { names.append(name) }
+
+        var lines = original.components(separatedBy: "\n")
+        let assignment = "disabled_skills = ["
+            + names.map { "\"\(Self.escapeTOML($0))\"" }.joined(separator: ", ") + "]"
+        if let range = disabledList.lineRange {
+            lines.replaceSubrange(range, with: [assignment])
+        } else if !enabled {
+            let header = Self.firstTOMLTableLine(in: lines)
+            if let header {
+                lines.insert(contentsOf: [assignment, ""], at: header)
+            } else {
+                if lines.last == "" { lines.removeLast() }
+                lines.append(assignment)
+                lines.append("")
+            }
+        }
+        let rewritten = Data(lines.joined(separator: "\n").utf8)
+        guard rewritten != originalData else { return }
+        try backupConfig(originalData, sourceExists: existed, app: .mistralVibe, filename: target.lastPathComponent)
+        try atomicWrite(rewritten, to: target)
+    }
+
+    struct TOMLStringArray {
+        /// `nil` when the key is absent.
+        let list: [String]?
+        let lineRange: Range<Int>?
+    }
+
+    /// Reads one top-level `key = ["…", …]` assignment (single- or multi-line,
+    /// basic strings only). The outer optional is `nil` when the key exists
+    /// but is not an array of basic strings — a value this code must not
+    /// rewrite.
+    static func topLevelTOMLStringArray(_ key: String, in text: String) -> TOMLStringArray? {
+        let lines = text.components(separatedBy: "\n")
+        let end = firstTOMLTableLine(in: lines) ?? lines.count
+        guard let start = (0..<end).first(where: { index in
+            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix(key) else { return false }
+            let rest = trimmed.dropFirst(key.count).trimmingCharacters(in: .whitespaces)
+            return rest.hasPrefix("=")
+        }) else {
+            return TOMLStringArray(list: nil, lineRange: nil)
+        }
+        // Walk characters, not lines: a `]` or `#` inside a string (a
+        // `re:doc[sx]` pattern) neither closes the array nor starts a comment.
+        var raw = ""
+        var last = start
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var closed = false
+        scan: for index in start..<end {
+            var line = Substring(lines[index])
+            if index == start {
+                guard let equal = line.firstIndex(of: "=") else { return nil }
+                line = line[line.index(after: equal)...]
+            }
+            last = index
+            for character in line {
+                if inString {
+                    raw.append(character)
+                    if escaped { escaped = false }
+                    else if character == "\\" { escaped = true }
+                    else if character == "\"" { inString = false }
+                    continue
+                }
+                switch character {
+                case "#": break
+                case "\"": inString = true; raw.append(character); continue
+                case "[": depth += 1
+                case "]":
+                    depth -= 1
+                    if depth == 0 {
+                        raw.append(character)
+                        closed = true
+                        break scan
+                    }
+                default: break
+                }
+                if character == "#" { break }
+                raw.append(character)
+            }
+            raw.append(" ")
+        }
+        guard closed else { return nil }
+        let value = raw.trimmingCharacters(in: .whitespaces)
+        guard value.hasPrefix("["), value.hasSuffix("]"),
+              let data = value.replacingOccurrences(of: ",\\s*]", with: "]", options: .regularExpression)
+                .data(using: .utf8),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [String]
+        else { return nil }
+        return TOMLStringArray(list: list, lineRange: start..<(last + 1))
+    }
+
+    static func firstTOMLTableLine(in lines: [String]) -> Int? {
+        lines.firstIndex { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("["), let second = trimmed.dropFirst().first else { return false }
+            return second.isLetter || second == "[" || second == "\"" || second == "'"
+        }
+    }
+
+    /// Vibe's `name_matches`: case-insensitive `fnmatch` globs, or a
+    /// case-insensitive full-match regex after `re:`.
+    static func vibeNameMatches(_ name: String, _ patterns: [String]) -> Bool {
+        patterns.contains { raw in
+            let pattern = raw.trimmingCharacters(in: .whitespaces)
+            guard !pattern.isEmpty else { return false }
+            if pattern.hasPrefix("re:") {
+                guard let regex = try? NSRegularExpression(
+                    pattern: "^(?:" + String(pattern.dropFirst(3)) + ")$",
+                    options: [.caseInsensitive]
+                ) else { return false }
+                return regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil
+            }
+            return fnmatch(pattern.lowercased(), name.lowercased(), 0) == 0
+        }
     }
 
     private func setGrokEnabled(_ enabled: Bool, name: String) throws {
@@ -724,6 +953,12 @@ struct SkillHarnessConfigManager: Sendable {
             .appendingPathComponent(".config", isDirectory: true)
             .appendingPathComponent("muse", isDirectory: true)
             .appendingPathComponent("settings.json")
+    }
+
+    private var mistralVibeConfigURL: URL {
+        URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .appendingPathComponent(".vibe", isDirectory: true)
+            .appendingPathComponent("config.toml")
     }
 
     private var grokConfigURL: URL {

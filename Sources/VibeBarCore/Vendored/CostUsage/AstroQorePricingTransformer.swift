@@ -98,6 +98,8 @@ public enum AstroQorePricingTransformer {
         var grok: [String: PricingDataSet.GrokEntry] = [:]
         var antigravity: [String: PricingDataSet.AntigravityEntry] = [:]
         var muse: [String: PricingDataSet.MuseEntry] = [:]
+        var mistral: [String: PricingDataSet.MistralEntry] = [:]
+        var cognition: [String: PricingDataSet.CognitionEntry] = [:]
 
         for model in document.models {
             let id = model.model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -167,6 +169,34 @@ public enum AstroQorePricingTransformer {
                     cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
                     displayLabel: model.displayLabel
                 )
+            case .cognition:
+                if let inherited = inheritedCognition(model.inherits, from: inheritanceBase) {
+                    cognition[id] = copy(inherited, displayLabel: model.displayLabel)
+                    continue
+                }
+                cognition[id] = .init(
+                    input: perToken(price.input), output: perToken(price.output),
+                    cacheRead: price.cacheRead.map(perToken),
+                    thresholdTokens: price.threshold?.tokens,
+                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                    displayLabel: model.displayLabel
+                )
+            case .mistral:
+                if let inherited = inheritedMistral(model.inherits, from: inheritanceBase) {
+                    mistral[id] = copy(inherited, displayLabel: model.displayLabel)
+                    continue
+                }
+                mistral[id] = .init(
+                    input: perToken(price.input), output: perToken(price.output),
+                    cacheRead: price.cacheRead.map(perToken),
+                    thresholdTokens: price.threshold?.tokens,
+                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                    displayLabel: model.displayLabel
+                )
             case .muse:
                 if let inherited = inheritedMuse(model.inherits, from: inheritanceBase) {
                     muse[id] = copy(inherited, displayLabel: model.displayLabel)
@@ -201,7 +231,7 @@ public enum AstroQorePricingTransformer {
         }
 
         guard !codex.isEmpty || !claude.isEmpty || !gemini.isEmpty
-                || !grok.isEmpty || !antigravity.isEmpty || !muse.isEmpty
+                || !grok.isEmpty || !antigravity.isEmpty || !muse.isEmpty || !mistral.isEmpty || !cognition.isEmpty
         else { return nil }
         return PricingDataSet(
             schemaVersion: PricingDataSet.currentSchemaVersion,
@@ -213,7 +243,9 @@ public enum AstroQorePricingTransformer {
                 gemini: .init(displayName: "Google", models: gemini),
                 grok: .init(displayName: "xAI", models: grok),
                 antigravity: .init(displayName: "AntiGravity", models: antigravity),
-                muse: .init(displayName: "Meta AI", models: muse)
+                muse: .init(displayName: "Meta AI", models: muse),
+                mistral: .init(displayName: "Mistral AI", models: mistral),
+                cognition: .init(displayName: "Cognition", models: cognition)
             )
         )
     }
@@ -255,6 +287,20 @@ public enum AstroQorePricingTransformer {
     ) -> PricingDataSet.MuseEntry? {
         guard reference?.provider == .muse, let id = reference?.model.lowercased() else { return nil }
         return base?.providers.muse.models[id]
+    }
+
+    private static func inheritedMistral(
+        _ reference: ModelReference?, from base: PricingDataSet?
+    ) -> PricingDataSet.MistralEntry? {
+        guard reference?.provider == .mistral, let id = reference?.model.lowercased() else { return nil }
+        return base?.providers.mistral.models[id]
+    }
+
+    private static func inheritedCognition(
+        _ reference: ModelReference?, from base: PricingDataSet?
+    ) -> PricingDataSet.CognitionEntry? {
+        guard reference?.provider == .cognition, let id = reference?.model.lowercased() else { return nil }
+        return base?.providers.cognition.models[id]
     }
 
     private static func inheritedAntigravity(

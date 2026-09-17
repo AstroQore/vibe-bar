@@ -89,6 +89,20 @@ public enum CostUsagePricing {
                 return false
             }
             return pricing.thresholdTokens == nil
+        case .mistralVibe:
+            let models = dataSet.providers.mistral.models
+            guard let pricing = models[normalizeMistralModel(model, models: models)] else {
+                return false
+            }
+            return pricing.thresholdTokens == nil
+        case .devin:
+            // Only Cognition's own rows reprice from a rollup; a model Devin
+            // borrowed from another family may carry that family's tiers.
+            let models = dataSet.providers.cognition.models
+            guard let pricing = models[normalizeCognitionModel(model, models: models)] else {
+                return false
+            }
+            return pricing.thresholdTokens == nil
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
              .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
@@ -503,6 +517,122 @@ public enum CostUsagePricing {
         )
     }
 
+    // MARK: - Devin
+
+    /// Devin logs Cognition's ids with their reasoning effort attached
+    /// (`swe-2-high`); LiteLLM lists `cognition/swe-2`. The exact id wins, then
+    /// the id without its effort suffix.
+    static func normalizeCognitionModel(
+        _ raw: String,
+        models cognition: [String: PricingDataSet.CognitionEntry]
+    ) -> String {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.hasPrefix("cognition/") {
+            trimmed = String(trimmed.dropFirst("cognition/".count))
+        }
+        if cognition[trimmed] != nil { return trimmed }
+        var candidate = trimmed
+        for suffix in ["-fast", "-max", "-xhigh", "-high", "-medium", "-low", "-thinking"]
+        where candidate.hasSuffix(suffix) {
+            candidate = String(candidate.dropLast(suffix.count))
+            if cognition[candidate] != nil { return candidate }
+        }
+        return trimmed
+    }
+
+    /// A Devin request priced by its model through the pipeline: Cognition's
+    /// own SWE rows first, then — for a model Devin ran from another lab — the
+    /// family that model belongs to. `inputTokens` excludes the cached prefix;
+    /// `cacheCreationTokens` is part of `cacheTokens`.
+    static func devinCostUSD(
+        dataSet: PricingDataSet = PricingResolver.active,
+        model rawModel: String,
+        inputTokens: Int,
+        cacheTokens: Int,
+        cacheCreationTokens: Int,
+        outputTokens: Int
+    ) -> Double? {
+        let fresh = max(0, inputTokens)
+        let cache = max(0, cacheTokens)
+        let creation = min(max(0, cacheCreationTokens), cache)
+        let output = max(0, outputTokens)
+        let model = rawModel.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        let cognition = dataSet.providers.cognition.models
+        if let pricing = cognition[normalizeCognitionModel(model, models: cognition)] {
+            return grokCostUSD(pricing: pricing, inputTokens: fresh + cache, cachedInputTokens: cache, outputTokens: output)
+        }
+        if model.hasPrefix("claude") {
+            let models = dataSet.providers.claude.models
+            guard let pricing = models[normalizeClaudeModel(model, models: models)] else { return nil }
+            return claudeCostUSD(
+                pricing: pricing, inputTokens: fresh, cacheReadInputTokens: cache - creation,
+                cacheCreationInputTokens: creation, outputTokens: output, isFast: false
+            )
+        }
+        if model.hasPrefix("gpt") || model.hasPrefix("o3") || model.hasPrefix("o4") || model.hasPrefix("codex") {
+            let models = dataSet.providers.codex.models
+            guard let pricing = models[normalizeCodexModel(model, models: models)] else { return nil }
+            return codexCostUSD(
+                pricing: pricing, inputTokens: fresh + cache, cachedInputTokens: cache,
+                outputTokens: output, isFast: false
+            )
+        }
+        if model.hasPrefix("gemini") {
+            let models = dataSet.providers.gemini.models
+            guard let pricing = models[normalizeGeminiModel(model, models: models)] else { return nil }
+            return geminiCostUSD(
+                pricing: pricing, inputTokens: fresh + cache, cacheReadInputTokens: cache, outputTokens: output
+            )
+        }
+        if model.hasPrefix("grok") {
+            let models = dataSet.providers.grok.models
+            guard let pricing = models[normalizeGrokModel(model, models: models)] else { return nil }
+            return grokCostUSD(pricing: pricing, inputTokens: fresh + cache, cachedInputTokens: cache, outputTokens: output)
+        }
+        let mistral = dataSet.providers.mistral.models
+        if let pricing = mistral[normalizeMistralModel(model, models: mistral)] {
+            return grokCostUSD(pricing: pricing, inputTokens: fresh + cache, cachedInputTokens: cache, outputTokens: output)
+        }
+        let muse = dataSet.providers.muse.models
+        if let pricing = muse[normalizeMuseModel(model, models: muse)] {
+            return grokCostUSD(pricing: pricing, inputTokens: fresh + cache, cachedInputTokens: cache, outputTokens: output)
+        }
+        return nil
+    }
+
+    // MARK: - Mistral Vibe
+
+    /// Mistral Vibe logs the La Plateforme id its alias resolves to
+    /// (`mistral-vibe-cli-latest`); LiteLLM spells the same model
+    /// `mistral/mistral-vibe-cli-latest`.
+    static func normalizeMistralModel(
+        _ raw: String,
+        models mistral: [String: PricingDataSet.MistralEntry]
+    ) -> String {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.hasPrefix("mistral/") {
+            trimmed = String(trimmed.dropFirst("mistral/".count))
+        }
+        return trimmed
+    }
+
+    static func mistralCostUSD(
+        model: String,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int
+    ) -> Double? {
+        let mistral = PricingResolver.active.providers.mistral.models
+        guard let pricing = mistral[normalizeMistralModel(model, models: mistral)] else { return nil }
+        return grokCostUSD(
+            pricing: pricing,
+            inputTokens: inputTokens,
+            cachedInputTokens: cachedInputTokens,
+            outputTokens: outputTokens
+        )
+    }
+
     // MARK: - AntiGravity
 
     static func normalizeAntigravityModel(_ raw: String) -> String {
@@ -594,6 +724,7 @@ final class CostPricingContext {
     private var grokNames: [String: String] = [:]
     private var antigravityNames: [String: String] = [:]
     private var museNames: [String: String] = [:]
+    private var mistralNames: [String: String] = [:]
 
     init(dataSet: PricingDataSet = PricingResolver.active) {
         self.dataSet = dataSet
@@ -636,6 +767,14 @@ final class CostPricingContext {
         if let hit = museNames[model] { return models[hit] }
         let name = CostUsagePricing.normalizeMuseModel(model, models: models)
         museNames[model] = name
+        return models[name]
+    }
+
+    func mistralEntry(for model: String) -> PricingDataSet.MistralEntry? {
+        let models = dataSet.providers.mistral.models
+        if let hit = mistralNames[model] { return models[hit] }
+        let name = CostUsagePricing.normalizeMistralModel(model, models: models)
+        mistralNames[model] = name
         return models[name]
     }
 

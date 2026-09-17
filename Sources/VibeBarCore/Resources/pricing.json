@@ -192,6 +192,26 @@
         "muse-spark-1.3-contributor": { "input": 1e-7,    "output": 2e-7,    "cacheRead": 2e-9 },
         "muse-spark-1.2-contributor": { "input": 1e-7,    "output": 2e-7,    "cacheRead": 2e-9 }
       }
+    },
+    "mistral": {
+      "displayName": "Mistral AI",
+      "models": {
+        "mistral-vibe-cli-latest":     { "input": 1.5e-6, "output": 7.5e-6, "cacheRead": 1.5e-7 },
+        "mistral-vibe-cli-with-tools": { "input": 1.5e-6, "output": 7.5e-6, "cacheRead": 1.5e-7 },
+        "mistral-vibe-cli-fast":       { "input": 1.5e-7, "output": 6e-7,   "cacheRead": 1.5e-8 },
+        "mistral-medium-3.5":          { "input": 1.5e-6, "output": 7.5e-6, "cacheRead": 1.5e-7 },
+        "devstral-latest":             { "input": 4e-7,   "output": 2e-6 },
+        "devstral-small-latest":       { "input": 1e-7,   "output": 3e-7 },
+        "codestral-latest":            { "input": 3e-7,   "output": 9e-7,   "cacheRead": 3e-8 }
+      }
+    },
+    "cognition": {
+      "displayName": "Cognition",
+      "models": {
+        "swe-1.6":           { "input": 5e-7,   "output": 2.5e-6,  "cacheRead": 2e-7 },
+        "swe-1.7":           { "input": 5e-7,   "output": 2.5e-6,  "cacheRead": 2e-7 },
+        "swe-1.7-lightning": { "input": 2.5e-6, "output": 1.25e-5, "cacheRead": 1e-6 }
+      }
     }
   }
 }

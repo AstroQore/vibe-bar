@@ -29,7 +29,9 @@ enum MiniWindowGroupLabelCatalog {
         .init(id: "grok.all-models", title: "GROK · Weekly Credits", defaultLabel: "All"),
         .init(id: "cursor.models", title: "CURSOR · Cursor Models", defaultLabel: "Cursor"),
         .init(id: "cursor.other-models", title: "CURSOR · Other Models", defaultLabel: "Other"),
-        .init(id: "muse.all-models", title: "MUSE CODE · All Models", defaultLabel: "All")
+        .init(id: "muse.all-models", title: "MUSE CODE · All Models", defaultLabel: "All"),
+        .init(id: "devin.all-models", title: "DEVIN · All Models", defaultLabel: "All"),
+        .init(id: "mistralVibe.all-models", title: "MISTRAL VIBE · All Models", defaultLabel: "All")
     ]
 
     static func defaultLabel(for id: String) -> String? {

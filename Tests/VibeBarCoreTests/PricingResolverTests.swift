@@ -38,6 +38,8 @@ final class PricingResolverTests: XCTestCase {
         XCTAssertGreaterThan(bundled?.providers.grok.models.count ?? 0, 0)
         XCTAssertGreaterThan(bundled?.providers.antigravity.models.count ?? 0, 0)
         XCTAssertGreaterThan(bundled?.providers.muse.models.count ?? 0, 0)
+        XCTAssertGreaterThan(bundled?.providers.mistral.models.count ?? 0, 0)
+        XCTAssertGreaterThan(bundled?.providers.cognition.models.count ?? 0, 0)
     }
 
     func testCacheOverridesBundle() throws {
@@ -61,6 +63,30 @@ final class PricingResolverTests: XCTestCase {
         let resolved = PricingResolver.resolve(homeDirectory: home.path)
         XCTAssertEqual(resolved.updatedAt, "2099-01-01")
         XCTAssertEqual(resolved.calculationVersion, 99)
+    }
+
+    /// A cache from before the Muse, Mistral and Cognition tables existed
+    /// still prices those families from the bundled floor until a rebuild.
+    func testALegacyCacheTakesAddedFamiliesFromTheFloor() throws {
+        let home = try makeTempHome()
+        defer { cleanup(home) }
+        let floor = PricingHardcoded.fallback.providers
+        let legacy = PricingDataSet(
+            schemaVersion: 1,
+            updatedAt: "2099-01-01",
+            calculationVersion: 99,
+            providers: PricingDataSet.Providers(
+                codex: floor.codex, claude: floor.claude, gemini: floor.gemini,
+                grok: floor.grok, antigravity: floor.antigravity
+            )
+        )
+        try writeCache(to: home, dataSet: legacy)
+
+        let resolved = PricingResolver.resolve(homeDirectory: home.path)
+        XCTAssertEqual(resolved.updatedAt, "2099-01-01", "the cache still wins")
+        XCTAssertFalse(resolved.providers.mistral.models.isEmpty)
+        XCTAssertFalse(resolved.providers.cognition.models.isEmpty)
+        XCTAssertFalse(resolved.providers.muse.models.isEmpty)
     }
 
     func testCorruptCacheFallsBackToBundle() throws {

@@ -524,6 +524,13 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
         try inner.extractMetadata(fileURL: fileURL)
     }
 
+    /// Forwarded, not defaulted: an adapter whose sessions are not one file
+    /// each (Devin's rows in one database) answers per session, and the
+    /// protocol's default would stat the locator and see nothing change.
+    func changeFingerprint(fileURL: URL) -> SessionChangeFingerprint? {
+        inner.changeFingerprint(fileURL: fileURL)
+    }
+
     func deletionPlan(for summary: SessionSummary, homeDirectory: String) throws -> SessionDeletionPlan {
         try inner.deletionPlan(for: summary, homeDirectory: homeDirectory)
     }

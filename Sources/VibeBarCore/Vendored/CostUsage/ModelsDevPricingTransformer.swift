@@ -78,6 +78,8 @@ public enum ModelsDevPricingTransformer {
         var gemini: [String: PricingDataSet.GeminiEntry] = [:]
         var grok: [String: PricingDataSet.GrokEntry] = [:]
         var muse: [String: PricingDataSet.MuseEntry] = [:]
+        var mistral: [String: PricingDataSet.MistralEntry] = [:]
+        var cognition: [String: PricingDataSet.CognitionEntry] = [:]
 
         for (providerID, provider) in providers {
             for (rawID, model) in provider.models {
@@ -138,6 +140,28 @@ public enum ModelsDevPricingTransformer {
                 // Meta's own provider only; gateway copies (openrouter,
                 // vercel…) resell the same ids and are ignored like every
                 // other alias.
+                // Cognition's own provider, should models.dev list one.
+                case "cognition":
+                    cognition[id] = .init(
+                        input: perToken(cost.input),
+                        output: perToken(cost.output),
+                        cacheRead: cost.cacheRead.map(perToken),
+                        thresholdTokens: tier?.tokens,
+                        inputAboveThreshold: tier.map { perToken($0.input) },
+                        outputAboveThreshold: tier.map { perToken($0.output) },
+                        cacheReadAboveThreshold: tier?.cacheRead.map(perToken)
+                    )
+                // Mistral's own provider; the same ids on gateways are aliases.
+                case "mistral":
+                    mistral[id] = .init(
+                        input: perToken(cost.input),
+                        output: perToken(cost.output),
+                        cacheRead: cost.cacheRead.map(perToken),
+                        thresholdTokens: tier?.tokens,
+                        inputAboveThreshold: tier.map { perToken($0.input) },
+                        outputAboveThreshold: tier.map { perToken($0.output) },
+                        cacheReadAboveThreshold: tier?.cacheRead.map(perToken)
+                    )
                 case "meta" where id.hasPrefix("muse-"):
                     muse[id] = .init(
                         input: perToken(cost.input),
@@ -154,7 +178,7 @@ public enum ModelsDevPricingTransformer {
             }
         }
 
-        guard !codex.isEmpty || !claude.isEmpty || !gemini.isEmpty || !grok.isEmpty || !muse.isEmpty else {
+        guard !codex.isEmpty || !claude.isEmpty || !gemini.isEmpty || !grok.isEmpty || !muse.isEmpty || !mistral.isEmpty || !cognition.isEmpty else {
             return nil
         }
         return PricingDataSet(
@@ -167,7 +191,9 @@ public enum ModelsDevPricingTransformer {
                 gemini: .init(displayName: "Google", models: gemini),
                 grok: .init(displayName: "xAI", models: grok),
                 antigravity: .init(displayName: "AntiGravity", models: [:]),
-                muse: .init(displayName: "Meta AI", models: muse)
+                muse: .init(displayName: "Meta AI", models: muse),
+                mistral: .init(displayName: "Mistral AI", models: mistral),
+                cognition: .init(displayName: "Cognition", models: cognition)
             )
         )
     }
@@ -225,7 +251,7 @@ public enum ModelsDevPricingTransformer {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         let catalog = (root["providers"] as? [String: Any]) ?? root
-        let wanted = ["openai", "anthropic", "google", "xai", "meta"]
+        let wanted = ["openai", "anthropic", "google", "xai", "meta", "mistral", "cognition"]
         let filtered = Dictionary(uniqueKeysWithValues: wanted.compactMap { key in
             catalog[key].map { (key, $0) }
         })

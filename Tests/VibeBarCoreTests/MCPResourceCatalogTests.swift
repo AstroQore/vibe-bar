@@ -18,12 +18,12 @@ final class MCPResourceCatalogTests: XCTestCase {
                 "The naming spec never mentions the harness key '\(harness.rawValue)'."
             )
         }
-        XCTAssertEqual(Harness.allCases.count, 10, "A new harness needs a row in the evidence table.")
+        XCTAssertEqual(Harness.allCases.count, 12, "A new harness needs a row in the evidence table.")
     }
 
     func testEveryL1CompanyAppears() {
         let companies = Set(ToolType.coreProviderRepresentatives.map(\.vendorName))
-        XCTAssertEqual(companies, ["OpenAI", "Anthropic", "Google AI", "SpaceXAI", "Meta AI"])
+        XCTAssertEqual(companies, ["OpenAI", "Anthropic", "Google AI", "SpaceXAI", "Meta AI", "Cognition", "Mistral AI"])
         for company in companies {
             XCTAssertTrue(spec.contains(company), "The naming spec never mentions '\(company)'.")
         }

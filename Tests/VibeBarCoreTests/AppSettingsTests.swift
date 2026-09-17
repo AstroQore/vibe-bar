@@ -1121,7 +1121,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(decoded.isCoreProviderVisible(.antigravity))
         XCTAssertEqual(
             decoded.visibleCoreProviders,
-            Set([.codex, .claude, .grok, .muse])
+            Set([.codex, .claude, .grok, .muse, .devin, .mistralVibe])
         )
     }
 
@@ -1139,7 +1139,7 @@ final class AppSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
 
         XCTAssertEqual(settings.visibleCoreProviders, Set([.codex, .claude]))
-        XCTAssertEqual(settings.orderedCoreProviders, [.codex, .claude, .gemini, .grok, .muse])
+        XCTAssertEqual(settings.orderedCoreProviders, [.codex, .claude, .gemini, .grok, .muse, .devin, .mistralVibe])
     }
 
     /// Once the order carries the company, hiding it is a choice and sticks.
@@ -1177,7 +1177,7 @@ final class AppSettingsTests: XCTestCase {
 
         let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
 
-        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .gemini, .codex, .claude, .muse])
+        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .gemini, .codex, .claude, .muse, .devin, .mistralVibe])
     }
 
     func testCoreProviderOrderMovesAndRoundTrips() throws {
@@ -1187,8 +1187,8 @@ final class AppSettingsTests: XCTestCase {
         settings.moveCoreProvider(.claude, before: .gemini)
         settings.setCoreProviderVisible(false, for: .codex)
 
-        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .codex, .claude, .gemini, .muse])
-        XCTAssertEqual(settings.visibleCoreProviderList, [.grok, .claude, .gemini, .muse])
+        XCTAssertEqual(settings.orderedCoreProviders, [.grok, .codex, .claude, .gemini, .muse, .devin, .mistralVibe])
+        XCTAssertEqual(settings.visibleCoreProviderList, [.grok, .claude, .gemini, .muse, .devin, .mistralVibe])
 
         let data = try JSONEncoder().encode(settings)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)

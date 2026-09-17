@@ -1403,6 +1403,21 @@ public actor UsageEventLedger: CostUsageEventSink {
                 cachedInputTokens: cacheRead,
                 outputTokens: output
             )
+        case .mistralVibe:
+            CostUsagePricing.mistralCostUSD(
+                model: row.model,
+                inputTokens: inputWithCache,
+                cachedInputTokens: cacheRead,
+                outputTokens: output
+            )
+        case .devin:
+            CostUsagePricing.devinCostUSD(
+                model: row.model,
+                inputTokens: freshInput,
+                cacheTokens: cacheRead + cacheCreation,
+                cacheCreationTokens: cacheCreation,
+                outputTokens: output
+            )
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
              .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,

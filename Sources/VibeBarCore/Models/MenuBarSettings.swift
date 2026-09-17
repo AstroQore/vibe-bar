@@ -526,9 +526,19 @@ public enum MenuBarFieldCatalog {
         option(.muse, "weekly", "Weekly", "Weekly")
     ]
 
+    public static let devinFields: [MenuBarFieldOption] = [
+        option(.devin, "daily", "Daily", "Daily"),
+        option(.devin, "weekly", "Weekly", "Weekly")
+    ]
+
+    public static let mistralVibeFields: [MenuBarFieldOption] = [
+        option(.mistralVibe, "monthly", "Monthly", "Monthly")
+    ]
+
     public static let allFields: [MenuBarFieldOption] =
         chatGPTChatFields + codexFields + claudeFields + geminiFields + antigravityFields
             + grokFields + cursorFields + grokBotFields + museFields
+            + devinFields + mistralVibeFields
 
     public static func fields(for kind: MenuBarItemKind) -> [MenuBarFieldOption] {
         allFields

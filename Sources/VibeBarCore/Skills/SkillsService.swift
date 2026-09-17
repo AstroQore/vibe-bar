@@ -68,6 +68,7 @@ public actor SkillsService {
             .gemini: harnessConfig.geminiStates(for: snapshots),
             .grok: harnessConfig.grokStates(for: snapshots),
             .muse: harnessConfig.museStates(for: snapshots),
+            .mistralVibe: harnessConfig.mistralVibeStates(for: snapshots),
         ]
         var result: [Skill] = []
         var liveCopyKeys: Set<String> = []
@@ -177,11 +178,20 @@ public actor SkillsService {
         }
     }
 
-    func validateNativeInstallationSelection(_ selectedApps: [SkillAppTarget]) throws {
+    /// `source` and `directoryName` name the skill about to be copied, so a
+    /// harness that matches its lists by name can refuse before the copy.
+    func validateNativeInstallationSelection(
+        _ selectedApps: [SkillAppTarget],
+        source: URL? = nil,
+        directoryName: String? = nil
+    ) throws {
         let selected = Set(selectedApps)
+        let skillName = source
+            .flatMap { SkillFrontmatterParser.parse(contentsOf: $0.appendingPathComponent("SKILL.md")).name }
+            ?? directoryName
         for app in SkillAppTarget.managedHarnesses where app.supportsNativeSkillActivation {
             if selected.contains(app) {
-                try harnessConfig.validateCanEnable(app)
+                try harnessConfig.validateCanEnable(app, skillName: skillName)
             } else if app.discoversSharedSkillRoot {
                 // The copy into the shared root is visible to this harness at
                 // once, so its disable must be possible before the copy.
@@ -385,7 +395,7 @@ public actor SkillsService {
         guard FileManager.default.fileExists(atPath: source.appendingPathComponent("SKILL.md").path) else {
             throw SkillError.missingSkillMD(directoryName)
         }
-        try validateNativeInstallationSelection(apps)
+        try validateNativeInstallationSelection(apps, source: source, directoryName: directoryName)
         try copyIntoSSOT(from: source, directoryName: directoryName)
 
         var skill = try makeLocalSkill(directoryName: directoryName)

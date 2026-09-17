@@ -7,6 +7,8 @@ public enum PricingProviderFamily: String, Codable, CaseIterable, Sendable, Iden
     case antigravity
     case grok
     case muse
+    case mistral
+    case cognition
 
     public var id: String { rawValue }
 
@@ -18,6 +20,8 @@ public enum PricingProviderFamily: String, Codable, CaseIterable, Sendable, Iden
         case .grok: "SpaceXAI · Grok"
         case .antigravity: "Google AI · AntiGravity"
         case .muse: "Meta AI · Muse Code"
+        case .mistral: "Mistral AI · Mistral Vibe"
+        case .cognition: "Cognition · Devin"
         }
     }
 }

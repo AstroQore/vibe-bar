@@ -342,7 +342,7 @@ struct MiscProviderCredentialRows: View {
                 prompt: L10n.Settings.Misc.Prompt.warp,
                 helpText: "Open Warp → Settings → AI → API Keys to mint one. Stored in macOS Keychain. Env fallback: WARP_API_KEY, then WARP_TOKEN."
             )
-        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
             // Partial-primary and primary providers don't ship a misc-card
             // UI: `AppSettings` only builds instances for
             // `isMiscPageProvider` tools, and their credentials live in the
@@ -442,7 +442,7 @@ extension ToolType {
             return "The key comes from openrouter.ai → Keys and only needs to read credits. Set the API URL when you route OpenRouter through a proxy."
         case .warp:
             return "The key is minted inside Warp itself: Warp → Settings → AI → API Keys."
-        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse:
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
             return nil
         }
     }
@@ -1194,10 +1194,8 @@ struct CookieSourceControls: View {
     }
 
     private func normalizedManualCookie(from raw: String) -> String? {
-        guard let spec, !spec.requiredNames.isEmpty else {
-            return CookieHeaderNormalizer.normalize(raw)
-        }
-        return CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: spec.requiredNames)
+        guard let spec else { return CookieHeaderNormalizer.normalize(raw) }
+        return spec.manualPasteHeader(from: raw)
     }
 
     private var missingCookieMessage: String {
@@ -1208,7 +1206,8 @@ struct CookieSourceControls: View {
             }
             return "No usable cookie found in the pasted text — copy the whole Cookie header from the provider's console tab."
         }
-        return "No \(spec.requiredNames.sorted().joined(separator: ", ")) cookie found in the pasted text."
+        let names = spec.requiredNames.sorted() + spec.requiredNamePrefixes.sorted().map { "\($0)…" }
+        return "No \(names.joined(separator: ", ")) cookie found in the pasted text."
     }
 
     private func triggerRefresh() {

@@ -70,8 +70,14 @@ public enum CookieHeaderNormalizer {
     /// Reduce a header to only the cookies whose names match
     /// `allowedNames`. Used per provider to drop unrelated cookies
     /// (analytics, A/B test, etc.) before we cache the header.
-    public static func filteredHeader(from raw: String?, allowedNames: Set<String>) -> String? {
-        let filtered = pairs(from: raw ?? "").filter { allowedNames.contains($0.name) }
+    public static func filteredHeader(
+        from raw: String?,
+        allowedNames: Set<String>,
+        allowedPrefixes: Set<String> = []
+    ) -> String? {
+        let filtered = pairs(from: raw ?? "").filter { pair in
+            allowedNames.contains(pair.name) || allowedPrefixes.contains { pair.name.hasPrefix($0) }
+        }
         guard !filtered.isEmpty else { return nil }
         return filtered.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
     }

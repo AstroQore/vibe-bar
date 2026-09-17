@@ -266,7 +266,7 @@ extension SkillsService {
         method: SkillSyncMethod = .auto
     ) async throws -> Skill {
         try SkillPathValidator.validate(directoryName: discovered.directory)
-        try validateNativeInstallationSelection(apps)
+        try validateNativeInstallationSelection(apps, source: discovered.sourceRoot, directoryName: discovered.directory)
 
         if let existing = await store.skill(directory: discovered.directory) {
             guard existing.id == discovered.id else {
@@ -534,7 +534,7 @@ extension SkillsService {
         method: SkillSyncMethod
     ) async throws -> Skill {
         try SkillPathValidator.validate(directoryName: directoryName)
-        try validateNativeInstallationSelection(apps)
+        try validateNativeInstallationSelection(apps, source: source, directoryName: directoryName)
         guard SkillTreeScanner.isSkillDirectory(source) else {
             throw SkillError.missingSkillMD(directoryName)
         }

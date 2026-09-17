@@ -20,6 +20,8 @@ extension SessionProvider {
         // `HarnessBrandIconView`.
         case .grokBot:               .grok
         case .muse:                  .muse
+        case .devin:                 .devin
+        case .mistralVibe:           .mistralVibe
         }
     }
 
