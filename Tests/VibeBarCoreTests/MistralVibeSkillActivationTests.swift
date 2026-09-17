@@ -104,6 +104,44 @@ final class MistralVibeSkillActivationTests: XCTestCase {
         XCTAssertEqual(home.contents(of: configURL(home)), original)
     }
 
+    /// Removing the exact name is not enough when a pattern still matches:
+    /// the enable is refused instead of reporting a no-op as success.
+    func testAnEnableStillBlockedByAPatternIsRefused() throws {
+        let home = try SkillTestHome()
+        let original = "disabled_skills = [\"cloudflare-*\", \"cloudflare-email\"]\n"
+        try home.write(original, to: configURL(home))
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+
+        XCTAssertThrowsError(
+            try manager.setNativeEnabled(true, directoryName: "cloudflare-email", skillName: "cloudflare-email", app: .mistralVibe)
+        ) { XCTAssertEqual($0 as? SkillError, .nativeSkillDisabledByPattern(.mistralVibe)) }
+        XCTAssertEqual(home.contents(of: configURL(home)), original)
+    }
+
+    /// Under an allow-list a skill it does not name is already off, so an
+    /// install that switches it off there succeeds without editing anything.
+    func testDisablingASkillTheAllowListOmitsIsDone() throws {
+        let home = try SkillTestHome()
+        let original = "enabled_skills = [\"pdf\"]\n"
+        try home.write(original, to: configURL(home))
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+
+        XCTAssertNoThrow(
+            try manager.setNativeEnabled(false, directoryName: "docx", skillName: "docx", app: .mistralVibe)
+        )
+        XCTAssertNoThrow(try manager.validateCanDisable(.mistralVibe))
+        XCTAssertEqual(home.contents(of: configURL(home)), original)
+    }
+
+    func testAnUnreadableConfigFailsTheDisablePreflight() throws {
+        let home = try SkillTestHome()
+        try home.write("disabled_skills = 'pdf'\n", to: configURL(home))
+        let manager = SkillHarnessConfigManager(homeDirectory: home.path)
+        XCTAssertThrowsError(try manager.validateCanDisable(.mistralVibe)) {
+            XCTAssertEqual($0 as? SkillError, .nativeConfigUnreadable(.mistralVibe))
+        }
+    }
+
     func testAValueThatIsNotAStringArrayIsUnknownAndUntouched() throws {
         let home = try SkillTestHome()
         let original = "disabled_skills = 'pdf'\n"

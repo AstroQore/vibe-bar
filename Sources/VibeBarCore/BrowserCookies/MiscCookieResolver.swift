@@ -70,6 +70,18 @@ public enum MiscCookieResolver {
             self.credentialNamePrefixes = credentialNamePrefixes
         }
 
+        /// What a pasted Cookie header keeps. A spec that names cookie
+        /// prefixes (a session cookie whose name carries a per-stack suffix)
+        /// keeps those too, and only when the paste satisfies the whole rule
+        /// set; otherwise the required names are kept as they always were.
+        public func manualPasteHeader(from raw: String) -> String? {
+            if !requiredNamePrefixes.isEmpty {
+                return minimizedHeader(from: raw)
+            }
+            guard !requiredNames.isEmpty else { return CookieHeaderNormalizer.normalize(raw) }
+            return CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: requiredNames)
+        }
+
         public func minimizedHeader(from raw: String?) -> String? {
             let normalized: String?
             if requiredNames.isEmpty && requiredNamePrefixes.isEmpty {

@@ -1233,9 +1233,17 @@ public enum CostUsageScanner {
 
         let config = meta["config"] as? [String: Any]
         let alias = (config?["active_model"] as? String) ?? ""
-        let models = config?["models"] as? [String: Any]
-        let resolved = ((models?[alias] as? [String: Any])?["name"] as? String)
-            .flatMap { $0.isEmpty ? nil : $0 }
+        // Vibe writes `models` keyed by alias; a list of `{alias, name}`
+        // entries is the other spelling its config accepts.
+        let entry: [String: Any]?
+        if let keyed = config?["models"] as? [String: Any] {
+            entry = keyed[alias] as? [String: Any]
+        } else if let listed = config?["models"] as? [[String: Any]] {
+            entry = listed.first { ($0["alias"] as? String) == alias }
+        } else {
+            entry = nil
+        }
+        let resolved = (entry?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let environment = meta["environment"] as? [String: Any]
         return [CostUsageScanCache.ParsedEvent(
             date: date,

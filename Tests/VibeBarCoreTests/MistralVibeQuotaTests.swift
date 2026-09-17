@@ -57,6 +57,17 @@ final class MistralVibeQuotaTests: XCTestCase {
         XCTAssertEqual(MiscCookieSpecCatalog.spec(for: .mistralVibe)?.tool, .mistralVibe)
     }
 
+    /// A pasted header keeps the prefixed session cookie the refresh needs,
+    /// and a paste without it is refused rather than stored half-usable.
+    func testAManualPasteKeepsThePrefixedSessionCookie() {
+        let spec = MistralVibeQuotaAdapter.cookieSpec
+        XCTAssertEqual(
+            spec.manualPasteHeader(from: "ory_session_examplestack=s; csrftoken=c; _ga=GA1.1.1"),
+            "ory_session_examplestack=s; csrftoken=c"
+        )
+        XCTAssertNil(spec.manualPasteHeader(from: "csrftoken=c; _ga=GA1.1.1"))
+    }
+
     /// A spec without prefixes keeps its old any-one-name rule.
     func testSpecsWithoutPrefixesAreUnchanged() {
         let spec = MiscCookieResolver.Spec(
@@ -64,6 +75,7 @@ final class MistralVibeQuotaTests: XCTestCase {
             requiredNames: ["a", "b"], credentialNames: ["a", "b"]
         )
         XCTAssertEqual(spec.minimizedHeader(from: "a=1; c=3"), "a=1")
+        XCTAssertEqual(spec.manualPasteHeader(from: "a=1; c=3"), "a=1")
     }
 
     func testWhoAmIPlanTitlesFollowTheCLI() {

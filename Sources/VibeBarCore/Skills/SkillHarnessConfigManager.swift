@@ -432,6 +432,14 @@ struct SkillHarnessConfigManager: Sendable {
         switch app {
         case .muse:
             try validateMuseSettingsWritable()
+        case .mistralVibe:
+            let target = resolvedConfigTarget(mistralVibeConfigURL)
+            guard FileManager.default.fileExists(atPath: target.path) else { return }
+            guard let data = try? Data(contentsOf: target),
+                  let text = String(data: data, encoding: .utf8),
+                  Self.topLevelTOMLStringArray("enabled_skills", in: text) != nil,
+                  Self.topLevelTOMLStringArray("disabled_skills", in: text) != nil
+            else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
         default:
             return
         }
@@ -476,6 +484,7 @@ struct SkillHarnessConfigManager: Sendable {
             isDirectory: &isDirectory
         ), isDirectory.boolValue else { return }
         let target = resolvedConfigTarget(mistralVibeConfigURL)
+        try ensureConfigParent(target, app: .mistralVibe)
         let existed = FileManager.default.fileExists(atPath: target.path)
         if enabled, !existed { return }
         let originalData = existed ? (try? Data(contentsOf: target)) : Data()
@@ -483,12 +492,21 @@ struct SkillHarnessConfigManager: Sendable {
               let enabledList = Self.topLevelTOMLStringArray("enabled_skills", in: original),
               let disabledList = Self.topLevelTOMLStringArray("disabled_skills", in: original)
         else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
-        if enabledList.list?.isEmpty == false {
+        if let allowList = enabledList.list, !allowList.isEmpty {
+            // The allow-list decides for every skill and is never edited here.
+            // A skill it does not name is already off, so turning it off is
+            // done; anything else cannot be switched individually.
+            if !enabled, !Self.vibeNameMatches(name, allowList) { return }
             throw SkillError.nativeSkillsGloballyDisabled(.mistralVibe)
         }
 
         var names = disabledList.list ?? []
         names.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
+        if enabled, Self.vibeNameMatches(name, names) {
+            // A glob or `re:` entry still names the skill. Removing only the
+            // exact entry would report success while Vibe keeps it off.
+            throw SkillError.nativeSkillDisabledByPattern(.mistralVibe)
+        }
         if !enabled { names.append(name) }
 
         var lines = original.components(separatedBy: "\n")

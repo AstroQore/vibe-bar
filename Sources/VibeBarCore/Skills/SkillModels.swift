@@ -377,6 +377,7 @@ public enum SkillError: Error, Equatable, Sendable {
     case nativeActivationUnsupported(SkillAppTarget)
     case nativeConfigUnreadable(SkillAppTarget)
     case nativeSkillsGloballyDisabled(SkillAppTarget)
+    case nativeSkillDisabledByPattern(SkillAppTarget)
     case projectionUnsupported(SkillAppTarget)
 }
 
@@ -413,6 +414,8 @@ extension SkillError: LocalizedError {
             return "\(app.displayName)'s skill configuration could not be read safely."
         case let .nativeSkillsGloballyDisabled(app):
             return "\(app.displayName) has Skills disabled globally. Enable its global Skills switch before enabling an individual skill."
+        case let .nativeSkillDisabledByPattern(app):
+            return "A pattern in \(app.displayName)'s disabled skills list also matches this skill. Edit that pattern in its configuration to enable it."
         case let .projectionUnsupported(app):
             return "\(app.displayName) reads skills from ~/.agents/skills itself; Vibe Bar never writes into its own skills folder."
         }

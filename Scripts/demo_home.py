@@ -1445,7 +1445,7 @@ def write_mistral_vibe(home: Path, session: dict) -> None:
         "environment": {"working_directory": cwd},
         "config": {
             "active_model": "mistral-medium-3.5",
-            "models": [{"alias": "mistral-medium-3.5", "name": session["model"], "provider": "mistral"}],
+            "models": {"mistral-medium-3.5": {"alias": "mistral-medium-3.5", "name": session["model"], "provider": "mistral"}},
         },
         "stats": {
             "session_prompt_tokens": 64_210, "session_cached_tokens": 41_600,

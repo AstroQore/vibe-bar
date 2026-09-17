@@ -93,7 +93,9 @@ final class DevinMistralVibeCostScannerTests: XCTestCase {
 
     // MARK: - Mistral Vibe
 
-    private func writeMeta(_ directory: String, id: String, prompt: Int, cached: Int, completion: Int) throws {
+    private func writeMeta(
+        _ directory: String, id: String, prompt: Int, cached: Int, completion: Int, listedModels: Bool = false
+    ) throws {
         let dir = home.appendingPathComponent(".vibe/logs/session/\(directory)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let meta: [String: Any] = [
@@ -103,7 +105,9 @@ final class DevinMistralVibeCostScannerTests: XCTestCase {
             "environment": ["working_directory": "/Users/example/proj"],
             "config": [
                 "active_model": "mistral-medium-3.5",
-                "models": ["mistral-medium-3.5": ["name": "mistral-vibe-cli-latest", "provider": "mistral"]]
+                "models": listedModels
+                    ? [["alias": "mistral-medium-3.5", "name": "mistral-vibe-cli-latest", "provider": "mistral"]] as Any
+                    : ["mistral-medium-3.5": ["name": "mistral-vibe-cli-latest", "provider": "mistral"]] as Any
             ],
             "stats": [
                 "session_prompt_tokens": prompt,
@@ -137,6 +141,17 @@ final class DevinMistralVibeCostScannerTests: XCTestCase {
         XCTAssertEqual(main.event.harness, .mistralVibe)
         // Vibe's own session_cost for the same totals is 0.0304347.
         XCTAssertEqual(Double(main.costMicros ?? 0) / 1_000_000, 0.030435, accuracy: 1e-6)
+    }
+
+    /// A list of `{alias, name}` entries resolves to the served model too,
+    /// never to the alias.
+    func testAListedModelTableResolvesTheAlias() async throws {
+        try writeMeta("session_20260917_090000_c0ffee00", id: "c0ffee00-0000", prompt: 1_000, cached: 0,
+                      completion: 10, listedModels: true)
+        let sink = CollectingSink()
+        _ = await CostUsageScanner.scan(tool: .mistralVibe, homeDirectory: home.path, now: now, eventSink: sink)
+        let events = await sink.events
+        XCTAssertEqual(events.map(\.event.model), ["mistral-vibe-cli-latest"])
     }
 }
 

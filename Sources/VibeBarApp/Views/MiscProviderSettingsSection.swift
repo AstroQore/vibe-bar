@@ -1194,10 +1194,8 @@ struct CookieSourceControls: View {
     }
 
     private func normalizedManualCookie(from raw: String) -> String? {
-        guard let spec, !spec.requiredNames.isEmpty else {
-            return CookieHeaderNormalizer.normalize(raw)
-        }
-        return CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: spec.requiredNames)
+        guard let spec else { return CookieHeaderNormalizer.normalize(raw) }
+        return spec.manualPasteHeader(from: raw)
     }
 
     private var missingCookieMessage: String {
@@ -1208,7 +1206,8 @@ struct CookieSourceControls: View {
             }
             return "No usable cookie found in the pasted text — copy the whole Cookie header from the provider's console tab."
         }
-        return "No \(spec.requiredNames.sorted().joined(separator: ", ")) cookie found in the pasted text."
+        let names = spec.requiredNames.sorted() + spec.requiredNamePrefixes.sorted().map { "\($0)…" }
+        return "No \(names.joined(separator: ", ")) cookie found in the pasted text."
     }
 
     private func triggerRefresh() {
