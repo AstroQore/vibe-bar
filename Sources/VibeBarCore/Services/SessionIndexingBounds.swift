@@ -27,7 +27,7 @@ public enum SessionIndexingBounds {
     /// providers cannot be truncated at a byte offset, so they are listed
     /// out.
     static let headTruncatableProviders: Set<SessionProvider> = [
-        .codex, .claude, .claudeCowork
+        .codex, .claude, .claudeCowork, .muse
     ]
 
     /// `registry`, with every adapter wrapped in the indexing bounds.
@@ -522,6 +522,13 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
 
     func extractMetadata(fileURL: URL) throws -> SessionSummary {
         try inner.extractMetadata(fileURL: fileURL)
+    }
+
+    /// Forwarded, not defaulted: an adapter whose sessions are not one file
+    /// each (Devin's rows in one database) answers per session, and the
+    /// protocol's default would stat the locator and see nothing change.
+    func changeFingerprint(fileURL: URL) -> SessionChangeFingerprint? {
+        inner.changeFingerprint(fileURL: fileURL)
     }
 
     func deletionPlan(for summary: SessionSummary, homeDirectory: String) throws -> SessionDeletionPlan {

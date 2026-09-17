@@ -67,6 +67,8 @@ public actor SkillsService {
             .claude: harnessConfig.claudeStates(for: snapshots),
             .gemini: harnessConfig.geminiStates(for: snapshots),
             .grok: harnessConfig.grokStates(for: snapshots),
+            .muse: harnessConfig.museStates(for: snapshots),
+            .mistralVibe: harnessConfig.mistralVibeStates(for: snapshots),
         ]
         var result: [Skill] = []
         var liveCopyKeys: Set<String> = []
@@ -176,9 +178,25 @@ public actor SkillsService {
         }
     }
 
-    func validateNativeInstallationSelection(_ selectedApps: [SkillAppTarget]) throws {
-        for app in selectedApps where app.supportsNativeSkillActivation {
-            try harnessConfig.validateCanEnable(app)
+    /// `source` and `directoryName` name the skill about to be copied, so a
+    /// harness that matches its lists by name can refuse before the copy.
+    func validateNativeInstallationSelection(
+        _ selectedApps: [SkillAppTarget],
+        source: URL? = nil,
+        directoryName: String? = nil
+    ) throws {
+        let selected = Set(selectedApps)
+        let skillName = source
+            .flatMap { SkillFrontmatterParser.parse(contentsOf: $0.appendingPathComponent("SKILL.md")).name }
+            ?? directoryName
+        for app in SkillAppTarget.managedHarnesses where app.supportsNativeSkillActivation {
+            if selected.contains(app) {
+                try harnessConfig.validateCanEnable(app, skillName: skillName)
+            } else if app.discoversSharedSkillRoot {
+                // The copy into the shared root is visible to this harness at
+                // once, so its disable must be possible before the copy.
+                try harnessConfig.validateCanDisable(app)
+            }
         }
     }
 
@@ -310,7 +328,7 @@ public actor SkillsService {
         guard let skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
         let backupURL = try backups.createBackup(of: skill.directory, skill: skill)
         var removedByApp: [SkillAppTarget: Bool] = [:]
-        for app in SkillAppTarget.allCases {
+        for app in SkillAppTarget.allCases where app.supportsProjection {
             removedByApp[app] = try engine.unmaterialize(
                 skillDirectoryName: skill.directory,
                 from: app,
@@ -368,6 +386,7 @@ public actor SkillsService {
         method: SkillSyncMethod = .auto
     ) async throws -> Skill {
         try SkillPathValidator.validate(directoryName: directoryName)
+        guard app.supportsProjection else { throw SkillError.projectionUnsupported(app) }
         let source = SkillAppCatalog.skillsDirectory(for: app, homeDirectory: homeDirectory)
             .appendingPathComponent(directoryName, isDirectory: true)
         guard SkillFileSystem.kind(of: source) == .directory else {
@@ -376,10 +395,11 @@ public actor SkillsService {
         guard FileManager.default.fileExists(atPath: source.appendingPathComponent("SKILL.md").path) else {
             throw SkillError.missingSkillMD(directoryName)
         }
+        try validateNativeInstallationSelection(apps, source: source, directoryName: directoryName)
         try copyIntoSSOT(from: source, directoryName: directoryName)
 
         var skill = try makeLocalSkill(directoryName: directoryName)
-        for target in apps {
+        for target in apps where target.supportsProjection {
             skill.apps[target] = try engine.materialize(
                 skillDirectoryName: directoryName,
                 into: target,
@@ -406,6 +426,7 @@ public actor SkillsService {
         guard FileManager.default.fileExists(atPath: sourceDir.appendingPathComponent("SKILL.md").path) else {
             throw SkillError.missingSkillMD(name)
         }
+        try validateNativeInstallationSelection([])
         try copyIntoSSOT(from: sourceDir, directoryName: name)
         let skill = try makeLocalSkill(directoryName: name)
         try applyNativeInstallationSelection(

@@ -49,7 +49,10 @@ public struct EInkDataAssembler: Sendable {
         QuotaSelector(tool: .grok, bucketID: "weekly"),
         QuotaSelector(tool: .antigravity, bucketID: "claude_gpt_weekly"),
         QuotaSelector(tool: .gemini, bucketID: "weekly"),
-        QuotaSelector(tool: .cursor, bucketID: "models")
+        QuotaSelector(tool: .cursor, bucketID: "models"),
+        QuotaSelector(tool: .muse, bucketID: "weekly"),
+        QuotaSelector(tool: .devin, bucketID: "weekly"),
+        QuotaSelector(tool: .mistralVibe, bucketID: "monthly")
     ]
 
     /// The selector a `MenuBarFieldCatalog` field id names, or `nil` when the

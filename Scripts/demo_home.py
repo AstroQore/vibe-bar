@@ -16,9 +16,13 @@ builds that directory from a maintainer's live ``~/.vibebar`` store:
   copied. Request ids are rehashed and project paths are replaced with
   fabricated ``/Users/example/Code`` directories.
 * Agent sessions and a library of skills are **fabricated**: a dozen
-  sessions across Claude Code, Claude Cowork, Codex, ChatGPT Work and Grok
-  Build under ``/Users/example/Code``, and two dozen public skills linked
-  into every managed harness directory.
+  sessions across Claude Code, Claude Cowork, Codex, ChatGPT Work, Grok
+  Build, Muse Code, Devin and Mistral Vibe under ``/Users/example/Code``,
+  and two dozen public skills linked into every managed harness directory.
+* Devin's and Mistral Vibe's quota caches, cost snapshots and cached
+  status pages (and Muse Code's status) are fabricated when the source store
+  has none yet, so their pages have something to show before the
+  maintainer's own app has refreshed them once.
 
 The output is a throwaway: it is written to ``/tmp/vibebar-demo-home`` by
 default (short, because the MCP socket path inside it has a 104-byte limit)
@@ -72,7 +76,14 @@ FIXED_PRIMARY_IDS = {
     "web-grok": ("grok", "Grok Web", "webCookie"),
     "misc-cursor": ("cursor", "Cursor", "cliDetected"),
     "web-chatgpt-chat": ("chatgptChat", "ChatGPT Chat", "webCookie"),
+    "oauth-muse": ("muse", "Muse Code", "oauthCLI"),
+    "local-devin": ("devin", "Devin", "cliDetected"),
+    "misc-mistralVibe": ("mistralVibe", "Mistral Vibe", "browserCookie"),
 }
+# Always-present dedicated accounts whose id borrows the misc prefix; unlike
+# `misc-cursor` they are not derived from a settings instance, so a demo home
+# has to declare them.
+DEDICATED_MISC_IDS = {"misc-mistralVibe"}
 CODEX_SOURCES = {"oauth-codex": "oauthCLI", "web-codex": "webCookie", "cli-codex": "cliDetected"}
 
 
@@ -247,6 +258,42 @@ class Builder:
             dst = self.output / "quotas" / quota_cache_name(demo)
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(self.rewrite_text(src.read_text()))
+        self.fabricate_new_provider_quotas()
+
+    def fabricate_new_provider_quotas(self) -> None:
+        """Devin and Mistral Vibe caches, shaped as their adapters write them,
+        for a source store that has not refreshed either provider yet."""
+        day, week = 86_400, 604_800
+        fabricated = {
+            "local-devin": {
+                "tool": "devin",
+                "plan": "Pro",
+                "buckets": [
+                    {"id": "daily", "title": "Daily", "shortLabel": "Daily", "usedPercent": 38,
+                     "rawWindowSeconds": day, "resetAt": ref_seconds(self.now + dt.timedelta(hours=9, minutes=12))},
+                    {"id": "weekly", "title": "Weekly", "shortLabel": "Weekly", "usedPercent": 21,
+                     "rawWindowSeconds": week, "resetAt": ref_seconds(self.now + dt.timedelta(days=4, hours=3))},
+                ],
+            },
+            "misc-mistralVibe": {
+                "tool": "mistralVibe",
+                "plan": "Pro",
+                "buckets": [
+                    {"id": "monthly", "title": "Monthly", "shortLabel": "Monthly", "usedPercent": 17,
+                     "rawWindowSeconds": 30 * day, "resetAt": ref_seconds(self.now + dt.timedelta(days=13, hours=6))},
+                ],
+            },
+        }
+        made = []
+        for account_id, quota in fabricated.items():
+            if account_id in self.account_ids:
+                continue
+            quota["queriedAt"] = ref_seconds(self.now - dt.timedelta(minutes=4))
+            write_json(self.output / "quotas" / quota_cache_name(account_id), quota)
+            self.account_ids[account_id] = account_id
+            made.append(quota["tool"])
+        if made:
+            self.report.append("fabricated quotas: " + ", ".join(made))
 
     def build_timelines(self) -> None:
         cutoff = ref_seconds(self.now - dt.timedelta(days=self.days))
@@ -426,6 +473,17 @@ class Builder:
         settings["sessionBodyIndexingEnabled"] = True
         settings["menuBarBlockAlertSuppressed"] = False
         settings["menuBarAutoRepairEnabled"] = True
+        # New companies start hidden for a real user; the demo shows the ones
+        # it has an account for.
+        order = settings.setdefault("coreProviderOrder", [])
+        visible_core = settings.setdefault("visibleCoreProviders", [])
+        for tool, account_id in (("devin", "local-devin"), ("mistralVibe", "misc-mistralVibe")):
+            if account_id not in self.account_ids:
+                continue
+            if tool not in order:
+                order.append(tool)
+            if tool not in visible_core:
+                visible_core.append(tool)
         settings.setdefault("mcpServer", {})["enabled"] = True
         settings.setdefault("costData", {})["privacyModeEnabled"] = False
 
@@ -480,7 +538,9 @@ class Builder:
                 }
             )
         for account_id, (tool, alias, source) in FIXED_PRIMARY_IDS.items():
-            if account_id not in self.account_ids or account_id.startswith("misc-"):
+            if account_id not in self.account_ids:
+                continue
+            if account_id.startswith("misc-") and account_id not in DEDICATED_MISC_IDS:
                 continue
             cache = read_json(self.output / "quotas" / quota_cache_name(account_id))
             accounts.append(
@@ -498,6 +558,8 @@ class Builder:
         self.copy_json("cost_history.json")
         self.copy_tree_json("cost_snapshots")
         self.copy_json("service_status.json")
+        self.fabricate_new_provider_status()
+        self.fabricate_new_provider_costs()
         self.copy_json("pricing_cache.json")
         self.copy_json("pricing_refresh_status.json")
         self.copy_tree_json("pricing_sources")
@@ -505,6 +567,113 @@ class Builder:
         self.copy_json("antigravity_model_labels.json")
         # No mini_window_geometry.json: without one the mini window takes
         # its default place, top-right of the display demo mode presents on.
+
+    def fabricate_new_provider_status(self) -> None:
+        """All-operational status pages for providers the source store has
+        never fetched. The cache is Swift's `[ToolType: Snapshot]`, which
+        encodes as a flat key, value, key, value array."""
+        path = self.output / "service_status.json"
+        flat = read_json(path) if path.is_file() else []
+        present = set(flat[0::2])
+        midnight = self.now.replace(hour=0, minute=0, second=0, microsecond=0)
+        days = [{"date": ref_seconds(midnight - dt.timedelta(days=offset))} for offset in range(89, -1, -1)]
+        pages = {
+            "muse": [("Meta AI API", None), ("Muse Code", None)],
+            "devin": [("Devin", None), ("Devin CLI", None), ("Windsurf", None), ("API", None)],
+            "mistralVibe": [("Chat Completions API", "API"), ("Vibe", "Services"), ("Le Chat", "Services")],
+        }
+        made = []
+        for tool, components in pages.items():
+            if tool in present:
+                continue
+            groups = sorted({group for _, group in components if group})
+            flat += [tool, {
+                "tool": tool,
+                "indicator": "none",
+                "description": "",
+                "groups": [{"id": group, "name": group} for group in groups],
+                "components": [
+                    {"id": f"{tool}-{index}", "name": name, "status": "operational", "groupId": group,
+                     "uptimePercent": 99.95 - index * 0.02, "recentDays": days}
+                    for index, (name, group) in enumerate(components)
+                ],
+                "recentIncidents": [],
+                "updatedAt": ref_seconds(self.now - dt.timedelta(minutes=6)),
+            }]
+            made.append(tool)
+        if made:
+            write_json(path, flat)
+            self.report.append("fabricated status: " + ", ".join(made))
+
+    def fabricate_new_provider_costs(self) -> None:
+        """Two weeks of per-model cost for Devin and Mistral Vibe, priced at
+        the bundled API rates, in the cost snapshot cache's own shape."""
+        directory = self.output / "cost_snapshots"
+        templates = sorted(directory.glob("*.json")) if directory.is_dir() else []
+        if not templates:
+            return
+        envelope = read_json(templates[0])
+        providers = {
+            "devin": ("swe-1.7", 1.9e-6, 1_400_000),
+            "mistralVibe": ("mistral-vibe-cli-latest", 3.1e-6, 650_000),
+        }
+        rng = random.Random(f"costs:{self.now.date()}")
+        midnight = self.now.replace(hour=0, minute=0, second=0, microsecond=0)
+        made = []
+        for tool, (model, usd_per_token, daily_tokens) in providers.items():
+            target = directory / f"{tool}.json"
+            if target.is_file():
+                continue
+            daily, heat = [], [[0] * 24 for _ in range(7)]
+            daily_models = {}
+            for offset in range(13, -1, -1):
+                day = midnight - dt.timedelta(days=offset)
+                tokens = 0 if day.weekday() == 6 else int(daily_tokens * rng.uniform(0.35, 1.4))
+                if offset == 0:
+                    tokens = int(tokens * min(1.0, self.now.hour / 18))
+                cost = round(tokens * usd_per_token, 4)
+                daily.append({"date": ref_seconds(day), "totalTokens": tokens, "costUSD": cost})
+                if tokens:
+                    key = day.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    daily_models[key] = [{"modelName": model, "totalTokens": tokens, "costUSD": cost}]
+                    for hour in range(9, 19):
+                        heat[(day.isoweekday() % 7)][hour] += tokens // 10
+            hourly = []
+            for hour in range(self.now.hour + 1):
+                tokens = daily[-1]["totalTokens"] // max(1, self.now.hour + 1) if 9 <= hour <= 19 else 0
+                hourly.append({"date": ref_seconds(midnight + dt.timedelta(hours=hour)), "totalTokens": tokens,
+                               "costUSD": round(tokens * usd_per_token, 4)})
+
+            def window(days: int) -> tuple[int, float]:
+                rows = daily[-days:]
+                return sum(r["totalTokens"] for r in rows), round(sum(r["costUSD"] for r in rows), 4)
+
+            today, week, month = window(1), window(7), window(14)
+            snapshot = {
+                "tool": tool,
+                "todayCostUSD": today[1], "last7DaysCostUSD": week[1],
+                "last30DaysCostUSD": month[1], "allTimeCostUSD": month[1],
+                "todayTokens": today[0], "last7DaysTokens": week[0],
+                "last30DaysTokens": month[0], "allTimeTokens": month[0],
+                "todayRequests": today[0] // 24_000, "last7DaysRequests": week[0] // 24_000,
+                "last30DaysRequests": month[0] // 24_000, "allTimeRequests": month[0] // 24_000,
+                "dailyHistory": daily,
+                "todayHourlyHistory": hourly,
+                "yesterdayHourlyHistory": [],
+                "recentHourlyHistory": hourly,
+                "hourlyCoverageStart": ref_seconds(midnight),
+                "heatmap": {"tool": tool, "cells": heat, "totalTokens": month[0]},
+                "modelBreakdowns": [{"modelName": model, "totalTokens": month[0], "costUSD": month[1]}],
+                "last7DaysModelBreakdowns": [{"modelName": model, "totalTokens": week[0], "costUSD": week[1]}],
+                "dailyModelBreakdown": daily_models,
+                "hourlyModelBreakdown": {},
+                "jsonlFilesFound": 1,
+                "updatedAt": ref_seconds(self.now - dt.timedelta(minutes=3)),
+            }
+            write_json(target, {**envelope, "snapshot": snapshot})
+            made.append(tool)
+        if made:
+            self.report.append("fabricated costs: " + ", ".join(made))
 
     # -- fabricated: sessions ----------------------------------------------------
 
@@ -590,6 +759,11 @@ class Builder:
         (self.output_home / ".grok" / "config.toml").write_text(
             '[skills]\ndisabled = ["wrangler"]\n'
         )
+        # Mistral Vibe reads `~/.agents/skills` itself; its switch is a
+        # top-level name list in its own config.
+        vibe_config = self.output_home / ".vibe" / "config.toml"
+        vibe_config.parent.mkdir(parents=True, exist_ok=True)
+        vibe_config.write_text('disabled_skills = ["pptx"]\n')
         self.report.append(f"skills: {len(registry)} across {len(app_dirs)} harness dirs")
 
     # -- driver ------------------------------------------------------------------
@@ -687,6 +861,51 @@ def demo_sessions(now: dt.datetime, rng: random.Random) -> list[dict]:
                 ("tool", "edit src/checkout/StepIndicator.tsx"),
                 ("tool", "run npx playwright test tests/checkout-refresh.spec.ts"),
                 ("assistant", "Refreshing on step 3 now lands on step 3; jumping to step 4 by hand is clamped back to 3 because payment has not been entered. One new Playwright test covers both."),
+            ],
+        },
+        {
+            "harness": "muse-code",
+            "project": "storefront-web",
+            "model": "muse-spark-1.3",
+            "started": now - 6 * h - 18 * m,
+            "turns": [
+                ("user", "Product images on the category page load at full resolution on phones. Serve responsive sizes instead."),
+                ("tool", "read_file:src/components/ProductCard.tsx"),
+                ("tool", "export function ProductCard({ product }) { return <img src={product.imageUrl} alt={product.name} /> }"),
+                ("assistant", "The card renders the original upload directly. The image CDN already accepts a `w` parameter, so I'll build a `srcset` at 320, 640 and 960 px with `sizes` matching the grid breakpoints, and keep the original as the fallback `src`."),
+                ("tool", "edit_file:src/components/ProductCard.tsx"),
+                ("tool", "Applied 1 edit to src/components/ProductCard.tsx"),
+                ("assistant", "Done. On a 390 px viewport the category page now requests the 640 px rendition (2x) instead of the 2400 px original, which cuts the first-load image weight from 9.1 MB to 1.2 MB."),
+            ],
+        },
+        {
+            "harness": "devin",
+            "project": "mobile-client",
+            "model": "swe-1.7",
+            "started": now - 6 * h - 51 * m,
+            "turns": [
+                ("user", "The offline banner flickers when the app comes back to the foreground. Find out why."),
+                ("tool", "read_file:src/network/Reachability.ts"),
+                ("tool", "export function useReachability() { const [online, setOnline] = useState(false) ... }"),
+                ("assistant", "The hook starts every mount as offline and only flips to online after the first NetInfo event, so each foreground resume paints the banner for one frame. I'll seed the state from `NetInfo.fetch()` synchronously cached at launch and debounce drops shorter than 800 ms."),
+                ("tool", "edit_file:src/network/Reachability.ts"),
+                ("tool", "Applied 1 edit to src/network/Reachability.ts"),
+                ("assistant", "Fixed. Resuming from background no longer shows the banner, and pulling the network for more than 800 ms still does. Added a unit test that mounts the hook with a cached online state."),
+            ],
+        },
+        {
+            "harness": "mistral-vibe",
+            "project": "design-tokens",
+            "model": "mistral-vibe-cli-latest",
+            "started": now - 7 * h - 5 * m,
+            "turns": [
+                ("user", "Generate the dark-mode variants for the new surface tokens and check their contrast against text-primary."),
+                ("tool", "read_file:tokens/surface.json"),
+                ("tool", "{\"surface\": {\"raised\": \"#FFFFFF\", \"sunken\": \"#F4F4F5\", \"overlay\": \"#FAFAFA\"}}"),
+                ("assistant", "Three surfaces need dark variants. I'll derive them from the neutral ramp (raised #1C1C1F, sunken #111113, overlay #242428) and run the contrast checker against text-primary #EDEDEF."),
+                ("tool", "bash:npm run tokens:contrast"),
+                ("tool", "raised 14.2:1  sunken 16.1:1  overlay 12.9:1  — all pass AAA"),
+                ("assistant", "Added the dark variants to `tokens/surface.json`; all three clear AAA against text-primary (lowest is overlay at 12.9:1)."),
             ],
         },
         {
@@ -1053,12 +1272,199 @@ def _write_jsonl(path: Path, lines: list[dict], session: dict) -> None:
     os.utime(path, (stamp, stamp))
 
 
+def write_muse_code(home: Path, session: dict) -> None:
+    """One `session.jsonl` record log, shaped like Muse Code 1.3 writes it:
+    `run` events carry the prompt, the committed reply, tool calls and their
+    results, and one `model_completed` usage event per model call."""
+    cwd = PROJECTS[session["project"]]
+    session_id = stable_uuid("muse:" + session["project"] + iso(session["started"]))
+    when = session["started"]
+    sequence = 0
+    lines: list[dict] = []
+
+    def record(payload_type: str, payload: dict, at: dt.datetime) -> None:
+        nonlocal sequence
+        sequence += 1
+        lines.append({
+            "schema_version": 1,
+            "id": stable_uuid(f"muse-record:{session_id}:{sequence}"),
+            "stream": {"kind": "session", "id": session_id},
+            "sequence": sequence,
+            "recorded_at": int(at.timestamp() * 1_000_000),
+            "record_type": "event",
+            "payload_type": payload_type,
+            "payload": payload,
+        })
+
+    def run_event(event: dict, at: dt.datetime) -> None:
+        record("runtime.session", {"kind": "run", "run_id": session_id, "event": event}, at)
+
+    record("runtime.session.metadata", {
+        "kind": "metadata",
+        "record": {"workspace_root": cwd, "provider_id": "meta", "model_id": session["model"]},
+    }, when)
+    call = 0
+    for index, (role, text) in enumerate(session["turns"]):
+        when = when + dt.timedelta(seconds=random.Random(index).randint(10, 120))
+        if role == "user":
+            run_event({"kind": "started", "prompt": text}, when)
+        elif role == "assistant":
+            run_event({
+                "kind": "model_completed",
+                "usage": {
+                    "input_tokens": 18_400 + 2_100 * index, "output_tokens": 420 + 60 * index,
+                    "cached_tokens": 12_800 + 1_900 * index, "cache_write_tokens": 0,
+                    "cache_read_tokens": 12_800 + 1_900 * index, "reasoning_tokens": 180,
+                },
+                "duration_ms": 3_400,
+                "model": session["model"],
+            }, when)
+            run_event({"kind": "assistant_message_committed", "text": text}, when)
+        elif ":" in text.split(" ", 1)[0]:
+            call += 1
+            name, _, argument = text.partition(":")
+            run_event({
+                "kind": "assistant_tool_calls_committed",
+                "tool_calls": [{
+                    "id": f"fc_{call}", "call_id": f"call_{call}", "name": name,
+                    "args": json.dumps({"path": argument}),
+                }],
+            }, when)
+        else:
+            run_event({
+                "kind": "tool_result_batch_committed",
+                "results": [{"tool_call_index": 0, "tool_call_id": f"call_{call}", "text": text}],
+            }, when)
+    session["last_active"] = when
+    stamp = session["started"].astimezone(dt.timezone.utc)
+    path = home / ".local/share/muse/sessions" / stamp.strftime("%Y/%m/%d") / session_id / "session.jsonl"
+    _write_jsonl(path, lines, session)
+
+
+def _session_turns(session: dict):
+    """(role, text, when, tool call index) with the same pacing as the
+    other writers."""
+    when = session["started"]
+    call = 0
+    for index, (role, text) in enumerate(session["turns"]):
+        when = when + dt.timedelta(seconds=random.Random(index).randint(10, 120))
+        is_call = role == "tool" and ":" in text.split(" ", 1)[0]
+        if is_call:
+            call += 1
+        yield role, text, when, call, is_call, index
+    session["last_active"] = when
+
+
+def write_devin(home: Path, session: dict) -> None:
+    """One session in Devin's shared `sessions.db`: a `sessions` row plus the
+    main chain of `message_nodes`, assistant nodes carrying the per-response
+    metrics the usage scanner reads."""
+    cwd = PROJECTS[session["project"]]
+    session_id = "demo-" + stable_uuid("devin:" + session["project"])[:8]
+    database = home / ".local/share/devin/cli/sessions.db"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    nodes = []
+    node_id = 0
+    for role, text, when, call, is_call, index in _session_turns(session):
+        node_id += 1
+        stamp = when.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        if role == "user":
+            message = {"role": "user", "content": text, "metadata": {"is_user_input": True, "created_at": stamp}}
+        elif role == "assistant":
+            message = {
+                "role": "assistant",
+                "content": text,
+                "metadata": {
+                    "created_at": stamp,
+                    "request_id": stable_uuid(f"devin-request:{session_id}:{node_id}"),
+                    "generation_model": session["model"],
+                    "metrics": {
+                        "input_tokens": 21_300 + 2_400 * index, "cache_read_tokens": 16_900 + 2_000 * index,
+                        "cache_creation_tokens": 0, "output_tokens": 380 + 70 * index,
+                    },
+                },
+            }
+        elif is_call:
+            name, _, argument = text.partition(":")
+            message = {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": f"call_{call}", "function": {"name": name, "arguments": json.dumps({"path": argument})}}],
+                "metadata": {"created_at": stamp},
+            }
+        else:
+            message = {"role": "tool", "content": text, "tool_call_id": f"call_{call}", "metadata": {"created_at": stamp}}
+        nodes.append((node_id, node_id - 1 or None, json.dumps(message, ensure_ascii=False), int(when.timestamp())))
+    with sqlite3.connect(database) as db:
+        db.executescript(
+            "CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, working_directory TEXT NOT NULL, "
+            "backend_type TEXT NOT NULL, model TEXT NOT NULL, agent_mode TEXT NOT NULL, created_at INTEGER NOT NULL, "
+            "last_activity_at INTEGER NOT NULL, title TEXT, main_chain_id INTEGER, hidden INTEGER NOT NULL DEFAULT 0, "
+            "metadata TEXT);"
+            "CREATE TABLE IF NOT EXISTS message_nodes (row_id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, "
+            "node_id INTEGER NOT NULL, parent_node_id INTEGER, chat_message TEXT NOT NULL, created_at INTEGER NOT NULL, "
+            "metadata TEXT, UNIQUE(session_id, node_id));"
+        )
+        db.execute(
+            "INSERT INTO sessions VALUES (?, ?, 'windsurf', ?, 'default', ?, ?, NULL, ?, 0, NULL)",
+            (session_id, cwd, session["model"], int(session["started"].timestamp()),
+             int(session["last_active"].timestamp()), node_id),
+        )
+        db.executemany(
+            "INSERT INTO message_nodes (session_id, node_id, parent_node_id, chat_message, created_at) VALUES (?, ?, ?, ?, ?)",
+            [(session_id, *node) for node in nodes],
+        )
+
+
+def write_mistral_vibe(home: Path, session: dict) -> None:
+    """A Vibe session directory: `messages.jsonl` in OpenAI message shape and
+    a `meta.json` whose `stats` hold the session's token totals."""
+    cwd = PROJECTS[session["project"]]
+    session_id = stable_uuid("vibe:" + session["project"])
+    lines = []
+    for role, text, when, call, is_call, index in _session_turns(session):
+        if role in ("user", "assistant"):
+            lines.append({"role": role, "content": text})
+        elif is_call:
+            name, _, argument = text.partition(":")
+            lines.append({
+                "role": "assistant", "content": "",
+                "tool_calls": [{"id": f"call_{call}", "type": "function",
+                                "function": {"name": name, "arguments": json.dumps({"command" if name == "bash" else "path": argument})}}],
+            })
+        else:
+            lines.append({"role": "tool", "content": text, "tool_call_id": f"call_{call}"})
+    started = session["started"].astimezone(dt.timezone.utc)
+    directory = home / ".vibe/logs/session" / f"session_{started.strftime('%Y%m%d_%H%M%S')}_{session_id[:8]}"
+    meta = {
+        "session_id": session_id,
+        "start_time": started.isoformat(),
+        "end_time": session["last_active"].astimezone(dt.timezone.utc).isoformat(),
+        "title": None,
+        "total_messages": len(lines),
+        "environment": {"working_directory": cwd},
+        "config": {
+            "active_model": "mistral-medium-3.5",
+            "models": {"mistral-medium-3.5": {"alias": "mistral-medium-3.5", "name": session["model"], "provider": "mistral"}},
+        },
+        "stats": {
+            "session_prompt_tokens": 64_210, "session_cached_tokens": 41_600,
+            "session_completion_tokens": 1_870, "session_cost": 0.0584,
+        },
+    }
+    write_json(directory / "meta.json", meta)
+    _write_jsonl(directory / "messages.jsonl", lines, session)
+
+
 SESSION_WRITERS = {
     "claude-code": write_claude_code,
     "claude-cowork": write_claude_cowork,
     "codex": write_codex,
     "chatgpt-work": write_chatgpt_work,
     "grok-build": write_grok_build,
+    "muse-code": write_muse_code,
+    "devin": write_devin,
+    "mistral-vibe": write_mistral_vibe,
 }
 
 

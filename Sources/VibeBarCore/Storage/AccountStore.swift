@@ -74,6 +74,15 @@ public final class AccountStore: ObservableObject {
         if let grok = autoDetectGrok() {
             detected.append(grok)
         }
+        if let muse = autoDetectMuse() {
+            detected.append(muse)
+        }
+        if let devin = autoDetectDevin() {
+            detected.append(devin)
+        }
+        if let mistralVibe = autoDetectMistralVibe() {
+            detected.append(mistralVibe)
+        }
         // Cursor is a linked Grok-family surface. Keep its stable account
         // present even while signed out so the xAI Settings cookie controls can
         // establish a session without first creating a legacy Misc instance.
@@ -334,6 +343,55 @@ public final class AccountStore: ObservableObject {
             allowsWebFallback: true,
             allowsCLIFallback: false,
             allowsOAuthFallback: false,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    /// Muse Code registers once `muse login` has left
+    /// `~/.config/muse/auth.json` behind. The file carries the account's
+    /// email without the token, so detection never touches the Keychain —
+    /// the adapter reads the secret, and reports when macOS has not yet
+    /// allowed it to.
+    private func autoDetectMuse() -> AccountIdentity? {
+        guard let authFile = MuseCredentialReader.readAuthFile() else { return nil }
+        return AccountIdentity(
+            id: "oauth-muse",
+            tool: .muse,
+            email: authFile.email,
+            alias: ToolType.muse.productName,
+            source: .oauthCLI,
+            allowsOAuthFallback: true,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    /// Devin registers once its CLI has cached a plan status on this Mac.
+    private func autoDetectDevin() -> AccountIdentity? {
+        guard DevinUserStatusCache.exists() else { return nil }
+        return AccountIdentity(
+            id: "local-devin",
+            tool: .devin,
+            alias: ToolType.devin.productName,
+            source: .cliDetected,
+            allowsCLIFallback: true,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    /// Mistral Vibe's account is always present, like Cursor's: its quota
+    /// needs a console session imported through the shared cookie controls,
+    /// and those find the account to refresh by its cookie-instance id.
+    private func autoDetectMistralVibe() -> AccountIdentity? {
+        let hasCookie = MiscCookieSlotStore.hasAnySlot(for: .mistralVibe)
+        return AccountIdentity(
+            id: Self.miscAccountId(forInstanceID: ToolType.mistralVibe.rawValue),
+            tool: .mistralVibe,
+            alias: ToolType.mistralVibe.productName,
+            source: hasCookie ? .browserCookie : .notConfigured,
+            allowsWebFallback: hasCookie,
             createdAt: Date(),
             updatedAt: Date()
         )

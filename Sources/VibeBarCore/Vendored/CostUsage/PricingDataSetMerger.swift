@@ -16,6 +16,9 @@ enum PricingDataSetMerger {
         var gemini = base.providers.gemini.models
         var grok = base.providers.grok.models
         var antigravity = base.providers.antigravity.models
+        var muse = base.providers.muse.models
+        var mistral = base.providers.mistral.models
+        var cognition = base.providers.cognition.models
 
         codex.merge(higherPriority.providers.codex.models) { old, new in
             fillMissingFromBase ? merge(new, over: old) : new
@@ -32,6 +35,15 @@ enum PricingDataSetMerger {
         antigravity.merge(higherPriority.providers.antigravity.models) { old, new in
             fillMissingFromBase ? merge(new, over: old) : new
         }
+        muse.merge(higherPriority.providers.muse.models) { old, new in
+            fillMissingFromBase ? merge(new, over: old) : new
+        }
+        mistral.merge(higherPriority.providers.mistral.models) { old, new in
+            fillMissingFromBase ? merge(new, over: old) : new
+        }
+        cognition.merge(higherPriority.providers.cognition.models) { old, new in
+            fillMissingFromBase ? merge(new, over: old) : new
+        }
 
         return PricingDataSet(
             schemaVersion: PricingDataSet.currentSchemaVersion,
@@ -45,7 +57,10 @@ enum PricingDataSetMerger {
                 antigravity: .init(
                     displayName: base.providers.antigravity.displayName,
                     models: antigravity
-                )
+                ),
+                muse: .init(displayName: base.providers.muse.displayName, models: muse),
+                mistral: .init(displayName: base.providers.mistral.displayName, models: mistral),
+                cognition: .init(displayName: base.providers.cognition.displayName, models: cognition)
             )
         )
     }

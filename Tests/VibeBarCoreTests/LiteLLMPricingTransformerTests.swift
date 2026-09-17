@@ -46,6 +46,28 @@ final class LiteLLMPricingTransformerTests: XCTestCase {
         XCTAssertNil(set.providers.grok.models["xai/grok-4.3"])
     }
 
+    /// Meta's first-party Muse Spark rows land under the bare id the CLI
+    /// logs; resellers' copies of Meta models are aliases and are dropped.
+    func testRoutesMetaMuseSparkToTheMuseTableUnderItsBareID() throws {
+        let set = try XCTUnwrap(transform("""
+        {
+          "meta/muse-spark-1.3-contributor": {
+            "input_cost_per_token": 1e-7, "output_cost_per_token": 2e-7,
+            "cache_read_input_token_cost": 2e-9, "litellm_provider": "meta"
+          },
+          "together_ai/meta-models/Muse-Glimmer-30B": {"input_cost_per_token": 3.5e-7, "output_cost_per_token": 1.5e-6},
+          "aihubmix/muse-spark-1.2": {"input_cost_per_token": 1.375e-6, "output_cost_per_token": 4.675e-6}
+        }
+        """))
+        let contributor = try XCTUnwrap(set.providers.muse.models["muse-spark-1.3-contributor"])
+        XCTAssertEqual(contributor.input, 1e-7, accuracy: 1e-15)
+        XCTAssertEqual(contributor.cacheRead ?? 0, 2e-9, accuracy: 1e-15)
+        XCTAssertNil(set.providers.muse.models["meta/muse-spark-1.3-contributor"])
+        // The reseller's markup never replaces the bundled first-party rate.
+        XCTAssertEqual(set.providers.muse.models["muse-spark-1.2"]?.input ?? 0, 1.25e-6, accuracy: 1e-15)
+        XCTAssertFalse(set.providers.muse.models.keys.contains { $0.contains("glimmer") })
+    }
+
     func testFillsClaudeCacheRatesFromInputWhenLiteLLMOmitsThem() throws {
         let set = try XCTUnwrap(transform("""
         {"claude-fictional-1": {"input_cost_per_token": 1e-5, "output_cost_per_token": 5e-5}}

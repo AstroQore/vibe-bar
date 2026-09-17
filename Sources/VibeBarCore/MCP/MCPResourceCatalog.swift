@@ -101,6 +101,10 @@ public enum MCPResourceCatalog {
         lines.append("")
         lines.append("- \"Gemini Web\" is a quota SubProvider with **no** local usage. The")
         lines.append("  deprecated CLI's historical tokens are always labelled \"Gemini CLI\".")
+        lines.append("- Cost is priced per model from the pricing pipeline whether the harness")
+        lines.append("  runs on a subscription or not: Muse Code, Devin and Mistral Vibe tokens")
+        lines.append("  carry the API-equivalent cost of the model that served them. A model no")
+        lines.append("  price list knows yet counts toward `unpricedRequests` until one does.")
         lines.append("- Cursor's tokens stay remote on purpose: its sessions are listed locally,")
         lines.append("  but cost comes from the dashboard, so a Cursor session can have real")
         lines.append("  messages and no local token counters.")
@@ -133,6 +137,9 @@ public enum MCPResourceCatalog {
         case .cursor:       return "`~/.cursor/chats/**/store.db`; cost from the dashboard"
         case .grokBot:      return "`~/Library/Application Support/Grok Bot/"
             + "sand-client-persistence`; sessions only, no tokens"
+        case .museCode:     return "`~/.local/share/muse/sessions/**/session.jsonl`; API-equivalent cost"
+        case .devin:        return "`~/.local/share/devin/cli/sessions.db` (CLI and app share it); API-equivalent cost"
+        case .mistralVibe:  return "`~/.vibe/logs/session/*/meta.json` running totals; API-equivalent cost"
         }
     }
 
@@ -150,7 +157,7 @@ public enum MCPResourceCatalog {
 
         | The user asks | Call |
         | --- | --- |
-        | "how much Codex / Claude / Gemini / Grok / Cursor do I have left?" | `quota.get` |
+        | "how much Codex / Claude / Gemini / Grok / Cursor / Muse Code do I have left?" | `quota.get` |
         | "when does my 5-hour window reset?" | `quota.get` (`buckets[].resetAt`) |
         | "am I going to run out before the reset?" | `quota.get` with `includeForecast: true` |
         | "refresh my usage" | `quota.refresh`, then `quota.get` |

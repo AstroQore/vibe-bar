@@ -61,7 +61,13 @@ portions is included in this repository at the local license link above.
 - Use in Vibe Bar: `Resources/ProviderIcons/ProviderIcon-googleai.svg` is
   Google's four-segment G taken from that project's `icons/google.svg`, with
   the viewBox cropped to the mark and the brand colours dropped because the
-  renderer tints the shape. No other provider icon comes from this project.
+  renderer tints the shape. `ProviderIcon-metaai.svg` (Meta AI) and
+  `ProviderIcon-muse.svg` (Meta's infinity mark, standing in for Muse Code)
+  come from its `icons/metaai.svg` and `icons/meta.svg` as published in the
+  npm package `@lobehub/icons-static-svg@1.95.0`, drawn the same
+  single-colour way with the viewBox padded. The marks themselves remain
+  Meta's trademarks. No other provider icon
+  comes from this project.
 - License: [MIT](Resources/ThirdPartyLicenses/LobeIcons.txt)
   ([upstream](https://github.com/lobehub/lobe-icons/blob/master/LICENSE))
 - Copyright: Copyright (c) 2023 LobeHub
@@ -71,6 +77,14 @@ respective owners; Vibe Bar draws them to identify the service a quota belongs
 to — in the menu bar, in the app's own surfaces, and, thresholded to 1-bit at
 14–16 px, on an e-ink panel the user has configured — and the license above
 covers only the copied vector artwork.
+
+The Cognition, Devin, Mistral AI and Mistral Vibe marks are the owners' own
+published vector files, reproduced without redrawing: `ProviderIcon-cognition.svg`
+from `cognition.com/icon.svg`, `ProviderIcon-devin.svg` from
+`devin.ai/favicon.svg`, `ProviderIcon-mistral.svg` from the emblem in Mistral's
+`mistralai/platform-docs-public` logo, and `ProviderIcon-mistral-vibe.svg` from
+`mistralai/mistral-vibe`'s `distribution/zed/icons/mistral_vibe.svg`. Only the
+canvas was squared for the icon renderer; each file names its source.
 
 ### Fusion Pixel 12px (缝合怪像素字体)
 

@@ -37,25 +37,80 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         self.providers = providers
     }
 
+    /// The families added after caches were already on disk (`muse`,
+    /// `mistral`, `cognition`) take `floor`'s table when this one has none.
+    func fillingEmptyAddedFamilies(from floor: PricingDataSet) -> PricingDataSet {
+        let current = providers
+        guard current.muse.models.isEmpty || current.mistral.models.isEmpty || current.cognition.models.isEmpty
+        else { return self }
+        return PricingDataSet(
+            schemaVersion: schemaVersion,
+            updatedAt: updatedAt,
+            calculationVersion: calculationVersion,
+            providers: Providers(
+                codex: current.codex,
+                claude: current.claude,
+                gemini: current.gemini,
+                grok: current.grok,
+                antigravity: current.antigravity,
+                muse: current.muse.models.isEmpty ? floor.providers.muse : current.muse,
+                mistral: current.mistral.models.isEmpty ? floor.providers.mistral : current.mistral,
+                cognition: current.cognition.models.isEmpty ? floor.providers.cognition : current.cognition
+            )
+        )
+    }
+
     public struct Providers: Codable, Sendable, Equatable {
         public let codex: ProviderTable<CodexEntry>
         public let claude: ProviderTable<ClaudeEntry>
         public let gemini: ProviderTable<GeminiEntry>
         public let grok: ProviderTable<GrokEntry>
         public let antigravity: ProviderTable<AntigravityEntry>
+        public let muse: ProviderTable<MuseEntry>
+        public let mistral: ProviderTable<MistralEntry>
+        public let cognition: ProviderTable<CognitionEntry>
 
         public init(
             codex: ProviderTable<CodexEntry>,
             claude: ProviderTable<ClaudeEntry>,
             gemini: ProviderTable<GeminiEntry>,
             grok: ProviderTable<GrokEntry>,
-            antigravity: ProviderTable<AntigravityEntry>
+            antigravity: ProviderTable<AntigravityEntry>,
+            muse: ProviderTable<MuseEntry> = .init(displayName: "Meta AI", models: [:]),
+            mistral: ProviderTable<MistralEntry> = .init(displayName: "Mistral AI", models: [:]),
+            cognition: ProviderTable<CognitionEntry> = .init(displayName: "Cognition", models: [:])
         ) {
             self.codex = codex
             self.claude = claude
             self.gemini = gemini
             self.grok = grok
             self.antigravity = antigravity
+            self.muse = muse
+            self.mistral = mistral
+            self.cognition = cognition
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case codex, claude, gemini, grok, antigravity, muse, mistral, cognition
+        }
+
+        /// `muse`, `mistral` and `cognition` arrived after caches and remote tables were already on disk
+        /// without it. A missing table is an empty one rather than a decoding
+        /// failure — which would otherwise throw every cached source away and
+        /// rebuild the pricing cache from the bundled table alone.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            codex = try c.decode(ProviderTable<CodexEntry>.self, forKey: .codex)
+            claude = try c.decode(ProviderTable<ClaudeEntry>.self, forKey: .claude)
+            gemini = try c.decode(ProviderTable<GeminiEntry>.self, forKey: .gemini)
+            grok = try c.decode(ProviderTable<GrokEntry>.self, forKey: .grok)
+            antigravity = try c.decode(ProviderTable<AntigravityEntry>.self, forKey: .antigravity)
+            muse = try c.decodeIfPresent(ProviderTable<MuseEntry>.self, forKey: .muse)
+                ?? .init(displayName: "Meta AI", models: [:])
+            mistral = try c.decodeIfPresent(ProviderTable<MistralEntry>.self, forKey: .mistral)
+                ?? .init(displayName: "Mistral AI", models: [:])
+            cognition = try c.decodeIfPresent(ProviderTable<CognitionEntry>.self, forKey: .cognition)
+                ?? .init(displayName: "Cognition", models: [:])
         }
     }
 
@@ -210,6 +265,19 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         }
     }
 
+    /// Meta's Muse Spark rates have exactly Grok's shape: input, output and
+    /// a cached-input rate, no cache-write charge, no fast tier, and no long-
+    /// context premium today (the threshold fields stay available should one
+    /// appear).
+    public typealias MuseEntry = GrokEntry
+
+    /// Mistral's API rates (what Mistral Vibe's models cost on La Plateforme)
+    /// share the same shape: input, output and a cached-input rate.
+    public typealias MistralEntry = GrokEntry
+
+    /// Cognition's SWE model rates (what Devin runs) share the same shape.
+    public typealias CognitionEntry = GrokEntry
+
     public struct AntigravityEntry: Codable, Sendable, Equatable {
         public let input: Double
         public let output: Double
@@ -242,7 +310,10 @@ extension PricingDataSet {
                 claude: .init(displayName: "Anthropic", models: [:]),
                 gemini: .init(displayName: "Google AI", models: [:]),
                 grok: .init(displayName: "SpaceXAI", models: [:]),
-                antigravity: .init(displayName: "Google AI", models: [:])
+                antigravity: .init(displayName: "Google AI", models: [:]),
+                muse: .init(displayName: "Meta AI", models: [:]),
+                mistral: .init(displayName: "Mistral AI", models: [:]),
+                cognition: .init(displayName: "Cognition", models: [:])
             )
         )
     }
@@ -253,5 +324,8 @@ extension PricingDataSet {
             + providers.gemini.models.count
             + providers.grok.models.count
             + providers.antigravity.models.count
+            + providers.muse.models.count
+            + providers.mistral.models.count
+            + providers.cognition.models.count
     }
 }

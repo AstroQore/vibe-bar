@@ -13,6 +13,9 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
     case antigravityLocalProbe
     case grokAuthJSON
     case grokBrowserCookies
+    case museKeychain
+    case devinStatusCache
+    case mistralBrowserCookies
 
     public var id: String { rawValue }
 
@@ -28,6 +31,12 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
             return .antigravity
         case .grokAuthJSON, .grokBrowserCookies:
             return .grok
+        case .museKeychain:
+            return .muse
+        case .devinStatusCache:
+            return .devin
+        case .mistralBrowserCookies:
+            return .mistralVibe
         }
     }
 
@@ -45,6 +54,9 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
         case .antigravityLocalProbe: return L10n.Settings.Route.antigravityLocal
         case .grokAuthJSON: return L10n.Settings.Route.grokAuthFile
         case .grokBrowserCookies: return L10n.Settings.Route.browserCookies
+        case .museKeychain: return L10n.Settings.Route.museKeychain
+        case .devinStatusCache: return L10n.Settings.Route.devinStatusCache
+        case .mistralBrowserCookies: return L10n.Settings.Route.browserCookies
         }
     }
 
@@ -172,7 +184,51 @@ public enum PrimaryProviderRouteHealthChecker {
                 result: GrokWebCookieStore.storageState(source: .browser),
                 now: now
             )
+        case .museKeychain:
+            return museKeychainHealth(
+                route: route,
+                state: MuseCredentialReader.accessState(),
+                now: now
+            )
+        case .devinStatusCache:
+            // The cache is the only route, and it is a cache by design.
+            let cached = DevinUserStatusCache.exists()
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: cached ? .ok : .missing,
+                detail: cached ? L10n.Settings.RouteHealth.cachedOnly : L10n.Settings.Devin.noCache,
+                checkedAt: now
+            )
+        case .mistralBrowserCookies:
+            let saved = MiscCookieSlotStore.hasAnySlot(for: .mistralVibe)
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: saved ? .ok : .missing,
+                detail: saved ? L10n.Settings.RouteHealth.savedInKeychain : L10n.Settings.RouteHealth.noSavedCookie,
+                checkedAt: now
+            )
         }
+    }
+
+    /// Reports whether a background refresh can read the Muse Code login,
+    /// from a no-UI preflight — never from reading the secret itself.
+    static func museKeychainHealth(
+        route: PrimaryProviderRoute = .museKeychain,
+        state: MuseCredentialReader.AccessState,
+        now: Date
+    ) -> PrimaryProviderRouteHealth {
+        let (status, detail): (PrimaryProviderRouteHealthStatus, String)
+        switch state {
+        case .authorized:
+            (status, detail) = (.ok, L10n.Settings.Muse.keychainAccessAllowed)
+        case .needsAuthorization:
+            (status, detail) = (.blocked, L10n.Quota.Muse.keychainAccessNeeded)
+        case .noLogin, .missingSecret:
+            (status, detail) = (.missing, L10n.Settings.Muse.noLogin)
+        case .keychainUnavailable:
+            (status, detail) = (.failed, L10n.Settings.RouteHealth.keychainLocked)
+        }
+        return PrimaryProviderRouteHealth(route: route, status: status, detail: detail, checkedAt: now)
     }
 
     private static func antigravityLocalProbeHealth(

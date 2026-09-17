@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Owns the native per-skill switches exposed by agent harnesses.
@@ -96,6 +97,69 @@ struct SkillHarnessConfigManager: Sendable {
         })
     }
 
+    /// Muse Code keeps one activation per discovered `SKILL.md`, keyed by the
+    /// path as Muse spells it (`$HOME/.agents/skills/<dir>/SKILL.md`). A skill
+    /// with no entry is on. `on` and `user-invocable-only` both leave it
+    /// usable; `off` is the only disabled value.
+    func museStates(for skills: [Skill]) -> [String: NativeState] {
+        guard !skills.isEmpty else { return [:] }
+        let target = resolvedConfigTarget(museSettingsURL)
+        guard FileManager.default.fileExists(atPath: target.path) else {
+            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+        }
+        guard let data = try? Data(contentsOf: target),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Self.museSchemaIsKnown(root),
+              let activations = Self.museUserActivations(in: root)
+        else {
+            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+        }
+        return Dictionary(uniqueKeysWithValues: skills.map { skill in
+            let keys = museActivationKeys(directoryName: skill.directory)
+            let values = activations.filter { keys.contains($0.key) }.map(\.value)
+            let state: NativeState
+            if values.isEmpty {
+                state = .enabled
+            } else if values.contains(where: { !Self.museKnownActivations.contains($0) }) {
+                state = .unknown
+            } else {
+                state = values.contains("off") ? .disabled : .enabled
+            }
+            return (skill.directory, state)
+        })
+    }
+
+    /// Mistral Vibe filters skills by name with two top-level lists in
+    /// `~/.vibe/config.toml`: `enabled_skills`, which once non-empty admits
+    /// only what it matches, and `disabled_skills`. Both hold
+    /// case-insensitive globs or `re:` regexes.
+    func mistralVibeStates(for skills: [Skill]) -> [String: NativeState] {
+        guard !skills.isEmpty else { return [:] }
+        let target = resolvedConfigTarget(mistralVibeConfigURL)
+        guard FileManager.default.fileExists(atPath: target.path) else {
+            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+        }
+        guard let data = try? Data(contentsOf: target),
+              let text = String(data: data, encoding: .utf8),
+              let enabledList = Self.topLevelTOMLStringArray("enabled_skills", in: text),
+              let disabledList = Self.topLevelTOMLStringArray("disabled_skills", in: text)
+        else {
+            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+        }
+        return Dictionary(uniqueKeysWithValues: skills.map { skill in
+            let name = skill.name
+            let state: NativeState
+            if let enabledList = enabledList.list, !enabledList.isEmpty {
+                state = Self.vibeNameMatches(name, enabledList) ? .enabled : .disabled
+            } else if let disabledList = disabledList.list, Self.vibeNameMatches(name, disabledList) {
+                state = .disabled
+            } else {
+                state = .enabled
+            }
+            return (skill.directory, state)
+        })
+    }
+
     func setNativeEnabled(
         _ enabled: Bool,
         directoryName: String,
@@ -114,6 +178,10 @@ struct SkillHarnessConfigManager: Sendable {
             try setGeminiEnabled(enabled, name: skillName)
         case .grok:
             try setGrokEnabled(enabled, name: skillName)
+        case .muse:
+            try setMuseEnabled(enabled, directoryName: directoryName)
+        case .mistralVibe:
+            try setMistralVibeEnabled(enabled, name: skillName)
         case .hermes, .opencode, .antigravity, .cursor:
             throw SkillError.nativeActivationUnsupported(app)
         }
@@ -123,7 +191,30 @@ struct SkillHarnessConfigManager: Sendable {
     /// harness cannot accept a per-skill enable. Gemini's user-level global
     /// switch is the only current case: silently turning it on would enable
     /// every other skill too, so the narrower operation explains the blocker.
-    func validateCanEnable(_ app: SkillAppTarget) throws {
+    /// `skillName` is the frontmatter name the install will register, when
+    /// the caller knows it; Mistral Vibe matches its lists against it.
+    func validateCanEnable(_ app: SkillAppTarget, skillName: String? = nil) throws {
+        if app == .mistralVibe {
+            guard let lists = try mistralVibeLists() else { return }
+            // An allow-list decides for every skill; Vibe Bar does not edit it.
+            if let allowList = lists.enabled, !allowList.isEmpty {
+                guard let skillName, Self.vibeNameMatches(skillName, allowList) else {
+                    throw SkillError.nativeSkillsGloballyDisabled(.mistralVibe)
+                }
+                return
+            }
+            if let skillName, let names = lists.disabled {
+                let others = names.filter { $0.caseInsensitiveCompare(skillName) != .orderedSame }
+                if Self.vibeNameMatches(skillName, others) {
+                    throw SkillError.nativeSkillDisabledByPattern(.mistralVibe)
+                }
+            }
+            return
+        }
+        if app == .muse {
+            try validateMuseSettingsWritable()
+            return
+        }
         guard app == .gemini else { return }
         let target = resolvedConfigTarget(geminiSettingsURL)
         guard FileManager.default.fileExists(atPath: target.path) else { return }
@@ -218,6 +309,357 @@ struct SkillHarnessConfigManager: Sendable {
         try backupConfig(original, sourceExists: existed, app: app, filename: target.lastPathComponent)
         try ensureConfigParent(target, app: app)
         try atomicWrite(normalized, to: target)
+    }
+
+    /// Enabling removes the entry, returning the skill to Muse's default
+    /// (which also restores a skill's own `user-invocable-only`); disabling
+    /// writes `off`. Only `skills.activation.user` is touched, under Muse's
+    /// own `.settings.json.lock`, and a settings file with a schema this code
+    /// was not written against is refused rather than rewritten.
+    ///
+    /// No Muse config directory means no Muse to switch off: the directory is
+    /// never created from here.
+    private func setMuseEnabled(_ enabled: Bool, directoryName: String) throws {
+        try SkillPathValidator.validate(directoryName: directoryName)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: museSettingsURL.deletingLastPathComponent().path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else { return }
+        let target = try museWriteTarget()
+        try withMuseSettingsLock(directory: target.deletingLastPathComponent()) {
+            let existed = FileManager.default.fileExists(atPath: target.path)
+            if enabled, !existed { return }
+            let original = existed ? (try? Data(contentsOf: target)) : Data()
+            guard let original else { throw SkillError.nativeConfigUnreadable(.muse) }
+            var root: [String: Any]
+            if original.isEmpty {
+                root = [:]
+            } else {
+                guard let decoded = try? JSONSerialization.jsonObject(with: original) as? [String: Any],
+                      Self.museSchemaIsKnown(decoded)
+                else { throw SkillError.nativeConfigUnreadable(.muse) }
+                root = decoded
+            }
+            guard root["skills"] == nil || root["skills"] is [String: Any] else {
+                throw SkillError.nativeConfigUnreadable(.muse)
+            }
+            var skills = root["skills"] as? [String: Any] ?? [:]
+            guard skills["activation"] == nil || skills["activation"] is [String: Any] else {
+                throw SkillError.nativeConfigUnreadable(.muse)
+            }
+            var activation = skills["activation"] as? [String: Any] ?? [:]
+            guard activation["user"] == nil || activation["user"] is [String: Any] else {
+                throw SkillError.nativeConfigUnreadable(.muse)
+            }
+            var user = activation["user"] as? [String: Any] ?? [:]
+
+            let keys = museActivationKeys(directoryName: directoryName)
+            for key in user.keys where keys.contains(key) { user[key] = nil }
+            if !enabled { user[Self.museCanonicalKey(directoryName: directoryName)] = "off" }
+
+            if user.isEmpty { activation["user"] = nil } else { activation["user"] = user }
+            if activation.isEmpty { skills["activation"] = nil } else { skills["activation"] = activation }
+            if skills.isEmpty { root["skills"] = nil } else { root["skills"] = skills }
+            if root["schema_version"] == nil { root["schema_version"] = 1 }
+
+            guard JSONSerialization.isValidJSONObject(root),
+                  let rewritten = try? JSONSerialization.data(
+                      withJSONObject: root,
+                      options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+                  )
+            else { throw SkillError.nativeConfigUnreadable(.muse) }
+            let normalized = rewritten + Data("\n".utf8)
+            guard normalized != original else { return }
+            try backupConfig(original, sourceExists: existed, app: .muse, filename: target.lastPathComponent)
+            try atomicWrite(normalized, to: target)
+        }
+    }
+
+    /// Muse takes an exclusive lock on this sibling file around every
+    /// settings write; holding it keeps a concurrent `muse skills disable`
+    /// from landing between this read and this write. A lock that stays busy
+    /// is reported as an unreadable config rather than waited on forever.
+    private func withMuseSettingsLock(directory: URL, _ body: () throws -> Void) throws {
+        let lockURL = directory.appendingPathComponent(".settings.json.lock")
+        let descriptor = open(lockURL.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        guard descriptor >= 0 else { throw SkillError.nativeConfigUnreadable(.muse) }
+        defer { close(descriptor) }
+        var acquired = false
+        for _ in 0..<40 {
+            if flock(descriptor, LOCK_EX | LOCK_NB) == 0 {
+                acquired = true
+                break
+            }
+            usleep(50_000)
+        }
+        guard acquired else { throw SkillError.nativeConfigUnreadable(.muse) }
+        defer { flock(descriptor, LOCK_UN) }
+        try body()
+    }
+
+    private static let museKnownActivations: Set<String> = ["on", "off", "user-invocable-only"]
+
+    /// Muse's settings carry `schema_version: 1`; a file without one is read
+    /// as that version, anything else is a format this code does not know.
+    private static func museSchemaIsKnown(_ root: [String: Any]) -> Bool {
+        guard let version = root["schema_version"] else { return true }
+        guard let number = version as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else {
+            return false
+        }
+        return number.doubleValue == 1
+    }
+
+    /// `skills.activation.user`, or nil when any container on the way is not
+    /// an object — a file the setter would refuse is not read as "all on".
+    private static func museUserActivations(in root: [String: Any]) -> [String: String]? {
+        guard root["skills"] == nil || root["skills"] is [String: Any] else { return nil }
+        let skills = root["skills"] as? [String: Any]
+        guard skills?["activation"] == nil || skills?["activation"] is [String: Any] else { return nil }
+        let activation = skills?["activation"] as? [String: Any]
+        guard activation?["user"] == nil || activation?["user"] is [String: Any] else { return nil }
+        let user = activation?["user"] as? [String: Any] ?? [:]
+        return user.reduce(into: [:]) { result, entry in
+            result[entry.key] = (entry.value as? String) ?? ""
+        }
+    }
+
+    /// Fail before an install copies anything when an unselected harness that
+    /// reads the shared root on its own could not record the new skill as off.
+    func validateCanDisable(_ app: SkillAppTarget) throws {
+        switch app {
+        case .muse:
+            try validateMuseSettingsWritable()
+        case .mistralVibe:
+            _ = try mistralVibeLists()
+        default:
+            return
+        }
+    }
+
+    /// The settings file a write may touch. A symlinked `settings.json` is
+    /// followed only while it stays inside the home directory: the lock and
+    /// the rewrite land beside the resolved target.
+    private func museWriteTarget() throws -> URL {
+        let target = resolvedConfigTarget(museSettingsURL)
+        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .resolvingSymlinksInPath().standardizedFileURL
+        // The parent is resolved as well: a linked `~/.config/muse` would
+        // otherwise pass a lexical check while the lock and a first write
+        // follow it out of the home.
+        let parent = target.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+        guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
+            throw SkillError.writeOutsideAllowedRoots(target.path)
+        }
+        return target
+    }
+
+    private func validateMuseSettingsWritable() throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: museSettingsURL.deletingLastPathComponent().path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else { return }
+        _ = try museWriteTarget()
+        let target = resolvedConfigTarget(museSettingsURL)
+        guard FileManager.default.fileExists(atPath: target.path) else { return }
+        guard let data = try? Data(contentsOf: target),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Self.museSchemaIsKnown(root),
+              Self.museUserActivations(in: root) != nil
+        else { throw SkillError.nativeConfigUnreadable(.muse) }
+    }
+
+    private static func museCanonicalKey(directoryName: String) -> String {
+        "$HOME/\(SkillAppCatalog.ssotRelativePath)/\(directoryName)/SKILL.md"
+    }
+
+    /// Every spelling of the shared-root `SKILL.md` Muse could have keyed:
+    /// its own `$HOME/…` form, `~/…`, and the absolute path.
+    private func museActivationKeys(directoryName: String) -> Set<String> {
+        let relative = "\(SkillAppCatalog.ssotRelativePath)/\(directoryName)/SKILL.md"
+        let absolute = canonicalSkillMD(directoryName: directoryName)
+        return [
+            Self.museCanonicalKey(directoryName: directoryName),
+            "~/\(relative)",
+            absolute.standardizedFileURL.path,
+            absolute.resolvingSymlinksInPath().standardizedFileURL.path,
+        ]
+    }
+
+    /// Only `disabled_skills` is ever written: the skill's exact name is
+    /// removed to enable it and added to disable it, and the rest of the file
+    /// is left as it was. A config that uses `enabled_skills` is refused —
+    /// that list is an allow-list whose meaning Vibe Bar does not own.
+    /// Without a `~/.vibe` directory there is no Vibe to configure.
+    /// Vibe's two top-level lists, or nil when there is no config file. The
+    /// file must sit inside the home directory, as the setter requires, and
+    /// both values must be readable string arrays.
+    private func mistralVibeLists() throws -> (enabled: [String]?, disabled: [String]?)? {
+        let target = resolvedConfigTarget(mistralVibeConfigURL)
+        guard FileManager.default.fileExists(atPath: target.path) else { return nil }
+        let home = URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .resolvingSymlinksInPath().standardizedFileURL
+        let parent = target.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+        guard SkillAppCatalog.isPath(parent, under: home), parent.path != home.path else {
+            throw SkillError.writeOutsideAllowedRoots(target.path)
+        }
+        guard let data = try? Data(contentsOf: target),
+              let text = String(data: data, encoding: .utf8),
+              let enabled = Self.topLevelTOMLStringArray("enabled_skills", in: text),
+              let disabled = Self.topLevelTOMLStringArray("disabled_skills", in: text)
+        else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
+        return (enabled.list, disabled.list)
+    }
+
+    private func setMistralVibeEnabled(_ enabled: Bool, name: String) throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: mistralVibeConfigURL.deletingLastPathComponent().path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else { return }
+        let target = resolvedConfigTarget(mistralVibeConfigURL)
+        try ensureConfigParent(target, app: .mistralVibe)
+        let existed = FileManager.default.fileExists(atPath: target.path)
+        if enabled, !existed { return }
+        let originalData = existed ? (try? Data(contentsOf: target)) : Data()
+        guard let originalData, let original = String(data: originalData, encoding: .utf8),
+              let enabledList = Self.topLevelTOMLStringArray("enabled_skills", in: original),
+              let disabledList = Self.topLevelTOMLStringArray("disabled_skills", in: original)
+        else { throw SkillError.nativeConfigUnreadable(.mistralVibe) }
+        if let allowList = enabledList.list, !allowList.isEmpty {
+            // The allow-list decides for every skill and is never edited here.
+            // A skill already in the requested state needs nothing; anything
+            // else cannot be switched individually.
+            if Self.vibeNameMatches(name, allowList) == enabled { return }
+            throw SkillError.nativeSkillsGloballyDisabled(.mistralVibe)
+        }
+
+        var names = disabledList.list ?? []
+        names.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
+        if enabled, Self.vibeNameMatches(name, names) {
+            // A glob or `re:` entry still names the skill. Removing only the
+            // exact entry would report success while Vibe keeps it off.
+            throw SkillError.nativeSkillDisabledByPattern(.mistralVibe)
+        }
+        if !enabled { names.append(name) }
+
+        var lines = original.components(separatedBy: "\n")
+        let assignment = "disabled_skills = ["
+            + names.map { "\"\(Self.escapeTOML($0))\"" }.joined(separator: ", ") + "]"
+        if let range = disabledList.lineRange {
+            lines.replaceSubrange(range, with: [assignment])
+        } else if !enabled {
+            let header = Self.firstTOMLTableLine(in: lines)
+            if let header {
+                lines.insert(contentsOf: [assignment, ""], at: header)
+            } else {
+                if lines.last == "" { lines.removeLast() }
+                lines.append(assignment)
+                lines.append("")
+            }
+        }
+        let rewritten = Data(lines.joined(separator: "\n").utf8)
+        guard rewritten != originalData else { return }
+        try backupConfig(originalData, sourceExists: existed, app: .mistralVibe, filename: target.lastPathComponent)
+        try atomicWrite(rewritten, to: target)
+    }
+
+    struct TOMLStringArray {
+        /// `nil` when the key is absent.
+        let list: [String]?
+        let lineRange: Range<Int>?
+    }
+
+    /// Reads one top-level `key = ["…", …]` assignment (single- or multi-line,
+    /// basic strings only). The outer optional is `nil` when the key exists
+    /// but is not an array of basic strings — a value this code must not
+    /// rewrite.
+    static func topLevelTOMLStringArray(_ key: String, in text: String) -> TOMLStringArray? {
+        let lines = text.components(separatedBy: "\n")
+        let end = firstTOMLTableLine(in: lines) ?? lines.count
+        guard let start = (0..<end).first(where: { index in
+            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix(key) else { return false }
+            let rest = trimmed.dropFirst(key.count).trimmingCharacters(in: .whitespaces)
+            return rest.hasPrefix("=")
+        }) else {
+            return TOMLStringArray(list: nil, lineRange: nil)
+        }
+        // Walk characters, not lines: a `]` or `#` inside a string (a
+        // `re:doc[sx]` pattern) neither closes the array nor starts a comment.
+        var raw = ""
+        var last = start
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var closed = false
+        scan: for index in start..<end {
+            var line = Substring(lines[index])
+            if index == start {
+                guard let equal = line.firstIndex(of: "=") else { return nil }
+                line = line[line.index(after: equal)...]
+            }
+            last = index
+            for character in line {
+                if inString {
+                    raw.append(character)
+                    if escaped { escaped = false }
+                    else if character == "\\" { escaped = true }
+                    else if character == "\"" { inString = false }
+                    continue
+                }
+                switch character {
+                case "#": break
+                case "\"": inString = true; raw.append(character); continue
+                case "[": depth += 1
+                case "]":
+                    depth -= 1
+                    if depth == 0 {
+                        raw.append(character)
+                        closed = true
+                        break scan
+                    }
+                default: break
+                }
+                if character == "#" { break }
+                raw.append(character)
+            }
+            raw.append(" ")
+        }
+        guard closed else { return nil }
+        let value = raw.trimmingCharacters(in: .whitespaces)
+        guard value.hasPrefix("["), value.hasSuffix("]"),
+              let data = value.replacingOccurrences(of: ",\\s*]", with: "]", options: .regularExpression)
+                .data(using: .utf8),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [String]
+        else { return nil }
+        return TOMLStringArray(list: list, lineRange: start..<(last + 1))
+    }
+
+    static func firstTOMLTableLine(in lines: [String]) -> Int? {
+        lines.firstIndex { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("["), let second = trimmed.dropFirst().first else { return false }
+            return second.isLetter || second == "[" || second == "\"" || second == "'"
+        }
+    }
+
+    /// Vibe's `name_matches`: case-insensitive `fnmatch` globs, or a
+    /// case-insensitive full-match regex after `re:`.
+    static func vibeNameMatches(_ name: String, _ patterns: [String]) -> Bool {
+        patterns.contains { raw in
+            let pattern = raw.trimmingCharacters(in: .whitespaces)
+            guard !pattern.isEmpty else { return false }
+            if pattern.hasPrefix("re:") {
+                guard let regex = try? NSRegularExpression(
+                    pattern: "^(?:" + String(pattern.dropFirst(3)) + ")$",
+                    options: [.caseInsensitive]
+                ) else { return false }
+                return regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil
+            }
+            return fnmatch(pattern.lowercased(), name.lowercased(), 0) == 0
+        }
     }
 
     private func setGrokEnabled(_ enabled: Bool, name: String) throws {
@@ -504,6 +946,19 @@ struct SkillHarnessConfigManager: Sendable {
         URL(fileURLWithPath: homeDirectory, isDirectory: true)
             .appendingPathComponent(".gemini", isDirectory: true)
             .appendingPathComponent("settings.json")
+    }
+
+    private var museSettingsURL: URL {
+        URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("muse", isDirectory: true)
+            .appendingPathComponent("settings.json")
+    }
+
+    private var mistralVibeConfigURL: URL {
+        URL(fileURLWithPath: homeDirectory, isDirectory: true)
+            .appendingPathComponent(".vibe", isDirectory: true)
+            .appendingPathComponent("config.toml")
     }
 
     private var grokConfigURL: URL {

@@ -47,7 +47,7 @@ Quota Monitor 告诉你还剩多少；Token Dashboard 告诉你发生了什么�
 Relay 之前就已经加密给这台 Mac。
 
 菜单栏之下还有一个 Workbench：覆盖所有 harness 的逐请求用量账本、可全文搜索并
-一键恢复的本地 Agent 会话索引，以及一个把同一份 Skill 库对账到六个 Agent CLI 的
+一键恢复的本地 Agent 会话索引，以及一个把同一份 Skill 库对账到八个 Agent CLI 的
 Skills 管理器。所有这些都只读取你 Mac 上已有的文件；还有一个 MCP 服务，让你的
 Agent 也能来问同样的问题。
 
@@ -163,7 +163,7 @@ Project、Model 五张分布环形图；表格仍保持完整窗口，并增加�
 ### Skills
 
 一份共享库放在 `~/.agents/skills/`，对账 Codex、Claude Code、Gemini CLI、
-AntiGravity、Grok Build 和 Cursor。每一行会把 harness 的真实有效状态和 Vibe Bar
+AntiGravity、Grok Build、Cursor 和 Muse Code。每一行会把 harness 的真实有效状态和 Vibe Bar
 管理的软链/副本分开：原生配置禁用显示暂停标记；被其它兼容目录继续暴露的 Skill
 显示链环，而不会假装成“已关闭”。右键 harness 圆点可以选择原生启停或移除投影。
 从 ZIP 安装、认领某个 CLI 已有的 Skill、从仓库发现更多，替换前先备份。
@@ -312,6 +312,9 @@ API Key 发到 `dot.mindreset.tech`，由那边画到你的设备上。在你填
 | Claude Code / Cowork | 5 Hours、Weekly、按模型的周窗口、Anthropic 状态 | `~/.claude/projects/**/*.jsonl`，以及 Claude.app 的 Cowork transcript |
 | Gemini + AntiGravity | Gemini Web 配额、本地 AntiGravity Language Server 配额 | 本地 Gemini / AntiGravity 用量记录 |
 | Grok + Cursor | Grok 配额、Cursor Models 与 Other Models、Grok Bot 周配额、SpaceXAI + Cursor 状态 | 本地 Grok 记录、Cursor 账户用量事件；Grok Bot 仅显示配额 |
+| Devin | Cognition 的 Daily 与 Weekly 窗口，来自 `devin` CLI 的套餐缓存；Devin 状态 | `~/.local/share/devin/cli/sessions.db`（CLI 与 Devin 桌面 app 共用），按模型计价 |
+| Mistral Vibe | Mistral AI 的 Monthly 窗口，来自 console.mistral.ai 的浏览器会话；Mistral 状态 | `~/.vibe/logs/session/*/meta.json`，按 Mistral API 单价折算 |
+| Muse Code | Meta AI 的 5 Hours 与 Weekly 窗口，macOS 允许后读取 `muse` CLI 的登录信息；Meta Model API 状态 | `~/.local/share/muse/sessions/**/session.jsonl` —— token 用量，成本按 Meta API 单价折算（订阅本身不按 token 计费） |
 | Misc Providers | 各服务商自己的 Coding/Token Plan 接口 | 除非 Adapter 能取得本地用量，否则仅显示额度 |
 
 服务商的接口随时可能变化。Vibe Bar 会明确显示刷新错误，保留上一次成功的快照，
@@ -394,11 +397,11 @@ Desktop 仍在向本 App 对齐，在达成之前使用自己的 `0.x` 版本号
 | 重置：风险视图 | ● | ◐ | 跨平台版列出各次重置及其预测；日历视图与风险分组尚未移植 |
 | 技能：安装、导入、发现、备份 | ● | ◐ | 跨平台版目前是只读清单 |
 | **成本与用量** |
-| 本地用量扫描 | ● 7 个 harness | ◐ 3 | Codex、Claude Code、Gemini CLI。只计有本地扫描器的 harness：Cursor 的用量来自 dashboard 事件，Grok Bot 根本没有用量来源，两者在任何一边都不算本地扫描 |
+| 本地用量扫描 | ● 10 个 harness | ◐ 3 | Codex、Claude Code、Gemini CLI。只计有本地扫描器的 harness：Cursor 的用量来自 dashboard 事件，Grok Bot 根本没有用量来源，两者在任何一边都不算本地扫描 |
 | 逐请求账本、多源价格、历史 | ● | ○ | 跨平台版只保留内存中的聚合 |
 | **设置** |
 | 可写 | ● | ○ | 写共享数据需要跨客户端存储契约 |
-| Provider 凭据面板 | ● 25 | ○ | |
+| Provider 凭据面板 | ● 27 | ○ | |
 | **平台** |
 | MCP 工具 | ● 12 | ◐ 5 | 只读子集 |
 | 远端 Probe 同步 | ● | ○ | |
@@ -455,7 +458,7 @@ Vibe Bar 没有遥测管线，也没有托管的明文分析后端。本地与�
 - CLI 的凭据与会话文件都是只读输入。唯一的例外是从 Workbench 的 Sessions 页
   整条删除会话——只在你明确要求时发生，并且从不编辑会话文件的内容。
 - Skills 管理器只写 `~/.agents/skills/`、六个受管 harness 的 skills 根目录，以及
-  Codex/Claude/Gemini/Grok 用户配置里明确的 Skill 启停字段；每次配置 patch 都先备份到
+  Codex/Claude/Gemini/Grok/Muse Code/Mistral Vibe 用户配置里明确的 Skill 启停字段；每次配置 patch 都先备份到
   `~/.vibebar/skill_backups/`。
 - Vibe Bar 自己的 Cookie 与服务商密钥保存在一个带版本的 Keychain Vault 里，而不是
   每个密钥一条、各自弹窗的 Keychain 条目。

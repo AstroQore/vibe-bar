@@ -30,6 +30,9 @@ extension Harness {
         // from. It does have its own brand mark, which is what the Sessions
         // badge draws — see `HarnessBrandIconView` in the app target.
         case .grokBot:                  .cursor
+        case .museCode:                 .muse
+        case .devin:                    .devin
+        case .mistralVibe:              .mistralVibe
         }
     }
 
@@ -60,6 +63,9 @@ extension Harness {
         case .antigravity: .antigravity
         case .grok:        .grokBuild
         case .cursor:      .cursor
+        case .muse:        .museCode
+        case .devin:       .devin
+        case .mistralVibe: .mistralVibe
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
              .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine,
              .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro,

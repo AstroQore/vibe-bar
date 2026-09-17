@@ -65,18 +65,38 @@ public enum LiteLLMPricingTransformer {
     }
 
     private enum Family {
-        case codex, claude, gemini, grok
+        case codex, claude, gemini, grok, muse, mistral, cognition
     }
 
     /// Classifies a LiteLLM key into a provider family and the canonical
     /// model key Vibe Bar's normalizers expect, or `nil` to drop it.
     private static func classify(_ rawKey: String) -> (Family, String)? {
         if rawKey.contains("/") {
-            // The only prefixed family Vibe Bar normalizes back to a bare
-            // key is xAI Grok (`xai/grok-…`). Everything else (vertex_ai,
-            // azure, bedrock, openrouter, anthropic.) is an alias we drop.
-            guard rawKey.hasPrefix("xai/grok-") else { return nil }
-            return (.grok, String(rawKey.dropFirst("xai/".count)))
+            // The prefixed families Vibe Bar normalizes back to a bare key
+            // are xAI Grok (`xai/grok-…`) and Meta's first-party Muse Spark
+            // (`meta/muse-…`), and Mistral's own La Plateforme rows
+            // (`mistral/…`, the ids Mistral Vibe logs), and Cognition's SWE
+            // models (`cognition/…`, what Devin runs). Everything else (vertex_ai, azure, bedrock,
+            // openrouter, together_ai, aihubmix…) is an alias or a resale
+            // we drop.
+            if rawKey.hasPrefix("xai/grok-") {
+                return (.grok, String(rawKey.dropFirst("xai/".count)))
+            }
+            if rawKey.hasPrefix("meta/muse-") {
+                return (.muse, String(rawKey.dropFirst("meta/".count)))
+            }
+            if rawKey.hasPrefix("cognition/") {
+                let key = String(rawKey.dropFirst("cognition/".count))
+                guard !key.isEmpty, !key.contains("/") else { return nil }
+                return (.cognition, key)
+            }
+            if rawKey.hasPrefix("mistral/") {
+                let key = String(rawKey.dropFirst("mistral/".count))
+                // Nested paths are hosted re-listings, not La Plateforme ids.
+                guard !key.isEmpty, !key.contains("/") else { return nil }
+                return (.mistral, key)
+            }
+            return nil
         }
         if rawKey.hasPrefix("gpt-") { return (.codex, rawKey) }
         if rawKey.hasPrefix("claude-") { return (.claude, rawKey) }
@@ -97,6 +117,9 @@ public enum LiteLLMPricingTransformer {
         var claude = base.providers.claude.models
         var gemini = base.providers.gemini.models
         var grok = base.providers.grok.models
+        var muse = base.providers.muse.models
+        var mistral = base.providers.mistral.models
+        var cognition = base.providers.cognition.models
         var loaded = 0
 
         for (rawKey, entry) in raw {
@@ -156,6 +179,36 @@ public enum LiteLLMPricingTransformer {
                     outputAboveThreshold: entry.outputCostPerTokenAbove200k,
                     cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
                     displayLabel: grok[key]?.displayLabel)
+            case .muse:
+                muse[key] = PricingDataSet.MuseEntry(
+                    input: input,
+                    output: output,
+                    cacheRead: entry.cacheReadInputTokenCost,
+                    thresholdTokens: threshold,
+                    inputAboveThreshold: entry.inputCostPerTokenAbove200k,
+                    outputAboveThreshold: entry.outputCostPerTokenAbove200k,
+                    cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
+                    displayLabel: muse[key]?.displayLabel)
+            case .mistral:
+                mistral[key] = PricingDataSet.MistralEntry(
+                    input: input,
+                    output: output,
+                    cacheRead: entry.cacheReadInputTokenCost,
+                    thresholdTokens: threshold,
+                    inputAboveThreshold: entry.inputCostPerTokenAbove200k,
+                    outputAboveThreshold: entry.outputCostPerTokenAbove200k,
+                    cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
+                    displayLabel: mistral[key]?.displayLabel)
+            case .cognition:
+                cognition[key] = PricingDataSet.CognitionEntry(
+                    input: input,
+                    output: output,
+                    cacheRead: entry.cacheReadInputTokenCost,
+                    thresholdTokens: threshold,
+                    inputAboveThreshold: entry.inputCostPerTokenAbove200k,
+                    outputAboveThreshold: entry.outputCostPerTokenAbove200k,
+                    cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
+                    displayLabel: cognition[key]?.displayLabel)
             }
             loaded += 1
         }
@@ -174,6 +227,9 @@ public enum LiteLLMPricingTransformer {
                 claude: .init(displayName: base.providers.claude.displayName, models: claude),
                 gemini: .init(displayName: base.providers.gemini.displayName, models: gemini),
                 grok: .init(displayName: base.providers.grok.displayName, models: grok),
-                antigravity: base.providers.antigravity))
+                antigravity: base.providers.antigravity,
+                muse: .init(displayName: base.providers.muse.displayName, models: muse),
+                mistral: .init(displayName: base.providers.mistral.displayName, models: mistral),
+                cognition: .init(displayName: base.providers.cognition.displayName, models: cognition)))
     }
 }

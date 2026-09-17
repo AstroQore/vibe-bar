@@ -44,6 +44,11 @@ public enum MiscCookieResolver {
         /// jars remain the default; providers can declaratively map one exact
         /// Chromium localStorage field into the same cookie-shaped slot.
         public let browserCredentialSource: BrowserCredentialSource
+        /// Name prefixes kept alongside `requiredNames`, for cookies whose
+        /// name carries a per-deployment suffix (Mistral's `ory_session_…`).
+        public let requiredNamePrefixes: Set<String>
+        /// Name prefixes that also prove the header is authenticated.
+        public let credentialNamePrefixes: Set<String>
 
         public init(
             tool: ToolType,
@@ -51,7 +56,9 @@ public enum MiscCookieResolver {
             requiredNames: Set<String>,
             credentialNames: Set<String> = [],
             importOrder: BrowserCookieImportOrder = BrowserCookieDefaults.importOrder,
-            browserCredentialSource: BrowserCredentialSource = .cookieJar
+            browserCredentialSource: BrowserCredentialSource = .cookieJar,
+            requiredNamePrefixes: Set<String> = [],
+            credentialNamePrefixes: Set<String> = []
         ) {
             self.tool = tool
             self.domains = domains
@@ -59,14 +66,32 @@ public enum MiscCookieResolver {
             self.credentialNames = credentialNames
             self.importOrder = importOrder
             self.browserCredentialSource = browserCredentialSource
+            self.requiredNamePrefixes = requiredNamePrefixes
+            self.credentialNamePrefixes = credentialNamePrefixes
+        }
+
+        /// What a pasted Cookie header keeps. A spec that names cookie
+        /// prefixes (a session cookie whose name carries a per-stack suffix)
+        /// keeps those too, and only when the paste satisfies the whole rule
+        /// set; otherwise the required names are kept as they always were.
+        public func manualPasteHeader(from raw: String) -> String? {
+            if !requiredNamePrefixes.isEmpty {
+                return minimizedHeader(from: raw)
+            }
+            guard !requiredNames.isEmpty else { return CookieHeaderNormalizer.normalize(raw) }
+            return CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: requiredNames)
         }
 
         public func minimizedHeader(from raw: String?) -> String? {
             let normalized: String?
-            if requiredNames.isEmpty {
+            if requiredNames.isEmpty && requiredNamePrefixes.isEmpty {
                 normalized = CookieHeaderNormalizer.normalize(raw)
             } else {
-                normalized = CookieHeaderNormalizer.filteredHeader(from: raw, allowedNames: requiredNames)
+                normalized = CookieHeaderNormalizer.filteredHeader(
+                    from: raw,
+                    allowedNames: requiredNames,
+                    allowedPrefixes: requiredNamePrefixes
+                )
             }
             guard let normalized, hasRequiredCredential(in: normalized) else {
                 return nil
@@ -74,10 +99,17 @@ public enum MiscCookieResolver {
             return normalized
         }
 
+        /// Without prefixes, any one credential name is enough. With them,
+        /// every credential name and one cookie per prefix must be present.
+        /// An empty rule set accepts any header.
         public func hasRequiredCredential(in cookieHeader: String) -> Bool {
-            guard !credentialNames.isEmpty else { return true }
-            return CookieHeaderNormalizer.pairs(from: cookieHeader)
-                .contains { credentialNames.contains($0.name) }
+            guard !credentialNames.isEmpty || !credentialNamePrefixes.isEmpty else { return true }
+            let names = CookieHeaderNormalizer.pairs(from: cookieHeader).map(\.name)
+            if credentialNamePrefixes.isEmpty {
+                return names.contains { credentialNames.contains($0) }
+            }
+            return credentialNames.allSatisfy(names.contains)
+                && credentialNamePrefixes.allSatisfy { prefix in names.contains { $0.hasPrefix(prefix) } }
         }
     }
 

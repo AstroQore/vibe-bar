@@ -100,7 +100,7 @@ extension SkillsService {
         method: SkillSyncMethod
     ) async throws -> SkillInstallOutcome {
         let source = url.standardizedFileURL
-        try validateNativeInstallationSelection(apps)
+        try validateNativeInstallationSelection(apps, source: source, directoryName: source.lastPathComponent)
         guard SkillFileSystem.kind(of: source) == .directory else {
             throw SkillError.sourceNotADirectory(source.path)
         }
@@ -117,7 +117,7 @@ extension SkillsService {
                 throw SkillError.directoryConflict(directoryName)
             }
             var skill = existing
-            for app in apps {
+            for app in apps where app.supportsProjection {
                 skill.apps[app] = try engine.materialize(
                     skillDirectoryName: skill.directory,
                     into: app,

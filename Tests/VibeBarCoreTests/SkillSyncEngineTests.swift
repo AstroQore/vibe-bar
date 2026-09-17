@@ -268,7 +268,7 @@ final class SkillSyncEngineTests: XCTestCase {
     func testManagedHarnessTargetsExcludeUnmanageableAndLegacySurfaces() {
         XCTAssertEqual(
             SkillAppTarget.managedHarnesses,
-            [.codex, .claude, .gemini, .antigravity, .grok, .cursor]
+            [.codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .mistralVibe]
         )
         XCTAssertEqual(SkillAppCatalog.relativePath(for: .cursor), ".cursor/skills")
         XCTAssertTrue(SkillAppTarget.managedHarnesses.contains(.gemini))
@@ -285,7 +285,7 @@ final class SkillSyncEngineTests: XCTestCase {
         )
 
         XCTAssertEqual(skill.projectedApps, [])
-        XCTAssertEqual(skill.enabledApps, [.codex, .gemini, .grok])
+        XCTAssertEqual(skill.enabledApps, [.codex, .gemini, .grok, .muse, .mistralVibe])
         XCTAssertEqual(skill.activationState(for: .cursor), .coupled)
 
         skill.nativeDisabledApps.insert(.codex)

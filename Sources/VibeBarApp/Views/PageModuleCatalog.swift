@@ -617,7 +617,8 @@ enum PageModuleCatalog {
     /// is not listed here.
     static func overviewCostProviders(settings: AppSettings) -> [ToolType] {
         settings.visibleCoreProviderList.filter { tool in
-            tool == .codex || tool == .claude || tool == .grok
+            tool == .codex || tool == .claude || tool == .grok || tool == .muse
+                || tool == .devin || tool == .mistralVibe
         }
     }
 

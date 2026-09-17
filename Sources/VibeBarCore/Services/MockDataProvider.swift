@@ -173,7 +173,7 @@ public enum MockDataProvider {
                 extraUsageEnabled: true,
                 updatedAt: now
             )
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .devin, .mistralVibe, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc / partial-primary providers don't carry credits or
             // overage extras in the mock. The Cursor card surfaces
             // on-demand budget through a different field on
@@ -299,6 +299,27 @@ public enum MockDataProvider {
                 QuotaBucket(id: "grok_bot_weekly", title: "Weekly", shortLabel: "Grok Bot",
                             usedPercent: 5, resetAt: weeklyReset, rawWindowSeconds: 604_800,
                             groupTitle: "Grok Bot")
+            ]
+        case .muse:
+            buckets = [
+                QuotaBucket(id: "five_hour", title: "5 Hours", shortLabel: "5h",
+                            usedPercent: 18, resetAt: fiveHourReset,
+                            rawWindowSeconds: 18_000),
+                QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "Weekly",
+                            usedPercent: 27, resetAt: weeklyReset, rawWindowSeconds: 604_800)
+            ]
+        case .devin:
+            buckets = [
+                QuotaBucket(id: "daily", title: "Daily", shortLabel: "Daily",
+                            usedPercent: 22, resetAt: now.addingTimeInterval(9 * 3600),
+                            rawWindowSeconds: 86_400),
+                QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "Weekly",
+                            usedPercent: 31, resetAt: weeklyReset, rawWindowSeconds: 604_800)
+            ]
+        case .mistralVibe:
+            buckets = [
+                QuotaBucket(id: "monthly", title: "Monthly", shortLabel: "Monthly",
+                            usedPercent: 14, resetAt: now.addingTimeInterval(14 * 24 * 3600), rawWindowSeconds: 2_592_000)
             ]
         case .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' mock data lands in subsequent phases as

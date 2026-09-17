@@ -266,14 +266,14 @@ extension SkillsService {
         method: SkillSyncMethod = .auto
     ) async throws -> Skill {
         try SkillPathValidator.validate(directoryName: discovered.directory)
-        try validateNativeInstallationSelection(apps)
+        try validateNativeInstallationSelection(apps, source: discovered.sourceRoot, directoryName: discovered.directory)
 
         if let existing = await store.skill(directory: discovered.directory) {
             guard existing.id == discovered.id else {
                 throw SkillError.directoryConflict(discovered.directory)
             }
             var skill = existing
-            for app in apps {
+            for app in apps where app.supportsProjection {
                 skill.apps[app] = try engine.materialize(
                     skillDirectoryName: skill.directory,
                     into: app,
@@ -308,7 +308,7 @@ extension SkillsService {
             installedAt: Date(),
             contentHash: try SkillDirectoryHasher.hash(directory: installed)
         )
-        for app in apps {
+        for app in apps where app.supportsProjection {
             skill.apps[app] = try engine.materialize(
                 skillDirectoryName: skill.directory,
                 into: app,
@@ -508,7 +508,7 @@ extension SkillsService {
         skill.repoBranch = branch
         skill.contentHash = try SkillDirectoryHasher.hash(directory: destination)
         skill.updatedAt = Date()
-        for (app, materialization) in existing.apps {
+        for (app, materialization) in existing.apps where app.supportsProjection {
             skill.apps[app] = try engine.materialize(
                 skillDirectoryName: skill.directory,
                 into: app,
@@ -534,7 +534,7 @@ extension SkillsService {
         method: SkillSyncMethod
     ) async throws -> Skill {
         try SkillPathValidator.validate(directoryName: directoryName)
-        try validateNativeInstallationSelection(apps)
+        try validateNativeInstallationSelection(apps, source: source, directoryName: directoryName)
         guard SkillTreeScanner.isSkillDirectory(source) else {
             throw SkillError.missingSkillMD(directoryName)
         }
@@ -552,7 +552,7 @@ extension SkillsService {
             installedAt: Date(),
             contentHash: try SkillDirectoryHasher.hash(directory: installed)
         )
-        for app in apps {
+        for app in apps where app.supportsProjection {
             skill.apps[app] = try engine.materialize(
                 skillDirectoryName: directoryName,
                 into: app,

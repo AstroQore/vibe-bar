@@ -540,6 +540,9 @@ func providerTitle(for tool: ToolType) -> String {
     case .minimax:     return "MINIMAX"
     case .kimi:        return "KIMI"
     case .cursor:      return "CURSOR"
+    case .muse:        return "MUSE CODE"
+    case .devin:       return "DEVIN"
+    case .mistralVibe: return "MISTRAL VIBE"
     case .mimo:        return "MIMO"
     case .iflytek:     return "SPARK"
     case .tencentHunyuan:   return "HUNYUAN"
@@ -697,6 +700,9 @@ private func miniPrimaryGroupTitle(
     case .claude: key = "claude.all-models"
     case .gemini: key = "gemini.all-models"
     case .grok: key = "grok.all-models"
+    case .muse: key = "muse.all-models"
+    case .devin: key = "devin.all-models"
+    case .mistralVibe: key = "mistralVibe.all-models"
     default: return nil
     }
     return labels.groupLabel(key) ?? MiniWindowGroupLabelCatalog.defaultLabel(for: key)
