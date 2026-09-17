@@ -250,6 +250,7 @@ private struct ComponentGroupBlock: View {
         let status = aggregateStatus
         let days = summaryDays
         VStack(alignment: .leading, spacing: density.statusComponentSpacing) {
+            HStack(spacing: 4) {
             BorderlessRowButton(action: {
                 withAnimation(.easeInOut(duration: 0.18)) { expanded.toggle() }
             }) {
@@ -274,20 +275,19 @@ private struct ComponentGroupBlock: View {
                     }
                 }
             }
-            .overlay(alignment: .trailing) {
-                // Outside the row button: a link inside it would open the page
-                // on every click meant for the disclosure.
-                if let statusPageTool {
-                    BorderlessIconButton(
-                        systemImage: "arrow.up.right.square",
-                        help: L10n.Status.Card.openStatusPage(
-                            host: statusPageTool.statusPageURL.host ?? L10n.Status.Card.statusPageFallback
-                        )
-                    ) {
-                        NSWorkspace.shared.open(statusPageTool.statusPageURL)
-                    }
-                    .offset(x: 2)
+            // Beside the disclosure row, not over it: an overlay would cover
+            // the uptime percentage and take its clicks. Inside the row button
+            // it would open the page on every click meant for the disclosure.
+            if let statusPageTool {
+                BorderlessIconButton(
+                    systemImage: "arrow.up.right.square",
+                    help: L10n.Status.Card.openStatusPage(
+                        host: statusPageTool.statusPageURL.host ?? L10n.Status.Card.statusPageFallback
+                    )
+                ) {
+                    NSWorkspace.shared.open(statusPageTool.statusPageURL)
                 }
+            }
             }
 
             if !days.isEmpty {
