@@ -112,15 +112,22 @@ final class DevinPricingTests: XCTestCase {
         ))
     }
 
+    /// Every bundled Claude row, not one picked from a dictionary: a row with
+    /// long-context tiers prices a million tokens above its base rate, so the
+    /// expectation is Claude's own pricing for the same request.
     func testABorrowedModelPricesAtItsOwnFamily() throws {
-        let fallback = PricingHardcoded.fallback
-        guard let (claudeModel, claudeEntry) = fallback.providers.claude.models.first else {
-            throw XCTSkip("no bundled Claude rows")
+        let models = PricingHardcoded.fallback.providers.claude.models.keys.sorted()
+        guard !models.isEmpty else { throw XCTSkip("no bundled Claude rows") }
+        for model in models {
+            let expected = try XCTUnwrap(CostUsagePricing.claudeCostUSD(
+                model: model, inputTokens: 1_000_000, cacheReadInputTokens: 0,
+                cacheCreationInputTokens: 0, outputTokens: 0
+            ), model)
+            let cost = try XCTUnwrap(CostUsagePricing.devinCostUSD(
+                model: model, inputTokens: 1_000_000, cacheTokens: 0, cacheCreationTokens: 0, outputTokens: 0
+            ), model)
+            XCTAssertEqual(cost, expected, accuracy: 1e-6, model)
         }
-        let cost = try XCTUnwrap(CostUsagePricing.devinCostUSD(
-            model: claudeModel, inputTokens: 1_000_000, cacheTokens: 0, cacheCreationTokens: 0, outputTokens: 0
-        ))
-        XCTAssertEqual(cost, claudeEntry.input * 1_000_000, accuracy: 1e-6)
     }
 
     func testLiteLLMRoutesCognitionRows() throws {
