@@ -222,14 +222,20 @@ struct EInkSlidesEditor: View {
 
             if group.mode != .combined {
                 HStack(spacing: 6) {
-                    ForEach(group.screens) { screen in
-                        Button { group.selectScreen(screen.id) } label: {
-                            Text(screen.name)
-                                .font(.system(size: 11, weight: screen.id == group.activeScreenID ? .semibold : .regular))
-                                .lineLimit(1)
+                    // Tabs, not a row of buttons: exactly one screen's
+                    // template is in the editor below at a time, and the
+                    // control has to say which.
+                    Picker(
+                        L10n.Settings.Eink.ScreenGroups.screens,
+                        selection: Binding(get: { group.activeScreenID ?? "" }, set: { group.selectScreen($0) })
+                    ) {
+                        ForEach(group.screens) { screen in
+                            Text(screen.name).tag(screen.id)
                         }
-                        .buttonStyle(.vibeBar(cornerRadius: 6))
                     }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
                     if group.mode == .custom {
                         Button(L10n.Settings.Eink.Workflow.splitSlides) { group.splitActive() }
                             .buttonStyle(.vibeBar)

@@ -453,7 +453,7 @@ struct EInkDisplaysSettingsSection: View {
                 } label: {
                     Label(L10n.Settings.Eink.ScreenGroups.addScreen, systemImage: "plus")
                 }
-                .frame(width: 150)
+                .fixedSize()
                 .disabled(ungroupedDevices.isEmpty)
                 Menu {
                     Button(L10n.Settings.Eink.ScreenGroups.vertical) { arrange(group.id, vertical: true) }
@@ -461,7 +461,7 @@ struct EInkDisplaysSettingsSection: View {
                 } label: {
                     Label(L10n.Settings.Eink.ScreenGroups.position, systemImage: "rectangle.2.swap")
                 }
-                .frame(width: 150)
+                .fixedSize()
                 if let screenID = selectedScreenID, group.screens.contains(where: { $0.deviceID == screenID }) {
                     Button { removeScreen(screenID, from: group.id) } label: {
                         Label(L10n.Settings.Eink.ScreenGroups.removeScreen, systemImage: "minus")
