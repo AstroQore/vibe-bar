@@ -3,7 +3,33 @@ import Foundation
 /// Group slides use the same content model as standalone slides. A region
 /// only assigns that content to physical screens; it is not another player.
 public enum EInkGroupSlides {
-    public static func create(name: String, devices: [EInkDeviceConfig], vertical: Bool) -> EInkScreenGroup {
+    /// A page nobody has authored yet, in the shape the mode asks for.
+    ///
+    /// Seeded with the same default quota ledger a new standalone slide gets,
+    /// so "Add page" on a group lands on something that draws rather than on
+    /// blank paper.
+    public static func newFrame(
+        mode: EInkScreenMode,
+        screenIDs: [String],
+        available: [String] = EInkDataAssembler.defaultQuotaPriority.map(\.fieldID)
+    ) -> EInkScreenFrame {
+        guard !screenIDs.isEmpty else { return EInkScreenFrame() }
+        if mode == .combined {
+            return EInkScreenFrame(regions: [
+                EInkScreenRegion(deviceIDs: screenIDs, slide: .defaultQuotaSlide(available: available))
+            ])
+        }
+        return EInkScreenFrame(regions: screenIDs.map { id in
+            EInkScreenRegion(deviceIDs: [id], slide: .defaultQuotaSlide(available: available))
+        })
+    }
+
+    public static func create(
+        name: String,
+        devices: [EInkDeviceConfig],
+        vertical: Bool,
+        mode: EInkScreenMode = .separate
+    ) -> EInkScreenGroup {
         var offset = 0
         let screens = devices.map { device in
             let size = device.profile.frameSize(for: device.orientation)
@@ -11,11 +37,16 @@ public enum EInkGroupSlides {
             return EInkScreenPlacement(deviceID: device.id, x: vertical ? 0 : offset, y: vertical ? offset : 0)
         }
         let count = max(1, devices.map { $0.slides.count }.max() ?? 1)
+        let screenIDs = screens.map(\.deviceID)
+        // Each screen's own slides come across first, then the page is read
+        // in the shape the person picked — so Combined starts from the union
+        // of what the screens were already showing.
         let frames = (0..<count).map { index in
             EInkScreenFrame(regions: devices.map { device in
                 let slide = device.slides.isEmpty ? EInkSlide.defaultQuotaSlide() : device.slides[min(index, device.slides.count - 1)]
                 return EInkScreenRegion(deviceIDs: [device.id], slide: slide)
             })
+            .settingMode(mode, screenIDs: screenIDs)
         }
         let first = devices.first
         var group = EInkScreenGroup(name: name, screens: screens, frames: frames,
