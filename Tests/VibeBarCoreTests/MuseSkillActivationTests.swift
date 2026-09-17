@@ -162,6 +162,7 @@ final class MuseSkillActivationTests: XCTestCase {
         XCTAssertThrowsError(
             try manager.setNativeEnabled(false, directoryName: "alpha", skillName: "Alpha", app: .muse)
         ) { XCTAssertEqual($0 as? SkillError, .writeOutsideAllowedRoots(external.resolvingSymlinksInPath().path)) }
+        XCTAssertThrowsError(try manager.validateCanDisable(.muse), "the preflight enforces the same boundary")
         XCTAssertEqual(try String(contentsOf: external, encoding: .utf8), #"{"schema_version":1}"#)
         XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent(".settings.json.lock").path))
     }
@@ -244,5 +245,13 @@ final class MuseSkillActivationTests: XCTestCase {
         XCTAssertEqual(home.contents(of: settingsURL(home)), original)
         let installed = await service.installedSkills()
         XCTAssertTrue(installed.isEmpty)
+
+        do {
+            _ = try await service.installLocal(from: source, name: "alpha")
+            XCTFail("the local install should have been refused")
+        } catch {
+            XCTAssertEqual(error as? SkillError, .nativeConfigUnreadable(.muse))
+        }
+        XCTAssertFalse(home.exists(home.url.appendingPathComponent(".agents/skills/alpha")))
     }
 }

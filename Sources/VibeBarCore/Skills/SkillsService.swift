@@ -386,6 +386,7 @@ public actor SkillsService {
         guard FileManager.default.fileExists(atPath: source.appendingPathComponent("SKILL.md").path) else {
             throw SkillError.missingSkillMD(directoryName)
         }
+        try validateNativeInstallationSelection(apps)
         try copyIntoSSOT(from: source, directoryName: directoryName)
 
         var skill = try makeLocalSkill(directoryName: directoryName)
@@ -416,6 +417,7 @@ public actor SkillsService {
         guard FileManager.default.fileExists(atPath: sourceDir.appendingPathComponent("SKILL.md").path) else {
             throw SkillError.missingSkillMD(name)
         }
+        try validateNativeInstallationSelection([])
         try copyIntoSSOT(from: sourceDir, directoryName: name)
         let skill = try makeLocalSkill(directoryName: name)
         try applyNativeInstallationSelection(
