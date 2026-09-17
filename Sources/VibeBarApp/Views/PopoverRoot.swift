@@ -396,46 +396,75 @@ private struct OverviewPageSwitch: View {
         )
     }
 
-    /// Tabs that fit with every label spelled out beside the header title.
-    /// Past it — five companies plus Machines — the strip is sized ahead of
-    /// the title and squeezes it to one letter, so the tabs you are not on
-    /// keep only their mark (the name stays in the tooltip).
-    private static let fullLabelLimit = 7
-
+    /// Marks only, in three groups — Overview, the companies, then Machines
+    /// and Misc. The header title beside the strip already names the page, so
+    /// a label on the selected tab said it twice and cost the width a
+    /// seventh or eighth company needs; every tab keeps its name in the
+    /// tooltip and for VoiceOver.
+    ///
+    /// When even the marks do not fit, companies fold into a menu from the
+    /// end of the strip, one at a time, never the one being shown.
     var body: some View {
         let pages = visiblePages
-        let compact = pages.count > Self.fullLabelLimit
-        HStack(spacing: 3) {
-            ForEach(pages) { page in
-                let isSelected = selection == page
-                let showsLabel = !compact || isSelected
-                BorderlessRowButton(action: {
-                    selection = page
-                }) {
-                    HStack(spacing: 5) {
-                        OverviewSwitchIcon(page: page, isSelected: isSelected)
-                        if showsLabel {
-                            Text(page.label)
-                                .font(.system(size: max(9.5, density.segmentedFontSize - 1), weight: .semibold, design: .rounded))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                    }
-                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                    .padding(.horizontal, showsLabel ? 10 : 7)
-                    .frame(height: 24)
-                    .background {
-                        if isSelected {
-                            Capsule(style: .continuous)
-                                .fill(Color.accentColor.opacity(0.20))
-                                .overlay(
-                                    Capsule(style: .continuous)
-                                        .stroke(Color.accentColor.opacity(0.34), lineWidth: 0.7)
-                                )
-                        }
-                    }
-                }
-                .help(L10n.Popover.showPage(page: page.label))
+        let companyCount = pages.filter { $0.coreProvider != nil }.count
+        ViewThatFits(in: .horizontal) {
+            ForEach(0...companyCount, id: \.self) { folded in
+                strip(Self.arrangement(pages: pages, selection: selection, folded: folded))
+            }
+        }
+        .onChange(of: settingsStore.settings.visibleCoreProviders) { _, _ in
+            fallBackIfSelectionVanished()
+        }
+        // Disconnecting a workspace removes a tab while the user is standing
+        // on it, so the same fallback has to watch configuration too.
+        .onChange(of: remoteProbeService.isConfigured) { _, _ in
+            fallBackIfSelectionVanished()
+        }
+    }
+
+    struct Arrangement: Equatable {
+        var leading: [OverviewPage]
+        var companies: [OverviewPage]
+        /// Companies folded out of the strip, in strip order. Their menu sits
+        /// at the end of the company group, even when no company is left
+        /// showing beside it.
+        var overflow: [OverviewPage]
+        var trailing: [OverviewPage]
+    }
+
+    /// Splits the strip into its groups and folds the last `folded` companies
+    /// into the overflow menu. A folded selection swaps places with the last
+    /// company still showing, so the tab you are on is always on the strip.
+    static func arrangement(pages: [OverviewPage], selection: OverviewPage, folded: Int) -> Arrangement {
+        let companies = pages.filter { $0.coreProvider != nil }
+        let leading = pages.filter { $0 == .overview }
+        let trailing = pages.filter { $0.coreProvider == nil && $0 != .overview }
+        let keep = max(0, companies.count - max(0, folded))
+        var shown = Array(companies.prefix(keep))
+        var overflow = Array(companies.dropFirst(keep))
+        if let index = overflow.firstIndex(of: selection) {
+            overflow.remove(at: index)
+            if let last = shown.popLast() {
+                overflow.append(last)
+            }
+            shown.append(selection)
+            overflow = companies.filter(overflow.contains)
+        }
+        return Arrangement(leading: leading, companies: shown, overflow: overflow, trailing: trailing)
+    }
+
+    private func strip(_ arrangement: Arrangement) -> some View {
+        let hasCompanyGroup = !arrangement.companies.isEmpty || !arrangement.overflow.isEmpty
+        return HStack(spacing: 3) {
+            ForEach(arrangement.leading) { page in tab(page) }
+            if hasCompanyGroup {
+                if !arrangement.leading.isEmpty { groupDivider }
+                ForEach(arrangement.companies) { page in tab(page) }
+                if !arrangement.overflow.isEmpty { overflowMenu(arrangement.overflow) }
+            }
+            if !arrangement.trailing.isEmpty {
+                if hasCompanyGroup || !arrangement.leading.isEmpty { groupDivider }
+                ForEach(arrangement.trailing) { page in tab(page) }
             }
         }
         .padding(3)
@@ -447,14 +476,57 @@ private struct OverviewPageSwitch: View {
                         .stroke(Color.primary.opacity(0.075), lineWidth: 0.7)
                 )
         )
-        .onChange(of: settingsStore.settings.visibleCoreProviders) { _, _ in
-            fallBackIfSelectionVanished()
+        .fixedSize()
+    }
+
+    private var groupDivider: some View {
+        Capsule(style: .continuous)
+            .fill(Color.primary.opacity(0.12))
+            .frame(width: 1, height: 14)
+            .padding(.horizontal, 2)
+    }
+
+    private func tab(_ page: OverviewPage) -> some View {
+        let isSelected = selection == page
+        return BorderlessRowButton(action: {
+            selection = page
+        }) {
+            OverviewSwitchIcon(page: page, isSelected: isSelected)
+                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                .frame(width: 30, height: 24)
+                .background {
+                    if isSelected {
+                        Capsule(style: .continuous)
+                            .fill(Color.accentColor.opacity(0.20))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.accentColor.opacity(0.34), lineWidth: 0.7)
+                            )
+                    }
+                }
         }
-        // Disconnecting a workspace removes a tab while the user is standing
-        // on it, so the same fallback has to watch configuration too.
-        .onChange(of: remoteProbeService.isConfigured) { _, _ in
-            fallBackIfSelectionVanished()
+        .help(L10n.Popover.showPage(page: page.label))
+        .accessibilityLabel(page.label)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func overflowMenu(_ pages: [OverviewPage]) -> some View {
+        Menu {
+            ForEach(pages) { page in
+                Button(page.label) { selection = page }
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.secondary)
+                .frame(width: 20, height: 24)
+                .contentShape(Rectangle())
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        // Company names are identifiers, not copy.
+        .help(pages.map(\.label).joined(separator: ", "))
     }
 
     private func fallBackIfSelectionVanished() {
