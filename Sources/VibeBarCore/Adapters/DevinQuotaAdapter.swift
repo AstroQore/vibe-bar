@@ -2,26 +2,58 @@ import Foundation
 
 /// Cognition · Devin quota adapter.
 ///
-/// Devin's CLI keeps the account's `GetUserStatus` answer on disk at
-/// `~/.cache/devin/cli/user_status.<identity>.bin` — the same answer its own
-/// `/usage` view draws from — and refreshes it while Devin runs (the desktop
-/// app's local agent runs the CLI too). Reading that file is the whole
-/// adapter: no network, no credential, and nothing that would have to pose as
-/// Devin's own client. The cost is freshness: the quota is as recent as
-/// Devin's last run, and `queriedAt` carries the cache's own timestamp so the
-/// card says exactly that.
+/// Two sources, tried in this order:
 ///
-/// Nothing is written.
+/// 1. **Live**, when a Devin web session has been imported: the signed-in
+///    `app.devin.ai` page keeps its session in Chromium localStorage
+///    (`auth1_session` → `token`, and the internal organization id under
+///    `last-internal-org-for-external-org-v1-<slug>`). With those, the page's
+///    own `GET /api/<org>/billing/quota/usage` answers with the current daily
+///    and weekly usage. The token goes to `app.devin.ai` and nowhere else.
+/// 2. **The CLI's cache**, always available once Devin has run: the `devin`
+///    CLI keeps the account's `GetUserStatus` answer on disk at
+///    `~/.cache/devin/cli/user_status.<identity>.bin` and refreshes it while
+///    Devin runs (the desktop app's local agent runs the CLI too). It is as
+///    recent as Devin's last run, and `queriedAt` carries the cache's own
+///    timestamp so the card says exactly that.
+///
+/// A live failure never hides a readable cache: the cache answers, and the
+/// live error only surfaces when there is nothing else to show. Nothing is
+/// written, and nothing poses as Devin's own client.
 public struct DevinQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .devin
 
+    private let session: URLSession
     private let homeDirectory: String
+    private let now: @Sendable () -> Date
 
-    public init(homeDirectory: String = RealHomeDirectory.path) {
+    public init(
+        session: URLSession = .shared,
+        homeDirectory: String = RealHomeDirectory.path,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
+        self.session = session
         self.homeDirectory = homeDirectory
+        self.now = now
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
+        let cached = try? cacheQuota(for: account)
+        do {
+            if let live = try await liveQuota(for: account, plan: cached?.plan) {
+                return live
+            }
+        } catch {
+            // The cache is still a true reading; only a provider with nothing
+            // else to show reports why the live route failed.
+            guard cached == nil else { return cached! }
+            throw error
+        }
+        guard let cached else { throw QuotaError.noCredential }
+        return cached
+    }
+
+    private func cacheQuota(for account: AccountIdentity) throws -> AccountQuota {
         guard let cache = DevinUserStatusCache.newest(homeDirectory: homeDirectory) else {
             throw QuotaError.noCredential
         }
@@ -34,6 +66,178 @@ public struct DevinQuotaAdapter: QuotaAdapter {
             email: account.email,
             queriedAt: cache.fetchedAt
         )
+    }
+
+    /// `nil` when no web session has been imported, so the cache answers
+    /// without an error ever being raised for a route the user never set up.
+    private func liveQuota(for account: AccountIdentity, plan: String?) async throws -> AccountQuota? {
+        let resolutions = MiscCookieResolver.resolveAll(for: DevinLiveQuota.cookieSpec, account: account)
+        guard !resolutions.isEmpty else { return nil }
+        let queriedAt = now()
+        let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
+            spec: DevinLiveQuota.cookieSpec,
+            account: account,
+            resolutions: resolutions
+        ) { resolution in
+            try await self.fetchOneSlot(resolution, account: account, plan: plan, queriedAt: queriedAt)
+        }
+        let aggregated = MiscQuotaAggregator.aggregate(
+            tool: .devin, account: account, results: results, queriedAt: queriedAt
+        )
+        if let error = aggregated.error { throw error }
+        return aggregated
+    }
+
+    private func fetchOneSlot(
+        _ resolution: MiscCookieResolver.Resolution,
+        account: AccountIdentity,
+        plan: String?,
+        queriedAt: Date
+    ) async throws -> AccountQuota {
+        guard let request = DevinLiveQuota.makeRequest(cookieHeader: resolution.header) else {
+            throw QuotaError.noCredential
+        }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            SafeLog.net("Devin usage request failed: \(SafeLog.sanitize(error.localizedDescription))")
+            throw mapURLError(error)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw QuotaError.unknown("no HTTP response")
+        }
+        switch http.statusCode {
+        case 200..<300: break
+        case 401, 403: throw QuotaError.needsLogin
+        case 429: throw QuotaError.rateLimited
+        case 500...599: throw QuotaError.network("server \(http.statusCode)")
+        default: throw QuotaError.unknown("HTTP \(http.statusCode)")
+        }
+        return AccountQuota(
+            accountId: account.id,
+            tool: .devin,
+            buckets: try DevinQuotaUsageParser.parse(data: data),
+            plan: plan ?? account.plan,
+            email: account.email,
+            queriedAt: queriedAt
+        )
+    }
+}
+
+/// The imported `app.devin.ai` session and the one request it makes.
+public enum DevinLiveQuota {
+    static let origin = "https://app.devin.ai"
+    static let tokenName = "devin-auth1-token"
+    static let organizationName = "devin-org-id"
+
+    public static let cookieSpec = MiscCookieResolver.Spec(
+        tool: .devin,
+        domains: ["app.devin.ai"],
+        requiredNames: [tokenName, organizationName],
+        credentialNames: [tokenName],
+        browserCredentialSource: .chromiumLocalStorageFields([
+            ChromiumLocalStorageCredential(
+                origin: origin,
+                key: "auth1_session",
+                syntheticCookieName: tokenName,
+                valueFormat: .json(field: "token", minLength: 16, maxLength: 8_192)
+            ),
+            ChromiumLocalStorageCredential(
+                origin: origin,
+                key: "last-internal-org-for-external-org-v1-",
+                keyMatch: .prefix,
+                syntheticCookieName: organizationName,
+                valueFormat: .json(field: nil, minLength: 5, maxLength: 96)
+            )
+        ])
+    )
+
+    /// `GET https://app.devin.ai/api/<org>/billing/quota/usage`, the request
+    /// the page's own Usage & Limits view makes. `nil` when either half of the
+    /// session is missing or is not shaped like one.
+    static func makeRequest(cookieHeader: String) -> URLRequest? {
+        let pairs = CookieHeaderNormalizer.pairs(from: cookieHeader)
+        func value(_ name: String) -> String? {
+            pairs.first { $0.name == name }?.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let token = value(tokenName), isHeaderSafe(token), token.count >= 16,
+              let organization = value(organizationName), isOrganizationID(organization),
+              let url = URL(string: "\(origin)/api/\(organization)/billing/quota/usage")
+        else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        request.httpShouldHandleCookies = false
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(organization, forHTTPHeaderField: "x-cog-org-id")
+        return request
+    }
+
+    /// Devin's internal ids are `org-<hex>` (or `org_<id>`); anything else
+    /// would be spliced into a URL path, so it is refused.
+    static func isOrganizationID(_ raw: String) -> Bool {
+        guard raw.hasPrefix("org-") || raw.hasPrefix("org_"), (5...96).contains(raw.count) else { return false }
+        return raw.unicodeScalars.allSatisfy { scalar in
+            scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || scalar == "-" || scalar == "_")
+        }
+    }
+
+    private static func isHeaderSafe(_ raw: String) -> Bool {
+        !raw.isEmpty && raw.unicodeScalars.allSatisfy { scalar in
+            scalar.isASCII && scalar.value > 32 && scalar.value != 127 && scalar != ";" && scalar != ","
+        }
+    }
+}
+
+/// `{"daily_percentage": 0.16, "daily_reset_at": …, "weekly_percentage": …,
+/// "weekly_reset_at": …, "hide_daily_quota": false}` — what the Usage & Limits
+/// page draws. Percentages arrive as a fraction of one; a value above one is
+/// taken as already a percent. A plan without a daily quota says so with
+/// `hide_daily_quota`, and its daily window is left out.
+public enum DevinQuotaUsageParser {
+    public static func parse(data: Data) throws -> [QuotaBucket] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw QuotaError.parseFailure("Devin quota usage is not a JSON object")
+        }
+        let hidesDaily = (root["hide_daily_quota"] as? Bool) ?? false
+        var buckets: [QuotaBucket] = []
+        if !hidesDaily, let used = percent(root["daily_percentage"]) {
+            buckets.append(QuotaBucket(
+                id: "daily", title: "Daily", shortLabel: "Daily",
+                usedPercent: used, resetAt: date(root["daily_reset_at"]), rawWindowSeconds: 86_400
+            ))
+        }
+        if let used = percent(root["weekly_percentage"]) {
+            buckets.append(QuotaBucket(
+                id: "weekly", title: "Weekly", shortLabel: "Weekly",
+                usedPercent: used, resetAt: date(root["weekly_reset_at"]), rawWindowSeconds: 604_800
+            ))
+        }
+        guard !buckets.isEmpty else {
+            throw QuotaError.parseFailure("Devin quota usage has no quota windows")
+        }
+        return buckets
+    }
+
+    private static func percent(_ value: Any?) -> Double? {
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let raw = number.doubleValue
+        guard raw.isFinite, raw >= 0 else { return nil }
+        return min(100, raw <= 1 ? raw * 100 : raw)
+    }
+
+    private static func date(_ value: Any?) -> Date? {
+        if let text = value as? String {
+            return ServiceStatusClient.flexibleDate(from: text)
+        }
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let raw = number.doubleValue
+        guard raw > 0 else { return nil }
+        // Seconds, or milliseconds when the magnitude says so.
+        return Date(timeIntervalSince1970: raw > 100_000_000_000 ? raw / 1_000 : raw)
     }
 }
 

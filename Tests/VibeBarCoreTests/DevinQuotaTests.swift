@@ -128,4 +128,60 @@ final class DevinQuotaTests: XCTestCase {
             XCTAssertEqual(error as? QuotaError, .noCredential)
         }
     }
+
+    // MARK: - Live route
+
+    /// What app.devin.ai's Usage & Limits page reads. Percentages are a
+    /// fraction of one.
+    func testLiveUsageBecomesDailyAndWeeklyBuckets() throws {
+        let json = Data(#"""
+        {"daily_percentage":0.16,"daily_reset_at":"2026-09-18T16:00:00Z",
+         "weekly_percentage":0.1,"weekly_reset_at":1790000000,"hide_daily_quota":false}
+        """#.utf8)
+        let buckets = try DevinQuotaUsageParser.parse(data: json)
+        XCTAssertEqual(buckets.map(\.id), ["daily", "weekly"])
+        XCTAssertEqual(buckets[0].usedPercent, 16, accuracy: 1e-9)
+        XCTAssertEqual(buckets[1].usedPercent, 10, accuracy: 1e-9)
+        XCTAssertEqual(buckets[0].rawWindowSeconds, 86_400)
+        XCTAssertEqual(buckets[1].resetAt, Date(timeIntervalSince1970: 1_790_000_000))
+        XCTAssertNotNil(buckets[0].resetAt)
+    }
+
+    func testAPlanWithoutADailyQuotaKeepsOnlyWeekly() throws {
+        let json = Data(#"{"daily_percentage":0.5,"weekly_percentage":42,"hide_daily_quota":true}"#.utf8)
+        let buckets = try DevinQuotaUsageParser.parse(data: json)
+        XCTAssertEqual(buckets.map(\.id), ["weekly"])
+        XCTAssertEqual(buckets[0].usedPercent, 42, "a value above one is already a percent")
+    }
+
+    func testAnAnswerWithoutWindowsIsAParseFailure() {
+        for body in [#"{}"#, #"{"detail":"No organizations found for auth1 user"}"#, "<html>"] {
+            XCTAssertThrowsError(try DevinQuotaUsageParser.parse(data: Data(body.utf8)), body)
+        }
+    }
+
+    func testTheLiveRequestIsThePagesOwnAndNamesOnlyDevin() throws {
+        let header = "devin-auth1-token=synthetic-auth1-token-0123456789; devin-org-id=org-0123456789abcdef"
+        let request = try XCTUnwrap(DevinLiveQuota.makeRequest(cookieHeader: header))
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://app.devin.ai/api/org-0123456789abcdef/billing/quota/usage"
+        )
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer synthetic-auth1-token-0123456789")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "x-cog-org-id"), "org-0123456789abcdef")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+    }
+
+    /// The organization id is spliced into a URL path, so anything that is
+    /// not shaped like one is refused, as is half a session.
+    func testAMalformedSessionMakesNoRequest() {
+        XCTAssertNil(DevinLiveQuota.makeRequest(cookieHeader: "devin-auth1-token=synthetic-auth1-token-0123456789"))
+        XCTAssertNil(DevinLiveQuota.makeRequest(
+            cookieHeader: "devin-auth1-token=synthetic-auth1-token-0123456789; devin-org-id=../admin"
+        ))
+        XCTAssertNil(DevinLiveQuota.makeRequest(cookieHeader: "devin-auth1-token=short; devin-org-id=org-0123456789"))
+        XCTAssertTrue(DevinLiveQuota.isOrganizationID("org_abc123"))
+        XCTAssertFalse(DevinLiveQuota.isOrganizationID("organization"))
+    }
 }

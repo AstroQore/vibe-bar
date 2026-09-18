@@ -680,8 +680,19 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        // The live route: the signed-in app.devin.ai session,
+                        // imported from a Chromium browser's localStorage.
+                        sourceSummary(label: L10n.Settings.usageSource, value: L10n.Settings.Route.browserCookies)
+                        CookieSourceControls(
+                            tool: .devin,
+                            instanceID: ToolType.devin.rawValue,
+                            manualPrompt: "Paste devin-auth1-token=…; devin-org-id=org-…",
+                            emphasis: .standard
+                        )
+
+                        // The fallback, always there once Devin has run.
                         sourceSummary(label: L10n.Settings.usageSource, value: L10n.Settings.Route.devinStatusCache)
-                        if environment.account(for: .devin) != nil {
+                        if environment.account(for: .devin)?.allowsCLIFallback == true {
                             Label(L10n.Settings.RouteHealth.cachedOnly, systemImage: "checkmark.circle")
                                 .font(.caption2)
                                 .foregroundStyle(.green)

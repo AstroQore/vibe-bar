@@ -14,6 +14,7 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
     case grokAuthJSON
     case grokBrowserCookies
     case museKeychain
+    case devinWebSession
     case devinStatusCache
     case mistralBrowserCookies
 
@@ -33,7 +34,7 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
             return .grok
         case .museKeychain:
             return .muse
-        case .devinStatusCache:
+        case .devinWebSession, .devinStatusCache:
             return .devin
         case .mistralBrowserCookies:
             return .mistralVibe
@@ -55,6 +56,7 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
         case .grokAuthJSON: return L10n.Settings.Route.grokAuthFile
         case .grokBrowserCookies: return L10n.Settings.Route.browserCookies
         case .museKeychain: return L10n.Settings.Route.museKeychain
+        case .devinWebSession: return L10n.Settings.Route.browserCookies
         case .devinStatusCache: return L10n.Settings.Route.devinStatusCache
         case .mistralBrowserCookies: return L10n.Settings.Route.browserCookies
         }
@@ -190,8 +192,16 @@ public enum PrimaryProviderRouteHealthChecker {
                 state: MuseCredentialReader.accessState(),
                 now: now
             )
+        case .devinWebSession:
+            let saved = MiscCookieSlotStore.hasAnySlot(for: .devin)
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: saved ? .ok : .missing,
+                detail: saved ? L10n.Settings.RouteHealth.savedInKeychain : L10n.Settings.RouteHealth.noSavedCookie,
+                checkedAt: now
+            )
         case .devinStatusCache:
-            // The cache is the only route, and it is a cache by design.
+            // The fallback when no web session is imported; a cache by design.
             let cached = DevinUserStatusCache.exists()
             return PrimaryProviderRouteHealth(
                 route: route,

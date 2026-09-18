@@ -474,15 +474,6 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
     /// The Statuspage-style API endpoints (`statusSummaryAPI` etc.) are
     /// meaningful only for providers backed by those APIs; xAI/Grok is
     /// scraped from HTML at this URL instead.
-    /// Set for a provider whose quota mirrors a cache its own client writes
-    /// while it runs, with the words that explain it. Devin's CLI (which its
-    /// desktop app also drives) rewrites the plan status every time it runs,
-    /// and the numbers only move when it runs, so the cache's age is not a
-    /// sign they are wrong.
-    public var quotaClientCacheHelp: String? {
-        self == .devin ? L10n.Settings.cognitionIntro : nil
-    }
-
     public var statusPageURL: URL {
         switch self {
         case .codex, .chatgptChat: return URL(string: "https://status.openai.com/")!
