@@ -57,6 +57,9 @@ enum RootlyStatusPageParser {
         dayCount: Int,
         now: Date
     ) throws -> ServiceStatusSnapshot {
+        // Every field is optional, so a 2xx error body (`{}`) decodes too. Only
+        // a body that states the page's indicator counts as the page state.
+        let status = status.flatMap { $0.status?.indicator != nil ? $0 : nil }
         let services = parseServices(html: html)
         guard !services.isEmpty || status != nil else { throw ServiceStatusError.badResponse }
 

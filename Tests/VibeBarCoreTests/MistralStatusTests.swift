@@ -137,10 +137,16 @@ final class MistralStatusTests: XCTestCase {
         XCTAssertTrue(snapshot.components.isEmpty)
     }
 
-    func testNeitherSourceIsABadResponse() {
+    func testNeitherSourceIsABadResponse() throws {
         XCTAssertThrowsError(try RootlyStatusPageParser.snapshot(
             tool: .mistralVibe, html: "<html>nothing here</html>", status: nil, dayCount: 90, now: now
         ))
+        // An error body decodes, but says nothing about the page's state.
+        for body in [#"{}"#, #"{"error":"unavailable"}"#, #"{"status":{"description":"Unknown"}}"#] {
+            XCTAssertThrowsError(try RootlyStatusPageParser.snapshot(
+                tool: .mistralVibe, html: "", status: try status(Data(body.utf8)), dayCount: 90, now: now
+            ), body)
+        }
     }
 
     func testAnOpenIncidentBecomesTheCardsIncidentRow() throws {
