@@ -100,6 +100,24 @@ final class MistralStatusTests: XCTestCase {
         XCTAssertEqual(snapshot.components[1].recentDays.compactMap(\.worstImpact).count, 3)
     }
 
+    /// Gray days predate the service; they are unrecorded, not degraded.
+    /// Amber is a partial day and red an outage.
+    func testGrayDaysAreUnrecordedAndAmberIsPartial() throws {
+        let html = """
+        <details><summary><h2>New API</h2><span>Operational</span></summary>
+        <turbo-frame id="uptime-chart-new">
+          <svg><rect style="fill: #E5E7EB;"></rect><rect style="fill: #9CA3AF;"></rect>\
+          <rect style="fill: #F5A623;"></rect><rect style="fill: #C73C40;"></rect>\
+          <rect style="fill: #3CB878;"></rect></svg>
+          <div><span>90 days ago</span><span>99.10%</span><span>Today</span></div>
+        </turbo-frame></details>
+        """
+        let snapshot = try RootlyStatusPageParser.snapshot(
+            tool: .mistralVibe, html: html, status: nil, dayCount: 90, now: now
+        )
+        XCTAssertEqual(snapshot.components.first?.recentDays.map(\.worstImpact), [nil, nil, .minor, .major, nil])
+    }
+
     /// Without the page's own indicator, the worst service stands in.
     func testWithoutStatusJSONTheServicesDecideTheIndicator() throws {
         let snapshot = try RootlyStatusPageParser.snapshot(

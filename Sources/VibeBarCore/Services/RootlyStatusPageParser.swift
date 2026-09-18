@@ -193,6 +193,9 @@ enum RootlyStatusPageParser {
         let red = Double((value >> 16) & 0xFF)
         let green = Double((value >> 8) & 0xFF)
         let blue = Double(value & 0xFF)
+        // A gray (or near-white/black) day has no hue to read: it is a date the
+        // service did not exist yet, not a degraded one.
+        if max(red, green, blue) - min(red, green, blue) < 40 { return nil }
         if green > red, green > blue { return nil }
         if red > green * 1.6 { return .major }
         if red >= green * 0.9 { return .minor }
