@@ -1171,13 +1171,21 @@ configuration, which follows the macOS system proxy and hands it the host
 name, and there is no per-provider proxy setting.
 
 Devin is Cognition's only SubProvider, for the `devin` CLI and the Devin
-desktop app together. Quota is read from the plan status the CLI caches at
-`~/.cache/devin/cli/user_status.<identity>.bin` — a JSON envelope around the
-base64 `GetUserStatus` protobuf, whose `PlanStatus` (field 13) carries the
-daily and weekly **remaining** percents (14, 15) and their resets (17, 18);
-proto3 omits a zero, so a spent window arrives with a reset and no percent.
-Nothing is fetched and nothing poses as Devin's client: the quota is as fresh
-as Devin's last run, and `queriedAt` is the cache's own time. Usage is each
+desktop app together. Quota has two sources. **Live**, once a web session is
+imported in Settings → Cognition: the signed-in `app.devin.ai` page keeps its
+session in Chromium localStorage (`auth1_session` → `token`, and the internal
+organization id under `last-internal-org-for-external-org-v1-<slug>`), and the
+page's own `GET /api/<org>/billing/quota/usage` answers with the current daily
+and weekly usage as percent used, 0–100 (`hide_daily_quota` drops the daily
+window). The token goes to `app.devin.ai` only. **The CLI's cache**, the
+fallback: `~/.cache/devin/cli/user_status.<identity>.bin` is a JSON envelope
+around the base64 `GetUserStatus` protobuf, whose `PlanStatus` (field 13)
+carries the daily and weekly **remaining** percents (14, 15) and their resets
+(17, 18); proto3 omits a zero, so a spent window arrives with a reset and no
+percent. It is only as fresh as Devin's last run, and `queriedAt` is the
+cache's own time, so without a web session the card goes stale between runs. A
+live failure never hides a readable cache, and nothing poses as Devin's own
+client. Usage is each
 assistant row with `metadata.metrics` in the shared `sessions.db`, counted
 once per `request_id` because compaction copies nodes; `input_tokens`
 includes the cached prefix. Every response is priced by its model through the

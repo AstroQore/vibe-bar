@@ -72,13 +72,10 @@ credential registry, plugin host, QuickJS/Sucrase runtime, and Swift 6 strict
 concurrency contracts. Vibe Bar has its own `ToolType`, `QuotaAdapter`,
 `AccountQuota`, Keychain Vault, and company/SubProvider/harness axes.
 
-The initial compatibility layer is therefore the read-only **CodexBar
-Bridge** on the Misc page. When an installed CodexBar CLI is present, Vibe Bar
-reads its stable `dashboard-v1` JSON and displays only provider windows that
-Vibe Bar does not already own. Credentials remain in CodexBar; overlapping
-providers remain on Vibe Bar's native pipeline. The bridge always requests
-redacted identity, so full account emails never enter its stdout. Small high-value adapters can
-then move from the candidate lists above into Vibe Bar one by one.
+Providers therefore move into Vibe Bar one by one as native adapters, from the
+candidate lists above. An earlier read-only **CodexBar Bridge** card on the
+Misc page, which displayed an installed CodexBar CLI's `dashboard-v1` windows,
+was removed once the providers AQ uses had native adapters.
 
 ## What the CodexBar CLI does
 

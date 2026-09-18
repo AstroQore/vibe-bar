@@ -35,7 +35,7 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
         )
     }
 
-    func testCatalogCoversExactlyTheThirteenCookieProviders() {
+    func testCatalogCoversExactlyTheFourteenCookieProviders() {
         XCTAssertEqual(
             MiscCookieSpecCatalog.allCookieSourcedTools,
             [
@@ -43,6 +43,7 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
                 .alibabaTokenPlan,
                 .kimi,
                 .cursor,
+                .devin,
                 .mistralVibe,
                 .mimo,
                 .iflytek,
@@ -55,7 +56,7 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
             ],
             "allCookieSourcedTools should follow ToolType declaration order."
         )
-        XCTAssertEqual(MiscCookieSpecCatalog.allSpecs.count, 13)
+        XCTAssertEqual(MiscCookieSpecCatalog.allSpecs.count, 14)
     }
 
     /// Guards the copy-paste failure mode the catalog invites: a switch
@@ -114,8 +115,10 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
         ])
         XCTAssertEqual(KimiQuotaAdapter.cookieSpec.browserCredentialSource, expected)
 
+        // Kimi and Devin keep their session in localStorage; the rest are jars.
+        XCTAssertNotEqual(DevinLiveQuota.cookieSpec.browserCredentialSource, .cookieJar)
         for spec in MiscCookieSpecCatalog.allSpecs {
-            guard spec.tool != .kimi else { continue }
+            guard spec.tool != .kimi, spec.tool != .devin else { continue }
             XCTAssertEqual(spec.browserCredentialSource, .cookieJar, spec.tool.rawValue)
         }
     }

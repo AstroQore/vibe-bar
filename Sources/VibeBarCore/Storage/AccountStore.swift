@@ -368,14 +368,18 @@ public final class AccountStore: ObservableObject {
     }
 
     /// Devin registers once its CLI has cached a plan status on this Mac.
+    /// Always present, like Mistral Vibe's: the web session is imported
+    /// through the shared controls in Settings, which need an account to
+    /// refresh. The source says which route can answer today.
     private func autoDetectDevin() -> AccountIdentity? {
-        guard DevinUserStatusCache.exists() else { return nil }
+        let hasCache = DevinUserStatusCache.exists()
+        let hasSession = MiscCookieSlotStore.hasAnySlot(for: .devin)
         return AccountIdentity(
             id: "local-devin",
             tool: .devin,
             alias: ToolType.devin.productName,
-            source: .cliDetected,
-            allowsCLIFallback: true,
+            source: hasSession ? .browserCookie : (hasCache ? .cliDetected : .notConfigured),
+            allowsCLIFallback: hasCache,
             createdAt: Date(),
             updatedAt: Date()
         )
