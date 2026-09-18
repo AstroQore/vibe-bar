@@ -19,10 +19,14 @@ public enum QuotaFreshnessLabel {
     public struct Description: Equatable, Sendable {
         public let label: String
         public let help: String
+        /// False for a line that only states the data's age: drawn quietly,
+        /// not as a warning.
+        public let isWarning: Bool
 
-        public init(label: String, help: String) {
+        public init(label: String, help: String, isWarning: Bool = true) {
             self.label = label
             self.help = help
+            self.isWarning = isWarning
         }
     }
 
@@ -34,12 +38,18 @@ public enum QuotaFreshnessLabel {
     ///   - errorMessage: `QuotaError.userFacingMessage` for a failure that is
     ///     still current, or nil when the last attempt succeeded.
     ///   - staleAfter: how old successful data may get before it is stale.
+    ///   - clientCacheHelp: set for a provider whose quota mirrors a cache its
+    ///     own client writes while it runs (Devin). Its numbers move only when
+    ///     that client runs, and running it rewrites the cache, so an old cache
+    ///     is not a stale reading: its age is stated quietly, with this as the
+    ///     explanation, instead of as a warning.
     public static func describe(
         lastSuccessAt: Date?,
         lastAttemptAt: Date?,
         errorMessage: String?,
         staleAfter: TimeInterval,
-        now: Date = Date()
+        now: Date = Date(),
+        clientCacheHelp: String? = nil
     ) -> Description? {
         // Nothing has ever been tried for this account — the card shows its
         // signed-out or empty state, which says more than a freshness warning.
@@ -74,6 +84,14 @@ public enum QuotaFreshnessLabel {
         guard let successAge else {
             return Description(
                 label: L10n.Quota.Freshness.staleNeverUpdated, help: defaultHelp
+            )
+        }
+        if let clientCacheHelp {
+            let age = L10n.Quota.Freshness.dataAge(age: compactAge(successAge))
+            return Description(
+                label: age.prefix(1).uppercased() + age.dropFirst(),
+                help: clientCacheHelp,
+                isWarning: false
             )
         }
         return Description(

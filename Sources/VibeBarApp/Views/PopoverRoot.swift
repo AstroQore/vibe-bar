@@ -2307,9 +2307,12 @@ struct ProviderQuotaCard: View {
             }
 
             if let freshnessWarning = currentFreshnessWarning {
-                Label(freshnessWarning.label, systemImage: "clock.badge.exclamationmark")
+                Label(
+                    freshnessWarning.label,
+                    systemImage: freshnessWarning.isWarning ? "clock.badge.exclamationmark" : "clock"
+                )
                     .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(freshnessWarning.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
                     .fixedSize(horizontal: false, vertical: true)
                     .help(freshnessWarning.help)
             }
@@ -2441,7 +2444,8 @@ struct ProviderQuotaCard: View {
             lastAttemptAt: quotaService.lastAttemptedByAccount[account.id],
             errorMessage: quotaService.lastErrorByAccount[account.id]?.userFacingMessage,
             staleAfter: TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2)),
-            now: now
+            now: now,
+            clientCacheHelp: tool.quotaClientCacheHelp
         )
     }
 
