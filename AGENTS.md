@@ -1196,9 +1196,12 @@ from the CLI's `~/.vibe/whoami_cache.json` (`chat` + `INDIVIDUAL`/`EDU`/`TEAM`
 is Pro). Usage is each session's running totals in `meta.json`
 (`session_prompt_tokens` includes cached); the log has no per-turn usage, so a
 session is one event at its last save, and sub-agents keep their own totals.
-Priced at Mistral's API rates (the `mistral` family). `status.mistral.ai`
-challenges scripted requests, so status is read from the same Checkly page at
-`mistral-ai.checkly-status-page.com`.
+Priced at Mistral's API rates (the `mistral` family). Status comes from
+`status.mistral.ai`, a Rootly page: `/api/v1/status.json` for the page's own
+state and the page HTML for the services, their 90-day bars and their uptime.
+Mistral moved there from Checkly in 2026-09 and the old
+`mistral-ai.checkly-status-page.com` page is still online months out of date,
+so it is not a fallback.
 
 Cost follows the model, not the plan: a subscription harness's tokens carry
 the API-equivalent cost of the model that served them, from the same pricing

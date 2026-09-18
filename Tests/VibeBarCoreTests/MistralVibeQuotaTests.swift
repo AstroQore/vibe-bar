@@ -68,6 +68,27 @@ final class MistralVibeQuotaTests: XCTestCase {
         XCTAssertNil(spec.manualPasteHeader(from: "csrftoken=c; _ga=GA1.1.1"))
     }
 
+    /// The browser import filters the jar by name before it checks the spec.
+    /// Keeping only `requiredNames` dropped `ory_session_<stack>`, so every
+    /// imported slot failed the spec that had just asked for it — the console
+    /// session could never be imported at all.
+    func testTheImportKeepsBothCookiesTheSpecAsksFor() {
+        let spec = MistralVibeQuotaAdapter.cookieSpec
+        XCTAssertTrue(spec.keepsCookie(named: "csrftoken"))
+        XCTAssertTrue(spec.keepsCookie(named: "ory_session_examplestack"))
+        XCTAssertFalse(spec.keepsCookie(named: "_ga"))
+        XCTAssertFalse(spec.keepsCookie(named: "intercom-id-abc"))
+
+        // What the filter keeps must satisfy the spec it was built from.
+        let jar = ["_ga", "ory_session_examplestack", "csrftoken", "intercom-id-abc"]
+        let header = jar.filter(spec.keepsCookie(named:)).map { "\($0)=value" }.joined(separator: "; ")
+        XCTAssertTrue(spec.hasRequiredCredential(in: header))
+
+        // A spec that names no cookies still ships the whole jar.
+        let everything = MiscCookieResolver.Spec(tool: .kimi, domains: ["example.com"], requiredNames: [])
+        XCTAssertTrue(everything.keepsCookie(named: "anything"))
+    }
+
     /// A spec without prefixes keeps its old any-one-name rule.
     func testSpecsWithoutPrefixesAreUnchanged() {
         let spec = MiscCookieResolver.Spec(

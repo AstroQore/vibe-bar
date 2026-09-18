@@ -74,6 +74,15 @@ public enum MiscCookieResolver {
         /// prefixes (a session cookie whose name carries a per-stack suffix)
         /// keeps those too, and only when the paste satisfies the whole rule
         /// set; otherwise the required names are kept as they always were.
+        /// Whether an imported cookie is one this provider sends. A spec with
+        /// no names at all ships the whole jar; otherwise it keeps the names
+        /// it asked for **and** the prefixed ones (a session cookie whose name
+        /// carries a per-stack suffix, like Ory's `ory_session_<stack>`).
+        public func keepsCookie(named name: String) -> Bool {
+            if requiredNames.isEmpty && requiredNamePrefixes.isEmpty { return true }
+            return requiredNames.contains(name) || requiredNamePrefixes.contains { name.hasPrefix($0) }
+        }
+
         public func manualPasteHeader(from raw: String) -> String? {
             if !requiredNamePrefixes.isEmpty {
                 return minimizedHeader(from: raw)
@@ -854,10 +863,10 @@ public enum MiscCookieResolver {
                 let cookies = session.records
                 guard !cookies.isEmpty else { continue }
                 let pairs = cookies.compactMap { record -> String? in
-                    guard spec.requiredNames.isEmpty || spec.requiredNames.contains(record.name) else { return nil }
+                    guard spec.keepsCookie(named: record.name) else { return nil }
                     return "\(record.name)=\(record.value)"
                 }
-                guard spec.requiredNames.isEmpty || !pairs.isEmpty else { continue }
+                guard !pairs.isEmpty else { continue }
                 let header = pairs.joined(separator: "; ")
                 guard !header.isEmpty, spec.hasRequiredCredential(in: header) else { continue }
                 collected.append(BrowserImportResult(header: header, sourceLabel: session.label))
