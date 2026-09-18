@@ -53,6 +53,35 @@ final class QuotaFreshnessLabelTests: XCTestCase {
         XCTAssertEqual(description?.help, QuotaFreshnessLabel.defaultHelp)
     }
 
+    /// Devin's quota mirrors a cache its CLI rewrites every time it runs, so
+    /// the numbers only move when the cache does. Its age is stated quietly
+    /// rather than as a stale warning — but a failed read still warns.
+    func testAClientCacheStatesItsAgeWithoutWarning() {
+        let quiet = QuotaFreshnessLabel.describe(
+            lastSuccessAt: now.addingTimeInterval(-9 * 3_600),
+            lastAttemptAt: now.addingTimeInterval(-60),
+            errorMessage: nil,
+            staleAfter: 600,
+            now: now,
+            clientCacheHelp: ToolType.devin.quotaClientCacheHelp
+        )
+        XCTAssertEqual(quiet?.label, "Data 9h old")
+        XCTAssertEqual(quiet?.isWarning, false)
+        XCTAssertEqual(quiet?.help, ToolType.devin.quotaClientCacheHelp)
+
+        let failed = QuotaFreshnessLabel.describe(
+            lastSuccessAt: now.addingTimeInterval(-9 * 3_600),
+            lastAttemptAt: now.addingTimeInterval(-60),
+            errorMessage: "No account found",
+            staleAfter: 600,
+            now: now,
+            clientCacheHelp: ToolType.devin.quotaClientCacheHelp
+        )
+        XCTAssertEqual(failed?.isWarning, true)
+
+        XCTAssertNil(ToolType.claude.quotaClientCacheHelp, "a live source keeps its stale warning")
+    }
+
     func testRecentSuccessProducesNoWarning() {
         XCTAssertNil(QuotaFreshnessLabel.describe(
             lastSuccessAt: now.addingTimeInterval(-30),

@@ -299,9 +299,9 @@ struct QuotaGroupCard: View {
                 }
             }
             if let warning = providerFreshnessWarning {
-                Label(warning.label, systemImage: "clock.badge.exclamationmark")
+                Label(warning.label, systemImage: warning.isWarning ? "clock.badge.exclamationmark" : "clock")
                     .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(warning.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
                     .fixedSize(horizontal: false, vertical: true)
                     .help(warning.help)
             }
@@ -337,7 +337,8 @@ struct QuotaGroupCard: View {
             lastAttemptAt: quotaService.lastAttemptedByAccount[accountId],
             errorMessage: quotaService.lastErrorByAccount[accountId]?.userFacingMessage,
             staleAfter: TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2)),
-            now: now
+            now: now,
+            clientCacheHelp: module.tool.quotaClientCacheHelp
         )
     }
 
