@@ -396,6 +396,38 @@ final class ChromiumLocalStorageCredentialImporterTests: XCTestCase {
         )
     }
 
+    /// Chrome stores the organization id as a bare string, not a quoted JSON
+    /// one; both spellings must import.
+    func testDevinOrganizationIDImportsAsABareString() throws {
+        let home = try makeTemporaryDirectory()
+        let profile = home
+            .appendingPathComponent("Library/Application Support/Google/Chrome", isDirectory: true)
+            .appendingPathComponent("Default", isDirectory: true)
+        try writeLocalStorageLog(
+            origin: "https://app.devin.ai",
+            key: "auth1_session",
+            value: #"{"token":"synthetic-auth1-token-0123456789"}"#,
+            profile: profile
+        )
+        try writeLocalStorageLog(
+            origin: "https://app.devin.ai",
+            key: "last-internal-org-for-external-org-v1-null",
+            value: "org-0123456789abcdef0123456789abcdef",
+            profile: profile
+        )
+        let sessions = MiscCookieResolver.browserSessions(
+            spec: DevinLiveQuota.cookieSpec,
+            settings: MiscProviderSettings(preferredBrowser: .chrome),
+            allowKeychainPrompt: false,
+            context: .init(detection: BrowserDetection(homeDirectory: home.path), homeDirectory: home),
+            maxSessions: 1
+        )
+        XCTAssertEqual(
+            sessions.first?.header,
+            "devin-auth1-token=synthetic-auth1-token-0123456789; devin-org-id=org-0123456789abcdef0123456789abcdef"
+        )
+    }
+
     /// Half a session is not one: without the organization key the profile
     /// yields nothing rather than a slot every refresh would reject.
     func testADevinTokenWithoutItsOrganizationIsNotImported() throws {
