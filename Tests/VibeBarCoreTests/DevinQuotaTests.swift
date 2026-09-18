@@ -131,27 +131,38 @@ final class DevinQuotaTests: XCTestCase {
 
     // MARK: - Live route
 
-    /// What app.devin.ai's Usage & Limits page reads. Percentages are a
-    /// fraction of one.
+    /// The live endpoint's answer of 2026-09-18, verbatim: percent used as
+    /// 0–100 and resets as ISO times with an offset.
     func testLiveUsageBecomesDailyAndWeeklyBuckets() throws {
         let json = Data(#"""
-        {"daily_percentage":0.16,"daily_reset_at":"2026-09-18T16:00:00Z",
-         "weekly_percentage":0.1,"weekly_reset_at":1790000000,"hide_daily_quota":false}
+        {"is_quota_plan":true,"has_quota_allocation":true,"daily_percentage":15,"weekly_percentage":7,
+         "daily_reset_at":"2026-09-18T00:00:00-08:00","weekly_reset_at":"2026-09-20T00:00:00-08:00",
+         "overage_balance":0,"hide_daily_quota":false}
         """#.utf8)
         let buckets = try DevinQuotaUsageParser.parse(data: json)
         XCTAssertEqual(buckets.map(\.id), ["daily", "weekly"])
-        XCTAssertEqual(buckets[0].usedPercent, 16, accuracy: 1e-9)
-        XCTAssertEqual(buckets[1].usedPercent, 10, accuracy: 1e-9)
+        XCTAssertEqual(buckets[0].usedPercent, 15)
+        XCTAssertEqual(buckets[1].usedPercent, 7)
         XCTAssertEqual(buckets[0].rawWindowSeconds, 86_400)
+        XCTAssertEqual(buckets[1].rawWindowSeconds, 604_800)
+        // Midnight at -08:00 is 08:00 UTC.
+        XCTAssertEqual(buckets[0].resetAt, ServiceStatusClient.flexibleDate(from: "2026-09-18T08:00:00Z"))
+        XCTAssertEqual(buckets[1].resetAt, ServiceStatusClient.flexibleDate(from: "2026-09-20T08:00:00Z"))
+    }
+
+    /// One percent used is one percent, not a fraction meaning all of it.
+    func testSmallPercentagesAreReadAsWritten() throws {
+        let json = Data(#"{"daily_percentage":1,"weekly_percentage":0,"weekly_reset_at":1790000000}"#.utf8)
+        let buckets = try DevinQuotaUsageParser.parse(data: json)
+        XCTAssertEqual(buckets.map(\.usedPercent), [1, 0])
         XCTAssertEqual(buckets[1].resetAt, Date(timeIntervalSince1970: 1_790_000_000))
-        XCTAssertNotNil(buckets[0].resetAt)
     }
 
     func testAPlanWithoutADailyQuotaKeepsOnlyWeekly() throws {
         let json = Data(#"{"daily_percentage":0.5,"weekly_percentage":42,"hide_daily_quota":true}"#.utf8)
         let buckets = try DevinQuotaUsageParser.parse(data: json)
         XCTAssertEqual(buckets.map(\.id), ["weekly"])
-        XCTAssertEqual(buckets[0].usedPercent, 42, "a value above one is already a percent")
+        XCTAssertEqual(buckets[0].usedPercent, 42)
     }
 
     func testAnAnswerWithoutWindowsIsAParseFailure() {

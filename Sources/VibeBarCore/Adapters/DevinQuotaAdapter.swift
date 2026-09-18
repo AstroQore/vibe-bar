@@ -192,10 +192,12 @@ public enum DevinLiveQuota {
     }
 }
 
-/// `{"daily_percentage": 0.16, "daily_reset_at": …, "weekly_percentage": …,
-/// "weekly_reset_at": …, "hide_daily_quota": false}` — what the Usage & Limits
-/// page draws. Percentages arrive as a fraction of one; a value above one is
-/// taken as already a percent. A plan without a daily quota says so with
+/// `{"daily_percentage": 15, "daily_reset_at": "2026-09-18T00:00:00-08:00",
+/// "weekly_percentage": 7, "weekly_reset_at": …, "hide_daily_quota": false}` —
+/// what the Usage & Limits page draws. The percentages are percent **used**,
+/// 0–100, as the live endpoint answered on 2026-09-18; they are read as
+/// written, because guessing "a value of one or less is a fraction" would turn
+/// 1% used into 100%. A plan without a daily quota says so with
 /// `hide_daily_quota`, and its daily window is left out.
 public enum DevinQuotaUsageParser {
     public static func parse(data: Data) throws -> [QuotaBucket] {
@@ -226,7 +228,7 @@ public enum DevinQuotaUsageParser {
         guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
         let raw = number.doubleValue
         guard raw.isFinite, raw >= 0 else { return nil }
-        return min(100, raw <= 1 ? raw * 100 : raw)
+        return min(100, raw)
     }
 
     private static func date(_ value: Any?) -> Date? {

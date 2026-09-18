@@ -1176,7 +1176,7 @@ imported in Settings → Cognition: the signed-in `app.devin.ai` page keeps its
 session in Chromium localStorage (`auth1_session` → `token`, and the internal
 organization id under `last-internal-org-for-external-org-v1-<slug>`), and the
 page's own `GET /api/<org>/billing/quota/usage` answers with the current daily
-and weekly usage as fractions of one (`hide_daily_quota` drops the daily
+and weekly usage as percent used, 0–100 (`hide_daily_quota` drops the daily
 window). The token goes to `app.devin.ai` only. **The CLI's cache**, the
 fallback: `~/.cache/devin/cli/user_status.<identity>.bin` is a JSON envelope
 around the base64 `GetUserStatus` protobuf, whose `PlanStatus` (field 13)
