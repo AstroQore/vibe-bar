@@ -49,6 +49,10 @@ public enum MiscCookieResolver {
         public let requiredNamePrefixes: Set<String>
         /// Name prefixes that also prove the header is authenticated.
         public let credentialNamePrefixes: Set<String>
+        /// A session made of several fields that only work together (Devin's
+        /// token and organization id): every credential name must be present,
+        /// not any one of them, in an import and in a pasted header alike.
+        public let requiresEveryCredentialName: Bool
 
         public init(
             tool: ToolType,
@@ -58,8 +62,10 @@ public enum MiscCookieResolver {
             importOrder: BrowserCookieImportOrder = BrowserCookieDefaults.importOrder,
             browserCredentialSource: BrowserCredentialSource = .cookieJar,
             requiredNamePrefixes: Set<String> = [],
-            credentialNamePrefixes: Set<String> = []
+            credentialNamePrefixes: Set<String> = [],
+            requiresEveryCredentialName: Bool = false
         ) {
+            self.requiresEveryCredentialName = requiresEveryCredentialName
             self.tool = tool
             self.domains = domains
             self.requiredNames = requiredNames
@@ -84,7 +90,7 @@ public enum MiscCookieResolver {
         }
 
         public func manualPasteHeader(from raw: String) -> String? {
-            if !requiredNamePrefixes.isEmpty {
+            if !requiredNamePrefixes.isEmpty || requiresEveryCredentialName {
                 return minimizedHeader(from: raw)
             }
             guard !requiredNames.isEmpty else { return CookieHeaderNormalizer.normalize(raw) }
@@ -114,7 +120,7 @@ public enum MiscCookieResolver {
         public func hasRequiredCredential(in cookieHeader: String) -> Bool {
             guard !credentialNames.isEmpty || !credentialNamePrefixes.isEmpty else { return true }
             let names = CookieHeaderNormalizer.pairs(from: cookieHeader).map(\.name)
-            if credentialNamePrefixes.isEmpty {
+            if credentialNamePrefixes.isEmpty, !requiresEveryCredentialName {
                 return names.contains { credentialNames.contains($0) }
             }
             return credentialNames.allSatisfy(names.contains)

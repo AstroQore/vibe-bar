@@ -23,22 +23,33 @@ import Foundation
 public struct DevinQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .devin
 
+    public typealias SessionResolver = @Sendable (AccountIdentity) -> [MiscCookieResolver.Resolution]
+
     private let session: URLSession
     private let homeDirectory: String
     private let now: @Sendable () -> Date
+    private let resolveSessions: SessionResolver
 
+    /// `resolveSessions` is the imported web sessions for an account. The
+    /// default reads the Keychain slots; a test passes its own so it never
+    /// touches this Mac's saved session or the network behind it.
     public init(
         session: URLSession = .shared,
         homeDirectory: String = RealHomeDirectory.path,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        resolveSessions: @escaping SessionResolver = { account in
+            MiscCookieResolver.resolveAll(for: DevinLiveQuota.cookieSpec, account: account)
+        }
     ) {
         self.session = session
         self.homeDirectory = homeDirectory
         self.now = now
+        self.resolveSessions = resolveSessions
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let cached = try? cacheQuota(for: account)
+        let cache = Result { try cacheQuota(for: account) }
+        let cached = try? cache.get()
         do {
             if let live = try await liveQuota(for: account, plan: cached?.plan) {
                 return live
@@ -46,11 +57,12 @@ public struct DevinQuotaAdapter: QuotaAdapter {
         } catch {
             // The cache is still a true reading; only a provider with nothing
             // else to show reports why the live route failed.
-            guard cached == nil else { return cached! }
-            throw error
+            guard let cached else { throw error }
+            return cached
         }
-        guard let cached else { throw QuotaError.noCredential }
-        return cached
+        // No web session: the cache answers, and an unreadable cache says so
+        // rather than reading as an account that was never connected.
+        return try cache.get()
     }
 
     private func cacheQuota(for account: AccountIdentity) throws -> AccountQuota {
@@ -71,7 +83,7 @@ public struct DevinQuotaAdapter: QuotaAdapter {
     /// `nil` when no web session has been imported, so the cache answers
     /// without an error ever being raised for a route the user never set up.
     private func liveQuota(for account: AccountIdentity, plan: String?) async throws -> AccountQuota? {
-        let resolutions = MiscCookieResolver.resolveAll(for: DevinLiveQuota.cookieSpec, account: account)
+        let resolutions = resolveSessions(account)
         guard !resolutions.isEmpty else { return nil }
         let queriedAt = now()
         let results = await MiscCookieAutoImporter.shared.gatherSlotResults(
@@ -136,7 +148,7 @@ public enum DevinLiveQuota {
         tool: .devin,
         domains: ["app.devin.ai"],
         requiredNames: [tokenName, organizationName],
-        credentialNames: [tokenName],
+        credentialNames: [tokenName, organizationName],
         browserCredentialSource: .chromiumLocalStorageFields([
             ChromiumLocalStorageCredential(
                 origin: origin,
@@ -151,7 +163,8 @@ public enum DevinLiveQuota {
                 syntheticCookieName: organizationName,
                 valueFormat: .json(field: nil, minLength: 5, maxLength: 96)
             )
-        ])
+        ]),
+        requiresEveryCredentialName: true
     )
 
     /// `GET https://app.devin.ai/api/<org>/billing/quota/usage`, the request

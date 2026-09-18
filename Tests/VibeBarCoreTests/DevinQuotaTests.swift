@@ -111,7 +111,7 @@ final class DevinQuotaTests: XCTestCase {
 
         XCTAssertTrue(DevinUserStatusCache.exists(homeDirectory: home.path))
         let account = AccountIdentity(id: "local-devin", tool: .devin, source: .cliDetected)
-        let quota = try await DevinQuotaAdapter(homeDirectory: home.path).fetch(for: account)
+        let quota = try await DevinQuotaAdapter(homeDirectory: home.path, resolveSessions: { _ in [] }).fetch(for: account)
         XCTAssertEqual(quota.queriedAt, Date(timeIntervalSince1970: 1_789_700_000))
         XCTAssertEqual(quota.buckets.map(\.usedPercent), [20])
         XCTAssertEqual(quota.plan, "Pro")
@@ -122,14 +122,51 @@ final class DevinQuotaTests: XCTestCase {
             .appendingPathComponent("VibeBarDevinTests-\(UUID().uuidString)", isDirectory: true)
         let account = AccountIdentity(id: "local-devin", tool: .devin, source: .cliDetected)
         do {
-            _ = try await DevinQuotaAdapter(homeDirectory: home.path).fetch(for: account)
+            _ = try await DevinQuotaAdapter(homeDirectory: home.path, resolveSessions: { _ in [] }).fetch(for: account)
             XCTFail("expected noCredential")
         } catch {
             XCTAssertEqual(error as? QuotaError, .noCredential)
         }
     }
 
+    /// The account was detected from its cache, so a cache that cannot be read
+    /// says so instead of reading as an account that was never connected.
+    func testAnUnreadableCacheIsAParseFailureNotAMissingAccount() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VibeBarDevinTests-\(UUID().uuidString)", isDirectory: true)
+        let directory = DevinUserStatusCache.directory(homeDirectory: home.path)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let envelope: [String: Any] = [
+            "version": 1, "fetched_at_secs": 1_789_700_000,
+            "payload": Data([0x0A, 0x00]).base64EncodedString()
+        ]
+        try JSONSerialization.data(withJSONObject: envelope)
+            .write(to: directory.appendingPathComponent("user_status.aaaa.bin"))
+
+        let account = AccountIdentity(id: "local-devin", tool: .devin, source: .cliDetected)
+        do {
+            _ = try await DevinQuotaAdapter(homeDirectory: home.path, resolveSessions: { _ in [] }).fetch(for: account)
+            XCTFail("expected a parse failure")
+        } catch {
+            guard case .parseFailure = error as? QuotaError else {
+                return XCTFail("expected parseFailure, got \(error)")
+            }
+        }
+    }
+
     // MARK: - Live route
+
+    /// Both halves or nothing: a pasted header missing either one is refused
+    /// before it can be saved as a session every refresh would reject.
+    func testAPastedSessionNeedsBothHalves() {
+        let spec = DevinLiveQuota.cookieSpec
+        XCTAssertNil(spec.manualPasteHeader(from: "devin-auth1-token=synthetic-auth1-token-0123456789"))
+        XCTAssertNil(spec.manualPasteHeader(from: "devin-org-id=org-0123456789abcdef"))
+        XCTAssertNotNil(spec.manualPasteHeader(
+            from: "devin-auth1-token=synthetic-auth1-token-0123456789; devin-org-id=org-0123456789abcdef; other=1"
+        ))
+    }
 
     /// The live endpoint's answer of 2026-09-18, verbatim: percent used as
     /// 0–100 and resets as ISO times with an offset.
