@@ -663,7 +663,7 @@ public struct ResetHistoryComparison: Equatable, Sendable {
                     usedPercent: sample.peakUsedPercent,
                     isCompleted: sample.isCompleted,
                     resetKind: sample.resetKind,
-                    creditRedeemedAt: sample.resetDetails?.creditRedeemedAt
+                    creditRedeemedAt: sample.creditRedemptionDate
                 )
                 if sample.isCompleted {
                     completed.append(cycle)

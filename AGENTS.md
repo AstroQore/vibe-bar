@@ -1292,10 +1292,29 @@ forecast timelines (`UsageFillTimelineStore` / `UsageForecastTimelineStore`
 take every `dedicatedCardProviders` member; buckets without a percentage are
 never stored as zero). Learning is a state of the standard
 quota row, not a separate Chat card implementation. Completed reset
-cycles retain `resetDetails` in `SubscriptionHistoryStore`, and verified Codex
-redemption receipts are retained separately in the same history file. A reduced
-available-credit count is not proof of redemption. The shared reset journal is
-reachable from the strip and comparison card in both popover and Workbench.
+cycles retain `resetDetails` in `SubscriptionHistoryStore`. The shared reset
+journal is reachable from the strip and comparison card in both popover and
+Workbench.
+
+Usage-limit reset credits are one provider-neutral model, `ResetCredits`
+(`AccountQuota.resetCredits`; Codex from `/wham/rate-limit-reset-credits`,
+Claude from the usage payload's `cedar_ember` block, Grok from
+`ConsumerUiSvc/GetRemainingResets`), drawn by the same `ResetCreditsRow`.
+Spent credits live in the history file's `redemptions` (older builds read that
+key as Codex receipts, so only spent credits go there); received ones in
+`resetCreditGrants`. Codex publishes receipts —
+`/wham/rate-limit-reset-credits/history`, read through
+`CodexResetCreditHistoryGate` only when the count moves, a window refills, or
+six hours pass. Claude and Grok publish none, so a spent credit is *inferred*
+(`ResetCreditEvent.inferred`) when a credit's count falls while its expiry is
+still ahead — never from an expiry, never from a failed read — and Grok also
+needs its weekly window to refill early in the same read. A falling count is
+therefore evidence only under those terms, and the journal keeps saying which
+kind of evidence it had. A credit marks a closed cycle (`creditResetAt`) when it
+lies inside the interval the refill was observed in and the credit clears that
+bucket: any refill within 15 minutes, and within three hours only an early
+refill with exactly one credit inside — which is how cycles rebuilt from the
+retired hourly timeline, with no `resetDetails`, still get their receipt.
 See [docs/chatgpt-chat.md](docs/chatgpt-chat.md) for setup and review validation.
 
 ### 7.2 Localization

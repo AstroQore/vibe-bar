@@ -9,9 +9,9 @@ public struct AccountQuota: Codable, Hashable, Sendable {
     public var queriedAt: Date
     public var error: QuotaError?
     public var providerExtras: ProviderExtras?
-    /// Codex manual rate-limit reset credits (count + next expiry). Nil for
-    /// non-Codex tools and when the account has no reset-credit data.
-    public var resetCredits: CodexResetCredits?
+    /// Usage-limit reset credits (Codex, Claude, Grok). Nil when the provider
+    /// has none or the account returned no reset-credit data.
+    public var resetCredits: ResetCredits?
     public var chatGPTChat: ChatGPTChatSummary?
 
     public init(
@@ -23,7 +23,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         queriedAt: Date = Date(),
         error: QuotaError? = nil,
         providerExtras: ProviderExtras? = nil,
-        resetCredits: CodexResetCredits? = nil,
+        resetCredits: ResetCredits? = nil,
         chatGPTChat: ChatGPTChatSummary? = nil
     ) {
         self.accountId = accountId
@@ -63,7 +63,7 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         email = try c.decodeIfPresent(String.self, forKey: .email)
         queriedAt = try c.decode(Date.self, forKey: .queriedAt)
         providerExtras = try c.decodeIfPresent(ProviderExtras.self, forKey: .providerExtras)
-        resetCredits = try c.decodeIfPresent(CodexResetCredits.self, forKey: .resetCredits)
+        resetCredits = try c.decodeIfPresent(ResetCredits.self, forKey: .resetCredits)
         chatGPTChat = try c.decodeIfPresent(ChatGPTChatSummary.self, forKey: .chatGPTChat)
         error = nil
     }

@@ -91,6 +91,8 @@ public struct CodexQuotaAdapter: QuotaAdapter {
             accessToken: credential.accessToken,
             accountId: credential.accountId
         )
+        .asyncMap { await withResetHistory($0, auth: .bearer(accessToken: credential.accessToken,
+            accountId: credential.accountId), accountKey: account.id, buckets: buckets) }
 
         return AccountQuota(
             accountId: account.id,
@@ -112,7 +114,7 @@ public struct CodexQuotaAdapter: QuotaAdapter {
         usageData: Data,
         accessToken: String,
         accountId: String?
-    ) async -> CodexResetCredits? {
+    ) async -> ResetCredits? {
         guard let inlineCount = CodexResponseParser.parseResetCreditsAvailableCount(data: usageData) else {
             return nil
         }
@@ -123,7 +125,26 @@ public struct CodexQuotaAdapter: QuotaAdapter {
         ) {
             return enriched
         }
-        return CodexResetCredits(availableCount: inlineCount)
+        return ResetCredits(availableCount: inlineCount)
+    }
+
+    /// Adds the used / received record when `CodexResetCreditHistoryGate`
+    /// says this refresh should read it. Any failure keeps the snapshot as
+    /// it was, which is what every build before the record existed showed.
+    private func withResetHistory(
+        _ credits: ResetCredits,
+        auth: CodexResetCreditHistoryFetcher.Auth,
+        accountKey: String,
+        buckets: [QuotaBucket]
+    ) async -> ResetCredits {
+        let gate = CodexResetCreditHistoryGate.shared
+        guard await gate.shouldFetch(accountKey: accountKey, availableCount: credits.availableCount,
+                                     buckets: buckets) else { return credits }
+        guard let page = await CodexResetCreditHistoryFetcher.fetch(auth: auth, session: session) else {
+            await gate.recordFailure(accountKey: accountKey)
+            return credits
+        }
+        return CodexResetCreditHistoryFetcher.merge(page, into: credits)
     }
 
     private func fetchWithWebCookies(for account: AccountIdentity) async throws -> AccountQuota {
@@ -171,8 +192,10 @@ public struct CodexQuotaAdapter: QuotaAdapter {
 
         let detailedCredits = await CodexResetCreditsFetcher.fetch(
             cookieHeader: cookieHeader, accountId: account.accountId, session: session)
-        let resetCredits = detailedCredits ?? CodexResponseParser.parseResetCreditsAvailableCount(data: data)
-            .map { CodexResetCredits(availableCount: $0) }
+        let resetCredits = await (detailedCredits ?? CodexResponseParser.parseResetCreditsAvailableCount(data: data)
+            .map { ResetCredits(availableCount: $0) })
+            .asyncMap { await withResetHistory($0, auth: .cookie(header: cookieHeader, accountId: account.accountId),
+                                               accountKey: account.id, buckets: buckets) }
 
         return AccountQuota(
             accountId: account.id,
@@ -219,5 +242,12 @@ public struct CodexQuotaAdapter: QuotaAdapter {
         }
         var seen: Set<CredentialSource> = []
         return raw.filter { seen.insert($0).inserted }
+    }
+}
+
+private extension Optional {
+    func asyncMap<T>(_ transform: (Wrapped) async -> T) async -> T? {
+        guard let value = self else { return nil }
+        return await transform(value)
     }
 }

@@ -29,7 +29,7 @@ public enum CodexResetCreditsFetcher {
         accessToken: String,
         accountId: String?,
         session: URLSession = .shared
-    ) async -> CodexResetCredits? {
+    ) async -> ResetCredits? {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -49,7 +49,7 @@ public enum CodexResetCreditsFetcher {
         }
     }
 
-    public static func fetch(cookieHeader: String, accountId: String?, session: URLSession = .shared) async -> CodexResetCredits? {
+    public static func fetch(cookieHeader: String, accountId: String?, session: URLSession = .shared) async -> ResetCredits? {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
@@ -66,7 +66,7 @@ public enum CodexResetCreditsFetcher {
 
     /// Internal entry point usable from tests with raw payload bytes. `now` is
     /// injectable so the "skip stale available expiry" filter is deterministic.
-    public static func parse(data: Data, now: Date = Date()) -> CodexResetCredits? {
+    public static func parse(data: Data, now: Date = Date()) -> ResetCredits? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
@@ -79,14 +79,14 @@ public enum CodexResetCreditsFetcher {
             .filter { $0 > now }
             .sorted()
 
-        let redemptions = credits.compactMap { row -> CodexResetCreditRedemption? in
+        let redemptions = credits.compactMap { row -> ResetCreditEvent? in
             guard (row["status"] as? String)?.lowercased() == "redeemed",
                   let id = row["id"] as? String, !id.isEmpty,
                   let date = parseDate(row["redeemed_at"]), date <= now else { return nil }
-            return CodexResetCreditRedemption(
-                id: PrivacyPreservingHash.fileComponent(prefix: "reset-credit", rawValue: id), redeemedAt: date)
+            return ResetCreditEvent(
+                id: PrivacyPreservingHash.fileComponent(prefix: "reset-credit", rawValue: id), occurredAt: date)
         }
-        return CodexResetCredits(availableCount: count, nextExpiresAt: expirations.first,
+        return ResetCredits(availableCount: count, nextExpiresAt: expirations.first,
                                  availableExpirations: Array(expirations.prefix(count)), redemptions: redemptions)
     }
 

@@ -3,11 +3,11 @@ import XCTest
 
 final class QuotaResetJournalTests: XCTestCase {
     private let base = Date(timeIntervalSince1970: 1_800_000_000)
-    private func quota(_ used: Double, reset: TimeInterval, receipts: [CodexResetCreditRedemption]? = nil) -> AccountQuota {
+    private func quota(_ used: Double, reset: TimeInterval, receipts: [ResetCreditEvent]? = nil) -> AccountQuota {
         AccountQuota(accountId: "synthetic-account", tool: .codex,
                      buckets: [QuotaBucket(id: "five_hour", title: "5 Hours", shortLabel: "5 Hours", usedPercent: used,
                                            resetAt: base.addingTimeInterval(reset), rawWindowSeconds: 18_000)],
-                     plan: "pro", resetCredits: CodexResetCredits(availableCount: 0, redemptions: receipts))
+                     plan: "pro", resetCredits: ResetCredits(availableCount: 0, redemptions: receipts))
     }
 
     func testAllResetShapesKeepTheirBeforeAndAfterEvidence() async throws {
@@ -43,7 +43,7 @@ final class QuotaResetJournalTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let url = folder.appendingPathComponent("history.json")
         let store = SubscriptionHistoryStore(fileURL: url)
-        let receipt = CodexResetCreditRedemption(id: "synthetic-hash", redeemedAt: base.addingTimeInterval(3595))
+        let receipt = ResetCreditEvent(id: "synthetic-hash", occurredAt: base.addingTimeInterval(3595))
         await store.observe(quota(80, reset: 18_000), now: base.addingTimeInterval(3590))
         await store.observe(quota(0, reset: 21_600, receipts: [receipt]), now: base.addingTimeInterval(3600))
         await store.observe(quota(1, reset: 21_600, receipts: [receipt]), now: base.addingTimeInterval(3660))
@@ -52,7 +52,7 @@ final class QuotaResetJournalTests: XCTestCase {
         let receipts = await reloaded.allRedemptions()
         XCTAssertEqual(receipts.count, 1)
         let samples = await reloaded.allSamples().filter(\.isCompleted)
-        XCTAssertEqual(samples.first?.resetDetails?.creditRedeemedAt, receipt.redeemedAt)
+        XCTAssertEqual(samples.first?.resetDetails?.creditRedeemedAt, receipt.occurredAt)
     }
 
     func testFeatureRefillsAreRetainedWithoutAConfidentPercentage() async throws {
@@ -89,19 +89,38 @@ final class QuotaResetJournalTests: XCTestCase {
         await store.observe(quota(0, reset: 21_600), now: base.addingTimeInterval(3600))
         let before = await store.allSamples().first(where: \.isCompleted)
         XCTAssertNil(before?.resetDetails?.creditRedeemedAt)
-        let receipt = CodexResetCreditRedemption(id: "synthetic-late", redeemedAt: base.addingTimeInterval(3595))
+        let receipt = ResetCreditEvent(id: "synthetic-late", occurredAt: base.addingTimeInterval(3595))
         await store.observe(quota(1, reset: 21_600, receipts: [receipt]), now: base.addingTimeInterval(3660))
         await store.flushPendingWrites()
         let reloaded = SubscriptionHistoryStore(fileURL: url)
         let recorded = await reloaded.allSamples().filter(\.isCompleted)
         XCTAssertEqual(recorded.count, 1)
-        XCTAssertEqual(recorded.first?.resetDetails?.creditRedeemedAt, receipt.redeemedAt)
+        XCTAssertEqual(recorded.first?.resetDetails?.creditRedeemedAt, receipt.occurredAt)
     }
 
     func testWideObservationGapDoesNotGuessWhichResetUsedTheCredit() {
-        let receipt = CodexResetCreditRedemption(id: "synthetic", redeemedAt: base.addingTimeInterval(300))
-        XCTAssertNil(SubscriptionHistoryStore.matchingRedemption(receipts: [receipt], after: base, before: base.addingTimeInterval(3600)))
-        XCTAssertNil(SubscriptionHistoryStore.matchingRedemption(receipts: [receipt], after: base.addingTimeInterval(400), before: base.addingTimeInterval(600)))
+        func cycle(gap: TimeInterval, kind: SubscriptionWindowSample.ResetKind) -> SubscriptionWindowSample {
+            SubscriptionWindowSample(accountId: "synthetic-account", tool: .codex, bucketId: "weekly",
+                windowEnd: base.addingTimeInterval(gap), peakUsedPercent: 90, lastUsedPercent: 90,
+                firstSeenAt: base.addingTimeInterval(-86_400), lastSeenAt: base,
+                completedAt: base.addingTimeInterval(gap), completionReason: .refillDetected, resetKind: kind)
+        }
+        let receipt = ResetCreditEvent(id: "synthetic", occurredAt: base.addingTimeInterval(300))
+        let second = ResetCreditEvent(id: "synthetic-2", occurredAt: base.addingTimeInterval(900))
+        // Close interval: any refill.
+        XCTAssertEqual(SubscriptionHistoryStore.creditMatch(for: cycle(gap: 600, kind: .onSchedule), events: [receipt]), receipt)
+        // Receipt outside the interval.
+        XCTAssertNil(SubscriptionHistoryStore.creditMatch(for: cycle(gap: 200, kind: .earlyClockRestarted), events: [receipt]))
+        // An hour-wide interval (the retired hourly timeline): only an early
+        // refill, only with a single receipt inside it.
+        XCTAssertEqual(SubscriptionHistoryStore.creditMatch(for: cycle(gap: 3_600, kind: .earlyClockRestarted), events: [receipt]), receipt)
+        XCTAssertNil(SubscriptionHistoryStore.creditMatch(for: cycle(gap: 3_600, kind: .onSchedule), events: [receipt]))
+        XCTAssertNil(SubscriptionHistoryStore.creditMatch(for: cycle(gap: 3_600, kind: .earlyClockRestarted), events: [receipt, second]))
+        // Past the wide window nothing is tied.
+        XCTAssertNil(SubscriptionHistoryStore.creditMatch(for: cycle(gap: 4 * 3_600, kind: .earlyClockRestarted), events: [receipt]))
+        // A credit that names the windows it clears ties only those.
+        let scoped = ResetCreditEvent(id: "scoped", occurredAt: base.addingTimeInterval(300), clears: ["five_hour"])
+        XCTAssertNil(SubscriptionHistoryStore.creditMatch(for: cycle(gap: 600, kind: .earlyClockRestarted), events: [scoped]))
     }
 
     func testRedeemingAndExpiredCreditsDoNotCountAsConfirmedRedemptions() throws {

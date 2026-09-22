@@ -1,7 +1,7 @@
 import XCTest
 @testable import VibeBarCore
 
-final class CodexResetCreditsTests: XCTestCase {
+final class ResetCreditsTests: XCTestCase {
     // MARK: Inline count from /wham/usage
 
     func testInlineAvailableCountFromUsagePayload() {
@@ -72,7 +72,7 @@ final class CodexResetCreditsTests: XCTestCase {
             accountId: "codex",
             tool: .codex,
             buckets: [],
-            resetCredits: CodexResetCredits(availableCount: 2, nextExpiresAt: expiry)
+            resetCredits: ResetCredits(availableCount: 2, nextExpiresAt: expiry)
         )
         let data = try JSONEncoder().encode(quota)
         let decoded = try JSONDecoder().decode(AccountQuota.self, from: data)
