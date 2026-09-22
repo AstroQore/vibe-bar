@@ -13,15 +13,35 @@ public enum EInkPagination {
         case .quotaFields:
             let fields = slide.orderedQuotaFieldIDs
             guard !fields.isEmpty else { return [slide] }
+            // A bucket this snapshot does not carry (its provider logged out,
+            // or stopped returning it) draws nothing. It stays in the selection
+            // — riding on the page it falls on, so materializing keeps it — but
+            // it never takes a slot and never makes a page of its own.
+            let available = snapshot.map { Set($0.quota.map(\.fieldID)) }
             var remaining = fields
             while !remaining.isEmpty {
-                var candidate = Array(remaining.prefix(capacity))
+                var candidate: [String]
+                if let available {
+                    if !remaining.contains(where: available.contains), var last = pages.popLast() {
+                        last.quotaFieldIDs += remaining
+                        last.options.slotOrder = last.quotaFieldIDs
+                        pages.append(last)
+                        break
+                    }
+                    var slots = 0
+                    candidate = Array(remaining.prefix { id in
+                        guard slots < capacity else { return false }
+                        if available.contains(id) { slots += 1 }
+                        return true
+                    })
+                } else {
+                    candidate = Array(remaining.prefix(capacity))
+                }
                 var page = slide
                 page.quotaFieldIDs = candidate
                 page.options.slotOrder = candidate
                 var chosen = candidate
-                if let snapshot {
-                    let available = Set(snapshot.quota.map(\.fieldID))
+                if let snapshot, let available {
                     while !candidate.isEmpty {
                         page.quotaFieldIDs = candidate; page.options.slotOrder = candidate
                         guard let tree = try? EInkRenderer.tree(slide: page, orientation: orientation, profile: profile, snapshot: snapshot) else { break }

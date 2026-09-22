@@ -35,7 +35,7 @@ final class EInkPaginationTests: XCTestCase {
         let long = EInkSlide(id: "long", kind: .preset(.quotaRings), quotaFieldIDs: (1...12).map { "codex.bucket-\($0)" })
         let short = EInkSlide(id: "short", kind: .preset(.quotaRings), quotaFieldIDs: ["claude.weekly"])
         let group = EInkScreenGroup(frames: [.init(regions: [.init(deviceIDs: ["a"], slide: long), .init(deviceIDs: ["b"], slide: short)])])
-        let pages = EInkPagination.frames(group, snapshot: EInkFixtures.snapshot())
+        let pages = EInkPagination.frames(group, snapshot: snapshot(carrying: long.quotaFieldIDs + short.quotaFieldIDs))
         XCTAssertEqual(pages.count, 3)
         XCTAssertEqual(pages.flatMap { $0.regions[0].slide.quotaFieldIDs }, long.quotaFieldIDs)
         XCTAssertTrue(pages.allSatisfy { $0.regions[1].slide.quotaFieldIDs == short.quotaFieldIDs && $0.regions[1].slide.id == short.id })
@@ -64,7 +64,7 @@ final class EInkPaginationTests: XCTestCase {
             .init(id: "one", regions: [.init(deviceIDs: ["a", "b"], slide: first)]),
             .init(id: "two", regions: [.init(deviceIDs: ["a", "b"], slide: chosen)])])
         group.playbackMode = .single; group.singleSlideID = "two"
-        let pages = EInkPagination.frames(group, snapshot: EInkFixtures.snapshot())
+        let pages = EInkPagination.frames(group, snapshot: snapshot(carrying: first.quotaFieldIDs + chosen.quotaFieldIDs))
         XCTAssertEqual(pages.count, 3)
         XCTAssertTrue(pages.allSatisfy { $0.id.hasPrefix("two") })
         XCTAssertEqual(pages.flatMap { $0.regions[0].slide.quotaFieldIDs }, chosen.quotaFieldIDs)
@@ -128,7 +128,7 @@ final class EInkPaginationTests: XCTestCase {
 
     func testMaterializingPagesKeepsEverySelectionAndUsesIndependentSlideIDs() {
         let slide = EInkSlide(id: "original", kind: .preset(.quotaRings), quotaFieldIDs: (0..<13).map { "codex.extra-\($0)" })
-        let pages = EInkPagination.materializedPages(slide, orientation: .degrees0, snapshot: EInkFixtures.snapshot())
+        let pages = EInkPagination.materializedPages(slide, orientation: .degrees0, snapshot: snapshot(carrying: slide.quotaFieldIDs))
         XCTAssertEqual(pages.flatMap(\.quotaFieldIDs), slide.quotaFieldIDs)
         XCTAssertEqual(pages.first?.id, slide.id)
         XCTAssertEqual(Set(pages.map(\.id)).count, pages.count)
@@ -169,5 +169,37 @@ final class EInkPaginationTests: XCTestCase {
         let decoded = try JSONDecoder().decode(EInkSyncSettings.self, from: JSONEncoder().encode(settings))
         XCTAssertEqual(decoded.groups.count, 1)
         XCTAssertNil(decoded.groups[0].behavior)
+    }
+
+    func testABucketTheSnapshotLacksNeitherTakesASlotNorMakesAPage() throws {
+        let present = (0..<6).map { "codex.present-\($0)" }
+        let missing = (0..<6).map { "claude.gone-\($0)" }
+        let snapshot = snapshot(carrying: present)
+        // Five buckets from a provider that has since logged out lead the
+        // selection, and one more trails it.
+        let fields = Array(missing.prefix(5)) + present + [missing[5]]
+        let slide = EInkSlide(id: "mixed", kind: .preset(.quotaRings), quotaFieldIDs: fields)
+        let pages = EInkPagination.pages(slide, orientation: .degrees0, snapshot: snapshot)
+        XCTAssertEqual(pages.count, 2, "six live rows fill one page and start a second; the missing ones make none")
+        XCTAssertEqual(pages.flatMap(\.quotaFieldIDs), fields, "the selection is kept whole for materializing")
+        for page in pages {
+            let rows = snapshot.quotaRows(fieldIDs: page.orderedQuotaFieldIDs, limit: .max)
+            XCTAssertFalse(rows.isEmpty, "no page may come out blank")
+        }
+        let gone = EInkSlide(id: "gone", kind: .preset(.quotaRings), quotaFieldIDs: missing)
+        XCTAssertEqual(EInkPagination.pages(gone, orientation: .degrees0, snapshot: snapshot).map(\.quotaFieldIDs), [missing])
+    }
+
+    private func snapshot(carrying fields: [String]) -> EInkDataSnapshot {
+        var snapshot = EInkFixtures.snapshot()
+        let seed = snapshot.quota[0]
+        snapshot.quota = fields.enumerated().map { index, fieldID in
+            var row = seed
+            row.fieldID = fieldID
+            row.providerDisplayName = "P\(index)"
+            row.windowTitle = "Weekly"
+            return row
+        }
+        return snapshot
     }
 }

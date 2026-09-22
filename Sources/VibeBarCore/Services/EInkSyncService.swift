@@ -715,8 +715,12 @@ public final class EInkSyncService: ObservableObject {
             if existing.generation == configurationGeneration, !force { return outcome }
             if groupRuns[group.id] === existing { groupRuns.removeValue(forKey: group.id) }
         }
+        // `force` is Push now, and it reaches a group whose switch is off the
+        // same way it reaches a standalone device (`performRun`): one push, no
+        // loop. Refusing here answered "pushed 0, skipped 0".
         guard !Task.isCancelled, force || syncPermitted,
-              let current = settings.groups.first(where: { $0.id == group.id }), current.enabled else { return EInkPushOutcome() }
+              let current = settings.groups.first(where: { $0.id == group.id }), current.enabled || force
+        else { return EInkPushOutcome() }
         let generation = configurationGeneration
         let run = RefreshRun(generation: generation, task: Task { [weak self] in
             guard let self else { return EInkPushOutcome() }
@@ -848,14 +852,17 @@ public final class EInkSyncService: ObservableObject {
         }
 
         // Only walk the ledger when a slide on this pass actually draws usage.
-        let needsUsage = plan.items.contains { item in
-            guard case let .slide(slideID) = item.content else { return false }
-            return device.slide(id: slideID)?.needsUsageData(layouts: layouts) ?? false
+        func needsUsage(_ plan: EInkPushPlan, _ device: EInkDeviceConfig) -> Bool {
+            plan.items.contains { item in
+                guard case let .slide(slideID) = item.content else { return false }
+                return device.slide(id: slideID)?.needsUsageData(layouts: layouts) ?? false
+            }
         }
-        let assembly: EInkAssemblyOutcome
+        let assembledUsage = needsUsage(plan, device)
+        var assembly: EInkAssemblyOutcome
         do {
             if let prepared { assembly = prepared.assembly }
-            else { assembly = try await assembleSnapshot(includesUsage: needsUsage) }
+            else { assembly = try await assembleSnapshot(includesUsage: assembledUsage) }
         } catch {
             return record(
                 deviceID: deviceID,
@@ -883,6 +890,23 @@ public final class EInkSyncService: ObservableObject {
             state.slideIndex %= max(1, device.slides.count)
             plan = EInkPushPlan.make(for: device, slideIndex: state.slideIndex,
                                     mirrorAppTimerTasks: (wasDeviceLoop || wasSingle) && device.playbackMode == .appTimer)
+            // Pagination re-indexes the carousel, and a loop with fewer tasks
+            // than pages turns into one, so this plan can name a usage slide
+            // the first one never did. A snapshot assembled without the ledger
+            // would draw it as "$0 today"; assemble one that has it.
+            if !assembledUsage, needsUsage(plan, device) {
+                do {
+                    assembly = try await assembleSnapshot(includesUsage: true)
+                } catch {
+                    return record(
+                        deviceID: deviceID,
+                        failure: .network,
+                        detail: SafeLog.sanitize(String(describing: error)),
+                        generation: generation
+                    )
+                }
+                guard generation == configurationGeneration else { return EInkPushOutcome() }
+            }
         }
         let border = alertingFieldID == nil ? 0 : 1
         let link = device.tapLink.url(remoteDashboard: remoteDashboardURL())?.absoluteString

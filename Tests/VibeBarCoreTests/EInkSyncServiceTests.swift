@@ -261,6 +261,19 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(client.pushes.count, 2)
     }
 
+    func testPushNowReachesAGroupWhoseSwitchIsOff() async {
+        let client = FakeDotClient()
+        var settings = groupedSettings()
+        settings.groups[0].enabled = false
+        let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
+        service.apply(settings: settings, layouts: [:])
+        _ = await service.refresh(deviceID: "panel-1")
+        XCTAssertTrue(client.pushes.isEmpty, "a group that is off does not play on its own")
+        let outcome = await service.pushNow(deviceID: "panel-1")
+        XCTAssertEqual(outcome.pushed, 2, "Push now works on a group that is off, as it does on a device that is off")
+        XCTAssertEqual(Set(client.pushes.map(\.deviceID)), ["panel-1", "panel-2"])
+    }
+
     func testGroupFailureRetriesTheSameFrameInsteadOfAdvancing() async {
         let client = FakeDotClient()
         let settings = groupedSettings()
@@ -994,6 +1007,34 @@ final class EInkSyncServiceTests: XCTestCase {
         XCTAssertEqual(client.pushes.map(\.taskKey), ["k1"], "the usage slide is skipped, not drawn as zeros")
         XCTAssertEqual(outcome.failure, .usageUnavailable)
         XCTAssertEqual(sync.state(for: "panel-1").lastFailure, .usageUnavailable)
+    }
+
+    func testALoopShortOfTasksAssemblesUsageForTheSlideItFallsBackTo() async {
+        let client = FakeDotClient()
+        let requested = RequestedFields()
+        // One task, two slides: the loop zips only the quota slide, and the
+        // pass falls back to a Mac-driven carousel that also shows the usage
+        // slide. That slide must be drawn from a snapshot that has the ledger.
+        let sync = service(
+            client: client,
+            device: device(
+                slides: [slide("quota", preset: .quotaLedger), slide("usage", preset: .usageTiles)],
+                taskKeys: ["k1"],
+                playback: .carousel(driver: .deviceLoop, secondsPerSlide: 300)
+            ),
+            snapshot: { request in
+                requested.record(request)
+                var snapshot = EInkFixtures.snapshot()
+                if !request.includesUsage { snapshot.usage = EInkUsageSet(); snapshot.trend = [] }
+                return EInkAssemblyOutcome(snapshot: snapshot)
+            }
+        )
+        _ = await sync.refresh(deviceID: "panel-1")
+        XCTAssertEqual(requested.last?.includesUsage, false, "the quota page needs no ledger")
+        await sync.advanceCarousel(deviceID: "panel-1")
+        XCTAssertEqual(sync.state(for: "panel-1").slideIndex, 1)
+        XCTAssertEqual(requested.last?.includesUsage, true, "the usage page must not be drawn from a quota-only snapshot")
+        XCTAssertEqual(client.pushes.count, 2)
     }
 
     func testTheAssemblerKeepsTheQuotaHalfWhenTheLedgerThrows() async {
