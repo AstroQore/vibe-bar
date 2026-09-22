@@ -137,8 +137,11 @@ public actor SubscriptionHistoryStore {
         if observeFeatures(quota, now: now, storage: &storage) { dirty = true }
         // A rolling reset is the next expiry of a trailing count, not the
         // end of a cycle: reading each expiry as a completed cycle would
-        // fill the history with cycles nothing ever reset.
-        for bucket in quota.buckets where bucket.supportsForecast && !bucket.hasRollingReset {
+        // fill the history with cycles nothing ever reset. So a rolling read
+        // never begins or extends a cycle — but it can end one a real
+        // deadline began, as when a spent allowance refills and is read
+        // untouched, its reset sliding from then on.
+        for bucket in quota.buckets where bucket.supportsForecast {
             guard let resetAt = bucket.resetAt, bucket.usedPercent.isFinite else { continue }
             let used = clamp(bucket.usedPercent)
             let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
@@ -149,6 +152,7 @@ public actor SubscriptionHistoryStore {
                 .max { storage.samples[$0].lastSeenAt < storage.samples[$1].lastSeenAt }
 
             guard let currentIndex else {
+                if bucket.hasRollingReset { continue }
                 index[key, default: []].append(storage.samples.count)
                 storage.samples.append(makeCurrentSample(
                     quota: quota,
@@ -198,14 +202,18 @@ public actor SubscriptionHistoryStore {
                 current.windowEnd = now
                 storage.samples[currentIndex] = current
                 completedNow.append(currentIndex)
-                index[key, default: []].append(storage.samples.count)
-                storage.samples.append(makeCurrentSample(
-                    quota: quota,
-                    bucket: bucket,
-                    used: used,
-                    resetAt: resetAt,
-                    now: now
-                ))
+                if !bucket.hasRollingReset {
+                    index[key, default: []].append(storage.samples.count)
+                    storage.samples.append(makeCurrentSample(
+                        quota: quota,
+                        bucket: bucket,
+                        used: used,
+                        resetAt: resetAt,
+                        now: now
+                    ))
+                }
+            } else if bucket.hasRollingReset {
+                continue
             } else {
                 current.windowEnd = resetAt
                 current.windowStart = bucket.rawWindowSeconds.map {
@@ -253,8 +261,9 @@ public actor SubscriptionHistoryStore {
         let needsClassification = storage.samples.contains {
             $0.isCompleted && $0.resetKind == nil
         }
+        let needsUntouchedCleanup = storage.samples.contains(where: Self.isUntouchedFeatureCycle)
         guard needsLegacyImport || needsResetSignalRepair
-                || needsPromotedBackfill || needsClassification
+                || needsPromotedBackfill || needsClassification || needsUntouchedCleanup
         else { return }
 
         if needsLegacyImport {
@@ -311,9 +320,24 @@ public actor SubscriptionHistoryStore {
         // re-run a migration that had already finished — and a pass that knows
         // from its own data whether there is anything to do needs no version
         // at all.
+        //
+        // The same goes for Chat feature cycles nothing was ever spent in.
+        // Older builds read an untouched allowance's sliding "now + window"
+        // as a deadline, and every poll gap long enough looked like an early
+        // reset. Such a cycle recorded nothing; current builds never open one,
+        // since an untouched allowance's read is rolling.
+        storage.samples.removeAll(where: Self.isUntouchedFeatureCycle)
         classifyStoredResets(points, in: &storage)
         pruneInPlace(&storage, retentionDays: retentionDays, now: Date())
         save(storage)
+    }
+
+    /// A ChatGPT Chat feature-allowance cycle whose usage never rose above
+    /// zero, open or closed.
+    static func isUntouchedFeatureCycle(_ sample: SubscriptionWindowSample) -> Bool {
+        sample.tool == .chatgptChat
+            && (sample.bucketId == "image_gen" || sample.bucketId == "deep_research")
+            && sample.peakUsedPercent <= 0
     }
 
     /// Lanes still owed a backfill, for a file stamped with `storedVersion`.
@@ -649,21 +673,28 @@ public actor SubscriptionHistoryStore {
     private func observeFeatures(_ quota: AccountQuota, now: Date, storage: inout Storage) -> Bool {
         var changed = false
         for bucket in quota.buckets {
-            // Same reason as the cycle loop: a message ageing out returns a
-            // unit without anything having reset.
-            guard !bucket.hasRollingReset, let remaining = bucket.quantity?.remaining else { continue }
+            guard let remaining = bucket.quantity?.remaining else { continue }
             let key = PrivacyPreservingHash.fileComponent(prefix: "feature", rawValue: quota.accountId + ":" + bucket.id)
             let sample = ChatGPTChatAllowanceSample(id: bucket.id, remaining: remaining, resetAt: bucket.resetAt, observedAt: now)
             let previous = storage.featureObservations?[key]
+            // Same reason as the cycle loop: a message ageing out returns a
+            // unit without anything having reset, and an untouched
+            // allowance's reset moves with the clock. A rolling read is
+            // never an observation to compare against — it only ends the
+            // one a spent allowance left, recording the refill if it rose.
+            if bucket.hasRollingReset && previous == nil { continue }
             guard previous == nil || now > previous!.sample.observedAt else { continue }
             if storage.featureObservations == nil { storage.featureObservations = [:] }
-            storage.featureObservations?[key] = FeatureObservation(sample: sample, plan: quota.plan, identity: quota.chatGPTChat?.accountIdentity)
+            storage.featureObservations?[key] = bucket.hasRollingReset ? nil
+                : FeatureObservation(sample: sample, plan: quota.plan, identity: quota.chatGPTChat?.accountIdentity)
             changed = true
             guard let previous, previous.plan == quota.plan, previous.identity == quota.chatGPTChat?.accountIdentity else { continue }
             let old = previous.sample
             let crossed = old.resetAt.map { $0 <= now } ?? false
             let advanced = old.resetAt.flatMap { oldDate in bucket.resetAt.map { $0.timeIntervalSince(oldDate) > 60 } } ?? false
-            guard remaining > old.remaining || (crossed && advanced) else { continue }
+            // Untouched then and untouched now is not a refill, however far
+            // the sliding date moved in between.
+            guard remaining > old.remaining || (crossed && advanced && !bucket.hasRollingReset) else { continue }
             let kind: SubscriptionWindowSample.ResetKind
             if let before = old.resetAt, let after = bucket.resetAt, let window = bucket.rawWindowSeconds,
                let classified = Self.classifyReset(reportedResetAt: before, newResetAt: after, observedAt: now, rawWindowSeconds: window) {

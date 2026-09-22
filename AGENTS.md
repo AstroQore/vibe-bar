@@ -1262,10 +1262,21 @@ and moves the date, and reading that as a completed cycle would fill the
 reset history with cycles nothing ever reset. Every Chat field is
 `isBranchStyleField`, since each carries an L3 group; `shortLabel` stays the
 feature or model name, because the menu bar prints that one and "Daily"
-alone does not say daily what. `ChatGPTChatProAllowances` holds the
-published totals per `plan_type` (`pro`: 200/week GPT-6 Pro, 170/day Sol Pro,
-200/day both; `prolite`: 50/week shared — help article 20001354, read
-2026-09-07); other plans get no Pro buckets. Counts are trailing-window
+alone does not say daily what. The published totals per `plan_type` live
+in the public repo `AstroQore/vibebar-quota-limits` (`limits.json`, with
+`schema.json`; `pro`: 200/week GPT-6 Pro, 170/day Sol Pro, 200/day both;
+`prolite`: 50/week shared — help article 20001354, re-verified 2026-09-23).
+`QuotaLimitsCatalog` fetches it on the pricing refresh loop
+(`AppEnvironment.refreshPricing`, ≤ 256 KiB, 15 s, HTTPS only), keeps the last
+valid copy in `~/.vibebar/quota_limits.json` (status beside it in
+`quota_limits_status.json`) and an in-memory snapshot loaded from that cache
+once; `ChatGPTChatProAllowances.allowances(plan:)` reads only the snapshot.
+Validation: `schemaVersion` 1 or the whole document is ignored; rows with an
+unknown provider or any malformed field (`limit > 0`, `windowSeconds ≥ 3600`,
+`unit` "messages", slugs passing `ChatGPTChatParser.validModel`) are skipped
+alone. A plan with no usable published rows falls back to
+`ChatGPTChatProAllowances.bundled(plan:)`, the table compiled into the
+binary; other plans get no Pro buckets. Counts are trailing-window
 estimates with no claimed reset; a throttled model overrides its bucket with
 the service's exhausted state and reset. Partial coverage shows the count
 without a percentage. Only hashed ids, times and model slugs are cached, in
@@ -1273,10 +1284,18 @@ without a percentage. Only hashed ids, times and model slugs are cached, in
 list with paging fields only and single conversations by UUID; nothing else.
 
 `ChatGPTChatAllowanceStore` shows an *estimated* total from the first read —
-the largest remainder ever reported for the account and plan, with the
-service's distance to the reset (rounded to days or hours) as the window —
-and *confirms* it after three consistent observed reset boundaries, which
-takes the estimate mark off. A remainder above the total raises the estimate
+the largest remainder ever reported for the account and plan — and
+*confirms* it after three consistent observed reset boundaries, which
+takes the estimate mark off. The provisional window is the longest distance
+seen to the *same* deadline (`ChatGPTChatWindowAnchor`, persisted), as the
+smallest standard window (1, 7, 30 days) that holds it, so a fixed monthly
+deadline stays "Monthly" as it approaches; a confirmed window snaps to the
+standard window it is within 15 minutes of (86 521 s → a day). An untouched
+allowance (remainder = known total) sets `hasRollingReset`, because its
+reset is "now + window" on every read; `SubscriptionHistoryStore` lets a
+rolling read *end* an open cycle (the refill of a spent allowance) but never
+begin or extend one, and drops Chat feature cycles that never saw usage at
+launch (`isUntouchedFeatureCycle`). A remainder above the total raises the estimate
 and withdraws the confirmation; an account/plan change starts over; a read
 that could not name the plan keeps what is known. No plan has a hardcoded
 feature total. The state lives under `~/.vibebar/chatgpt_chat_learning.json`.
