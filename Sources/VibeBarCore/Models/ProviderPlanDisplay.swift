@@ -81,6 +81,13 @@ public enum ProviderPlanDisplay {
             // Meta names its tiers with the product already in front
             // ("Muse Code High Usage"); `prefixed` keeps that from doubling.
             return prefixed(codexDisplayName(rawPlan), brand: ToolType.muse.productName)
+        case .museAgent:
+            // The tier ("Free"), then — only while a top-up is held — the
+            // provider's own "Additional tokens" row, kept verbatim.
+            guard let raw = trimmed(rawPlan) else { return nil }
+            let parts = raw.components(separatedBy: " · ")
+            let tier = prefixed(codexDisplayName(parts[0]), brand: tool.productName)
+            return ([tier].compactMap { $0 } + parts.dropFirst()).joined(separator: " · ")
         case .devin, .mistralVibe:
             // Both send the bare tier ("Pro"); the card names the product.
             return prefixed(codexDisplayName(rawPlan), brand: tool.productName)

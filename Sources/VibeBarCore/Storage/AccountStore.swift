@@ -77,6 +77,7 @@ public final class AccountStore: ObservableObject {
         if let muse = autoDetectMuse() {
             detected.append(muse)
         }
+        detected.append(autoDetectMuseAgent())
         if let devin = autoDetectDevin() {
             detected.append(devin)
         }
@@ -362,6 +363,25 @@ public final class AccountStore: ObservableObject {
             alias: ToolType.muse.productName,
             source: .oauthCLI,
             allowsOAuthFallback: true,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    /// Muse's account is always present, like Mistral Vibe's: its quota needs
+    /// a muse.ai session imported through the shared cookie controls, and
+    /// those find the account to refresh by its cookie-instance id. Until a
+    /// session is saved it stays `.notConfigured`, which keeps it off the
+    /// Overview and out of the browser (`MuseAgentQuotaAdapter` does not go
+    /// looking for a session nobody imported).
+    private func autoDetectMuseAgent() -> AccountIdentity {
+        let hasCookie = MiscCookieSlotStore.hasAnySlot(for: .museAgent)
+        return AccountIdentity(
+            id: Self.miscAccountId(forInstanceID: ToolType.museAgent.rawValue),
+            tool: .museAgent,
+            alias: ToolType.museAgent.productName,
+            source: hasCookie ? .browserCookie : .notConfigured,
+            allowsWebFallback: hasCookie,
             createdAt: Date(),
             updatedAt: Date()
         )

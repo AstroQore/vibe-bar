@@ -155,6 +155,7 @@ public final class QuotaService: ObservableObject {
                 .antigravity: AntigravityQuotaAdapter(),
                 .grok: GrokQuotaAdapter(),
                 .muse: MuseQuotaAdapter(),
+                .museAgent: MuseAgentQuotaAdapter(),
                 .devin: DevinQuotaAdapter(),
                 .mistralVibe: MistralVibeQuotaAdapter(),
                 .mimo: MimoQuotaAdapter(),

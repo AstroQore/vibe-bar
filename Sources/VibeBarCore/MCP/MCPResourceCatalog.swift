@@ -73,6 +73,10 @@ public enum MCPResourceCatalog {
         lines.append("are listed as sessions from the app's own local cache, but its runs happen")
         lines.append("server-side, so they never carry a model, tokens, or cost.")
         lines.append("")
+        lines.append("Muse (`museAgent`) is Meta AI's personal agent at muse.ai, a SubProvider")
+        lines.append("beside Muse Code with one Weekly bucket. Its local cache records no model")
+        lines.append("and no tokens, so its sessions are listed but it never has usage or cost.")
+        lines.append("")
         lines.append("L3 is the bucket: `id`, `title` and `groupTitle` on each entry of")
         lines.append("`quota.get` → `accounts[].buckets[]`. Examples are \"5 Hours\", \"Weekly\",")
         lines.append("\"All Models\", and per-model groups such as Sonnet / Opus / Fable.")
@@ -140,6 +144,7 @@ public enum MCPResourceCatalog {
         case .museCode:     return "`~/.local/share/muse/sessions/**/session.jsonl`; API-equivalent cost"
         case .devin:        return "`~/.local/share/devin/cli/sessions.db` (CLI and app share it); API-equivalent cost"
         case .mistralVibe:  return "`~/.vibe/logs/session/*/meta.json` running totals; API-equivalent cost"
+        case .museAgent:    return "`~/Library/Caches/ConversationCache/hatch-*.json` (Muse.app); sessions only, no tokens"
         }
     }
 
@@ -157,7 +162,7 @@ public enum MCPResourceCatalog {
 
         | The user asks | Call |
         | --- | --- |
-        | "how much Codex / Claude / Gemini / Grok / Cursor / Muse Code do I have left?" | `quota.get` |
+        | "how much Codex / Claude / Gemini / Grok / Cursor / Muse Code / Muse do I have left?" | `quota.get` |
         | "when does my 5-hour window reset?" | `quota.get` (`buckets[].resetAt`) |
         | "am I going to run out before the reset?" | `quota.get` with `includeForecast: true` |
         | "refresh my usage" | `quota.refresh`, then `quota.get` |

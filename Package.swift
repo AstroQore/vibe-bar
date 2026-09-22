@@ -25,7 +25,12 @@ let package = Package(
         // from a clean checkout with no Package.resolved (it is gitignored),
         // so the pin is the only thing that makes two builds of the same
         // Vibe Bar commit contain the same package. Bump it deliberately.
-        .package(url: "https://github.com/AstroQore/agent-session-kit.git", exact: "0.10.0"),
+        // TEMPORARY: the unreleased Muse session adapter (`Harness.museAgent`).
+        // `.agents/deps/agent-session-kit` is a local, git-ignored symlink to
+        // agent-session-kit's `feat-muse-agent-sessions` worktree; the link
+        // keeps SwiftPM's package identity "agent-session-kit". Replace with
+        // the released tag (exact pin) before merging.
+        .package(path: ".agents/deps/agent-session-kit"),
         // SweetCookieKit encapsulates Chromium cookie + localStorage parsing,
         // "Chrome Safe Storage" Keychain decryption, and Safari
         // binarycookies / Firefox SQLite reads used by misc providers.
@@ -36,7 +41,12 @@ let package = Package(
         // `bump-vibe-bar-i18n.yml` opens the pull request that moves the pin.
         // `Package.resolved` is not committed, so the exact pin is what makes
         // two machines build the same strings.
-        .package(url: "https://github.com/AstroQore/vibe-bar-i18n.git", exact: "0.19.0-eink.4"),
+        // TEMPORARY: the unreleased Muse strings. `.agents/deps/vibe-bar-i18n`
+        // is a local, git-ignored symlink to vibe-bar-i18n's `feat-muse-agent`
+        // worktree; the link keeps the package identity "vibe-bar-i18n", which
+        // names the resource bundle `build_app.sh` copies. Replace with the
+        // released tag (exact pin) before merging.
+        .package(path: ".agents/deps/vibe-bar-i18n"),
         // Sparkle is the standard update framework for independently
         // distributed macOS applications. Pin the exact reviewed release:
         // update verification and installation are security-sensitive.

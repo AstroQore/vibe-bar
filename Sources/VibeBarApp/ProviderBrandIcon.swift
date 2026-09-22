@@ -255,7 +255,7 @@ enum ProviderBrandIcon {
         switch tool {
         case .codex, .chatgptChat:  return "sparkle.magnifyingglass"
         case .claude: return "sparkles"
-        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .devin, .mistralVibe, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .grok, .copilot, .zai, .minimax, .kimi, .cursor, .muse, .museAgent, .devin, .mistralVibe, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return tool.miscFallbackSymbol
         }
     }
@@ -869,6 +869,7 @@ extension ToolType {
         case .kimi:        return "ProviderIcon-kimi"
         case .cursor:      return "ProviderIcon-cursor"
         case .muse:        return "ProviderIcon-muse"
+        case .museAgent:   return "ProviderIcon-museagent"
         case .devin:       return "ProviderIcon-devin"
         case .mistralVibe: return "ProviderIcon-mistral-vibe"
         case .mimo:        return "ProviderIcon-mimo"
@@ -913,7 +914,7 @@ extension ToolType {
         // the 1.25 brands (gemini/grok) overshot the canvas and got
         // clipped to crisp edges. Same scale → same edge treatment →
         // no halo on either pair.
-        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .copilot, .cursor, .muse, .devin, .mistralVibe:
+        case .codex, .chatgptChat, .claude, .gemini, .antigravity, .grok, .copilot, .cursor, .muse, .museAgent, .devin, .mistralVibe:
             return 1.25
         case .alibaba, .alibabaTokenPlan, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return 1.36
@@ -941,6 +942,7 @@ extension ToolType {
         case .kimi:        return "moon.stars"
         case .cursor:      return "cursorarrow.rays"
         case .muse:        return "infinity"
+        case .museAgent:   return "m.circle"
         case .devin:       return "hexagon"
         case .mistralVibe: return "square.grid.3x3"
         case .mimo:        return "m.square.fill"

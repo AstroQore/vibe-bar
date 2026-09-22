@@ -7,7 +7,7 @@ import Foundation
 ///   (OpenAI, Anthropic, Google AI, SpaceXAI, Meta AI, Cognition, Mistral AI).
 /// - `product` (L2) — the SubProvider users consume inside that owner
 ///   (ChatGPT Agentic, Claude, Gemini Web, AntiGravity, Grok, Cursor, Muse Code,
-///   Devin, Mistral Vibe).
+///   Muse, Devin, Mistral Vibe).
 /// - `tool` (L3) — the concrete local or web surface Vibe Bar tracks
 ///   (Codex, Claude Code, Gemini Web, AntiGravity, Grok, Cursor).
 ///
@@ -35,9 +35,9 @@ public struct ProviderHierarchy: Sendable, Equatable, Hashable {
 public enum ProviderHierarchyCatalog {
     // MARK: - Dedicated and linked tool hierarchy
     //
-    //   L1 vendor      : OpenAI         | Anthropic   | Google AI | Google AI   | SpaceXAI | SpaceXAI | Meta AI   | Cognition | Mistral AI
-    //   L2 SubProvider : ChatGPT Agentic| Claude      | Gemini Web| AntiGravity | Grok     | Cursor   | Muse Code | Devin     | Mistral Vibe
-    //   L3 tool        : Codex          | Claude Code | Gemini Web| AntiGravity | Grok     | Cursor   | Muse Code | Devin     | Mistral Vibe
+    //   L1 vendor      : OpenAI         | Anthropic   | Google AI | Google AI   | SpaceXAI | SpaceXAI | Meta AI   | Meta AI | Cognition | Mistral AI
+    //   L2 SubProvider : ChatGPT Agentic| Claude      | Gemini Web| AntiGravity | Grok     | Cursor   | Muse Code | Muse    | Devin     | Mistral Vibe
+    //   L3 tool        : Codex          | Claude Code | Gemini Web| AntiGravity | Grok     | Cursor   | Muse Code | Muse    | Devin     | Mistral Vibe
 
     public static let chatgptChat = ProviderHierarchy(vendor: "OpenAI", product: "ChatGPT Chat", tool: "ChatGPT Chat")
     public static let codex       = ProviderHierarchy(vendor: "OpenAI",    product: "ChatGPT Agentic", tool: "Codex")
@@ -47,6 +47,7 @@ public enum ProviderHierarchyCatalog {
     public static let grok        = ProviderHierarchy(vendor: "SpaceXAI",  product: "Grok",    tool: "Grok")
     public static let cursor      = ProviderHierarchy(vendor: "SpaceXAI",  product: "Cursor",  tool: "Cursor")
     public static let muse        = ProviderHierarchy(vendor: "Meta AI",   product: "Muse Code", tool: "Muse Code")
+    public static let museAgent   = ProviderHierarchy(vendor: "Meta AI",   product: "Muse",      tool: "Muse")
     public static let devin       = ProviderHierarchy(vendor: "Cognition", product: "Devin", tool: "Devin")
     public static let mistralVibe = ProviderHierarchy(vendor: "Mistral AI", product: "Mistral Vibe", tool: "Mistral Vibe")
 

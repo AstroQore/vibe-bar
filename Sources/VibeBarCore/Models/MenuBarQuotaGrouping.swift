@@ -141,6 +141,7 @@ public extension MenuBarFieldCatalog {
         case .gemini: return "gemini.all-models"
         case .grok: return "grok.all-models"
         case .muse: return "muse.all-models"
+        case .museAgent: return "museAgent.all-models"
         case .devin: return "devin.all-models"
         case .mistralVibe: return "mistralVibe.all-models"
         default: return nil

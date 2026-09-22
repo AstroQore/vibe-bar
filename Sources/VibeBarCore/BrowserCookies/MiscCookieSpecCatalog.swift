@@ -33,6 +33,7 @@ public enum MiscCookieSpecCatalog {
         case .volcengine:        return VolcengineQuotaAdapter.cookieSpec
         case .mistralVibe:       return MistralVibeQuotaAdapter.cookieSpec
         case .devin:             return DevinLiveQuota.cookieSpec
+        case .museAgent:         return MuseAgentQuotaAdapter.cookieSpec
 
         // Not cookie-sourced. API key / device login / AK-SK / local
         // process probe providers, plus the primary and partial-primary

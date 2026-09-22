@@ -19,24 +19,25 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
     }
 
     func testPartialPrimaryProvidersIncludeCursor() {
-        XCTAssertEqual(ToolType.partialPrimaryProviders, [.chatgptChat, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe])
+        XCTAssertEqual(ToolType.partialPrimaryProviders, [.chatgptChat, .gemini, .antigravity, .grok, .cursor, .muse, .museAgent, .devin, .mistralVibe])
     }
 
     func testDedicatedCardProvidersIncludePrimaryAndPartialPrimary() {
         XCTAssertEqual(
             ToolType.dedicatedCardProviders,
-            [.chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe]
+            [.chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .museAgent, .devin, .mistralVibe]
         )
     }
 
-    /// Meta AI is a company of one: Muse Code represents itself, reads token
-    /// usage from local session logs, and polls Meta's Model API status.
+    /// Muse Code represents Meta AI, reads token usage from local session
+    /// logs, and polls Meta's Model API status. Muse, the personal agent, is
+    /// the company's second member (see `MuseAgentQuotaTests`).
     func testMuseCodeIsMetaAIsPartialPrimary() {
         XCTAssertTrue(ToolType.muse.isPartialPrimary)
         XCTAssertFalse(ToolType.muse.isPrimary)
         XCTAssertFalse(ToolType.muse.isMiscPageProvider)
         XCTAssertEqual(ToolType.muse.coreProviderRepresentative, .muse)
-        XCTAssertEqual(ToolType.muse.coreProviderMembers, [.muse])
+        XCTAssertEqual(ToolType.muse.coreProviderMembers, [.muse, .museAgent])
         XCTAssertEqual(ToolType.muse.vendorName, "Meta AI")
         XCTAssertEqual(ToolType.muse.productName, "Muse Code")
         XCTAssertEqual(ToolType.muse.quotaSubProviderName(), "Muse Code")
@@ -45,7 +46,7 @@ final class PartialPrimaryToolTypeTests: XCTestCase {
         XCTAssertEqual(ToolType.muse.statusPageURL.absoluteString, "https://dev.meta.ai/status")
     }
 
-    /// Cognition and Mistral AI are companies of one, like Meta AI.
+    /// Cognition and Mistral AI are companies of one.
     func testCognitionAndMistralAIAreCompaniesOfOne() {
         for (tool, company, product) in [
             (ToolType.devin, "Cognition", "Devin"),

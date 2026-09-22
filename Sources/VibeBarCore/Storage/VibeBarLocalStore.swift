@@ -128,6 +128,20 @@ public enum VibeBarLocalStore {
         baseDirectory(homeDirectory: homeDirectory).appendingPathComponent("eink_state.json")
     }
 
+    /// The Muse web app's current `fetchSubscriptionAction` server-action id,
+    /// with the deployment it was found in and when. Not a secret — the id is
+    /// printed in muse.ai's public JavaScript — but it changes with every
+    /// deployment, and finding it again costs a scan of the app's chunks, so
+    /// it is remembered across launches (`MuseAgentActionResolver`).
+    public static var museAgentActionURL: URL {
+        museAgentActionURL(homeDirectory: RealHomeDirectory.path)
+    }
+
+    /// Explicit-home variant, for tests.
+    public static func museAgentActionURL(homeDirectory: String) -> URL {
+        baseDirectory(homeDirectory: homeDirectory).appendingPathComponent("muse_agent_action.json")
+    }
+
     /// Catalog-external quota buckets the adapters have returned on this Mac
     /// (`QuotaFieldRegistry`). Its own file for the same reason as the
     /// geometry: discovery happens on quota refreshes, and rewriting the

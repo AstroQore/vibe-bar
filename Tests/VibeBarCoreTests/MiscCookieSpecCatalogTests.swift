@@ -35,7 +35,7 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
         )
     }
 
-    func testCatalogCoversExactlyTheFourteenCookieProviders() {
+    func testCatalogCoversExactlyTheFifteenCookieProviders() {
         XCTAssertEqual(
             MiscCookieSpecCatalog.allCookieSourcedTools,
             [
@@ -43,6 +43,7 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
                 .alibabaTokenPlan,
                 .kimi,
                 .cursor,
+                .museAgent,
                 .devin,
                 .mistralVibe,
                 .mimo,
@@ -56,7 +57,7 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
             ],
             "allCookieSourcedTools should follow ToolType declaration order."
         )
-        XCTAssertEqual(MiscCookieSpecCatalog.allSpecs.count, 14)
+        XCTAssertEqual(MiscCookieSpecCatalog.allSpecs.count, 15)
     }
 
     /// Guards the copy-paste failure mode the catalog invites: a switch

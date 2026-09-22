@@ -1044,6 +1044,7 @@ SubProvider → L3 quota / model group. Source of truth:
 | SpaceXAI   | Cursor                | Cursor Models, Other Models               |
 | SpaceXAI   | Grok Bot              | Weekly (cloud-only SubProvider)           |
 | Meta AI    | Muse Code             | 5 Hours, Weekly                           |
+| Meta AI    | Muse                  | Weekly                                    |
 | Cognition  | Devin                 | Daily, Weekly                             |
 | Mistral AI | Mistral Vibe          | Monthly                                   |
 
@@ -1074,6 +1075,7 @@ display names). The mapping from a harness onto the quota axis —
 | Cursor        | SpaceXAI   | `~/.cursor/chats/**/store.db` for sessions; dashboard events for cost |
 | Grok Bot      | SpaceXAI   | `~/Library/Application Support/Grok Bot/sand-client-persistence` — sessions only; quota rides in on Cursor's `grok_bot_weekly` bucket |
 | Muse Code     | Meta AI    | `~/.local/share/muse/sessions/YYYY/MM/DD/<id>/session.jsonl`, plus `<id>/subagent/*` for reminder children |
+| Muse          | Meta AI    | `~/Library/Caches/ConversationCache/hatch-*.json` (Muse.app) — sessions only; the UUID-named files beside them are Meta AI.app's |
 | Devin         | Cognition  | `~/.local/share/devin/cli/sessions.db` — one database for every session of the `devin` CLI and the Devin app |
 | Mistral Vibe  | Mistral AI | `~/.vibe/logs/session/session_<utc>_<id8>/{meta.json,messages.jsonl}`, sub-agents under `agents/` |
 
@@ -1111,6 +1113,7 @@ Sessions page; "Delete" is § 5's read-only rule.
 | Cursor        | ⚠️ when a turn recorded one        | ☁️ dashboard events only  | ✅ `CursorSessionAdapter`    | ❌ store stays open |
 | Grok Bot      | ❌ never recorded locally          | ❌ cloud-only             | ✅ `GrokBotSessionAdapter`, read-only | ❌ the app's own cloud cache |
 | Muse Code     | ✅ `model_completed.model`         | ✅ local logs, API rates  | ✅ `MuseSessionAdapter`, read-only | ❌ the CLI indexes and locks it |
+| Muse          | ❌ never recorded locally          | ❌ no tokens in the cache | ✅ `MuseAgentSessionAdapter`, read-only | ❌ the app's own cache |
 | Devin         | ✅ `metadata.generation_model`     | ✅ per response, by model | ✅ `DevinSessionAdapter`, read-only | ❌ rows in another app's live database |
 | Mistral Vibe  | ⚠️ the session's last model only   | ✅ per session, API rates | ✅ `MistralVibeSessionAdapter`, read-only | ❌ |
 
@@ -1141,8 +1144,8 @@ mapping, including why an agent-to-agent turn stays `.user` / `.assistant`
 rather than `.other`, is documented on `GrokBotSessionAdapter.message`
 (agent-session-kit — see § 2.1).
 
-Muse Code is Meta AI's only SubProvider and represents its own company.
-Quota comes from `POST https://api.meta.ai/muse-code/key` with the OAuth
+Muse Code represents Meta AI; Muse, the personal agent, is the company's
+second SubProvider (below). Muse Code's quota comes from `POST https://api.meta.ai/muse-code/key` with the OAuth
 token `muse login` keeps in the login keychain (service
 `ai.meta.dev.credentials`, account `meta`; `~/.config/muse/auth.json` holds
 only the identity and says where the secret lives). The call is idempotent —
@@ -1169,6 +1172,40 @@ Muse Code reads `~/.agents/skills` itself and is switched through
 addresses on some networks; the adapter uses `URLSession`'s default
 configuration, which follows the macOS system proxy and hands it the host
 name, and there is no per-provider proxy setting.
+
+Muse (`ToolType.museAgent`, stored as `museAgent`) is Meta AI's personal agent
+— muse.ai and the Muse Mac app, one account — and the company's second
+SubProvider, beside Muse Code the way ChatGPT Chat sits beside ChatGPT Agentic.
+Its one Weekly bucket comes from the web app's Next.js server action
+`fetchSubscriptionAction`: `POST https://muse.ai/` with `Next-Action: <id>`,
+`Accept: text/x-component` and the literal body `[]`, authorised by the muse.ai
+cookie jar (`hatch_sess` is the session and the one the spec requires), imported
+from a signed-in browser or pasted through the shared cookie slots and sent only
+to `muse.ai`. The answer is an RSC stream; `MuseAgentSubscriptionParser` takes
+the first row whose JSON carries `subscription` (row numbers are not assumed).
+`usage: null` or a state other than `METERED` reads as 0% with whatever reset
+the server named; `percentUsed` is 0–100 and `balance`/`total` is the web app's
+own fallback. The plan is the tier's name; a top-up (`topupTotal > 0`) rides on
+the plan line in the provider's own words ("Additional tokens: …") because Vibe
+Bar has no token-balance widget and the USD credits row is the wrong unit.
+`403 {"error":"Forbidden"}` and the redirect to `auth.muse.ai` both mean "sign
+in again". The action id is a per-deployment hash, so it is never compiled in:
+`MuseAgentActionDiscovery` fetches the signed-in page, walks the
+`static/chunks/*.js` it names and the chunks those name (two levels, ≤ 8
+requests at once, file/byte/time caps, stops at the first match; the chunks are
+public and fetched without cookies) for `createServerReference)("<id>", …,
+"fetchSubscriptionAction")`, and `MuseAgentActionResolver` keeps
+`{deploymentID, actionID, discoveredAt}` in `~/.vibebar/muse_agent_action.json`.
+A refresh uses the cached id; only a missing cache or a 404 carrying
+`x-nextjs-action-not-found` searches again, once, and a failed search is not
+repeated for 30 minutes (a signed-out answer is not throttled). Nothing looks in
+the browsers for a Muse session until the user saves one in Settings → Meta AI,
+so the SubProvider stays off by default even where Meta AI is shown. Muse keeps
+no model or token counts on this Mac: `supportsTokenCost` is false and it never
+appears on a cost card. It has no public status page either — Meta's Model API
+feed covers the developer API, not Muse — so `supportsStatusPage` is false.
+Sessions are the kit's `MuseAgentSessionAdapter` (read-only), the `Muse`
+harness under Meta AI.
 
 Devin is Cognition's only SubProvider, for the `devin` CLI and the Devin
 desktop app together. Quota has two sources. **Live**, once a web session is
