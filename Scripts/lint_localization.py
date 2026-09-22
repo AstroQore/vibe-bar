@@ -169,7 +169,6 @@ MIGRATED = [
     "Sources/VibeBarCore/Models/UsageHeatmap+Activity.swift",
     "Sources/VibeBarApp/Views/MiniWindowAltLayouts.swift",
     "Sources/VibeBarApp/Views/MiscProvidersPage.swift",
-    "Sources/VibeBarApp/Views/CodexBarProviderBridgeCard.swift",
     "Sources/VibeBarApp/Views/RemoteMachinesPage.swift",
     "Sources/VibeBarApp/Views/MenuBarComposerEditor.swift",
     "Sources/VibeBarApp/Views/MenuBarStripStage.swift",

@@ -38,7 +38,7 @@ public actor ServiceStatusClient {
         case .devin:
             return try await fetchClassicStatuspage(tool: .devin, dayCount: dayCount, now: now)
         case .mistralVibe:
-            return try await fetchChecklyStatus(tool: .mistralVibe, dayCount: dayCount, now: now)
+            return try await fetchRootlyStatus(tool: .mistralVibe, dayCount: dayCount, now: now)
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose known machine-readable status APIs.
             // `tool.supportsStatusPage` is `false` for all of them, and
@@ -74,6 +74,13 @@ public actor ServiceStatusClient {
         ("api-eu-west-1", "API (eu-west-1.api.x.ai)", "api-eu-west-1"),
         ("api-console", "API Console", "api-console")
     ]
+
+    /// The lazy showcase endpoint's own batch limit, from the loader script.
+    private static let statuspageShowcaseBatchLimit = 60
+    /// Wall clock for the whole history read. `timeoutInterval` only measures
+    /// silence, so a slow trickle would otherwise hold the current status and
+    /// the incident feed — both already fetched — behind an optional extra.
+    private static let statuspageShowcaseDeadline: Duration = .seconds(12)
 
     private func fetchXAIStatus(dayCount: Int, now: Date) async throws -> ServiceStatusSnapshot {
         let overviewHTML = try await fetchHTML(url: ToolType.grok.statusPageURL)
@@ -379,6 +386,18 @@ public actor ServiceStatusClient {
         }
     }
 
+    /// One fragment's text, with tags and the entities these pages use removed.
+    nonisolated static func strippingTags(_ fragment: String) -> String {
+        fragment
+            .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private nonisolated static func visibleTextLines(fromHTML html: String) -> [String] {
         var text = html
             .replacingOccurrences(of: "(?is)<script.*?</script>", with: "\n", options: .regularExpression)
@@ -514,32 +533,46 @@ public actor ServiceStatusClient {
         return .minor
     }
 
-    // MARK: - Checkly status pages (Mistral AI)
+    // MARK: - Rootly status pages (Mistral AI)
 
-    /// Mistral's status page is a Checkly page. Its `status.mistral.ai` front
-    /// answers scripted requests with a bot challenge, but the same page is
-    /// served without one from its Checkly host, whose public feeds are:
-    /// `summary.json` (page state and active incidents), `services.json`
-    /// (every service's current state) and the page's 90-day `uptime` history.
-    static let mistralChecklyHost = URL(string: "https://mistral-ai.checkly-status-page.com/")!
-
-    private func fetchChecklyStatus(tool: ToolType, dayCount: Int, now: Date) async throws -> ServiceStatusSnapshot {
-        let host = Self.mistralChecklyHost
-        let summary = try await fetchData(url: host.appendingPathComponent("api/v1/summary.json"))
-        let services = try await fetchData(url: host.appendingPathComponent("api/v1/services.json"))
-        // The history is best-effort, like the Statuspage uptime scrape: the
-        // current state still stands without it.
-        let uptime = try? await fetchData(url: host.appendingPathComponent("api/status-page/mistral-ai/uptime"))
+    /// Mistral AI moved from Checkly to Rootly in 2026-09. Rootly publishes
+    /// the page state as JSON — the same `{indicator, description}` shape
+    /// Statuspage uses — but leaves the services, their 90-day bars and their
+    /// uptime percentages in the page's own HTML, so both are read. The HTML
+    /// is best-effort, as every history scrape here is.
+    private func fetchRootlyStatus(tool: ToolType, dayCount: Int, now: Date) async throws -> ServiceStatusSnapshot {
+        let statusData = try? await fetchData(url: Self.rootlyStatusURL(for: tool))
+        let html = try? await fetchHTML(url: tool.statusPageURL)
         try Task.checkCancellation()
-        return try Self.parseChecklyStatus(
+        let status = statusData.flatMap {
+            try? Self.rootlyDecoder.decode(RootlyStatusPageParser.StatusDTO.self, from: $0)
+        }
+        guard html != nil || status != nil else { throw ServiceStatusError.badResponse }
+        return try RootlyStatusPageParser.snapshot(
             tool: tool,
-            summary: summary,
-            services: services,
-            uptime: uptime,
+            html: html ?? "",
+            status: status,
             dayCount: dayCount,
             now: now
         )
     }
+
+    static func rootlyStatusURL(for tool: ToolType) -> URL {
+        URL(string: tool.statusPageURL.absoluteString + "api/v1/status.json")!
+    }
+
+    private static let rootlyDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let date = ServiceStatusClient.flexibleDate(from: raw) { return date }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unrecognized date")
+        }
+        return decoder
+    }()
+
+
 
     private func fetchData(url: URL) async throws -> Data {
         var request = URLRequest(url: url)
@@ -551,181 +584,6 @@ public actor ServiceStatusClient {
             throw ServiceStatusError.badResponse
         }
         return data
-    }
-
-    private struct ChecklySummary: Decodable {
-        struct Incident: Decodable {
-            let id: String?
-            let name: String?
-            let startedAt: String?
-            let status: String?
-            let severity: String?
-            let url: String?
-        }
-        let activeIncidents: [Incident]?
-        let activeMaintenances: [Incident]?
-    }
-
-    private struct ChecklyService: Decodable {
-        let id: String?
-        let name: String?
-        let status: String?
-        let group: String?
-    }
-
-    private struct ChecklyUptime: Decodable {
-        struct Group: Decodable {
-            let services: [Service]?
-        }
-        struct Service: Decodable {
-            let id: String?
-            let uptime: Double?
-            let days: [Day]?
-        }
-        struct Day: Decodable {
-            let date: String?
-            let events: [Event]?
-        }
-        struct Event: Decodable {
-            let id: String?
-            let name: String?
-            let duration: Double?
-            let severity: String?
-            let lastUpdateStatus: String?
-            let created_at: String?
-        }
-        let uptime: [Group]?
-    }
-
-    nonisolated static func parseChecklyStatus(
-        tool: ToolType,
-        summary summaryData: Data,
-        services servicesData: Data,
-        uptime uptimeData: Data?,
-        dayCount: Int,
-        now: Date
-    ) throws -> ServiceStatusSnapshot {
-        let decoder = JSONDecoder()
-        guard let summary = try? decoder.decode(ChecklySummary.self, from: summaryData),
-              let services = try? decoder.decode([ChecklyService].self, from: servicesData)
-        else { throw ServiceStatusError.badResponse }
-        let history = uptimeData.flatMap { try? decoder.decode(ChecklyUptime.self, from: $0) }
-        let historyByService = Dictionary(
-            (history?.uptime ?? []).flatMap { $0.services ?? [] }.compactMap { service in
-                service.id.map { ($0, service) }
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        var groups: [ServiceComponentGroup] = []
-        var components: [ServiceComponentSummary] = []
-        for service in services {
-            guard let id = nonEmpty(service.id), let name = nonEmpty(service.name) else { continue }
-            let groupName = nonEmpty(service.group)
-            if let groupName, !groups.contains(where: { $0.id == groupName }) {
-                groups.append(ServiceComponentGroup(id: groupName, name: groupName))
-            }
-            let past = historyByService[id]
-            components.append(ServiceComponentSummary(
-                id: id,
-                name: name,
-                status: checklyComponentStatus(service.status),
-                groupId: groupName,
-                uptimePercent: past?.uptime,
-                recentDays: past.map { checklyDays($0.days ?? [], dayCount: dayCount, now: now) } ?? []
-            ))
-        }
-        let worst = components.max { $0.status.severity < $1.status.severity }?.status ?? .operational
-
-        var incidents: [String: IncidentSummary] = [:]
-        for incident in (summary.activeIncidents ?? []) + (summary.activeMaintenances ?? []) {
-            guard let id = nonEmpty(incident.id), let name = nonEmpty(incident.name),
-                  let started = incident.startedAt.flatMap(flexibleDate(from:))
-            else { continue }
-            let isMaintenance = summary.activeMaintenances?.contains { $0.id == incident.id } == true
-            incidents[id] = IncidentSummary(
-                id: id,
-                name: name,
-                impact: isMaintenance ? .maintenance : checklyImpact(incident.severity),
-                createdAt: started,
-                resolvedAt: nil,
-                url: incident.url.flatMap(URL.init(string:))
-            )
-        }
-        // Resolved incidents only exist in the uptime history, one entry per
-        // affected day; the first occurrence of an id is enough.
-        for service in historyByService.values {
-            for day in service.days ?? [] {
-                for event in day.events ?? [] {
-                    guard let id = nonEmpty(event.id), incidents[id] == nil,
-                          event.lastUpdateStatus?.uppercased() == "RESOLVED",
-                          let name = nonEmpty(event.name),
-                          let created = event.created_at.flatMap(flexibleDate(from:))
-                    else { continue }
-                    incidents[id] = IncidentSummary(
-                        id: id,
-                        name: name,
-                        impact: checklyImpact(event.severity),
-                        createdAt: created,
-                        resolvedAt: created.addingTimeInterval(max(0, event.duration ?? 0)),
-                        url: URL(string: "incident/\(id)", relativeTo: mistralChecklyHost)?.absoluteURL
-                    )
-                }
-            }
-        }
-        let recent = incidents.values.sorted { $0.createdAt > $1.createdAt }.prefix(4)
-
-        return ServiceStatusSnapshot(
-            tool: tool,
-            indicator: xAIIndicator(for: worst),
-            // Checkly's page state is a code (`HAS_ISSUES`), not words.
-            description: "",
-            updatedAt: now,
-            groups: groups,
-            components: components,
-            recentIncidents: Array(recent)
-        )
-    }
-
-    /// Checkly reports a service's state with the severity of what is
-    /// affecting it.
-    private nonisolated static func checklyComponentStatus(_ raw: String?) -> ComponentStatusLevel {
-        switch raw?.uppercased() ?? "" {
-        case "", "OPERATIONAL": return .operational
-        case "MAINTENANCE", "UNDER_MAINTENANCE": return .underMaintenance
-        case "MAJOR": return .partialOutage
-        case "CRITICAL": return .majorOutage
-        default: return .degradedPerformance
-        }
-    }
-
-    private nonisolated static func checklyImpact(_ raw: String?) -> IncidentImpact {
-        switch raw?.uppercased() ?? "" {
-        case "CRITICAL": return .critical
-        case "MAJOR": return .major
-        case "MAINTENANCE": return .maintenance
-        default: return .minor
-        }
-    }
-
-    private nonisolated static func checklyDays(_ days: [ChecklyUptime.Day], dayCount: Int, now: Date) -> [DayUptime] {
-        var worst: [Date: IncidentImpact] = [:]
-        for day in days {
-            guard let date = day.date.flatMap(flexibleDate(from:)) else { continue }
-            let start = calendar.startOfDay(for: date)
-            for event in day.events ?? [] {
-                let impact = checklyImpact(event.severity)
-                if impact.severity > (worst[start]?.severity ?? -1) {
-                    worst[start] = impact
-                }
-            }
-        }
-        let today = calendar.startOfDay(for: now)
-        return stride(from: dayCount - 1, through: 0, by: -1).compactMap { offset in
-            calendar.date(byAdding: .day, value: -offset, to: today).map {
-                DayUptime(date: $0, worstImpact: worst[$0])
-            }
-        }
     }
 
     // MARK: - Meta Model API status (api.meta.ai/v1/status)
@@ -881,14 +739,20 @@ public actor ServiceStatusClient {
     // MARK: - Classic Statuspage (summary/incidents + embedded uptimeData)
 
     /// Classic Statuspage-hosted providers (status.claude.com,
-    /// status.cursor.com) all publish the same three shapes: `summary.json`
-    /// for current component health and page indicator, `incidents.json` for
-    /// the incident feed, and a `window.uptimeData` blob inlined in the
-    /// status page HTML. Only that HTML blob carries the 90-day per-component
-    /// outage history — the v2 JSON APIs never expose it — so a provider that
-    /// skips the scrape renders empty gray strips with no uptime percentage.
-    /// Fetch all three and key the history off the same component ids the
-    /// summary uses.
+    /// status.cursor.com, www.devinstatus.com) all publish the same shapes:
+    /// `summary.json` for current component health and page indicator,
+    /// `incidents.json` for the incident feed, and the 90-day per-component
+    /// outage history — which the v2 JSON APIs never expose — in the status
+    /// page itself. A page that skips the history renders empty gray strips
+    /// with no uptime percentage.
+    ///
+    /// The history used to be one `window.uptimeData` blob inlined in the
+    /// HTML. Statuspage's lazy showcase (its own comment calls it STATUS-801)
+    /// now ships the page without that blob: each component renders a
+    /// `data-uptime-lazy="<code>"` placeholder, and the bars come from
+    /// `GET /uptime_showcase?components=<codes>`, which answers with the same
+    /// `{code: {component, days}}` timelines. Read the inline blob when a page
+    /// still has one, then ask the endpoint for whatever it did not cover.
     private func fetchClassicStatuspage(
         tool: ToolType,
         dayCount: Int,
@@ -903,7 +767,15 @@ public actor ServiceStatusClient {
         // `try?` must not swallow a cancelled refresh into a history-less
         // "success"; only ordinary scrape failures are best-effort.
         try Task.checkCancellation()
-        let uptimeMap = html.map { Self.parseStatuspageUptimeData(html: $0) } ?? [:]
+        var uptimeMap = html.map { Self.parseStatuspageUptimeData(html: $0) } ?? [:]
+        if let html {
+            let lazyCodes = Self.parseStatuspageLazyCodes(html: html).filter { uptimeMap[$0] == nil }
+            if !lazyCodes.isEmpty {
+                let fetched = await fetchStatuspageShowcase(tool: tool, codes: lazyCodes)
+                try Task.checkCancellation()
+                uptimeMap.merge(fetched) { existing, _ in existing }
+            }
+        }
 
         // Grouped pages (a `group: true` row owns the `group_id` children);
         // claude.com and cursor.com are both flat today, so this yields [].
@@ -1173,6 +1045,71 @@ public actor ServiceStatusClient {
     /// status.cursor.com ships the byte-identical shape, keyed by the same
     /// component ids its `summary.json` uses, so both providers share this
     /// parser.
+    /// The component codes a lazily-rendered Statuspage leaves behind in
+    /// place of its bars, in page order and without duplicates. The attribute
+    /// also appears inside the loader's own script (`'[data-uptime-lazy="' +
+    /// code + '"]'`), so only Statuspage's own code shape is accepted.
+    nonisolated static func parseStatuspageLazyCodes(html: String) -> [String] {
+        let marker = "data-uptime-lazy=\""
+        var codes: [String] = []
+        var seen: Set<String> = []
+        var search = html.startIndex..<html.endIndex
+        while let range = html.range(of: marker, range: search) {
+            search = range.upperBound..<html.endIndex
+            guard let end = html.range(of: "\"", range: search) else { break }
+            let code = String(html[range.upperBound..<end.lowerBound])
+            search = end.upperBound..<html.endIndex
+            guard !code.isEmpty, code.count <= 64,
+                  code.allSatisfy({ $0.isLowercase && $0.isLetter || $0.isNumber }),
+                  seen.insert(code).inserted
+            else { continue }
+            codes.append(code)
+        }
+        return codes
+    }
+
+    /// Ask the lazy showcase for the timelines those placeholders stand for.
+    ///
+    /// Best-effort, like the scrape it replaces: a batch that fails leaves
+    /// those components without bars rather than failing the whole snapshot.
+    /// Batches stay at the endpoint's own limit of 60 codes.
+    private func fetchStatuspageShowcase(
+        tool: ToolType,
+        codes: [String]
+    ) async -> [String: StatuspageUptimeEntry] {
+        await withTaskGroup(of: [String: StatuspageUptimeEntry].self) { group in
+            group.addTask { await self.showcaseBatches(tool: tool, codes: codes) }
+            group.addTask {
+                try? await Task.sleep(for: Self.statuspageShowcaseDeadline)
+                return [:]
+            }
+            let first = await group.next() ?? [:]
+            group.cancelAll()
+            return first
+        }
+    }
+
+    private func showcaseBatches(
+        tool: ToolType,
+        codes: [String]
+    ) async -> [String: StatuspageUptimeEntry] {
+        var merged: [String: StatuspageUptimeEntry] = [:]
+        for batch in stride(from: 0, to: codes.count, by: Self.statuspageShowcaseBatchLimit) {
+            if Task.isCancelled { return merged }
+            let slice = codes[batch..<min(batch + Self.statuspageShowcaseBatchLimit, codes.count)]
+            // Every code passed `parseStatuspageLazyCodes`, so the joined
+            // value is already URL-safe.
+            let joined = slice.joined(separator: ",")
+            guard let url = URL(string: "uptime_showcase?components=\(joined)", relativeTo: tool.statusPageURL)?
+                      .absoluteURL,
+                  let data = try? await fetchData(url: url),
+                  let decoded = try? JSONDecoder().decode(StatuspageShowcaseDTO.self, from: data)
+            else { continue }
+            merged.merge(decoded.timelines ?? [:]) { existing, _ in existing }
+        }
+        return merged
+    }
+
     nonisolated static func parseStatuspageUptimeData(html: String) -> [String: StatuspageUptimeEntry] {
         for anchor in ["window.uptimeData = ", "var uptimeData = "] {
             var search = html.startIndex..<html.endIndex
@@ -1441,6 +1378,13 @@ private struct IncidentsDTO: Decodable {
 }
 
 // MARK: - Classic Statuspage scraped uptime DTOs
+
+/// `GET <status page>/uptime_showcase?components=a,b,c`. The `components`
+/// (rendered markup) and `values` (30/60/90-day percentages) keys are for the
+/// page's own DOM; the timelines are the same shape the inline blob had.
+struct StatuspageShowcaseDTO: Decodable {
+    let timelines: [String: StatuspageUptimeEntry]?
+}
 
 struct StatuspageUptimeEntry: Decodable {
     let component: StatuspageComponentMeta

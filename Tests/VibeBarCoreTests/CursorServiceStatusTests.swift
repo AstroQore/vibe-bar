@@ -9,8 +9,13 @@ final class CursorServiceStatusTests: XCTestCase {
     /// Seconds of partial outage the fixture reports on one day.
     private let outageSeconds = 5_100
 
+    /// The showcase query strings the stub saw, in request order. The stub
+    /// answers on URLSession's own queue, and each test runs alone.
+    nonisolated(unsafe) private static var requestedComponents: [String] = []
+
     override func tearDown() {
         CursorStatusURLProtocol.handler = nil
+        Self.requestedComponents = []
         super.tearDown()
     }
 
@@ -114,6 +119,12 @@ final class CursorServiceStatusTests: XCTestCase {
         let cursorGroup = spaceXAI.groups[1]
         let botGroup = spaceXAI.groups[2]
         XCTAssertEqual(botGroup.id, "subprovider:grok-bot")
+        // The card links each folded-in sub-provider to its own status page.
+        // Grok Bot is published on Cursor's page and has none of its own.
+        XCTAssertEqual(cursorGroup.subProviderTool, .cursor)
+        XCTAssertEqual(grokGroup.subProviderTool, .grok)
+        XCTAssertNil(botGroup.subProviderTool)
+        XCTAssertNil(ServiceComponentGroup(id: "agents", name: "Agents").subProviderTool)
         XCTAssertEqual(spaceXAI.components(in: grokGroup).map(\.name), ["Grok Web"])
         XCTAssertEqual(spaceXAI.components(in: cursorGroup).map(\.name), ["Cloud Agents", "IDE"])
         XCTAssertEqual(spaceXAI.components(in: botGroup).map(\.name), ["Grok Bot"])
@@ -138,6 +149,99 @@ final class CursorServiceStatusTests: XCTestCase {
             antigravity: snapshot
         )
         XCTAssertEqual(googleFallback, snapshot)
+    }
+
+    /// Statuspage's lazy showcase ships the page without the inline blob:
+    /// each component leaves a `data-uptime-lazy` placeholder and the bars
+    /// come from `/uptime_showcase`. Without that second request the card
+    /// went back to empty gray strips on every classic Statuspage provider.
+    func testLazyShowcasePageStillGetsItsBars() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CursorStatusURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let timelines = """
+        {"timelines":{\(showcaseEntries())},"values":[{"component":"cloud","ninety":99.9}]}
+        """
+        Self.requestedComponents = []
+        CursorStatusURLProtocol.handler = { request in
+            switch request.url?.path {
+            case "/":
+                return Data(self.lazyStatusPageHTML().utf8)
+            case "/uptime_showcase":
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                    .queryItems?.first { $0.name == "components" }?.value ?? ""
+                Self.requestedComponents.append(query)
+                return Data(timelines.utf8)
+            case "/api/v2/summary.json":
+                return Data("""
+                {
+                  "page": {"id":"cursor","name":"Cursor","updated_at":"2026-08-17T08:00:00Z"},
+                  "status": {"indicator":"none","description":"All Systems Operational"},
+                  "components": [
+                    {"id":"cloud","name":"Cloud Agents","status":"operational","group_id":null,"group":false},
+                    {"id":"ide","name":"IDE","status":"operational","group_id":null,"group":false}
+                  ]
+                }
+                """.utf8)
+            case "/api/v2/incidents.json":
+                return Data(#"{"incidents":[]}"#.utf8)
+            default:
+                throw URLError(.badURL)
+            }
+        }
+
+        let snapshot = try await ServiceStatusClient(session: session)
+            .fetch(tool: .cursor, dayCount: dayCount, now: now)
+
+        // One batched request, carrying the placeholders in page order and
+        // nothing the loader script itself spells out.
+        XCTAssertEqual(Self.requestedComponents, ["cloud,ide"])
+        XCTAssertEqual(snapshot.components.map(\.name), ["Cloud Agents", "IDE"])
+        for component in snapshot.components {
+            XCTAssertEqual(component.recentDays.count, dayCount, component.name)
+            XCTAssertNotNil(component.uptimePercent, component.name)
+        }
+        let cloud = try XCTUnwrap(snapshot.components.first { $0.name == "Cloud Agents" })
+        let expected = (1 - Double(outageSeconds) / (Double(dayCount) * 86_400)) * 100
+        XCTAssertEqual(try XCTUnwrap(cloud.uptimePercent), expected, accuracy: 0.0001)
+        XCTAssertEqual(cloud.recentDays.compactMap(\.worstImpact), [.major])
+    }
+
+    /// A showcase request that fails leaves the strips empty, exactly as a
+    /// blocked scrape does — current status and incidents still stand.
+    func testAFailingShowcaseLeavesUptimeUnknown() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CursorStatusURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        CursorStatusURLProtocol.handler = { request in
+            switch request.url?.path {
+            case "/":
+                return Data(self.lazyStatusPageHTML().utf8)
+            case "/uptime_showcase":
+                throw URLError(.timedOut)
+            case "/api/v2/summary.json":
+                return Data("""
+                {
+                  "page": {"id":"cursor","name":"Cursor","updated_at":"2026-08-17T08:00:00Z"},
+                  "status": {"indicator":"none","description":"All Systems Operational"},
+                  "components": [
+                    {"id":"cloud","name":"Cloud Agents","status":"operational","group_id":null,"group":false}
+                  ]
+                }
+                """.utf8)
+            case "/api/v2/incidents.json":
+                return Data(#"{"incidents":[]}"#.utf8)
+            default:
+                throw URLError(.badURL)
+            }
+        }
+
+        let snapshot = try await ServiceStatusClient(session: session)
+            .fetch(tool: .cursor, dayCount: dayCount, now: now)
+        XCTAssertEqual(snapshot.components.map(\.name), ["Cloud Agents"])
+        XCTAssertNil(snapshot.components.first?.uptimePercent)
+        XCTAssertTrue(try XCTUnwrap(snapshot.components.first).recentDays.isEmpty)
+        XCTAssertEqual(snapshot.description, "All Systems Operational")
     }
 
     /// A blocked or redesigned status page must still yield current status and
@@ -235,6 +339,34 @@ final class CursorServiceStatusTests: XCTestCase {
         <script>var uptimeData = window.uptimeData;</script>
         <script>window.uptimeData = {\(entries.joined(separator: ","))};</script>
         """
+    }
+
+    /// The lazy page: placeholders instead of bars, plus the loader script's
+    /// own mentions of the attribute, which are not component codes.
+    private func lazyStatusPageHTML() -> String {
+        """
+        <script>window.uptimeData = window.uptimeData || {};</script>
+        <div class="uptime-placeholder" data-uptime-lazy="cloud"></div>
+        <div class="uptime-placeholder" data-uptime-lazy="ide"></div>
+        <div class="uptime-placeholder" data-uptime-lazy="cloud"></div>
+        <script>
+          var placeholder = document.querySelector('[data-uptime-lazy="' + code + '"]');
+          // renders a small placeholder (`[data-uptime-lazy="<code>"]`)
+        </script>
+        """
+    }
+
+    private func showcaseEntries() -> String {
+        let specs: [(id: String, name: String, outageDayOffset: Int?)] = [
+            ("cloud", "Cloud Agents", 3),
+            ("ide", "IDE", nil)
+        ]
+        return specs.map { id, name, outageOffset in
+            """
+            "\(id)":{"component":{"code":"\(id)","name":"\(name)","startDate":"2026-01-01"},\
+            "days":\(uptimeDays(outageDayOffset: outageOffset))}
+            """
+        }.joined(separator: ",")
     }
 
     private func uptimeDays(outageDayOffset: Int?) -> String {

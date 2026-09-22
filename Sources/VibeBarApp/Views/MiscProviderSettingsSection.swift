@@ -1211,7 +1211,16 @@ struct CookieSourceControls: View {
     }
 
     private func triggerRefresh() {
-        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
+        // A dedicated provider's account carries its own id rather than the
+        // misc instance id, so fall back to the provider's account.
+        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID)
+            ?? environment.account(for: tool)
+        else { return }
+        // A dedicated provider draws its routes from the cached health check,
+        // so an import or a delete has to refresh that too.
+        if !PrimaryProviderRoute.routes(for: tool).isEmpty {
+            environment.recheckPrimaryRouteHealth(provider: tool)
+        }
         Task { _ = await quotaService.refresh(account) }
     }
 }

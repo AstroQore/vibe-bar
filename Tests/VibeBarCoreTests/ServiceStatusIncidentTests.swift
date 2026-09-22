@@ -195,6 +195,25 @@ final class ClaudeUptimeScrapeTests: XCTestCase {
         XCTAssertEqual(map["abc123"]?.component.name, "Claude Code")
     }
 
+    /// The lazy showcase's placeholders, in page order, deduplicated, and
+    /// without the loader script's own literal mentions of the attribute.
+    func testReadsLazyShowcasePlaceholderCodes() {
+        let html = """
+        <div data-uptime-lazy="rwppv331jlwc"></div>
+        <div data-uptime-lazy="0qbwn08sd68x"></div>
+        <div data-uptime-lazy="rwppv331jlwc"></div>
+        <script>
+          var node = document.querySelector('[data-uptime-lazy="' + code + '"]');
+          // placeholder (`[data-uptime-lazy="<code>"]`)
+        </script>
+        """
+        XCTAssertEqual(
+            ServiceStatusClient.parseStatuspageLazyCodes(html: html),
+            ["rwppv331jlwc", "0qbwn08sd68x"]
+        )
+        XCTAssertTrue(ServiceStatusClient.parseStatuspageLazyCodes(html: "<div></div>").isEmpty)
+    }
+
     func testReturnsEmptyWhenNoBlobDecodes() {
         let html = "<script>var uptimeData = window.uptimeData; var x = {\"a\": 1};</script>"
         XCTAssertTrue(ServiceStatusClient.parseStatuspageUptimeData(html: html).isEmpty)

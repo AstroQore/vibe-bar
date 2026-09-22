@@ -32,11 +32,12 @@ public enum MiscCookieSpecCatalog {
         case .tencentTokenPlan:  return TencentTokenPlanQuotaAdapter.cookieSpec
         case .volcengine:        return VolcengineQuotaAdapter.cookieSpec
         case .mistralVibe:       return MistralVibeQuotaAdapter.cookieSpec
+        case .devin:             return DevinLiveQuota.cookieSpec
 
         // Not cookie-sourced. API key / device login / AK-SK / local
         // process probe providers, plus the primary and partial-primary
         // families, which carry their own dedicated credential paths.
-        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .muse, .devin,
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .muse,
              .copilot, .zai, .minimax, .volcengineAgentPlan,
              .kilo, .kiro, .openRouter, .warp:
             return nil

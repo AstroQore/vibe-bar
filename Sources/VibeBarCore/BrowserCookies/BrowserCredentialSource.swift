@@ -38,21 +38,41 @@ public enum BrowserCredentialSource: Sendable, Hashable {
 /// Declarative mapping from one Chromium localStorage value to the synthetic
 /// cookie header already understood by a provider adapter.
 public struct ChromiumLocalStorageCredential: Sendable, Hashable {
+    /// How `key` names the localStorage entry.
+    public enum KeyMatch: Sendable, Hashable {
+        /// The entry's key is exactly `key`.
+        case exact
+        /// The entry's key starts with `key`; the rest is per-account (Devin
+        /// keys its internal organization id by the external organization's
+        /// slug). The first match in key order is taken.
+        case prefix
+    }
+
     public let origin: String
     public let key: String
+    public let keyMatch: KeyMatch
     public let syntheticCookieName: String
     public let valueFormat: BrowserCredentialValueFormat
 
     public init(
         origin: String,
         key: String,
+        keyMatch: KeyMatch = .exact,
         syntheticCookieName: String,
         valueFormat: BrowserCredentialValueFormat
     ) {
         self.origin = origin
         self.key = key
+        self.keyMatch = keyMatch
         self.syntheticCookieName = syntheticCookieName
         self.valueFormat = valueFormat
+    }
+
+    public func matches(key candidate: String) -> Bool {
+        switch keyMatch {
+        case .exact: candidate == key
+        case .prefix: !key.isEmpty && candidate.hasPrefix(key)
+        }
     }
 
     public func cookieHeader(from rawValue: String) -> String? {
@@ -80,11 +100,32 @@ public enum BrowserCredentialValueFormat: Sendable, Hashable {
     case opaque(minLength: Int, maxLength: Int)
     /// ASCII base64url JWT-like value with an exact segment count.
     case jwt(segments: Int, minLength: Int, maxLength: Int)
+    /// A JSON document holding the credential: the string at `field` of a
+    /// top-level object, or — with no field — the document itself when it is
+    /// a JSON string (a bare unquoted value is accepted as written). What is
+    /// found must then be an opaque value within the bounds.
+    case json(field: String?, minLength: Int, maxLength: Int)
 
     func normalizedValue(_ rawValue: String) -> String? {
+        if case let .json(field, minimum, maximum) = self {
+            let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let parsed = try? JSONSerialization.jsonObject(
+                with: Data(trimmed.utf8), options: [.fragmentsAllowed]
+            )
+            let found: String?
+            if let field {
+                found = (parsed as? [String: Any])?[field] as? String
+            } else {
+                found = (parsed as? String) ?? (parsed == nil ? trimmed : nil)
+            }
+            guard let found else { return nil }
+            return BrowserCredentialValueFormat
+                .opaque(minLength: minimum, maxLength: maximum)
+                .normalizedValue(found)
+        }
         let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let bounds: (minimum: Int, maximum: Int) = switch self {
-        case let .opaque(minimum, maximum), let .jwt(_, minimum, maximum):
+        case let .opaque(minimum, maximum), let .jwt(_, minimum, maximum), let .json(_, minimum, maximum):
             (minimum, maximum)
         }
         guard bounds.minimum >= 0,
@@ -95,7 +136,7 @@ public enum BrowserCredentialValueFormat: Sendable, Hashable {
         }
 
         switch self {
-        case .opaque:
+        case .opaque, .json:
             guard value.utf8.allSatisfy({ byte in
                 !byte.isASCIIControl && byte != 59
             }) else { return nil }

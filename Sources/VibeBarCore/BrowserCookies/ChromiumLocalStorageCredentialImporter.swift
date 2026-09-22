@@ -133,8 +133,13 @@ enum ChromiumLocalStorageCredentialImporter {
                         candidatesByOrigin[credential.origin] = loaded
                         candidates = loaded
                     }
-                    guard let entry = candidates.first(where: {
-                        $0.key == credential.key
+                    // Key order makes a prefix match deterministic when one
+                    // profile holds several (one per organization).
+                    let ordered = credential.keyMatch == .exact
+                        ? candidates
+                        : candidates.sorted { $0.key < $1.key }
+                    guard let entry = ordered.first(where: {
+                        credential.matches(key: $0.key)
                             && hasExactProvenance(
                                 candidate: $0,
                                 credential: credential,
@@ -252,7 +257,8 @@ enum ChromiumLocalStorageCredentialImporter {
         return textEntries.contains { entry in
             guard entry.value == candidate.value,
                   let parsed = parseLocalStorageKey(entry.key),
-                  parsed.key == credential.key,
+                  parsed.key == candidate.key,
+                  credential.matches(key: parsed.key),
                   let actualOrigin = exactOrigin(from: parsed.serializedOrigin)
             else { return false }
             return actualOrigin == expectedOrigin

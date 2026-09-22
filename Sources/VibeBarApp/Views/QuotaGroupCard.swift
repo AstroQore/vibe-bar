@@ -326,7 +326,11 @@ struct QuotaGroupCard: View {
 
     private var providerFreshnessWarning: QuotaFreshnessLabel.Description? {
         guard module.showsProviderHeader || module.linkedSectionTitle != nil,
-              let accountId = module.accountId
+              let accountId = module.accountId,
+              // A provider still waiting to be connected has nothing stale:
+              // the card's own hint says what to do, and the failed attempt
+              // behind it would read as a broken account instead.
+              !isAwaitingSetup
         else { return nil }
         return QuotaFreshnessLabel.describe(
             lastSuccessAt: quotaService.lastUpdatedByAccount[accountId],
@@ -335,6 +339,16 @@ struct QuotaGroupCard: View {
             staleAfter: TimeInterval(max(300, settingsStore.settings.refreshIntervalSeconds * 2)),
             now: now
         )
+    }
+
+    /// The account exists before the provider is connected — the
+    /// cookie-backed ones, always present so Settings can offer the import —
+    /// and no quota has ever come back for it.
+    private var isAwaitingSetup: Bool {
+        guard let account = environment.account(for: module.tool),
+              account.source == .notConfigured
+        else { return false }
+        return quotaService.cachedQuota(for: account.id)?.buckets.isEmpty ?? true
     }
 
     private var subProviderPlanBadge: String? {
