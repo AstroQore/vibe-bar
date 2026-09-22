@@ -434,6 +434,46 @@ public actor CostHistoryStore {
         if changed { save(storage) }
     }
 
+    /// Carry a ledger repricing into the stored daily totals.
+    ///
+    /// Max-merge means a re-scan at a lower price can never lower a day this
+    /// store already holds — the price correction would reach the Workbench
+    /// (which reads the repriced ledger) but not the cost cards. The ledger
+    /// knows exactly how much each (tool, day, model) moved, so that delta is
+    /// applied here: the day's total and the matching model's share shift by
+    /// it, floored at zero. Days this store does not hold are left alone
+    /// rather than invented from a delta. A day the ledger saw only part of
+    /// can end up under its true value; the next scan's max-merge restores
+    /// any day whose source logs are still on disk. Returns whether anything
+    /// changed.
+    @discardableResult
+    public func applyPricingRevision(_ changes: [PricingRevisionCostChange]) -> Bool {
+        guard !changes.isEmpty else { return false }
+        var byDay: [String: [PricingRevisionCostChange]] = [:]
+        for change in changes where change.deltaUSD.isFinite && change.deltaUSD != 0 {
+            byDay["\(change.tool.rawValue)\u{0}\(change.day)", default: []].append(change)
+        }
+        guard !byDay.isEmpty else { return false }
+        var storage = load()
+        var changed = false
+        for idx in storage.entries.indices {
+            let entry = storage.entries[idx]
+            guard let dayChanges = byDay["\(entry.tool)\u{0}\(entry.date)"] else { continue }
+            let total = dayChanges.reduce(0.0) { $0 + $1.deltaUSD }
+            storage.entries[idx].costUSD = max(0, entry.costUSD + total)
+            if var models = entry.models {
+                for change in dayChanges {
+                    guard let m = models.firstIndex(where: { $0.name == change.model }) else { continue }
+                    models[m].costUSD = max(0, models[m].costUSD + change.deltaUSD)
+                }
+                storage.entries[idx].models = models.sorted { $0.costUSD > $1.costUSD }
+            }
+            changed = true
+        }
+        if changed { save(storage) }
+        return changed
+    }
+
     public func prune(retentionDays: Int) {
         var storage = load()
         prune(&storage, retentionDays: retentionDays)

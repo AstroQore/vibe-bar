@@ -1172,11 +1172,32 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// idempotent against the same price table.
     @discardableResult
     public func prepareForPricingRevision(_ revision: String) async throws -> Bool {
+        try await repriceForPricingRevision(revision) != nil
+    }
+
+    /// `prepareForPricingRevision`, reporting what moved: one entry per
+    /// (tool, day, model) whose summed cost changed, in USD (negative when a
+    /// price fell). `nil` when the ledger was already on `revision`.
+    ///
+    /// `CostHistoryStore` max-merges its daily totals, so a fresh scan at a
+    /// lower price can never lower a day it already holds; these deltas are
+    /// how a price correction reaches those stored days.
+    public func repriceForPricingRevision(
+        _ revision: String
+    ) async throws -> [PricingRevisionCostChange]? {
         let stored = try scalarText(
             "SELECT value FROM ledger_meta WHERE key = ?",
             [.text(Self.pricingRevisionKey)]
         )
-        guard stored != revision else { return false }
+        guard stored != revision else { return nil }
+
+        var deltas: [CostChangeKey: Int64] = [:]
+        func record(_ row: RepricingRow, from old: Int64?, to new: Int64?) {
+            let change = (new ?? 0) - (old ?? 0)
+            guard change != 0 else { return }
+            let key = CostChangeKey(tool: row.tool, day: row.day, model: row.model)
+            deltas[key, default: 0] += change
+        }
 
         var lastID: Int64 = 0
         while true {
@@ -1190,7 +1211,9 @@ public actor UsageEventLedger: CostUsageEventSink {
                     // not estimates from our price table. Source provenance
                     // keeps repricing from overwriting them with catalog rates.
                     if row.sourceKey?.hasPrefix("cursor-event-v1") == true { continue }
-                    let costBinding: Binding = if let micros = costMicros(for: row) {
+                    let micros = costMicros(for: row)
+                    record(row, from: row.costMicros, to: micros)
+                    let costBinding: Binding = if let micros {
                         .integer(micros)
                     } else {
                         .null
@@ -1216,6 +1239,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                     continue
                 }
                 guard let micros = costMicros(for: row) else { continue }
+                record(row, from: nil, to: micros)
                 // `harness` is part of the rollup's primary key, so it has to
                 // be part of the predicate too: two harnesses can hold fully
                 // unpriced rows for the same day/tool/model, and matching on
@@ -1245,7 +1269,14 @@ public actor UsageEventLedger: CostUsageEventSink {
             // Costs moved even though no row was added or removed, so every
             // revision-keyed cache above this has to see a new number.
             contentRevisionValue &+= 1
-            return true
+            return deltas
+                .map { key, micros in
+                    PricingRevisionCostChange(
+                        tool: key.tool, day: key.day, model: key.model,
+                        deltaUSD: Double(micros) / 1_000_000
+                    )
+                }
+                .sorted { ($0.tool.rawValue, $0.day, $0.model) < ($1.tool.rawValue, $1.day, $1.model) }
         } catch {
             try? execute("ROLLBACK")
             throw error
@@ -1256,6 +1287,12 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// lock is held for milliseconds, large enough that a 245k-row ledger is
     /// under a hundred transactions.
     private static let repricingChunkSize = 5_000
+
+    private struct CostChangeKey: Hashable {
+        let tool: ToolType
+        let day: String
+        let model: String
+    }
 
     private struct RepricingRow {
         let id: Int64
@@ -1272,6 +1309,9 @@ public actor UsageEventLedger: CostUsageEventSink {
         let cacheCreation: Int64
         let serviceTier: String?
         let sourceKey: String?
+        /// Stored cost before repricing; `nil` when unpriced. Rollup rows
+        /// are only read when fully unpriced, so theirs is always `nil`.
+        let costMicros: Int64?
     }
 
     /// One bounded run of detail rows, keyset-paged by `id` so a chunk can
@@ -1280,7 +1320,7 @@ public actor UsageEventLedger: CostUsageEventSink {
         let statement = try prepare(
             """
             SELECT id, day, tool, model, fresh_input, output,
-                   cache_read, cache_creation, service_tier, source_key
+                   cache_read, cache_creation, service_tier, source_key, cost_micros
               FROM usage_events WHERE id > ? ORDER BY id LIMIT ?
             """
         )
@@ -1304,7 +1344,9 @@ public actor UsageEventLedger: CostUsageEventSink {
                 cacheRead: sqlite3_column_int64(statement, 6),
                 cacheCreation: sqlite3_column_int64(statement, 7),
                 serviceTier: columnText(statement, 8),
-                sourceKey: columnText(statement, 9)
+                sourceKey: columnText(statement, 9),
+                costMicros: sqlite3_column_type(statement, 10) == SQLITE_NULL
+                    ? nil : sqlite3_column_int64(statement, 10)
             ))
         }
         return rows
@@ -1337,7 +1379,8 @@ public actor UsageEventLedger: CostUsageEventSink {
                 cacheRead: sqlite3_column_int64(statement, 6),
                 cacheCreation: sqlite3_column_int64(statement, 7),
                 serviceTier: nil,
-                sourceKey: nil
+                sourceKey: nil,
+                costMicros: nil
             ))
         }
         return rows
