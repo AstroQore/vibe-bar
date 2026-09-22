@@ -219,10 +219,11 @@ struct ResetsPage: View {
             }
             fillCurve(cycle)
             ResetJournalButton(tools: [cycle.tool], accountId: cycle.accountId).font(.caption)
-            if cycle.tool == .codex, cycle.groupTitle == nil,
-               let credits = quotaService.cachedQuota(for: cycle.accountId)?.resetCredits, credits.hasAvailable {
+            if cycle.groupTitle == nil, let quota = quotaService.cachedQuota(for: cycle.accountId),
+               case let ledger = quotaService.resetCreditLedger[cycle.accountId] ?? [],
+               ResetCreditsRow.shows(credits: quota.resetCredits, ledger: ledger) {
                 Divider()
-                ResetCreditsRow(credits: credits, density: density)
+                ResetCreditsRow(credits: quota.resetCredits, ledger: ledger, buckets: quota.buckets, density: density)
             }
         }
     }

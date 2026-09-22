@@ -446,6 +446,7 @@ Vibe Bar 没有遥测管线，也没有托管的明文分析后端。本地与�
 ├── scan_cache/
 ├── pricing_sources/
 ├── pricing_cache.json
+├── quota_limits.json
 ├── service_status.json
 ├── usage_events.sqlite3
 ├── session_index.sqlite3
@@ -544,7 +545,9 @@ Vibe Bar 是一个独立项目，也得益于 Coding Agent 开源社区分享的
   [Portkey Models](https://github.com/Portkey-AI/models) 持续维护 Vibe Bar
   用于成本归集的公开模型价格目录；
   [AstroQore VibeBar Model Pricing](https://github.com/AstroQore/vibebar-model-pricing)
-  维护少量 Vibe Bar 专用补充条目。
+  维护少量 Vibe Bar 专用补充条目；
+  [AstroQore VibeBar Quota Limits](https://github.com/AstroQore/vibebar-quota-limits)
+  维护服务端不返回的各套餐公开额度（ChatGPT Chat 的 Pro 模型限额），按同一周期刷新。
 
 Vibe Bar 还直接使用
 [SweetCookieKit](https://github.com/steipete/SweetCookieKit) 读取本地浏览器 Cookie，

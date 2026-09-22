@@ -1262,10 +1262,21 @@ and moves the date, and reading that as a completed cycle would fill the
 reset history with cycles nothing ever reset. Every Chat field is
 `isBranchStyleField`, since each carries an L3 group; `shortLabel` stays the
 feature or model name, because the menu bar prints that one and "Daily"
-alone does not say daily what. `ChatGPTChatProAllowances` holds the
-published totals per `plan_type` (`pro`: 200/week GPT-6 Pro, 170/day Sol Pro,
-200/day both; `prolite`: 50/week shared — help article 20001354, read
-2026-09-07); other plans get no Pro buckets. Counts are trailing-window
+alone does not say daily what. The published totals per `plan_type` live
+in the public repo `AstroQore/vibebar-quota-limits` (`limits.json`, with
+`schema.json`; `pro`: 200/week GPT-6 Pro, 170/day Sol Pro, 200/day both;
+`prolite`: 50/week shared — help article 20001354, re-verified 2026-09-23).
+`QuotaLimitsCatalog` fetches it on the pricing refresh loop
+(`AppEnvironment.refreshPricing`, ≤ 256 KiB, 15 s, HTTPS only), keeps the last
+valid copy in `~/.vibebar/quota_limits.json` (status beside it in
+`quota_limits_status.json`) and an in-memory snapshot loaded from that cache
+once; `ChatGPTChatProAllowances.allowances(plan:)` reads only the snapshot.
+Validation: `schemaVersion` 1 or the whole document is ignored; rows with an
+unknown provider or any malformed field (`limit > 0`, `windowSeconds ≥ 3600`,
+`unit` "messages", slugs passing `ChatGPTChatParser.validModel`) are skipped
+alone. A plan with no usable published rows falls back to
+`ChatGPTChatProAllowances.bundled(plan:)`, the table compiled into the
+binary; other plans get no Pro buckets. Counts are trailing-window
 estimates with no claimed reset; a throttled model overrides its bucket with
 the service's exhausted state and reset. Partial coverage shows the count
 without a percentage. Only hashed ids, times and model slugs are cached, in
@@ -1273,10 +1284,18 @@ without a percentage. Only hashed ids, times and model slugs are cached, in
 list with paging fields only and single conversations by UUID; nothing else.
 
 `ChatGPTChatAllowanceStore` shows an *estimated* total from the first read —
-the largest remainder ever reported for the account and plan, with the
-service's distance to the reset (rounded to days or hours) as the window —
-and *confirms* it after three consistent observed reset boundaries, which
-takes the estimate mark off. A remainder above the total raises the estimate
+the largest remainder ever reported for the account and plan — and
+*confirms* it after three consistent observed reset boundaries, which
+takes the estimate mark off. The provisional window is the longest distance
+seen to the *same* deadline (`ChatGPTChatWindowAnchor`, persisted), as the
+smallest standard window (1, 7, 30 days) that holds it, so a fixed monthly
+deadline stays "Monthly" as it approaches; a confirmed window snaps to the
+standard window it is within 15 minutes of (86 521 s → a day). An untouched
+allowance (remainder = known total) sets `hasRollingReset`, because its
+reset is "now + window" on every read; `SubscriptionHistoryStore` lets a
+rolling read *end* an open cycle (the refill of a spent allowance) but never
+begin or extend one, and drops Chat feature cycles that never saw usage at
+launch (`isUntouchedFeatureCycle`). A remainder above the total raises the estimate
 and withdraws the confirmation; an account/plan change starts over; a read
 that could not name the plan keeps what is known. No plan has a hardcoded
 feature total. The state lives under `~/.vibebar/chatgpt_chat_learning.json`.
@@ -1292,10 +1311,29 @@ forecast timelines (`UsageFillTimelineStore` / `UsageForecastTimelineStore`
 take every `dedicatedCardProviders` member; buckets without a percentage are
 never stored as zero). Learning is a state of the standard
 quota row, not a separate Chat card implementation. Completed reset
-cycles retain `resetDetails` in `SubscriptionHistoryStore`, and verified Codex
-redemption receipts are retained separately in the same history file. A reduced
-available-credit count is not proof of redemption. The shared reset journal is
-reachable from the strip and comparison card in both popover and Workbench.
+cycles retain `resetDetails` in `SubscriptionHistoryStore`. The shared reset
+journal is reachable from the strip and comparison card in both popover and
+Workbench.
+
+Usage-limit reset credits are one provider-neutral model, `ResetCredits`
+(`AccountQuota.resetCredits`; Codex from `/wham/rate-limit-reset-credits`,
+Claude from the usage payload's `cedar_ember` block, Grok from
+`ConsumerUiSvc/GetRemainingResets`), drawn by the same `ResetCreditsRow`.
+Spent credits live in the history file's `redemptions` (older builds read that
+key as Codex receipts, so only spent credits go there); received ones in
+`resetCreditGrants`. Codex publishes receipts —
+`/wham/rate-limit-reset-credits/history`, read through
+`CodexResetCreditHistoryGate` only when the count moves, a window refills, or
+six hours pass. Claude and Grok publish none, so a spent credit is *inferred*
+(`ResetCreditEvent.inferred`) when a credit's count falls while its expiry is
+still ahead — never from an expiry, never from a failed read — and Grok also
+needs its weekly window to refill early in the same read. A falling count is
+therefore evidence only under those terms, and the journal keeps saying which
+kind of evidence it had. A credit marks a closed cycle (`creditResetAt`) when it
+lies inside the interval the refill was observed in and the credit clears that
+bucket: any refill within 15 minutes, and within three hours only an early
+refill with exactly one credit inside — which is how cycles rebuilt from the
+retired hourly timeline, with no `resetDetails`, still get their receipt.
 See [docs/chatgpt-chat.md](docs/chatgpt-chat.md) for setup and review validation.
 
 ### 7.2 Localization

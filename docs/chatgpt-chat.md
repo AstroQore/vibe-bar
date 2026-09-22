@@ -25,15 +25,26 @@ through whichever Chat transport answered. There are no fixed feature totals.
 The service never states a total, so two figures stand in for it. From the
 first read, the largest remainder ever reported for the account and plan is
 the estimate: the allowance is at least that, and on the day it refills it is
-exactly that. Every read therefore shows a percentage, marked estimated, with
-the service's own distance to the reset (rounded to whole days, or hours
-below a day) as the window — a monthly allowance is a normal row on day one,
-not a season of "learning". Three consistent observed reset boundaries with
+exactly that. Every read therefore shows a percentage, marked estimated. The
+window is the longest distance seen to the current reset deadline, as the
+smallest standard window — a day, a week, 30 days — that holds it: a
+deadline is never more than one window away, and remembering the longest
+distance keeps a fixed monthly deadline "Monthly" on its last day rather
+than shrinking with it. A monthly allowance is a normal row on day one, not
+a season of "learning". Three consistent observed reset boundaries with
 the same remainder then confirm the total and its window and take the
 estimate mark off. Reads must bracket the reported boundary and be close
 enough to it to avoid treating a long offline gap as a fresh full allowance;
-moving unused reset times do not count. A remainder above the confirmed
-total raises the estimate and withdraws the confirmation. A changed account
+moving unused reset times do not count, and a measured window snaps to the
+standard one it is within minutes of, so a read a little after the boundary
+does not confirm "a day and two minutes". A remainder above the confirmed
+total raises the estimate and withdraws the confirmation.
+
+While nothing has been spent, the service reports "now + window" as the
+reset on every read. Such a row is marked as a rolling reset, so the reset
+history does not read each poll gap as an early reset. Once something is
+spent the deadline stands still and the cycle is recorded; the read that
+finds the allowance refilled closes it. A changed account
 or plan starts over; a read that could not name the plan keeps what is known.
 
 Estimated and confirmed rows alike go through the standard quota row,
@@ -47,7 +58,15 @@ The service reports no count for GPT-6 Pro or GPT-5.6 Sol Pro. Its
 (`model_limits`: `model_slug`, `resets_after`, `using_default_model_slug`),
 and `/backend-api/models` carries no allowance fields. What OpenAI publishes
 is the total per plan, in "GPT-5.6 and GPT-6 Pro in ChatGPT" (help article
-20001354, read 2026-09-07):
+20001354, re-verified 2026-09-23). Vibe Bar reads those totals from the public
+[AstroQore/vibebar-quota-limits](https://github.com/AstroQore/vibebar-quota-limits)
+repository (`limits.json`, described by `schema.json`), so a changed allowance
+reaches the app without a release. The table is fetched alongside the pricing
+catalogs, on the same interval; the last valid copy is kept in
+`~/.vibebar/quota_limits.json` and used offline. A row for an unknown provider
+or with a malformed field is skipped, a document with another `schemaVersion`
+is ignored, and a plan with no usable rows uses the table built into the app,
+which today matches the published one:
 
 Every Chat bucket is grouped the way Codex's Spark lanes are: the thing
 being metered is the group header — Image Generation, Deep Research,
@@ -81,8 +100,8 @@ incomplete" instead of a percentage. A throttled model overrides the count
 with the service's own exhausted state and reset time; a shared allowance
 is treated as exhausted only when every model it covers is.
 
-Plans other than `pro` and `prolite` get no Pro buckets, because the table
-above does not cover them. Temporary chats, deleted conversations and turns
+Plans the published table does not cover — today anything other than `pro`
+and `prolite` — get no Pro buckets. Temporary chats, deleted conversations and turns
 whose answer never finished are not counted; the settings pane reports the
 excluded Work conversations and unclassified turns.
 

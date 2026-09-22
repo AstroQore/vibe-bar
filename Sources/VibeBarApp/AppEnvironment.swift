@@ -555,9 +555,14 @@ final class AppEnvironment: ObservableObject {
         isRefreshingPricing = true
         defer { isRefreshingPricing = false }
 
+        // The published quota-limit table rides the same cadence: one small
+        // file, fetched beside the catalogs and adopted in memory for the
+        // next quota read. Never on the quota path itself.
+        async let quotaLimits = QuotaLimitsCatalog.refresh()
         let result = await MultiSourcePricingRefresher.refreshAll(
             overrides: settingsStore.settings.modelPricingOverrides
         )
+        _ = await quotaLimits
         pricingRefreshStatus = result.status
         if result.changed {
             _ = PricingResolver.reloadIfChanged()

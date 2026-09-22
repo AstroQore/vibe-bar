@@ -31,7 +31,16 @@ public actor SubscriptionHistoryStore {
         /// timeline for. Optional keeps older files decodable.
         var promotedProviderBackfillVersion: Int?
         var samples: [SubscriptionWindowSample]
+        /// Reset credits spent, per account. The key predates other
+        /// providers' credits; older builds read it as Codex receipts, so
+        /// only spent credits go here.
         var redemptions: [QuotaResetRedemption]?
+        /// Reset credits received (Codex publishes grants). Separate so an
+        /// older build never reads a grant as a spent credit.
+        var resetCreditGrants: [QuotaResetRedemption]?
+        /// Last per-credit inventory per account id, for inferring spent
+        /// credits on providers without receipts (Claude, Grok).
+        var resetCreditInventories: [String: ResetCreditInventory]?
         var featureObservations: [String: FeatureObservation]?
         var featureResets: [SubscriptionWindowSample]?
 
@@ -124,36 +133,15 @@ public actor SubscriptionHistoryStore {
 
         var (storage, index) = loadIndexed()
         var dirty = false
-        if let receipts = quota.resetCredits?.redemptions, !receipts.isEmpty {
-            var saved = Dictionary((storage.redemptions ?? []).map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
-            var newReceipts: [CodexResetCreditRedemption] = []
-            for credit in receipts {
-                let receipt = QuotaResetRedemption(accountId: quota.accountId, credit: credit)
-                if saved[receipt.id] != receipt {
-                    saved[receipt.id] = receipt; newReceipts.append(credit); dirty = true
-                }
-            }
-            // The quota can refill before the redemption service publishes its
-            // receipt. Reconcile late receipts with the original observation
-            // interval, without requiring a second quota jump.
-            if !newReceipts.isEmpty {
-                for position in storage.samples.indices {
-                    guard storage.samples[position].accountId == quota.accountId,
-                          var details = storage.samples[position].resetDetails,
-                          details.creditRedeemedAt == nil,
-                          let redeemed = Self.matchingRedemption(receipts: newReceipts,
-                            after: details.observedAfter, before: details.observedBefore) else { continue }
-                    details.creditRedeemedAt = redeemed
-                    storage.samples[position].resetDetails = details
-                }
-            }
-            storage.redemptions = saved.values.sorted { $0.credit.redeemedAt < $1.credit.redeemedAt }
-        }
+        var completedNow: [Int] = []
         if observeFeatures(quota, now: now, storage: &storage) { dirty = true }
         // A rolling reset is the next expiry of a trailing count, not the
         // end of a cycle: reading each expiry as a completed cycle would
-        // fill the history with cycles nothing ever reset.
-        for bucket in quota.buckets where bucket.supportsForecast && !bucket.hasRollingReset {
+        // fill the history with cycles nothing ever reset. So a rolling read
+        // never begins or extends a cycle — but it can end one a real
+        // deadline began, as when a spent allowance refills and is read
+        // untouched, its reset sliding from then on.
+        for bucket in quota.buckets where bucket.supportsForecast {
             guard let resetAt = bucket.resetAt, bucket.usedPercent.isFinite else { continue }
             let used = clamp(bucket.usedPercent)
             let key = SubscriptionHistoryKey(accountId: quota.accountId, bucketId: bucket.id)
@@ -164,6 +152,7 @@ public actor SubscriptionHistoryStore {
                 .max { storage.samples[$0].lastSeenAt < storage.samples[$1].lastSeenAt }
 
             guard let currentIndex else {
+                if bucket.hasRollingReset { continue }
                 index[key, default: []].append(storage.samples.count)
                 storage.samples.append(makeCurrentSample(
                     quota: quota,
@@ -187,8 +176,6 @@ public actor SubscriptionHistoryStore {
                     previousResetAt: current.windowEnd, nextResetAt: resetAt,
                     previousUsedPercent: current.lastUsedPercent, nextUsedPercent: used,
                     observedAfter: current.lastSeenAt, observedBefore: now,
-                    creditRedeemedAt: Self.matchingRedemption(
-                        receipts: quota.resetCredits?.redemptions ?? [], after: current.lastSeenAt, before: now),
                     plan: quota.plan
                 )
                 current.completedAt = now
@@ -214,14 +201,19 @@ public actor SubscriptionHistoryStore {
                 // forecast when providers reset early or late.
                 current.windowEnd = now
                 storage.samples[currentIndex] = current
-                index[key, default: []].append(storage.samples.count)
-                storage.samples.append(makeCurrentSample(
-                    quota: quota,
-                    bucket: bucket,
-                    used: used,
-                    resetAt: resetAt,
-                    now: now
-                ))
+                completedNow.append(currentIndex)
+                if !bucket.hasRollingReset {
+                    index[key, default: []].append(storage.samples.count)
+                    storage.samples.append(makeCurrentSample(
+                        quota: quota,
+                        bucket: bucket,
+                        used: used,
+                        resetAt: resetAt,
+                        now: now
+                    ))
+                }
+            } else if bucket.hasRollingReset {
+                continue
             } else {
                 current.windowEnd = resetAt
                 current.windowStart = bucket.rawWindowSeconds.map {
@@ -234,6 +226,11 @@ public actor SubscriptionHistoryStore {
                 current.lastSeenAt = max(current.lastSeenAt, now)
                 storage.samples[currentIndex] = current
             }
+            dirty = true
+        }
+        // After the cycles, so a credit spent in this interval can be matched
+        // to the refill this same read just closed.
+        if observeResetCredits(quota, now: now, storage: &storage, index: index, completedNow: completedNow) {
             dirty = true
         }
 
@@ -264,8 +261,9 @@ public actor SubscriptionHistoryStore {
         let needsClassification = storage.samples.contains {
             $0.isCompleted && $0.resetKind == nil
         }
+        let needsUntouchedCleanup = storage.samples.contains(where: Self.isUntouchedFeatureCycle)
         guard needsLegacyImport || needsResetSignalRepair
-                || needsPromotedBackfill || needsClassification
+                || needsPromotedBackfill || needsClassification || needsUntouchedCleanup
         else { return }
 
         if needsLegacyImport {
@@ -322,9 +320,24 @@ public actor SubscriptionHistoryStore {
         // re-run a migration that had already finished — and a pass that knows
         // from its own data whether there is anything to do needs no version
         // at all.
+        //
+        // The same goes for Chat feature cycles nothing was ever spent in.
+        // Older builds read an untouched allowance's sliding "now + window"
+        // as a deadline, and every poll gap long enough looked like an early
+        // reset. Such a cycle recorded nothing; current builds never open one,
+        // since an untouched allowance's read is rolling.
+        storage.samples.removeAll(where: Self.isUntouchedFeatureCycle)
         classifyStoredResets(points, in: &storage)
         pruneInPlace(&storage, retentionDays: retentionDays, now: Date())
         save(storage)
+    }
+
+    /// A ChatGPT Chat feature-allowance cycle whose usage never rose above
+    /// zero, open or closed.
+    static func isUntouchedFeatureCycle(_ sample: SubscriptionWindowSample) -> Bool {
+        sample.tool == .chatgptChat
+            && (sample.bucketId == "image_gen" || sample.bucketId == "deep_research")
+            && sample.peakUsedPercent <= 0
     }
 
     /// Lanes still owed a backfill, for a file stamped with `storedVersion`.
@@ -654,26 +667,34 @@ public actor SubscriptionHistoryStore {
 
     public func allSamples() -> [SubscriptionWindowSample] { load().samples }
     public func allRedemptions() -> [QuotaResetRedemption] { load().redemptions ?? [] }
+    public func allResetCreditGrants() -> [QuotaResetRedemption] { load().resetCreditGrants ?? [] }
     public func allFeatureResets() -> [SubscriptionWindowSample] { load().featureResets ?? [] }
 
     private func observeFeatures(_ quota: AccountQuota, now: Date, storage: inout Storage) -> Bool {
         var changed = false
         for bucket in quota.buckets {
-            // Same reason as the cycle loop: a message ageing out returns a
-            // unit without anything having reset.
-            guard !bucket.hasRollingReset, let remaining = bucket.quantity?.remaining else { continue }
+            guard let remaining = bucket.quantity?.remaining else { continue }
             let key = PrivacyPreservingHash.fileComponent(prefix: "feature", rawValue: quota.accountId + ":" + bucket.id)
             let sample = ChatGPTChatAllowanceSample(id: bucket.id, remaining: remaining, resetAt: bucket.resetAt, observedAt: now)
             let previous = storage.featureObservations?[key]
+            // Same reason as the cycle loop: a message ageing out returns a
+            // unit without anything having reset, and an untouched
+            // allowance's reset moves with the clock. A rolling read is
+            // never an observation to compare against — it only ends the
+            // one a spent allowance left, recording the refill if it rose.
+            if bucket.hasRollingReset && previous == nil { continue }
             guard previous == nil || now > previous!.sample.observedAt else { continue }
             if storage.featureObservations == nil { storage.featureObservations = [:] }
-            storage.featureObservations?[key] = FeatureObservation(sample: sample, plan: quota.plan, identity: quota.chatGPTChat?.accountIdentity)
+            storage.featureObservations?[key] = bucket.hasRollingReset ? nil
+                : FeatureObservation(sample: sample, plan: quota.plan, identity: quota.chatGPTChat?.accountIdentity)
             changed = true
             guard let previous, previous.plan == quota.plan, previous.identity == quota.chatGPTChat?.accountIdentity else { continue }
             let old = previous.sample
             let crossed = old.resetAt.map { $0 <= now } ?? false
             let advanced = old.resetAt.flatMap { oldDate in bucket.resetAt.map { $0.timeIntervalSince(oldDate) > 60 } } ?? false
-            guard remaining > old.remaining || (crossed && advanced) else { continue }
+            // Untouched then and untouched now is not a refill, however far
+            // the sliding date moved in between.
+            guard remaining > old.remaining || (crossed && advanced && !bucket.hasRollingReset) else { continue }
             let kind: SubscriptionWindowSample.ResetKind
             if let before = old.resetAt, let after = bucket.resetAt, let window = bucket.rawWindowSeconds,
                let classified = Self.classifyReset(reportedResetAt: before, newResetAt: after, observedAt: now, rawWindowSeconds: window) {
@@ -695,13 +716,124 @@ public actor SubscriptionHistoryStore {
         return changed
     }
 
-    static func matchingRedemption(receipts: [CodexResetCreditRedemption], after: Date, before: Date) -> Date? {
-        // A long offline interval cannot tie a later observed quota change to
-        // one particular redemption. Keep the receipt, but leave the source open.
-        guard before.timeIntervalSince(after) <= 900 else { return nil }
-        return receipts.map(\.redeemedAt)
-            .filter { $0 >= after && $0 <= before }
-            .max()
+    // MARK: - Reset credits
+
+    /// Persists spent / received credits, infers spent credits from a
+    /// falling inventory, and marks the cycles they reset. True when the
+    /// storage changed.
+    private func observeResetCredits(
+        _ quota: AccountQuota,
+        now: Date,
+        storage: inout Storage,
+        index: [SubscriptionHistoryKey: [Int]],
+        completedNow: [Int]
+    ) -> Bool {
+        let credits = quota.resetCredits
+        var changed = false
+        var incoming = credits?.redemptions ?? []
+
+        if let tokens = credits?.tokens {
+            let previous = storage.resetCreditInventories?[quota.accountId]
+            if previous == nil || now > previous!.observedAt {
+                if let previous {
+                    var inferred = ResetCredits.inferredRedemptions(
+                        previous: previous.tokens, previousObservedAt: previous.observedAt,
+                        current: tokens, now: now)
+                    if credits?.inferenceRequiresObservedReset == true {
+                        inferred = inferred.filter { event in
+                            completedNow.contains { position in
+                                let sample = storage.samples[position]
+                                return sample.refilledEarly && (event.clears?.contains(sample.bucketId) ?? true)
+                            }
+                        }
+                    }
+                    incoming += inferred
+                }
+                if storage.resetCreditInventories == nil { storage.resetCreditInventories = [:] }
+                storage.resetCreditInventories?[quota.accountId] = ResetCreditInventory(observedAt: now, tokens: tokens)
+                changed = true
+            }
+        }
+
+        var newReceipts = false
+        if !incoming.isEmpty {
+            let (merged, added) = Self.merge(incoming, into: storage.redemptions ?? [], quota: quota)
+            if merged != (storage.redemptions ?? []) { storage.redemptions = merged; changed = true }
+            newReceipts = added
+        }
+        if let grants = credits?.grants, !grants.isEmpty {
+            let (merged, _) = Self.merge(grants, into: storage.resetCreditGrants ?? [], quota: quota)
+            if merged != (storage.resetCreditGrants ?? []) { storage.resetCreditGrants = merged; changed = true }
+        }
+
+        // A receipt can be published after the refill it paid for, even
+        // after the cycle was written by an older build with no details, so
+        // a new receipt is offered to every closed cycle of the account; with
+        // none, only the cycles this read just closed need a look.
+        let positions: [Int] = newReceipts
+            ? index.filter { $0.key.accountId == quota.accountId }.flatMap(\.value)
+            : completedNow
+        guard !positions.isEmpty else { return changed }
+        let receipts = (storage.redemptions ?? []).filter { $0.accountId == quota.accountId }.map(\.credit)
+        guard !receipts.isEmpty else { return changed }
+        for position in positions {
+            guard let event = Self.creditMatch(for: storage.samples[position], events: receipts) else { continue }
+            Self.markCreditReset(event, on: &storage.samples[position])
+            changed = true
+        }
+        return changed
+    }
+
+    private static func merge(
+        _ events: [ResetCreditEvent], into saved: [QuotaResetRedemption], quota: AccountQuota
+    ) -> ([QuotaResetRedemption], added: Bool) {
+        var byID = Dictionary(saved.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        var added = false
+        for event in events {
+            let record = QuotaResetRedemption(accountId: quota.accountId, tool: quota.tool, credit: event)
+            if byID[record.id] == nil { added = true }
+            byID[record.id] = record
+        }
+        return (byID.values.sorted { $0.credit.occurredAt < $1.credit.occurredAt }, added)
+    }
+
+    /// Observation gaps up to this long tie a credit to a refill outright.
+    static let closeCreditMatchWindow: TimeInterval = 900
+    /// Longer gaps — the hourly fill timeline older cycles were rebuilt
+    /// from — tie one only to an early refill with exactly one credit spent
+    /// inside it. Past this, a long offline interval cannot say which reset
+    /// the credit paid for; the receipt is kept and the source left open.
+    static let wideCreditMatchWindow: TimeInterval = 3 * 3_600
+
+    /// The credit spent on a closed cycle's refill, if one was spent inside
+    /// the interval the refill was observed in: `resetDetails`' when the
+    /// cycle has it, otherwise `(lastSeenAt, completedAt]` — `lastSeenAt`
+    /// stays on the last pre-refill read when a cycle closes.
+    static func creditMatch(for sample: SubscriptionWindowSample, events: [ResetCreditEvent]) -> ResetCreditEvent? {
+        guard let completed = sample.completedAt, sample.creditRedemptionDate == nil else { return nil }
+        let after = sample.resetDetails?.observedAfter ?? sample.lastSeenAt
+        let before = sample.resetDetails?.observedBefore ?? completed
+        guard before >= after else { return nil }
+        let candidates = events.filter { event in
+            event.occurredAt >= after && event.occurredAt <= before
+                && (event.clears?.contains(sample.bucketId) ?? true)
+        }
+        guard !candidates.isEmpty else { return nil }
+        let gap = before.timeIntervalSince(after)
+        if gap <= closeCreditMatchWindow {
+            return candidates.max { $0.occurredAt < $1.occurredAt }
+        }
+        guard gap <= wideCreditMatchWindow, sample.refilledEarly, candidates.count == 1 else { return nil }
+        return candidates[0]
+    }
+
+    static func markCreditReset(_ event: ResetCreditEvent, on sample: inout SubscriptionWindowSample) {
+        sample.creditResetAt = event.occurredAt
+        sample.creditResetInferred = event.isInferred ? true : nil
+        if !event.isInferred, var details = sample.resetDetails {
+            details.creditRedeemedAt = event.occurredAt
+            sample.resetDetails = details
+        }
     }
 
     public func prune(retentionDays: Int, now: Date = Date()) {
@@ -997,11 +1129,15 @@ public actor SubscriptionHistoryStore {
         let cutoff = now.addingTimeInterval(-TimeInterval(retentionDays) * 86_400)
         let before = storage.samples.count
         let receiptCount = storage.redemptions?.count ?? 0
+        let grantCount = storage.resetCreditGrants?.count ?? 0
+        let inventoryCount = storage.resetCreditInventories?.count ?? 0
         let featureCount = storage.featureResets?.count ?? 0
         let observationCount = storage.featureObservations?.count ?? 0
         storage.featureResets?.removeAll { ($0.completedAt ?? $0.lastSeenAt) < cutoff }
         storage.featureObservations = storage.featureObservations?.filter { $0.value.sample.observedAt >= cutoff }
-        storage.redemptions?.removeAll { $0.credit.redeemedAt < cutoff }
+        storage.redemptions?.removeAll { $0.credit.occurredAt < cutoff }
+        storage.resetCreditGrants?.removeAll { $0.credit.occurredAt < cutoff }
+        storage.resetCreditInventories = storage.resetCreditInventories?.filter { $0.value.observedAt >= cutoff }
         storage.samples.removeAll {
             let relevantDate = $0.completedAt ?? $0.lastSeenAt
             return relevantDate < cutoff
@@ -1009,5 +1145,7 @@ public actor SubscriptionHistoryStore {
         return storage.samples.count != before || (storage.redemptions?.count ?? 0) != receiptCount
             || (storage.featureResets?.count ?? 0) != featureCount
             || (storage.featureObservations?.count ?? 0) != observationCount
+            || (storage.resetCreditGrants?.count ?? 0) != grantCount
+            || (storage.resetCreditInventories?.count ?? 0) != inventoryCount
     }
 }

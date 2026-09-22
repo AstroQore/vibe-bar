@@ -78,6 +78,13 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             credentials: credentials,
             session: session
         )
+        // Reset tokens are extra inventory: a failure leaves them nil and
+        // never touches the weekly quota.
+        async let remainingResets = GrokRemainingResetsFetcher.fetch(
+            credentials: credentials,
+            session: session,
+            now: now()
+        )
 
         // Billing remains the required source of quota truth. Account
         // settings only enriches the badge, so a settings outage or schema
@@ -90,7 +97,8 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             snapshot: snapshot,
             account: account,
             plan: plan,
-            email: credentials.email
+            email: credentials.email,
+            resetCredits: await remainingResets
         )
     }
 
@@ -120,7 +128,8 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         snapshot: GrokWebBillingSnapshot,
         account: AccountIdentity,
         plan: String?,
-        email: String?
+        email: String?,
+        resetCredits: ResetCredits? = nil
     ) -> AccountQuota {
         let bucket = QuotaBucket(
             id: "weekly",
@@ -140,7 +149,8 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             plan: plan,
             email: email,
             queriedAt: now(),
-            error: nil
+            error: nil,
+            resetCredits: resetCredits
         )
     }
 }

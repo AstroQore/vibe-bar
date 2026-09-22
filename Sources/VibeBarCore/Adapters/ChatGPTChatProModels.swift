@@ -23,9 +23,17 @@ public enum ChatGPTChatWindow {
 
 /// One Pro-model allowance as OpenAI publishes it for a plan's Chat surface.
 ///
+/// The live table is published in the `AstroQore/vibebar-quota-limits`
+/// repository (`limits.json`) and refreshed by `QuotaLimitsCatalog`, so a
+/// changed allowance needs no app release. `ChatGPTChatProAllowances.bundled`
+/// is the floor that answers until then.
+///
 /// Source: "GPT-5.6 and GPT-6 Pro in ChatGPT", help.openai.com article
-/// 20001354, read 2026-09-07. The service reports no count for these models
-/// — `conversation/init` names a model only once it is exhausted — so the
+/// 20001354, first read 2026-09-07 and re-verified 2026-09-23 (unchanged).
+/// The article names only GPT-6 Pro and GPT-5.6 Sol Pro, so the older Pro
+/// slugs the picker still lists (`gpt-5-5-pro`, `o3-pro`) are charged to no
+/// allowance. The service reports no count for these models —
+/// `conversation/init` names a model only once it is exhausted — so the
 /// count comes from the saved history and the total from this table. Work
 /// and Codex have their own rules and are never charged here.
 public struct ChatGPTChatProAllowance: Hashable, Sendable {
@@ -56,10 +64,22 @@ public enum ChatGPTChatProAllowances {
     public static let solProName = "GPT-5.6 Sol Pro"
     public static let proModelsName = "Pro Models"
 
-    /// `plan_type` as `/backend-api/wham/usage` reports it: `pro` is the
-    /// $200 plan and `prolite` the $100 one. Plans without Pro models get
-    /// nothing; so does an unrecognized plan, rather than a guessed total.
-    public static func allowances(plan: String?) -> [ChatGPTChatProAllowance] {
+    /// The allowances for a plan: the published table's rows for it when
+    /// it has any, else the bundled ones. Reads only the in-memory snapshot
+    /// `QuotaLimitsCatalog` keeps, never the network.
+    public static func allowances(plan: String?,
+                                  table: QuotaLimitsCatalog.Table? = QuotaLimitsCatalog.snapshot()) -> [ChatGPTChatProAllowance] {
+        guard let plan = QuotaLimitsCatalog.normalizedPlan(plan) else { return [] }
+        if let rows = table?.chatGPTChat[plan], !rows.isEmpty { return rows }
+        return bundled(plan: plan)
+    }
+
+    /// The table as shipped in this build, and the fallback for any plan the
+    /// published one has no rows for. `plan_type` as `/backend-api/wham/usage`
+    /// reports it: `pro` is the $200 plan and `prolite` the $100 one. Plans
+    /// without Pro models get nothing; so does an unrecognized plan, rather
+    /// than a guessed total.
+    public static func bundled(plan: String?) -> [ChatGPTChatProAllowance] {
         switch plan?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "pro":
             return [
