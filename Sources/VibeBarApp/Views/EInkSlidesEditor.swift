@@ -621,7 +621,7 @@ struct EInkSlidesEditor: View {
                 Text(L10n.Settings.Eink.buckets)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(L10n.Settings.Eink.Workflow.selectionSummary(items: ids.count, pages: max(1, previewPages.count)))
+                Text(L10n.Settings.Eink.Workflow.selectionPages(items: ids.count, pages: max(1, previewPages.count)))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
@@ -830,7 +830,7 @@ struct EInkSlidesEditor: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
-                Text(L10n.Settings.Eink.Workflow.selectionSummary(items: selected.count, pages: max(1, previewPages.count)))
+                Text(L10n.Settings.Eink.Workflow.selectionPages(items: selected.count, pages: max(1, previewPages.count)))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
