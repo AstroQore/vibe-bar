@@ -58,7 +58,7 @@ The service reports no count for GPT-6 Pro or GPT-5.6 Sol Pro. Its
 (`model_limits`: `model_slug`, `resets_after`, `using_default_model_slug`),
 and `/backend-api/models` carries no allowance fields. What OpenAI publishes
 is the total per plan, in "GPT-5.6 and GPT-6 Pro in ChatGPT" (help article
-20001354, read 2026-09-07):
+20001354, re-verified 2026-09-23):
 
 Every Chat bucket is grouped the way Codex's Spark lanes are: the thing
 being metered is the group header — Image Generation, Deep Research,

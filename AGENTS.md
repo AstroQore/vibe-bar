@@ -1264,8 +1264,8 @@ reset history with cycles nothing ever reset. Every Chat field is
 feature or model name, because the menu bar prints that one and "Daily"
 alone does not say daily what. `ChatGPTChatProAllowances` holds the
 published totals per `plan_type` (`pro`: 200/week GPT-6 Pro, 170/day Sol Pro,
-200/day both; `prolite`: 50/week shared — help article 20001354, read
-2026-09-07); other plans get no Pro buckets. Counts are trailing-window
+200/day both; `prolite`: 50/week shared — help article 20001354,
+re-verified 2026-09-23); other plans get no Pro buckets. Counts are trailing-window
 estimates with no claimed reset; a throttled model overrides its bucket with
 the service's exhausted state and reset. Partial coverage shows the count
 without a percentage. Only hashed ids, times and model slugs are cached, in

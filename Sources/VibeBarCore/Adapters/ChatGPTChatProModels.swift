@@ -24,8 +24,11 @@ public enum ChatGPTChatWindow {
 /// One Pro-model allowance as OpenAI publishes it for a plan's Chat surface.
 ///
 /// Source: "GPT-5.6 and GPT-6 Pro in ChatGPT", help.openai.com article
-/// 20001354, read 2026-09-07. The service reports no count for these models
-/// — `conversation/init` names a model only once it is exhausted — so the
+/// 20001354, first read 2026-09-07 and re-verified 2026-09-23 (unchanged).
+/// The article names only GPT-6 Pro and GPT-5.6 Sol Pro, so the older Pro
+/// slugs the picker still lists (`gpt-5-5-pro`, `o3-pro`) are charged to no
+/// allowance. The service reports no count for these models —
+/// `conversation/init` names a model only once it is exhausted — so the
 /// count comes from the saved history and the total from this table. Work
 /// and Codex have their own rules and are never charged here.
 public struct ChatGPTChatProAllowance: Hashable, Sendable {
