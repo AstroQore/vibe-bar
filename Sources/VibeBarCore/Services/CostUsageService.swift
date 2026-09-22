@@ -210,10 +210,16 @@ public final class CostUsageService: ObservableObject {
 
         // The Workbench reads persisted request costs from UsageEventLedger,
         // while the outer ranking is rebuilt directly from each fresh scan.
-        // Reprice previously unpriced ledger rows whenever the effective
-        // catalog (including local overrides) changes so both surfaces can
-        // adopt newly covered models without losing rotated history.
-        _ = try? await usageLedger?.prepareForPricingRevision(PricingResolver.activeRevision)
+        // Reprice ledger rows whenever the effective catalog (including local
+        // overrides) changes so both surfaces can adopt new or corrected rates
+        // without losing rotated history. Every detail row is recomputed;
+        // the per-day deltas then correct the max-merged cost history, which
+        // a re-scan at a lower price could never lower on its own.
+        if let changes = try? await usageLedger?.repriceForPricingRevision(
+            PricingResolver.activeRevision
+        ), !changes.isEmpty {
+            await CostHistoryStore.shared.applyPricingRevision(changes)
+        }
 
         // Historical days persisted before per-day models existed — or whose
         // source logs had already rotated away when the day was recorded —

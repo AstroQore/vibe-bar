@@ -2,7 +2,14 @@ import Foundation
 
 /// Refreshes each public catalog independently, keeps the last usable table
 /// for each source, then merges from lowest to highest priority:
-/// AstroQore -> Portkey -> models.dev -> LiteLLM -> user overrides.
+/// AstroQore supplement -> Portkey -> models.dev -> LiteLLM
+/// -> AstroQore corrections -> user overrides.
+///
+/// "AstroQore corrections" are the supplement's `"override": true` entries.
+/// They are cached beside the supplement (`<source>-overrides.json`) so an
+/// offline `rebuildFromCaches` reproduces the same order; the supplement's
+/// own cache file still holds every entry, which is what builds that predate
+/// the layer read.
 public enum MultiSourcePricingRefresher {
     public struct Endpoints: Sendable {
         public var liteLLM: URL
@@ -68,6 +75,15 @@ public enum MultiSourcePricingRefresher {
         let base = PricingResolver.loadBundled() ?? PricingHardcoded.fallback
         let updatedAt = updatedAtString(for: now)
         let calculationVersion = base.calculationVersion
+        // The sources below refresh concurrently and each writes its cache
+        // into this directory. `ensureDirectory` is check-then-create, so on
+        // a first run the losers of that race failed with "file exists" and
+        // reported a refresh failure; create it once, up front.
+        let store = VibeBarLocalStore.baseDirectory(homeDirectory: homeDirectory)
+        try? VibeBarLocalStore.ensureDirectory(store)
+        try? VibeBarLocalStore.ensureDirectory(
+            store.appendingPathComponent("pricing_sources", isDirectory: true)
+        )
 
         async let liteLLM = refreshSource(
             .liteLLM,
@@ -150,19 +166,19 @@ public enum MultiSourcePricingRefresher {
         }
         let resolvedInheritanceBase = inheritanceBase
 
-        let astroQore = await refreshSource(
+        let astroQore = await refreshLayeredSource(
             .astroQore, homeDirectory: homeDirectory, now: now
         ) {
             guard let data = try await fetch(
                 endpoints.astroQore, session: session, timeout: requestTimeout
             ) else { throw RefreshError.invalidResponse }
-            guard let transformed = AstroQorePricingTransformer.transform(
+            guard let layers = AstroQorePricingTransformer.transformLayers(
                 data,
                 updatedAt: updatedAt,
                 calculationVersion: calculationVersion,
                 inheritanceBase: resolvedInheritanceBase
             ) else { throw RefreshError.invalidPayload }
-            return transformed
+            return SourceLayers(dataSet: layers.supplement, overrides: layers.overrides)
         }
 
         let snapshots = [astroQore] + higherPrioritySnapshots
@@ -189,6 +205,7 @@ public enum MultiSourcePricingRefresher {
             SourceSnapshot(
                 source: source,
                 dataSet: loadSourceCache(source, homeDirectory: homeDirectory),
+                overrides: loadOverridesCache(source, homeDirectory: homeDirectory),
                 status: previous.sources.first { $0.source == source }
                     ?? PricingSourceStatus(source: source)
             )
@@ -213,8 +230,17 @@ public enum MultiSourcePricingRefresher {
 
     private struct SourceSnapshot: Sendable {
         let source: PricingSourceID
+        /// The source's position in the public order.
         let dataSet: PricingDataSet?
+        /// Entries the source applies above every public catalog. Only the
+        /// AstroQore supplement publishes any.
+        var overrides: PricingDataSet? = nil
         let status: PricingSourceStatus
+    }
+
+    private struct SourceLayers: Sendable {
+        let dataSet: PricingDataSet
+        let overrides: PricingDataSet?
     }
 
     private enum RefreshError: Error {
@@ -229,35 +255,63 @@ public enum MultiSourcePricingRefresher {
         now: Date,
         loader: @escaping @Sendable () async throws -> PricingDataSet
     ) async -> SourceSnapshot {
+        await refreshLayeredSource(source, homeDirectory: homeDirectory, now: now) {
+            SourceLayers(dataSet: try await loader(), overrides: nil)
+        }
+    }
+
+    private static func refreshLayeredSource(
+        _ source: PricingSourceID,
+        homeDirectory: String,
+        now: Date,
+        loader: @escaping @Sendable () async throws -> SourceLayers
+    ) async -> SourceSnapshot {
         let old = loadStatus(homeDirectory: homeDirectory).sources.first {
             $0.source == source
         }
         do {
-            let dataSet = try await loader()
+            let layers = try await loader()
+            let dataSet = layers.dataSet
             let encoded = try JSONEncoder().encode(dataSet)
             guard encoded.count <= PricingDataSet.maxBytes else {
                 throw RefreshError.oversized
             }
             let cached = loadSourceCache(source, homeDirectory: homeDirectory)
+            let cachedOverrides = loadOverridesCache(source, homeDirectory: homeDirectory)
+            let base = VibeBarLocalStore.baseDirectory(homeDirectory: homeDirectory)
             try VibeBarLocalStore.writeJSON(
                 dataSet,
                 to: sourceCacheURL(source, homeDirectory: homeDirectory),
-                base: VibeBarLocalStore.baseDirectory(homeDirectory: homeDirectory)
+                base: base
             )
+            // Written after the main table: a crash between the two leaves
+            // last run's corrections beside this run's supplement, which the
+            // next refresh rewrites — never corrections without a supplement.
+            let overridesURL = overridesCacheURL(source, homeDirectory: homeDirectory)
+            if let overrides = layers.overrides {
+                try VibeBarLocalStore.writeJSON(overrides, to: overridesURL, base: base)
+            } else if cachedOverrides != nil {
+                try? FileManager.default.removeItem(at: overridesURL)
+            }
             return SourceSnapshot(
                 source: source,
                 dataSet: dataSet,
+                overrides: layers.overrides,
                 status: PricingSourceStatus(
                     source: source,
-                    result: cached == dataSet ? .unchanged : .ready,
+                    result: cached == dataSet && cachedOverrides == layers.overrides
+                        ? .unchanged : .ready,
                     modelCount: dataSet.modelCount,
                     lastAttemptAt: now,
                     lastSuccessAt: now,
-                    detail: nil
+                    detail: nil,
+                    overrideModelCount: layers.overrides?.modelCount
                 )
             )
         } catch {
             let cached = loadSourceCache(source, homeDirectory: homeDirectory)
+            let cachedOverrides = cached == nil
+                ? nil : loadOverridesCache(source, homeDirectory: homeDirectory)
             let detail: String
             switch error {
             case RefreshError.oversized: detail = "Response exceeded the local size limit."
@@ -268,13 +322,15 @@ public enum MultiSourcePricingRefresher {
             return SourceSnapshot(
                 source: source,
                 dataSet: cached,
+                overrides: cachedOverrides,
                 status: PricingSourceStatus(
                     source: source,
                     result: .failed,
                     modelCount: cached?.modelCount ?? 0,
                     lastAttemptAt: now,
                     lastSuccessAt: old?.lastSuccessAt,
-                    detail: detail
+                    detail: detail,
+                    overrideModelCount: cachedOverrides?.modelCount
                 )
             )
         }
@@ -295,6 +351,19 @@ public enum MultiSourcePricingRefresher {
                     dataSet,
                     onto: merged,
                     updatedAt: updatedAt
+                )
+            }
+        }
+        // Corrections outrank every public catalog but not the user. They
+        // replace the merged card wholesale: a field a correction leaves out
+        // must not fall through from the public entry it exists to correct.
+        for snapshot in snapshots {
+            if let overrides = snapshot.overrides {
+                merged = PricingDataSetMerger.overlay(
+                    overrides,
+                    onto: merged,
+                    updatedAt: updatedAt,
+                    fillMissingFromBase: false
                 )
             }
         }
@@ -380,6 +449,17 @@ public enum MultiSourcePricingRefresher {
             .appendingPathComponent("\(source.rawValue).json")
     }
 
+    /// Sidecar for the entries a source applies above the public catalogs.
+    /// Older builds never read it, so the main cache keeps its shape.
+    private static func overridesCacheURL(
+        _ source: PricingSourceID,
+        homeDirectory: String
+    ) -> URL {
+        VibeBarLocalStore.baseDirectory(homeDirectory: homeDirectory)
+            .appendingPathComponent("pricing_sources", isDirectory: true)
+            .appendingPathComponent("\(source.rawValue)-overrides.json")
+    }
+
     private static func statusURL(homeDirectory: String) -> URL {
         VibeBarLocalStore.baseDirectory(homeDirectory: homeDirectory)
             .appendingPathComponent("pricing_refresh_status.json")
@@ -390,6 +470,18 @@ public enum MultiSourcePricingRefresher {
         homeDirectory: String
     ) -> PricingDataSet? {
         let url = sourceCacheURL(source, homeDirectory: homeDirectory)
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = (attrs[.size] as? NSNumber)?.intValue,
+              size > 0, size <= PricingDataSet.maxBytes
+        else { return nil }
+        return try? VibeBarLocalStore.readJSON(PricingDataSet.self, from: url)
+    }
+
+    private static func loadOverridesCache(
+        _ source: PricingSourceID,
+        homeDirectory: String
+    ) -> PricingDataSet? {
+        let url = overridesCacheURL(source, homeDirectory: homeDirectory)
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = (attrs[.size] as? NSNumber)?.intValue,
               size > 0, size <= PricingDataSet.maxBytes

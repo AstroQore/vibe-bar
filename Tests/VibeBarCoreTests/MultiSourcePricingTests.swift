@@ -40,11 +40,16 @@ final class MultiSourcePricingTests: XCTestCase {
         XCTAssertEqual(composer.input, 3e-6, accuracy: 1e-12)
         XCTAssertEqual(composer.output, 15e-6, accuracy: 1e-12)
 
+        // The supplement's `"override": true` correction outranks Portkey's
+        // standalone card (which has no cache-read rate).
         let autoReview = try XCTUnwrap(
             merged.providers.codex.models["codex-auto-review"]
         )
-        XCTAssertEqual(autoReview.input, 2.5e-6, accuracy: 1e-12)
-        XCTAssertEqual(autoReview.output, 15e-6, accuracy: 1e-12)
+        let luna = try XCTUnwrap(merged.providers.codex.models["gpt-5.6-luna"])
+        XCTAssertEqual(autoReview.input, luna.input)
+        XCTAssertEqual(autoReview.output, luna.output)
+        XCTAssertEqual(autoReview.cacheRead, luna.cacheRead)
+        XCTAssertNotNil(autoReview.cacheRead)
     }
 
     /// Only models.dev's own `meta` provider prices Muse Spark; a gateway's

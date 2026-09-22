@@ -2,7 +2,28 @@ import Foundation
 
 /// Decoder for the small, curated AstroQore supplement repository. Values in
 /// that repository are USD per one million tokens.
+///
+/// Most entries fill gaps: they sit below every public catalog and only
+/// price a model none of them lists. An entry marked `"override": true` is a
+/// correction instead — the refresher applies it after Portkey, models.dev
+/// and LiteLLM (and before the user's own Settings overrides), so it can fix
+/// a public price that is wrong. Builds that predate the flag ignore the
+/// unknown key and keep treating the entry as a gap filler.
 public enum AstroQorePricingTransformer {
+    /// Both layers one document produces. `supplement` holds every entry,
+    /// corrections included, exactly as older builds cached it; `overrides`
+    /// holds only the corrections, already resolved against the public
+    /// catalogs, and is `nil` when the document marks none.
+    public struct Layers: Equatable, Sendable {
+        public let supplement: PricingDataSet
+        public let overrides: PricingDataSet?
+
+        public init(supplement: PricingDataSet, overrides: PricingDataSet?) {
+            self.supplement = supplement
+            self.overrides = overrides
+        }
+    }
+
     struct Document: Decodable {
         let schemaVersion: Int
         let models: [Model]
@@ -41,6 +62,13 @@ public enum AstroQorePricingTransformer {
         let displayLabel: String?
         let inherits: ModelReference?
         let pricing: Pricing
+        /// `"override": true` in the document. Absent means a gap filler.
+        let isOverride: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case provider, model, displayLabel, inherits, pricing
+            case isOverride = "override"
+        }
     }
 
     struct ModelReference: Decodable {
@@ -88,10 +116,52 @@ public enum AstroQorePricingTransformer {
         calculationVersion: Int,
         inheritanceBase: PricingDataSet? = nil
     ) -> PricingDataSet? {
+        transformLayers(
+            data,
+            updatedAt: updatedAt,
+            calculationVersion: calculationVersion,
+            inheritanceBase: inheritanceBase
+        )?.supplement
+    }
+
+    /// Decodes the document into its gap-filling and correcting layers.
+    /// `inheritanceBase` is the merge of the public catalogs, so an
+    /// `inherits` reference — on either kind of entry — copies the rate card
+    /// those catalogs agree on.
+    public static func transformLayers(
+        _ data: Data,
+        updatedAt: String,
+        calculationVersion: Int,
+        inheritanceBase: PricingDataSet? = nil
+    ) -> Layers? {
         guard let document = try? JSONDecoder().decode(Document.self, from: data),
               document.schemaVersion == 1
         else { return nil }
 
+        var all = Tables()
+        var corrections = Tables()
+        for model in document.models {
+            let id = model.model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let price = model.pricing
+            guard !id.isEmpty, valid(price.input), valid(price.output) else { continue }
+            add(model, id: id, base: inheritanceBase, to: &all)
+            if model.isOverride == true {
+                add(model, id: id, base: inheritanceBase, to: &corrections)
+            }
+        }
+
+        guard let supplement = all.dataSet(
+            updatedAt: updatedAt, calculationVersion: calculationVersion
+        ) else { return nil }
+        return Layers(
+            supplement: supplement,
+            overrides: corrections.dataSet(
+                updatedAt: updatedAt, calculationVersion: calculationVersion
+            )
+        )
+    }
+
+    private struct Tables {
         var codex: [String: PricingDataSet.CodexEntry] = [:]
         var claude: [String: PricingDataSet.ClaudeEntry] = [:]
         var gemini: [String: PricingDataSet.GeminiEntry] = [:]
@@ -101,153 +171,158 @@ public enum AstroQorePricingTransformer {
         var mistral: [String: PricingDataSet.MistralEntry] = [:]
         var cognition: [String: PricingDataSet.CognitionEntry] = [:]
 
-        for model in document.models {
-            let id = model.model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let price = model.pricing
-            guard !id.isEmpty, valid(price.input), valid(price.output) else { continue }
-            let fastMultiplier = multiplier(base: price, fast: price.fast)
-
-            switch model.provider {
-            case .codex:
-                if let inherited = inheritedCodex(model.inherits, from: inheritanceBase) {
-                    codex[id] = copy(inherited, displayLabel: model.displayLabel)
-                    continue
-                }
-                codex[id] = .init(
-                    input: perToken(price.input), output: perToken(price.output),
-                    cacheRead: price.cacheRead.map(perToken),
-                    cacheCreation: price.cacheWrite.map(perToken),
-                    thresholdTokens: price.threshold?.tokens,
-                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
-                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
-                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
-                    cacheCreationAboveThreshold: price.threshold?.cacheWrite.map(perToken),
-                    fastMultiplier: fastMultiplier,
-                    displayLabel: model.displayLabel
+        func dataSet(updatedAt: String, calculationVersion: Int) -> PricingDataSet? {
+            guard !codex.isEmpty || !claude.isEmpty || !gemini.isEmpty
+                    || !grok.isEmpty || !antigravity.isEmpty || !muse.isEmpty
+                    || !mistral.isEmpty || !cognition.isEmpty
+            else { return nil }
+            return PricingDataSet(
+                schemaVersion: PricingDataSet.currentSchemaVersion,
+                updatedAt: updatedAt,
+                calculationVersion: calculationVersion,
+                providers: .init(
+                    codex: .init(displayName: "OpenAI", models: codex),
+                    claude: .init(displayName: "Anthropic", models: claude),
+                    gemini: .init(displayName: "Google", models: gemini),
+                    grok: .init(displayName: "xAI", models: grok),
+                    antigravity: .init(displayName: "AntiGravity", models: antigravity),
+                    muse: .init(displayName: "Meta AI", models: muse),
+                    mistral: .init(displayName: "Mistral AI", models: mistral),
+                    cognition: .init(displayName: "Cognition", models: cognition)
                 )
-            case .claude:
-                if let inherited = inheritedClaude(model.inherits, from: inheritanceBase) {
-                    claude[id] = inherited
-                    continue
-                }
-                claude[id] = .init(
-                    input: perToken(price.input), output: perToken(price.output),
-                    cacheCreation: perToken(price.cacheWrite ?? price.input * 1.25),
-                    cacheRead: perToken(price.cacheRead ?? price.input * 0.1),
-                    thresholdTokens: price.threshold?.tokens,
-                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
-                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
-                    cacheCreationAboveThreshold: price.threshold?.cacheWrite.map(perToken),
-                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
-                    fastMultiplier: fastMultiplier
-                )
-            case .gemini:
-                if let inherited = inheritedGemini(model.inherits, from: inheritanceBase) {
-                    gemini[id] = copy(inherited, displayLabel: model.displayLabel)
-                    continue
-                }
-                gemini[id] = .init(
-                    input: perToken(price.input), output: perToken(price.output),
-                    cacheRead: price.cacheRead.map(perToken),
-                    thresholdTokens: price.threshold?.tokens,
-                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
-                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
-                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
-                    displayLabel: model.displayLabel
-                )
-            case .grok:
-                if let inherited = inheritedGrok(model.inherits, from: inheritanceBase) {
-                    grok[id] = copy(inherited, displayLabel: model.displayLabel)
-                    continue
-                }
-                grok[id] = .init(
-                    input: perToken(price.input), output: perToken(price.output),
-                    cacheRead: price.cacheRead.map(perToken),
-                    thresholdTokens: price.threshold?.tokens,
-                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
-                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
-                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
-                    displayLabel: model.displayLabel
-                )
-            case .cognition:
-                if let inherited = inheritedCognition(model.inherits, from: inheritanceBase) {
-                    cognition[id] = copy(inherited, displayLabel: model.displayLabel)
-                    continue
-                }
-                cognition[id] = .init(
-                    input: perToken(price.input), output: perToken(price.output),
-                    cacheRead: price.cacheRead.map(perToken),
-                    thresholdTokens: price.threshold?.tokens,
-                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
-                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
-                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
-                    displayLabel: model.displayLabel
-                )
-            case .mistral:
-                if let inherited = inheritedMistral(model.inherits, from: inheritanceBase) {
-                    mistral[id] = copy(inherited, displayLabel: model.displayLabel)
-                    continue
-                }
-                mistral[id] = .init(
-                    input: perToken(price.input), output: perToken(price.output),
-                    cacheRead: price.cacheRead.map(perToken),
-                    thresholdTokens: price.threshold?.tokens,
-                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
-                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
-                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
-                    displayLabel: model.displayLabel
-                )
-            case .muse:
-                if let inherited = inheritedMuse(model.inherits, from: inheritanceBase) {
-                    muse[id] = copy(inherited, displayLabel: model.displayLabel)
-                    continue
-                }
-                muse[id] = .init(
-                    input: perToken(price.input), output: perToken(price.output),
-                    cacheRead: price.cacheRead.map(perToken),
-                    thresholdTokens: price.threshold?.tokens,
-                    inputAboveThreshold: price.threshold.map { perToken($0.input) },
-                    outputAboveThreshold: price.threshold.map { perToken($0.output) },
-                    cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
-                    displayLabel: model.displayLabel
-                )
-            case .antigravity:
-                if let inherited = inheritedAntigravity(model.inherits, from: inheritanceBase) {
-                    antigravity[id] = .init(
-                        input: inherited.input, output: inherited.output,
-                        cacheRead: inherited.cacheRead,
-                        cacheCreation: inherited.cacheCreation,
-                        displayLabel: model.displayLabel ?? inherited.displayLabel
-                    )
-                    continue
-                }
-                antigravity[id] = .init(
-                    input: perToken(price.input), output: perToken(price.output),
-                    cacheRead: perToken(price.cacheRead ?? 0),
-                    cacheCreation: perToken(price.cacheWrite ?? 0),
-                    displayLabel: model.displayLabel
-                )
-            }
-        }
-
-        guard !codex.isEmpty || !claude.isEmpty || !gemini.isEmpty
-                || !grok.isEmpty || !antigravity.isEmpty || !muse.isEmpty || !mistral.isEmpty || !cognition.isEmpty
-        else { return nil }
-        return PricingDataSet(
-            schemaVersion: PricingDataSet.currentSchemaVersion,
-            updatedAt: updatedAt,
-            calculationVersion: calculationVersion,
-            providers: .init(
-                codex: .init(displayName: "OpenAI", models: codex),
-                claude: .init(displayName: "Anthropic", models: claude),
-                gemini: .init(displayName: "Google", models: gemini),
-                grok: .init(displayName: "xAI", models: grok),
-                antigravity: .init(displayName: "AntiGravity", models: antigravity),
-                muse: .init(displayName: "Meta AI", models: muse),
-                mistral: .init(displayName: "Mistral AI", models: mistral),
-                cognition: .init(displayName: "Cognition", models: cognition)
             )
-        )
+        }
+    }
+
+    private static func add(
+        _ model: Model,
+        id: String,
+        base: PricingDataSet?,
+        to tables: inout Tables
+    ) {
+        let price = model.pricing
+        let fastMultiplier = multiplier(base: price, fast: price.fast)
+        switch model.provider {
+        case .codex:
+            if let inherited = inheritedCodex(model.inherits, from: base) {
+                tables.codex[id] = copy(inherited, displayLabel: model.displayLabel)
+                return
+            }
+            tables.codex[id] = .init(
+                input: perToken(price.input), output: perToken(price.output),
+                cacheRead: price.cacheRead.map(perToken),
+                cacheCreation: price.cacheWrite.map(perToken),
+                thresholdTokens: price.threshold?.tokens,
+                inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                cacheCreationAboveThreshold: price.threshold?.cacheWrite.map(perToken),
+                fastMultiplier: fastMultiplier,
+                displayLabel: model.displayLabel
+            )
+        case .claude:
+            if let inherited = inheritedClaude(model.inherits, from: base) {
+                tables.claude[id] = inherited
+                return
+            }
+            tables.claude[id] = .init(
+                input: perToken(price.input), output: perToken(price.output),
+                cacheCreation: perToken(price.cacheWrite ?? price.input * 1.25),
+                cacheRead: perToken(price.cacheRead ?? price.input * 0.1),
+                thresholdTokens: price.threshold?.tokens,
+                inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                cacheCreationAboveThreshold: price.threshold?.cacheWrite.map(perToken),
+                cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                fastMultiplier: fastMultiplier
+            )
+        case .gemini:
+            if let inherited = inheritedGemini(model.inherits, from: base) {
+                tables.gemini[id] = copy(inherited, displayLabel: model.displayLabel)
+                return
+            }
+            tables.gemini[id] = .init(
+                input: perToken(price.input), output: perToken(price.output),
+                cacheRead: price.cacheRead.map(perToken),
+                thresholdTokens: price.threshold?.tokens,
+                inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                displayLabel: model.displayLabel
+            )
+        case .grok:
+            if let inherited = inheritedGrok(model.inherits, from: base) {
+                tables.grok[id] = copy(inherited, displayLabel: model.displayLabel)
+                return
+            }
+            tables.grok[id] = .init(
+                input: perToken(price.input), output: perToken(price.output),
+                cacheRead: price.cacheRead.map(perToken),
+                thresholdTokens: price.threshold?.tokens,
+                inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                displayLabel: model.displayLabel
+            )
+        case .cognition:
+            if let inherited = inheritedCognition(model.inherits, from: base) {
+                tables.cognition[id] = copy(inherited, displayLabel: model.displayLabel)
+                return
+            }
+            tables.cognition[id] = .init(
+                input: perToken(price.input), output: perToken(price.output),
+                cacheRead: price.cacheRead.map(perToken),
+                thresholdTokens: price.threshold?.tokens,
+                inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                displayLabel: model.displayLabel
+            )
+        case .mistral:
+            if let inherited = inheritedMistral(model.inherits, from: base) {
+                tables.mistral[id] = copy(inherited, displayLabel: model.displayLabel)
+                return
+            }
+            tables.mistral[id] = .init(
+                input: perToken(price.input), output: perToken(price.output),
+                cacheRead: price.cacheRead.map(perToken),
+                thresholdTokens: price.threshold?.tokens,
+                inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                displayLabel: model.displayLabel
+            )
+        case .muse:
+            if let inherited = inheritedMuse(model.inherits, from: base) {
+                tables.muse[id] = copy(inherited, displayLabel: model.displayLabel)
+                return
+            }
+            tables.muse[id] = .init(
+                input: perToken(price.input), output: perToken(price.output),
+                cacheRead: price.cacheRead.map(perToken),
+                thresholdTokens: price.threshold?.tokens,
+                inputAboveThreshold: price.threshold.map { perToken($0.input) },
+                outputAboveThreshold: price.threshold.map { perToken($0.output) },
+                cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
+                displayLabel: model.displayLabel
+            )
+        case .antigravity:
+            if let inherited = inheritedAntigravity(model.inherits, from: base) {
+                tables.antigravity[id] = .init(
+                    input: inherited.input, output: inherited.output,
+                    cacheRead: inherited.cacheRead,
+                    cacheCreation: inherited.cacheCreation,
+                    displayLabel: model.displayLabel ?? inherited.displayLabel
+                )
+                return
+            }
+            tables.antigravity[id] = .init(
+                input: perToken(price.input), output: perToken(price.output),
+                cacheRead: perToken(price.cacheRead ?? 0),
+                cacheCreation: perToken(price.cacheWrite ?? 0),
+                displayLabel: model.displayLabel
+            )
+        }
     }
 
     private static func valid(_ value: Double) -> Bool {

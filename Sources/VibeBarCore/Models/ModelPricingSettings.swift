@@ -106,6 +106,16 @@ public enum PricingSourceID: String, Codable, CaseIterable, Sendable, Identifiab
         case .astroQore: "AstroQore supplements"
         }
     }
+
+    /// Name of the correcting layer a source can publish, which ranks above
+    /// every public catalog and below local overrides. Only the AstroQore
+    /// supplement has one (its `"override": true` entries).
+    public var overrideLayerLabel: String? {
+        switch self {
+        case .astroQore: "AstroQore corrections"
+        case .liteLLM, .modelsDev, .portkey: nil
+        }
+    }
 }
 
 public enum PricingSourceRefreshResult: String, Codable, Sendable {
@@ -122,6 +132,10 @@ public struct PricingSourceStatus: Codable, Equatable, Sendable, Identifiable {
     public var lastAttemptAt: Date?
     public var lastSuccessAt: Date?
     public var detail: String?
+    /// Models this source applies above the public catalogs (see
+    /// `PricingSourceID.overrideLayerLabel`); already counted in
+    /// `modelCount`. `nil` on status files written before the layer existed.
+    public var overrideModelCount: Int?
 
     public var id: PricingSourceID { source }
 
@@ -131,7 +145,8 @@ public struct PricingSourceStatus: Codable, Equatable, Sendable, Identifiable {
         modelCount: Int = 0,
         lastAttemptAt: Date? = nil,
         lastSuccessAt: Date? = nil,
-        detail: String? = nil
+        detail: String? = nil,
+        overrideModelCount: Int? = nil
     ) {
         self.source = source
         self.result = result
@@ -139,6 +154,7 @@ public struct PricingSourceStatus: Codable, Equatable, Sendable, Identifiable {
         self.lastAttemptAt = lastAttemptAt
         self.lastSuccessAt = lastSuccessAt
         self.detail = detail
+        self.overrideModelCount = overrideModelCount
     }
 }
 
