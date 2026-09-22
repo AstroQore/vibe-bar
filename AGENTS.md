@@ -1262,10 +1262,21 @@ and moves the date, and reading that as a completed cycle would fill the
 reset history with cycles nothing ever reset. Every Chat field is
 `isBranchStyleField`, since each carries an L3 group; `shortLabel` stays the
 feature or model name, because the menu bar prints that one and "Daily"
-alone does not say daily what. `ChatGPTChatProAllowances` holds the
-published totals per `plan_type` (`pro`: 200/week GPT-6 Pro, 170/day Sol Pro,
-200/day both; `prolite`: 50/week shared — help article 20001354,
-re-verified 2026-09-23); other plans get no Pro buckets. Counts are trailing-window
+alone does not say daily what. The published totals per `plan_type` live
+in the public repo `AstroQore/vibebar-quota-limits` (`limits.json`, with
+`schema.json`; `pro`: 200/week GPT-6 Pro, 170/day Sol Pro, 200/day both;
+`prolite`: 50/week shared — help article 20001354, re-verified 2026-09-23).
+`QuotaLimitsCatalog` fetches it on the pricing refresh loop
+(`AppEnvironment.refreshPricing`, ≤ 256 KiB, 15 s, HTTPS only), keeps the last
+valid copy in `~/.vibebar/quota_limits.json` (status beside it in
+`quota_limits_status.json`) and an in-memory snapshot loaded from that cache
+once; `ChatGPTChatProAllowances.allowances(plan:)` reads only the snapshot.
+Validation: `schemaVersion` 1 or the whole document is ignored; rows with an
+unknown provider or any malformed field (`limit > 0`, `windowSeconds ≥ 3600`,
+`unit` "messages", slugs passing `ChatGPTChatParser.validModel`) are skipped
+alone. A plan with no usable published rows falls back to
+`ChatGPTChatProAllowances.bundled(plan:)`, the table compiled into the
+binary; other plans get no Pro buckets. Counts are trailing-window
 estimates with no claimed reset; a throttled model overrides its bucket with
 the service's exhausted state and reset. Partial coverage shows the count
 without a percentage. Only hashed ids, times and model slugs are cached, in

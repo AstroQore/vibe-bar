@@ -519,6 +519,7 @@ audit metadata only. Derived state stays under:
 ├── scan_cache/
 ├── pricing_sources/
 ├── pricing_cache.json
+├── quota_limits.json
 ├── service_status.json
 ├── usage_events.sqlite3
 ├── session_index.sqlite3
@@ -631,7 +632,10 @@ coding-agent community:
   [Portkey Models](https://github.com/Portkey-AI/models) maintain the public
   model-pricing catalogs Vibe Bar refreshes and merges for cost attribution.
   [AstroQore VibeBar Model Pricing](https://github.com/AstroQore/vibebar-model-pricing)
-  carries the small Vibe Bar-specific supplement layer.
+  carries the small Vibe Bar-specific supplement layer, and
+  [AstroQore VibeBar Quota Limits](https://github.com/AstroQore/vibebar-quota-limits)
+  the published per-plan allowances no provider reports itself (ChatGPT Chat's
+  Pro-model limits), refreshed on the same schedule.
 
 Vibe Bar also directly uses
 [SweetCookieKit](https://github.com/steipete/SweetCookieKit) for local browser

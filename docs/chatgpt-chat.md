@@ -58,7 +58,15 @@ The service reports no count for GPT-6 Pro or GPT-5.6 Sol Pro. Its
 (`model_limits`: `model_slug`, `resets_after`, `using_default_model_slug`),
 and `/backend-api/models` carries no allowance fields. What OpenAI publishes
 is the total per plan, in "GPT-5.6 and GPT-6 Pro in ChatGPT" (help article
-20001354, re-verified 2026-09-23):
+20001354, re-verified 2026-09-23). Vibe Bar reads those totals from the public
+[AstroQore/vibebar-quota-limits](https://github.com/AstroQore/vibebar-quota-limits)
+repository (`limits.json`, described by `schema.json`), so a changed allowance
+reaches the app without a release. The table is fetched alongside the pricing
+catalogs, on the same interval; the last valid copy is kept in
+`~/.vibebar/quota_limits.json` and used offline. A row for an unknown provider
+or with a malformed field is skipped, a document with another `schemaVersion`
+is ignored, and a plan with no usable rows uses the table built into the app,
+which today matches the published one:
 
 Every Chat bucket is grouped the way Codex's Spark lanes are: the thing
 being metered is the group header — Image Generation, Deep Research,
@@ -92,8 +100,8 @@ incomplete" instead of a percentage. A throttled model overrides the count
 with the service's own exhausted state and reset time; a shared allowance
 is treated as exhausted only when every model it covers is.
 
-Plans other than `pro` and `prolite` get no Pro buckets, because the table
-above does not cover them. Temporary chats, deleted conversations and turns
+Plans the published table does not cover — today anything other than `pro`
+and `prolite` — get no Pro buckets. Temporary chats, deleted conversations and turns
 whose answer never finished are not counted; the settings pane reports the
 excluded Work conversations and unclassified turns.
 

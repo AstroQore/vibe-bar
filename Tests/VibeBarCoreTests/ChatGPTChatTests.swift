@@ -395,7 +395,7 @@ final class ChatGPTChatTests: XCTestCase {
     }
 
     func testProAllowancesFollowThePublishedPlanTable() {
-        let pro = ChatGPTChatProAllowances.allowances(plan: "pro")
+        let pro = ChatGPTChatProAllowances.allowances(plan: "pro", table: nil)
         XCTAssertEqual(pro.map(\.id), ["gpt6_pro_weekly", "sol_pro_daily", "pro_daily"])
         XCTAssertEqual(pro.map(\.group), ["GPT-6 Astra Pro", "GPT-5.6 Sol Pro", "Pro Models"])
         XCTAssertEqual(pro.map(\.title), ["Weekly", "Daily", "Daily"])
@@ -404,12 +404,12 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertEqual(pro[0].models, ["gpt-6-pro"])
         XCTAssertEqual(pro[1].models, ["gpt-5-6-pro"])
         XCTAssertEqual(pro[2].models, ["gpt-6-pro", "gpt-5-6-pro"])
-        let lite = ChatGPTChatProAllowances.allowances(plan: "prolite")
+        let lite = ChatGPTChatProAllowances.allowances(plan: "prolite", table: nil)
         XCTAssertEqual(lite.map(\.id), ["pro_weekly"])
         XCTAssertEqual(lite.first?.limit, 50)
         XCTAssertEqual(lite.first?.models, ["gpt-6-pro", "gpt-5-6-pro"])
-        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "plus").isEmpty)
-        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: nil).isEmpty)
+        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "plus", table: nil).isEmpty)
+        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: nil, table: nil).isEmpty)
         let ids = Set(MenuBarFieldCatalog.chatGPTChatFields.map(\.bucketId))
         for allowance in pro + lite { XCTAssertTrue(ids.contains(allowance.id), allowance.id) }
     }
@@ -424,7 +424,7 @@ final class ChatGPTChatTests: XCTestCase {
             turn("gpt-5-6-pro", ago: 600), turn("gpt-5-6-pro", ago: 7_200), turn("gpt-5-6-pro", ago: 2 * 86_400),
             turn("gpt-5-6-thinking", ago: 60)
         ] + [turn("gpt-5-6-pro", ago: 600)]
-        let pro = ChatGPTChatProAllowances.allowances(plan: "pro")
+        let pro = ChatGPTChatProAllowances.bundled(plan: "pro")
         let buckets = ChatGPTChatParser.proBuckets(allowances: pro, turns: turns, limits: [], complete: true, now: base)
         XCTAssertEqual(buckets.map(\.id), ["gpt6_pro_weekly", "sol_pro_daily", "pro_daily"])
         XCTAssertEqual(buckets.map(\.groupTitle), ["GPT-6 Astra Pro", "GPT-5.6 Sol Pro", "Pro Models"],
