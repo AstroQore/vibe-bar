@@ -80,12 +80,16 @@ struct PricingSettingsSection: View {
             EffectivePricingCatalogView(allRows: modelPrices)
 
             settingsSection(L10n.Settings.Pricing.priorityHealth) {
+                let corrections = correctionLayers
                 priorityRow(number: 1, name: L10n.Settings.Pricing.localOverrides, detail: L10n.Settings.Pricing.alwaysWins)
+                ForEach(Array(corrections.enumerated()), id: \.element.source) { index, layer in
+                    correctionRow(number: index + 2, layer: layer)
+                }
                 ForEach(Array(PricingSourceID.allCases.enumerated()), id: \.element) { index, source in
-                    sourceRow(number: index + 2, source: source)
+                    sourceRow(number: corrections.count + index + 2, source: source)
                 }
                 priorityRow(
-                    number: PricingSourceID.allCases.count + 2,
+                    number: corrections.count + PricingSourceID.allCases.count + 2,
                     name: L10n.Settings.Pricing.bundledFallback,
                     detail: L10n.Settings.Pricing.offlineFloor
                 )
@@ -117,6 +121,32 @@ struct PricingSettingsSection: View {
                     Label(L10n.Settings.Pricing.addOverride, systemImage: "plus")
                 }
             }
+        }
+    }
+
+    /// Sources whose corrections currently rank above every public catalog —
+    /// in practice the AstroQore supplement's `"override": true` entries.
+    /// A handful of status rows, read once per render; no I/O.
+    private var correctionLayers: [PricingSourceStatus] {
+        environment.pricingRefreshStatus.sources.filter {
+            $0.source.overrideLayerLabel != nil && ($0.overrideModelCount ?? 0) > 0
+        }
+    }
+
+    private func correctionRow(number: Int, layer: PricingSourceStatus) -> some View {
+        HStack(spacing: 10) {
+            Text(AppLocale.number(number))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .frame(width: 18, alignment: .trailing)
+            Circle()
+                .fill(statusColor(layer.result))
+                .frame(width: 7, height: 7)
+            Text(layer.source.overrideLayerLabel ?? layer.source.label)
+            Spacer()
+            Text(L10n.Onboarding.Pricing.Source.models(count: layer.overrideModelCount ?? 0))
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
         }
     }
 

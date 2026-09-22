@@ -616,3 +616,20 @@ public struct UsageProjectStat: Sendable, Equatable, Identifiable {
         self.costMicros = costMicros
     }
 }
+
+/// How much one (tool, day, model) slice of the usage ledger moved when the
+/// ledger repriced itself for a new pricing table. `day` is the ledger's
+/// local `yyyy-MM-dd` key, the same one `CostHistoryStore` uses.
+public struct PricingRevisionCostChange: Equatable, Sendable {
+    public let tool: ToolType
+    public let day: String
+    public let model: String
+    public let deltaUSD: Double
+
+    public init(tool: ToolType, day: String, model: String, deltaUSD: Double) {
+        self.tool = tool
+        self.day = day
+        self.model = model
+        self.deltaUSD = deltaUSD
+    }
+}
