@@ -223,10 +223,16 @@ public struct ChatGPTChatClient: Sendable {
             // The row is the window, but `shortLabel` stays the feature: it
             // is what the menu bar and the compact mini layouts print, and
             // "Daily" alone would not say daily *what*.
+            // An untouched allowance's reset is "now + window" on every
+            // read: it moves with the clock, so the history must not read
+            // it as a cycle ending. Once something is spent the deadline
+            // stands still, and the read that finds it refilled — untouched
+            // again — still closes that cycle.
             return QuotaBucket(id: sample.id, title: row ?? feature, shortLabel: feature, usedPercent: 0,
                                resetAt: sample.resetAt, rawWindowSeconds: window,
                                groupTitle: row == nil ? nil : feature,
-                               quantity: quantities[sample.id]?.quantity)
+                               quantity: quantities[sample.id]?.quantity,
+                               hasRollingReset: quantities[sample.id]?.isUntouched ?? false)
         }
         var summary = ChatGPTChatSummary(transport: transport.name, planVerified: plan != nil, accountIdentity: identity)
         // The Pro models have no service count: their buckets are the saved

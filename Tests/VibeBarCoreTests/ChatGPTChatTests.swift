@@ -87,12 +87,115 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertTrue(missed.isEstimated)
     }
 
-    func testProvisionalWindowRoundsToWholeDaysOrHours() {
-        XCTAssertEqual(ChatGPTChatAllowanceLearning.provisionalWindow(resetAt: base.addingTimeInterval(29 * 86_400 + 23 * 3_600), observedAt: base), 30 * 86_400)
-        XCTAssertEqual(ChatGPTChatAllowanceLearning.provisionalWindow(resetAt: base.addingTimeInterval(23 * 3_600 + 58 * 60), observedAt: base), 86_400)
-        XCTAssertEqual(ChatGPTChatAllowanceLearning.provisionalWindow(resetAt: base.addingTimeInterval(4 * 3_600 + 50 * 60), observedAt: base), 5 * 3_600)
-        XCTAssertNil(ChatGPTChatAllowanceLearning.provisionalWindow(resetAt: base.addingTimeInterval(-1), observedAt: base))
+    func testProvisionalWindowIsTheSmallestStandardWindowHoldingTheDeadline() {
+        func window(_ seconds: TimeInterval) -> Int? {
+            ChatGPTChatAllowanceLearning.provisionalWindow(resetAt: base.addingTimeInterval(seconds), observedAt: base)
+        }
+        XCTAssertEqual(window(29 * 86_400 + 23 * 3_600), 30 * 86_400)
+        XCTAssertEqual(window(23 * 3_600 + 58 * 60), 86_400)
+        XCTAssertEqual(window(86_400 + 121), 86_400, "now + a day, stamped a moment after the read")
+        // A fixed deadline part-way through its window is at most a window
+        // away, so it never names a shorter one.
+        XCTAssertEqual(window(4 * 3_600 + 50 * 60), 86_400)
+        XCTAssertEqual(window(3 * 86_400), 7 * 86_400)
+        XCTAssertEqual(window(14 * 86_400 + 17 * 3_600), 30 * 86_400)
+        XCTAssertEqual(ChatGPTChatWindow.label(seconds: window(14 * 86_400 + 17 * 3_600)), "Monthly")
+        XCTAssertEqual(window(31 * 86_400), 31 * 86_400)
+        XCTAssertEqual(ChatGPTChatWindow.label(seconds: window(31 * 86_400)), "Monthly")
+        XCTAssertEqual(window(45 * 86_400 + 3_000), 45 * 86_400)
+        XCTAssertNil(window(-1))
         XCTAssertNil(ChatGPTChatAllowanceLearning.provisionalWindow(resetAt: nil, observedAt: base))
+        // A measured gap snaps to the standard window it is within minutes of.
+        XCTAssertEqual(ChatGPTChatAllowanceLearning.learnedWindow(seconds: 86_521), 86_400)
+        XCTAssertEqual(ChatGPTChatAllowanceLearning.learnedWindow(seconds: 30 * 86_400 - 200), 30 * 86_400)
+        XCTAssertEqual(ChatGPTChatAllowanceLearning.learnedWindow(seconds: 3 * 86_400 + 3_000), 3 * 86_400)
+        XCTAssertEqual(ChatGPTChatAllowanceLearning.learnedWindow(seconds: 5 * 3_600 - 100), 5 * 3_600)
+    }
+
+    /// A fixed monthly deadline comes a day closer with every day. Measured
+    /// afresh each read it would be "30 days", then "15 days" with no name,
+    /// then "1 day" — the window it opened with is what the row must keep.
+    func testAFixedDeadlineKeepsItsWindowAcrossReadsAndANewOneReanchors() {
+        var learning = ChatGPTChatAllowanceLearning()
+        let deadline: TimeInterval = 30 * 86_400 - 3_600
+        func research(_ remaining: Int, at: TimeInterval, reset: TimeInterval) -> ChatGPTChatAllowanceSample {
+            .init(id: "deep_research", remaining: remaining, resetAt: base.addingTimeInterval(reset), observedAt: base.addingTimeInterval(at))
+        }
+        for (day, remaining) in [(0.0, 250), (15.0, 240), (29.0, 230), (29.9, 229)] {
+            let read = research(remaining, at: day * 86_400, reset: deadline)
+            _ = learning.observe(read)
+            XCTAssertEqual(learning.windowSeconds(for: read), 30 * 86_400, "day \(day)")
+            XCTAssertEqual(ChatGPTChatWindow.label(seconds: learning.windowSeconds(for: read)), "Monthly")
+        }
+        XCTAssertEqual(learning.windowAnchor?.seconds, Int(deadline))
+        // A different deadline is measured on its own: a week away is a week.
+        let next = research(250, at: 30 * 86_400, reset: 37 * 86_400)
+        _ = learning.observe(next)
+        XCTAssertEqual(learning.windowSeconds(for: next), 7 * 86_400)
+        XCTAssertEqual(learning.windowAnchor?.resetAt, base.addingTimeInterval(37 * 86_400))
+    }
+
+    /// An allowance nothing is spent from reports "now + a day" as its reset,
+    /// and a read just past a boundary measures the day plus the read's
+    /// delay. That once confirmed an 86 521-second window; it is a day.
+    func testAnUntouchedAllowanceConfirmsAStandardWindowAndReadsAsRolling() async throws {
+        var learning = ChatGPTChatAllowanceLearning()
+        var boundary: TimeInterval = 86_400
+        _ = learning.observe(sample(1000, at: 0, reset: boundary))
+        for _ in 1...3 {
+            _ = learning.observe(sample(1000, at: boundary - 300, reset: boundary))
+            let read = boundary + 121
+            _ = learning.observe(sample(1000, at: read, reset: read + 86_400))
+            boundary = read + 86_400
+        }
+        XCTAssertTrue(learning.isConfirmed)
+        XCTAssertEqual(learning.learnedWindowSeconds, 86_400)
+        XCTAssertEqual(ChatGPTChatWindow.label(seconds: learning.learnedWindowSeconds), "Daily")
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ChatGPTChatAllowanceStore(url: directory.appendingPathComponent("learning.json"))
+        let identity = ChatGPTChatParser.identity("synthetic-user")
+        let untouched = try await store.observe(localAccount: "local", identity: identity, plan: "pro",
+                                                samples: [sample(1000, at: 0, reset: 86_400)])
+        XCTAssertEqual(untouched["image_gen"]?.isUntouched, true)
+        let spent = try await store.observe(localAccount: "local", identity: identity, plan: "pro",
+                                            samples: [sample(990, at: 60, reset: 86_400)])
+        XCTAssertEqual(spent["image_gen"]?.isUntouched, false)
+        XCTAssertEqual(spent["image_gen"]?.windowSeconds, 86_400)
+    }
+
+    /// Files written before anchors existed still decode — including one
+    /// with no `observedMaximum` — and a confirmed 86 521-second window
+    /// from one reads as a day. A saved read of a fixed deadline anchors
+    /// the next read of it, so the first read after an update is already
+    /// the month it was.
+    func testLearningFilesFromOlderBuildsDecodeAndAnchorOnTheirSavedRead() throws {
+        let saved = base.timeIntervalSinceReferenceDate
+        let legacy = Data("""
+        {"matchingResets":0,"observedMaximum":250,
+         "previous":{"id":"deep_research","observedAt":\(saved),"remaining":234,"resetAt":\(saved + 14 * 86_400 + 17 * 3_600)}}
+        """.utf8)
+        var research = try JSONDecoder().decode(ChatGPTChatAllowanceLearning.self, from: legacy)
+        XCTAssertNil(research.windowAnchor)
+        let next = ChatGPTChatAllowanceSample(id: "deep_research", remaining: 234,
+            resetAt: base.addingTimeInterval(14 * 86_400 + 17 * 3_600), observedAt: base.addingTimeInterval(16 * 3_600))
+        let quantity = research.observe(next)
+        XCTAssertEqual(quantity.limit, 250)
+        XCTAssertEqual(quantity.used, 16)
+        XCTAssertEqual(research.windowSeconds(for: next), 30 * 86_400)
+
+        let confirmed = Data("""
+        {"candidateTotal":1000,"candidateWindowSeconds":86521,"matchingResets":3,"observedMaximum":1000,
+         "previous":{"id":"image_gen","observedAt":\(saved),"remaining":1000,"resetAt":\(saved + 86_400)}}
+        """.utf8)
+        let image = try JSONDecoder().decode(ChatGPTChatAllowanceLearning.self, from: confirmed)
+        XCTAssertEqual(image.learnedWindowSeconds, 86_400)
+        let bare = Data(#"{"matchingResets":0,"previous":{"id":"image_gen","observedAt":1,"remaining":1000,"resetAt":86401}}"#.utf8)
+        XCTAssertNoThrow(try JSONDecoder().decode(ChatGPTChatAllowanceLearning.self, from: bare))
+        // And what is written now reads back.
+        let round = try JSONDecoder().decode(ChatGPTChatAllowanceLearning.self, from: JSONEncoder().encode(research))
+        XCTAssertEqual(round.windowAnchor, research.windowAnchor)
     }
 
     func testOnlyTwoFeaturesAreParsedAndMalformedCountsDoNotBecomeZero() throws {
@@ -155,7 +258,9 @@ final class ChatGPTChatTests: XCTestCase {
         // The compact surfaces still name the feature: "Daily" alone would
         // not say daily what.
         XCTAssertEqual(quota.buckets.map(\.shortLabel), ["Image Generation", "Deep Research"])
-        XCTAssertFalse(quota.buckets.contains(where: \.hasRollingReset), "these resets are the service's own")
+        // Nothing spent yet: both resets are "now + window" and slide with
+        // every read, so neither may be read as a cycle ending.
+        XCTAssertTrue(quota.buckets.allSatisfy(\.hasRollingReset), "an untouched allowance's reset slides")
         for field in MenuBarFieldCatalog.chatGPTChatFields {
             XCTAssertTrue(MenuBarFieldCatalog.isBranchStyleField(field),
                           "\(field.bucketId) carries an L3 group, so every surface that composes one must know")

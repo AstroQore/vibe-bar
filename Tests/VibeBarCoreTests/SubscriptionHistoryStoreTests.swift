@@ -1257,4 +1257,102 @@ extension SubscriptionHistoryStoreTests {
         let recorded = await store.allSamples()
         XCTAssertFalse(recorded.isEmpty, "a bucket whose deadline is the provider's still records its cycles")
     }
+
+    /// Image Generation left untouched reports "now + a day" on every read.
+    /// Spending from it fixes the deadline; the read that finds it refilled
+    /// is untouched — rolling — again, and must still close that cycle, once.
+    func testASpentFeatureAllowanceClosesItsCycleWhenItRefillsUntouched() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SubscriptionHistoryStore(fileURL: directory.appendingPathComponent("history.json"))
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        func read(remaining: Int, at offset: TimeInterval, resetIn: TimeInterval) async {
+            let now = start.addingTimeInterval(offset)
+            let bucket = QuotaBucket(
+                id: "image_gen", title: "Daily", shortLabel: "Image Generation", usedPercent: 0,
+                resetAt: start.addingTimeInterval(resetIn), rawWindowSeconds: 86_400, groupTitle: "Image Generation",
+                quantity: .init(used: 1000 - remaining, remaining: remaining, limit: 1000, isEstimated: true),
+                hasRollingReset: remaining == 1000
+            )
+            await store.observe(AccountQuota(accountId: "chat", tool: .chatgptChat, buckets: [bucket],
+                                             plan: "pro", email: nil, queriedAt: now), now: now)
+        }
+        // Untouched, polled with gaps: the reset slides and nothing records.
+        for hour in stride(from: 0.0, through: 20, by: 4) {
+            await read(remaining: 1000, at: hour * 3_600, resetIn: hour * 3_600 + 86_400)
+        }
+        var samples = await store.allSamples()
+        XCTAssertTrue(samples.isEmpty, "an untouched allowance has no cycle")
+        var journal = await store.allFeatureResets()
+        XCTAssertTrue(journal.isEmpty)
+
+        // Spent at hour 21: the deadline is fixed at hour 45.
+        let deadline: TimeInterval = 45 * 3_600
+        for hour in stride(from: 21.0, through: 44, by: 1) {
+            await read(remaining: 990 - Int(hour - 21), at: hour * 3_600, resetIn: deadline)
+        }
+        samples = await store.allSamples()
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertFalse(samples[0].isCompleted)
+
+        // Refilled, read untouched just after the deadline, then untouched
+        // for a day of gappy polls.
+        await read(remaining: 1000, at: deadline + 120, resetIn: deadline + 120 + 86_400)
+        for hour in stride(from: 49.0, through: 69, by: 4) {
+            await read(remaining: 1000, at: hour * 3_600, resetIn: hour * 3_600 + 86_400)
+        }
+        samples = await store.allSamples()
+        XCTAssertEqual(samples.count, 1, "the refill closes the cycle and opens none")
+        let cycle = try XCTUnwrap(samples.first)
+        XCTAssertTrue(cycle.isCompleted)
+        XCTAssertEqual(cycle.completedAt, start.addingTimeInterval(deadline + 120))
+        XCTAssertEqual(cycle.resetKind, .onSchedule)
+        XCTAssertGreaterThan(cycle.peakUsedPercent, 0)
+        journal = await store.allFeatureResets()
+        XCTAssertEqual(journal.count, 1, "the refill is journalled when it is read, not when spending resumes")
+        XCTAssertEqual(journal.first?.completedAt, start.addingTimeInterval(deadline + 120))
+        XCTAssertEqual(journal.first?.resetDetails?.nextRemaining, 1000)
+
+        // Spending again begins a new cycle and records nothing else.
+        await read(remaining: 995, at: 70 * 3_600, resetIn: 94 * 3_600)
+        samples = await store.allSamples()
+        XCTAssertEqual(samples.filter(\.isCompleted).count, 1)
+        XCTAssertEqual(samples.filter { !$0.isCompleted }.count, 1)
+        journal = await store.allFeatureResets()
+        XCTAssertEqual(journal.count, 1)
+    }
+
+    /// Older builds recorded an untouched allowance's sliding reset as a
+    /// string of early resets. Those cycles saw no usage and are dropped at
+    /// launch; spent cycles and other providers' cycles stay.
+    func testLaunchDropsChatFeatureCyclesThatNeverSawUsage() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("history.json")
+        let store = SubscriptionHistoryStore(fileURL: url)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        func quota(_ tool: ToolType, _ id: String, used: Double, at offset: TimeInterval) -> AccountQuota {
+            AccountQuota(accountId: "acct", tool: tool, buckets: [QuotaBucket(
+                id: id, title: "Daily", shortLabel: "Daily", usedPercent: used,
+                resetAt: start.addingTimeInterval(offset + 86_400), rawWindowSeconds: 86_400
+            )], plan: "pro", email: nil, queriedAt: start)
+        }
+        // What an older build did: every long poll gap closed a cycle.
+        for gap in 0..<4 {
+            let offset = TimeInterval(gap) * 4 * 3_600
+            await store.observe(quota(.chatgptChat, "image_gen", used: 0, at: offset), now: start.addingTimeInterval(offset))
+            await store.observe(quota(.codex, "five_hour", used: 0, at: offset), now: start.addingTimeInterval(offset))
+            await store.observe(quota(.chatgptChat, "deep_research", used: 6, at: offset), now: start.addingTimeInterval(offset))
+        }
+        let before = await store.allSamples()
+        XCTAssertEqual(before.filter { $0.bucketId == "image_gen" }.count, 4)
+        XCTAssertEqual(before.filter { $0.bucketId == "image_gen" && $0.isCompleted }.count, 3)
+        await store.importLegacyTimeline([])
+        await store.flushPendingWrites()
+        let after = await SubscriptionHistoryStore(fileURL: url).allSamples()
+        XCTAssertTrue(after.filter { $0.bucketId == "image_gen" }.isEmpty)
+        XCTAssertEqual(after.filter { $0.bucketId == "five_hour" }.count, 4, "only Chat feature cycles are judged")
+        XCTAssertEqual(after.filter { $0.bucketId == "deep_research" }.count, 4, "a cycle that saw usage stays")
+    }
 }
