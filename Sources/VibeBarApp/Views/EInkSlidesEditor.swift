@@ -2,6 +2,44 @@ import AppKit
 import SwiftUI
 import VibeBarCore
 
+/// What a group hands the editor so its pages can be edited by the very same
+/// controls a single screen's slides are.
+///
+/// The editor stays one editor: the page list is the group's pages, the
+/// editor under it is the page's template on the screens the Screens control
+/// picks, and every write goes back out through these closures instead of
+/// straight into `AppSettings.einkSync.devices`.
+struct EInkSlidesGroupContext {
+    /// One region of the selected page — one screen, or the run of screens a
+    /// merged region covers.
+    struct Screen: Identifiable, Equatable {
+        let id: String
+        let name: String
+    }
+
+    var screens: [Screen]
+    var activeScreenID: String?
+    var mode: EInkScreenMode
+    /// Custom is a three-screen-and-up shape, and a page already in it.
+    var allowsCustom: Bool
+    var canSplitActive: Bool
+    var mergeTargets: [Screen]
+    var setMode: (EInkScreenMode) -> Void
+    var selectScreen: (String) -> Void
+    var splitActive: () -> Void
+    var mergeActive: (String) -> Void
+    /// Page id, and the template that page now draws on the active screens.
+    var updateSlide: (String, EInkSlide) -> Void
+    var addPage: () -> Void
+    var removePage: (String) -> Void
+    var reorderPages: ([String]) -> Void
+    var selectPage: (String) -> Void
+    var openStudio: (String) -> Void
+    /// The group's own preview: every screen in its arrangement, with the
+    /// page arrows for derived pages. Built above, never in this `body`.
+    var preview: AnyView
+}
+
 /// The slides half of Settings › E-ink Displays: the list on the left, the
 /// selected slide's editor on the right, and the panel it makes at 2x.
 ///
@@ -9,6 +47,10 @@ import VibeBarCore
 /// far more to say — composition, slot order, per-slot names, the Studio — and
 /// one view holding a device's cadence *and* a slide's header bar is a view
 /// nobody can read.
+///
+/// One editor serves a screen and a group. A group arrives as an
+/// `EInkSlidesGroupContext` whose page list stands in for the device's
+/// slides; without one, every path is the standalone path it has always been.
 ///
 /// Nothing here computes a layout. The preview plan arrives already resolved
 /// from the section above, which rebuilds it on a change rather than in
@@ -22,6 +64,13 @@ struct EInkSlidesEditor: View {
     /// The preview snapshot, for the live percentage beside each slot. `nil`
     /// before the first assembly, and the rows simply say nothing then.
     let snapshot: EInkDataSnapshot?
+    /// `nil` for a screen on its own.
+    var group: EInkSlidesGroupContext?
+    @State private var contentRequest: EInkContentPicker.Request?
+    @State private var previewPages: [EInkPreviewPlan] = []
+    @State private var previewPage = 0
+    @State private var confirmingStudioPages = false
+    @State private var studioSlide: EInkSlide?
 
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -80,7 +129,22 @@ struct EInkSlidesEditor: View {
         .onChange(of: selectedSlide?.orderedQuotaFieldIDs ?? []) { _, _ in rebuildCaches() }
         .onChange(of: selectedSlide?.id) { _, _ in rebuildCaches() }
         .onChange(of: quotaService.fieldRegistry) { _, _ in rebuildCaches() }
-        .onChange(of: snapshot?.generatedAtISO) { _, _ in rebuildPercentages() }
+        .onChange(of: snapshot) { _, _ in rebuildCaches() }
+        .onChange(of: selectedSlide) { _, _ in rebuildCaches() }
+        .onChange(of: device.orientation) { _, _ in rebuildCaches() }
+        .onChange(of: device.profile) { _, _ in rebuildCaches() }
+        .onChange(of: settingsStore.settings.einkCanvasLayouts) { _, _ in rebuildCaches() }
+        .confirmationDialog(L10n.Settings.Eink.Workflow.editPages, isPresented: $confirmingStudioPages, titleVisibility: .visible, presenting: studioSlide) { slide in
+            Button(L10n.Settings.Eink.Workflow.materializePages) { materializeAndEdit(slide) }
+            Button(L10n.Common.cancel, role: .cancel) {}
+        } message: { _ in Text(L10n.Settings.Eink.Workflow.editPagesDetail) }
+        .sheet(item: $contentRequest) { request in
+            EInkContentPicker(request: request, onSave: { fields in
+                updateSlide(request.slideID) { $0.quotaFieldIDs = fields; $0.options.slotOrder = fields }
+                contentRequest = nil
+            }, onCancel: { contentRequest = nil })
+            .vibeBarNoInitialFocus()
+        }
     }
 
     private func rebuildCaches() {
@@ -89,6 +153,13 @@ struct EInkSlidesEditor: View {
             registry: quotaService.fieldRegistry
         )
         rebuildPercentages()
+        if let slide = selectedSlide, let snapshot {
+            previewPages = EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot).map {
+                EInkPreviewPlanner.plan(slide: $0, orientation: device.orientation, profile: device.profile,
+                    snapshot: snapshot, layouts: settingsStore.settings.einkCanvasLayouts)
+            }
+            previewPage = min(previewPage, max(0, previewPages.count - 1))
+        }
     }
 
     private func rebuildPercentages() {
@@ -107,12 +178,93 @@ struct EInkSlidesEditor: View {
     private var editorColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
             slideList
+            if let group {
+                Divider().padding(.vertical, 2)
+                screensControl(group)
+            }
             if let slide = selectedSlide {
                 Divider().padding(.vertical, 2)
                 slideEditor(slide)
             }
         }
         .frame(minWidth: 440, maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Screens
+
+    /// Which screens this page uses, and — when they are not one canvas —
+    /// which of them the editor below is editing.
+    ///
+    /// The three shapes are read from the page itself (`screenMode`), so this
+    /// control never holds state of its own: switching merges or splits the
+    /// page's regions and the reading changes with it.
+    private func screensControl(_ group: EInkSlidesGroupContext) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(L10n.Settings.Eink.ScreenGroups.screens)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Picker(
+                    L10n.Settings.Eink.ScreenGroups.screens,
+                    selection: Binding(get: { group.mode }, set: { group.setMode($0) })
+                ) {
+                    Text(L10n.Settings.Eink.Screens.combined).tag(EInkScreenMode.combined)
+                    Text(L10n.Settings.Eink.Screens.separate).tag(EInkScreenMode.separate)
+                    if group.allowsCustom {
+                        Text(L10n.Settings.Eink.Screens.custom).tag(EInkScreenMode.custom)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: group.allowsCustom ? 300 : 220)
+                Spacer(minLength: 0)
+            }
+
+            if group.mode != .combined {
+                HStack(spacing: 6) {
+                    // Tabs, not a row of buttons: exactly one screen's
+                    // template is in the editor below at a time, and the
+                    // control has to say which.
+                    Picker(
+                        L10n.Settings.Eink.ScreenGroups.screens,
+                        selection: Binding(get: { group.activeScreenID ?? "" }, set: { group.selectScreen($0) })
+                    ) {
+                        ForEach(group.screens) { screen in
+                            Text(screen.name).tag(screen.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    if group.mode == .custom {
+                        Button(L10n.Settings.Eink.Workflow.splitSlides) { group.splitActive() }
+                            .buttonStyle(.vibeBar)
+                            .disabled(!group.canSplitActive)
+                        Menu(L10n.Settings.Eink.Workflow.mergeSlides) {
+                            ForEach(group.mergeTargets) { target in
+                                Button(target.name) { group.mergeActive(target.id) }
+                            }
+                        }
+                        .frame(width: 130)
+                        .disabled(group.mergeTargets.isEmpty)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+
+            Text(screensDetail(group.mode))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func screensDetail(_ mode: EInkScreenMode) -> String {
+        switch mode {
+        case .combined: L10n.Settings.Eink.Screens.combinedDetail
+        case .separate: L10n.Settings.Eink.Screens.separateDetail
+        case .custom: L10n.Settings.Eink.Screens.customDetail
+        }
     }
 
     // MARK: - The list
@@ -168,12 +320,16 @@ struct EInkSlidesEditor: View {
                 .help(L10n.Common.dragToReorder)
 
             Button {
-                selectedSlideID = slide.id
-                // On a single-slide device the row *is* the active-slide
-                // control: there is no other one, and picking a row that the
-                // panel then ignores is a switch that does nothing.
-                if device.playbackMode == .single {
-                    updateDevice { $0.singleSlideID = slide.id }
+                if let group {
+                    group.selectPage(slide.id)
+                } else {
+                    selectedSlideID = slide.id
+                    // On a single-slide device the row *is* the active-slide
+                    // control: there is no other one, and picking a row that
+                    // the panel then ignores is a switch that does nothing.
+                    if device.playbackMode == .single {
+                        updateDevice { $0.singleSlideID = slide.id }
+                    }
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -465,7 +621,7 @@ struct EInkSlidesEditor: View {
                 Text(L10n.Settings.Eink.buckets)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(L10n.Quota.History.curvesSome(shown: ids.count, total: capacity))
+                Text(L10n.Settings.Eink.Workflow.selectionPages(items: ids.count, pages: max(1, previewPages.count)))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
@@ -652,67 +808,29 @@ struct EInkSlidesEditor: View {
     /// Only what the account actually exposes: round 2 offered the whole
     /// static catalog, so a Gemini-only Mac could tick five Claude rows that
     /// never drew.
-    @ViewBuilder
     private func candidateList(_ slide: EInkSlide, shown: [String], capacity: Int) -> some View {
-        let isFull = shown.count >= capacity
         VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.Common.add)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            if isFull {
-                Text(L10n.Settings.Eink.capacityFull(count: capacity))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            ForEach(candidateSections(shown: shown)) { section in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        QuotaBrandIconView(
-                            tool: section.tool,
-                            bucketID: section.bucketID,
-                            size: 13
-                        )
-                        .opacity(0.85)
-                        Text(section.title)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.tertiary)
-                            .textCase(.uppercase)
-                            .tracking(0.4)
-                    }
-                    ForEach(section.fieldIDs, id: \.self) { fieldID in
-                        Button {
-                            setBucket(slide, fieldID: fieldID, selected: true, capacity: capacity)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 8, weight: .semibold))
-                                Text(candidateName(fieldID))
-                                    .font(.system(size: 11.5))
-                                    .lineLimit(1)
-                                Spacer(minLength: 0)
-                            }
-                        }
-                        .buttonStyle(.vibeBar(cornerRadius: 6))
-                        .disabled(isFull)
-                        .help(fieldID)
-                    }
+            Button(L10n.Settings.Eink.Workflow.chooseContent) {
+                let groups = candidateSections(shown: []).map { section in
+                    EInkContentPicker.Section(id: section.id, title: section.title,
+                        choices: section.fieldIDs.map { EInkContentPicker.Choice(id: $0, title: candidateName($0)) })
                 }
-                .padding(.leading, 14)
+                contentRequest = EInkContentPicker.Request(slideID: slide.id, initial: slide.orderedQuotaFieldIDs, sections: groups)
             }
+            Text(L10n.Settings.Eink.Workflow.automaticPages)
+                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 
     private func periodPicker(_ slide: EInkSlide, capacity: Int) -> some View {
         let selected = slide.usagePeriods
-        let isFull = selected.count >= capacity
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Text(L10n.Usage.Breakdown.periods)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
-                Text(L10n.Quota.History.curvesSome(shown: selected.count, total: capacity))
+                Text(L10n.Settings.Eink.Workflow.selectionPages(items: selected.count, pages: max(1, previewPages.count)))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
@@ -724,8 +842,7 @@ struct EInkSlidesEditor: View {
                 .toggleStyle(.checkbox)
                 .controlSize(.small)
                 .disabled(
-                    (isFull && !selected.contains(period))
-                        || (selected.count == 1 && selected.contains(period))
+                    selected.count == 1 && selected.contains(period)
                 )
             }
         }
@@ -733,12 +850,31 @@ struct EInkSlidesEditor: View {
 
     // MARK: - Preview
 
+    @ViewBuilder
     private var previewColumn: some View {
+        if let group {
+            // A group's picture is every screen in its arrangement, which only
+            // the section above can resolve — it owns the group's plans and
+            // rebuilds them on a change, never in a `body`.
+            group.preview
+        } else {
+            devicePreviewColumn
+        }
+    }
+
+    private var devicePreviewColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L10n.Settings.Eink.uprightPreview)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            if let plan {
+            if previewPages.count > 1 {
+                HStack {
+                    Button { previewPage = max(0, previewPage - 1) } label: { Image(systemName: "chevron.left") }.disabled(previewPage == 0)
+                    Text("\(previewPage + 1) / \(previewPages.count)").monospacedDigit()
+                    Button { previewPage = min(previewPages.count - 1, previewPage + 1) } label: { Image(systemName: "chevron.right") }.disabled(previewPage == previewPages.count - 1)
+                }
+            }
+            if let plan = (previewPages.indices.contains(previewPage) ? previewPages[previewPage] : plan) {
                 let size = device.orientation.physicalFrame(device.profile)
                 // 2x of a landscape device is about 1,260 pt, which a narrow
                 // window cannot hold; fall back to device pixels rather than
@@ -819,8 +955,7 @@ struct EInkSlidesEditor: View {
     private func setBucket(_ slide: EInkSlide, fieldID: String, selected: Bool, capacity: Int) {
         updateSlide(slide.id) { current in
             if selected {
-                guard current.quotaFieldIDs.count < capacity,
-                      !current.quotaFieldIDs.contains(fieldID) else { return }
+                guard !current.quotaFieldIDs.contains(fieldID) else { return }
                 current.quotaFieldIDs.append(fieldID)
             } else {
                 guard current.quotaFieldIDs.count > 1 else { return }
@@ -869,8 +1004,7 @@ struct EInkSlidesEditor: View {
             set: { [slideID = slide.id] value in
                 updateSlide(slideID) { current in
                     if value {
-                        guard current.usagePeriods.count < capacity,
-                              !current.usagePeriods.contains(period) else { return }
+                        guard !current.usagePeriods.contains(period) else { return }
                         current.usagePeriods.append(period)
                     } else {
                         // The renderer reads an empty selection as "all four",
@@ -1064,6 +1198,7 @@ struct EInkSlidesEditor: View {
     // MARK: - Actions
 
     private func addSlide() {
+        if let group { group.addPage(); return }
         let slide = EInkSlide.defaultQuotaSlide(
             orientation: device.orientation,
             available: availableQuotaFieldIDs
@@ -1073,6 +1208,7 @@ struct EInkSlidesEditor: View {
     }
 
     private func removeSlide(_ slideID: String) {
+        if let group { group.removePage(slideID); return }
         updateDevice { device in
             guard device.slides.count > 1 else { return }
             device.slides.removeAll { $0.id == slideID }
@@ -1087,6 +1223,13 @@ struct EInkSlidesEditor: View {
     /// Studio opens on the panel that was already there rather than on blank
     /// paper. A slide that is already custom just opens.
     private func openInStudio(_ slide: EInkSlide) {
+        // A group's page is authored on the region's own canvas, and turning a
+        // paginated page into pages is a group-shaped edit; the section owns
+        // both, so it opens the Studio for one.
+        if let group { group.openStudio(slide.id); return }
+        if let snapshot, EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot).count > 1 {
+            studioSlide = slide; confirmingStudioPages = true; return
+        }
         if slide.kind.preset != nil { explode(slide) }
         LayoutStudioWindowController.shared.open(
             subject: .einkSlide(deviceID: device.deviceID, slideID: slide.id),
@@ -1094,8 +1237,27 @@ struct EInkSlidesEditor: View {
         )
     }
 
-    private func explode(_ slide: EInkSlide) {
-        guard let snapshot = environment.einkSyncService?.previewSnapshot else { return }
+    private func materializeAndEdit(_ original: EInkSlide) {
+        guard let snapshot else { return }
+        var settings = settingsStore.settings
+        guard settings.einkSync.owningGroup(for: device.id) == nil,
+              let di = settings.einkSync.devices.firstIndex(where: { $0.id == device.id }),
+              let si = settings.einkSync.devices[di].slides.firstIndex(where: { $0.id == original.id }) else { return }
+        var pages = EInkPagination.materializedPages(original, orientation: device.orientation, profile: device.profile, snapshot: snapshot)
+        let index = min(previewPage, pages.count - 1)
+        for i in pages.indices {
+            pages[i].title = original.title.isEmpty ? L10n.Settings.Eink.Workflow.slideNumber(number: i + 1) : original.title + " · " + String(i + 1)
+        }
+        settings.einkSync.devices[di].slides.replaceSubrange(si...si, with: pages)
+        if settings.einkSync.devices[di].playbackMode == .single { settings.einkSync.devices[di].singleSlideID = pages[index].id }
+        settingsStore.settings = settings
+        selectedSlideID = pages[index].id
+        explode(pages[index], snapshot: snapshot)
+        LayoutStudioWindowController.shared.open(subject: .einkSlide(deviceID: device.id, slideID: pages[index].id), environment: environment)
+    }
+
+    private func explode(_ slide: EInkSlide, snapshot supplied: EInkDataSnapshot? = nil) {
+        guard let snapshot = supplied ?? environment.einkSyncService?.previewSnapshot else { return }
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == device.deviceID }),
               let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slide.id })
@@ -1122,6 +1284,10 @@ struct EInkSlidesEditor: View {
     /// orientations' worth of edits sat invisibly in `settings.json`, ready to
     /// reappear the next time somebody pressed Edit in Studio.
     private func resetToPreset(_ slide: EInkSlide, preset: EInkPreset? = nil) {
+        if group != nil {
+            updateSlide(slide.id) { $0.kind = .preset(preset ?? slide.options.sourcePreset ?? .quotaLedger) }
+            return
+        }
         var settings = settingsStore.settings
         guard let index = settings.einkSync.devices.firstIndex(where: { $0.deviceID == device.deviceID }),
               let position = settings.einkSync.devices[index].slides.firstIndex(where: { $0.id == slide.id })
@@ -1152,7 +1318,18 @@ struct EInkSlidesEditor: View {
         settingsStore.settings = settings
     }
 
+    /// One page's template, edited in place.
+    ///
+    /// For a group the "slide" is whatever the active screens draw, and the
+    /// section puts it back into that region — the editor never has to know
+    /// which region it is or where the group keeps it.
     private func updateSlide(_ slideID: String, _ mutate: (inout EInkSlide) -> Void) {
+        if let group {
+            guard var slide = device.slide(id: slideID) else { return }
+            mutate(&slide)
+            group.updateSlide(slideID, slide)
+            return
+        }
         updateDevice { device in
             guard let index = device.slides.firstIndex(where: { $0.id == slideID }) else { return }
             mutate(&device.slides[index])
@@ -1220,6 +1397,7 @@ struct EInkSlidesEditor: View {
 
     private func applySlideMove(_ slideID: String, to index: Int) {
         let order = reordered(device.slides.map(\.id), moving: slideID, to: index)
+        if let group { group.reorderPages(order); return }
         updateDevice { device in
             let byID = Dictionary(device.slides.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             device.slides = order.compactMap { byID[$0] }
@@ -1251,9 +1429,10 @@ struct EInkSlidesEditor: View {
     /// is no heading above it saying which group it belongs to.
     private func candidateName(_ fieldID: String) -> String {
         let parts = EInkSlotLabel.parts(for: fieldID, registry: quotaService.fieldRegistry)
-        return QuotaGroupLabelLocalizer.display(
-            parts.dropFirst().joined(separator: EInkSlotLabel.separator)
-        )
+        let detail = parts.dropFirst().joined(separator: EInkSlotLabel.separator)
+        let fallback = MenuBarFieldCatalog.field(id: fieldID, registry: quotaService.fieldRegistry)?.title
+            ?? parts.joined(separator: EInkSlotLabel.separator)
+        return QuotaGroupLabelLocalizer.display(detail.isEmpty ? (fallback.isEmpty ? fieldID : fallback) : detail)
     }
 
     /// One provider's worth of buckets the slide could still add.

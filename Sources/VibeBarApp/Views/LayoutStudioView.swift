@@ -579,7 +579,7 @@ struct LayoutStudioView: View {
         // else — and the Studio's own picker looked like it had lost them.
         // Picking a preset slide shows what it draws, with one button to break
         // it into modules.
-        let slides = settingsStore.settings.einkSync.devices.flatMap { device in
+        let slides = settingsStore.settings.einkSync.devices.filter { settingsStore.settings.einkSync.owningGroup(for: $0.id) == nil }.flatMap { device in
             device.slides.map {
                 LayoutStudioWindowController.Subject.einkSlide(deviceID: device.deviceID, slideID: $0.id)
             }
@@ -836,7 +836,11 @@ struct LayoutStudioView: View {
     @ViewBuilder
     private func einkStageNotice(deviceID: String, slideID: String) -> some View {
         let slide = einkSlide(deviceID: deviceID, slideID: slideID)
-        if slide?.kind.preset != nil {
+        if settingsStore.settings.einkSync.owningGroup(for: deviceID) != nil {
+            Text(L10n.Settings.Eink.Workflow.allGrouped)
+                .font(.callout).padding(16).frame(maxWidth: 300)
+                .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        } else if slide?.kind.preset != nil {
             einkNoticeCard(
                 message: L10n.Settings.Eink.Studio.presetSubject,
                 action: L10n.Settings.Eink.Studio.open,
@@ -878,7 +882,8 @@ struct LayoutStudioView: View {
     }
 
     private func einkDevice(_ deviceID: String) -> EInkDeviceConfig? {
-        settingsStore.settings.einkSync.device(id: deviceID)
+        guard settingsStore.settings.einkSync.owningGroup(for: deviceID) == nil else { return nil }
+        return settingsStore.settings.einkSync.device(id: deviceID)
     }
 
     private func einkSlide(deviceID: String, slideID: String) -> EInkSlide? {
@@ -914,7 +919,8 @@ struct LayoutStudioView: View {
     /// the renderer reads it, and a Studio that did not would call an existing
     /// design unauthored and offer to replace it.
     private func einkLayout(deviceID: String, slideID: String) -> EInkCanvasLayout? {
-        EInkRenderer.layout(
+        guard einkDevice(deviceID) != nil else { return nil }
+        return EInkRenderer.layout(
             einkLayoutID(deviceID: deviceID, slideID: slideID),
             orientation: einkOrientation(deviceID),
             layouts: settingsStore.settings.einkCanvasLayouts
@@ -945,6 +951,7 @@ struct LayoutStudioView: View {
                 return stored.fitted(profile: profile, orientation: orientation)
             },
             set: { value in
+                guard einkDevice(deviceID) != nil else { return }
                 var settings = settingsStore.settings
                 // Finish part A's migration on the first write rather than
                 // leaving a bare round 1 key beside the new ones, where the
@@ -1067,7 +1074,7 @@ struct LayoutStudioView: View {
 
     /// The stage's "Push to device": one forced pass for this slide's panel.
     private func pushEInk(deviceID: String) {
-        guard let service = environment.einkSyncService, !isPushingEInk else { return }
+        guard einkDevice(deviceID) != nil, let service = environment.einkSyncService, !isPushingEInk else { return }
         isPushingEInk = true
         einkPush?.cancel()
         einkPush = Task { @MainActor in

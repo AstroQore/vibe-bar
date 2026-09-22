@@ -3,16 +3,22 @@ import VibeBarCore
 
 /// Hardware arrangement is spatial: drag a panel, see the preview move, and
 /// snap its edges to its neighbours. Settings are written only on release.
+///
+/// The same view, with `isEditable` off, is the group's page preview: every
+/// screen drawing its part of the page, where it hangs. One drawing, so the
+/// arrangement and the preview can never disagree about the shape of the
+/// display.
 struct EInkScreenArrangementView: View {
     let group: EInkScreenGroup
     let devices: [EInkDeviceConfig]
     let plans: [String: EInkPreviewPlan]
     @Binding var selection: String?
     var onChange: (EInkScreenGroup) -> Void
+    var isEditable = true
+    var height: CGFloat = 350
 
     @State private var draggingID: String?
     @State private var move: EInkScreenArrangement.Move?
-    private let height: CGFloat = 350
 
     var body: some View {
         GeometryReader { geometry in
@@ -40,6 +46,7 @@ struct EInkScreenArrangementView: View {
                             .zIndex(draggingID == screen.id ? 2 : 1)
                             .gesture(DragGesture(minimumDistance: 2)
                                 .onChanged { value in
+                                    guard isEditable else { return }
                                     draggingID = screen.id; selection = screen.id
                                     move = EInkScreenArrangement.move(screen.id,
                                         to: EInkPoint(x: rect.x + Int((value.translation.width / scale).rounded()),
@@ -47,18 +54,22 @@ struct EInkScreenArrangementView: View {
                                         group: group, devices: devices, threshold: Int(10 / scale))
                                 }
                                 .onEnded { _ in
+                                    guard isEditable else { return }
                                     if let move {
                                         onChange(EInkScreenArrangement.dropping(screen.id, move: move, group: group, devices: devices))
                                     }
                                     draggingID = nil; move = nil
-                                })
+                                },
+                                including: isEditable ? .all : .subviews)
                     }
                 }
-                VStack {
-                    Spacer()
-                    Text(L10n.Settings.Eink.ScreenGroups.dragHint)
-                        .font(.caption2).foregroundStyle(.secondary).padding(10)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
+                if isEditable {
+                    VStack {
+                        Spacer()
+                        Text(L10n.Settings.Eink.ScreenGroups.dragHint)
+                            .font(.caption2).foregroundStyle(.secondary).padding(10)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity).allowsHitTesting(false)
+                }
             }
             .frame(width: geometry.size.width, height: height)
             .clipped()
@@ -104,7 +115,7 @@ struct EInkScreenArrangementView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)
         .accessibilityAddTraits(.isButton)
-        .help(L10n.Settings.Eink.ScreenGroups.dragHint)
+        .help(isEditable ? L10n.Settings.Eink.ScreenGroups.dragHint : "")
     }
 
     private func guides(origin: CGPoint, bounds: EInkRect, scale: CGFloat, width: CGFloat) -> some View {

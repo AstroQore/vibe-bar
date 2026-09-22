@@ -306,9 +306,12 @@ when the panel's content has actually changed, so a panel showing the same
 numbers is not woken to redraw them.
 
 Alerts appear as an extra carousel card and disappear when the condition
-clears. **Screen groups** arrange multiple panels into one canvas with a
-shared timeline: show separate pages, span a page across screens, or mix the
-two. See [screen group setup and timing limits](docs/eink-screen-groups.md).
+clears. **Device groups** run two or more panels as a single display: they
+share one row in the display list, one set of settings and one page list, and
+each page chooses whether the screens draw one template **combined** across
+them or a **separate** template each. Quota selections automatically continue
+onto additional pages instead of stopping at five items. See [device group
+setup and timing limits](docs/eink-screen-groups.md).
 
 **Two things have to exist in the Dot. app first**, and neither can be created
 from here:
