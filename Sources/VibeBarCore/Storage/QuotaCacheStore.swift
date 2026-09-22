@@ -7,7 +7,7 @@ public enum QuotaCacheStore {
         var plan: String?
         var queriedAt: Date
         var chatGPTChat: ChatGPTChatSummary?
-        var resetCredits: CodexResetCredits?
+        var resetCredits: ResetCredits?
 
         init(_ quota: AccountQuota) {
             self.tool = quota.tool

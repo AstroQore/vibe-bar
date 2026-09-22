@@ -2331,8 +2331,10 @@ struct ProviderQuotaCard: View {
                 PageClock(interval: 30) { tickDate in
                     bucketContent(buckets, accountId: bucketAccountId, now: tickDate)
                 }
-                if showsResetCredits, tool == .codex, let credits = resolvedQuota?.resetCredits, credits.availableCount > 0 {
-                    ResetCreditsRow(credits: credits, density: density)
+                if showsResetCredits, let quota = resolvedQuota,
+                   case let ledger = quotaService.resetCreditLedger[quota.accountId] ?? [],
+                   ResetCreditsRow.shows(credits: quota.resetCredits, ledger: ledger) {
+                    ResetCreditsRow(credits: quota.resetCredits, ledger: ledger, buckets: quota.buckets, density: density)
                 }
                 if let liveError = resolvedLiveError {
                     messageRow(text: L10n.Quota.Update.failed(reason: liveError.userFacingMessage), color: .orange)
@@ -2562,14 +2564,25 @@ struct ProviderQuotaCard: View {
     }
 }
 
-/// Codex "Limit reset credits" — manual rate-limit resets the user can spend,
-/// with the next expiry when the dedicated endpoint surfaced it. Only rendered
-/// when at least one reset is available.
+/// "Limit reset credits" — usage-limit resets the user can spend (Codex,
+/// Claude, Grok): how many are left, when each expires, which windows they
+/// clear when the provider says, and the latest credits used or received.
+/// Rendered when there is a reset to spend or a record to show.
 struct ResetCreditsRow: View {
-    let credits: CodexResetCredits
+    let credits: ResetCredits?
+    /// Newest first, from `QuotaService.resetCreditLedger`.
+    let ledger: [ResetCreditLedgerEntry]
+    let buckets: [QuotaBucket]
     let density: Theme.Density
 
+    static let ledgerLimit = 4
+
+    static func shows(credits: ResetCredits?, ledger: [ResetCreditLedgerEntry]?) -> Bool {
+        (credits?.hasAvailable ?? false) || !(ledger ?? []).isEmpty
+    }
+
     var body: some View {
+        let count = credits?.availableCount ?? 0
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Image(systemName: "clock.arrow.circlepath")
@@ -2578,11 +2591,17 @@ struct ResetCreditsRow: View {
                 Text(L10n.Quota.ResetCredits.title)
                     .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
                 Spacer(minLength: 6)
-                Text(AppLocale.number(credits.availableCount))
+                Text(AppLocale.number(count))
                     .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(Color.green)
+                    .foregroundStyle(count > 0 ? Color.green : Color.secondary)
             }
-            let dates = credits.availableExpirations ?? credits.nextExpiresAt.map { [$0] } ?? []
+            if count > 0, let cleared = clearedWindows {
+                Text(cleared)
+                    .font(.system(size: density.resetCountdownFontSize))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+            }
+            let dates = count > 0 ? (credits?.availableExpirations ?? credits?.nextExpiresAt.map { [$0] } ?? []) : []
             ForEach(Array(dates.enumerated()), id: \.offset) { index, expiry in
                 HStack(alignment: .firstTextBaseline) {
                     Text(L10n.Quota.ResetCredits.item(number: index + 1))
@@ -2594,11 +2613,46 @@ struct ResetCreditsRow: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
             }
-            if dates.count < credits.availableCount {
-                Text(L10n.Quota.ResetCredits.missingExpiries(count: credits.availableCount - dates.count))
+            if dates.count < count {
+                Text(L10n.Quota.ResetCredits.missingExpiries(count: count - dates.count))
                     .font(.system(size: density.resetCountdownFontSize)).foregroundStyle(.tertiary)
             }
+            ForEach(ledger.prefix(Self.ledgerLimit)) { entry in
+                ledgerRow(entry)
+            }
         }
+    }
+
+    /// "5 Hours · Weekly · Fable · Weekly", in the card's own bucket words.
+    private var clearedWindows: String? {
+        let ids = credits?.clearedBucketIDs ?? []
+        let titles = ids.compactMap { id -> String? in
+            guard let bucket = buckets.first(where: { $0.id == id }) else { return nil }
+            let label = [bucket.groupTitle, bucket.title].compactMap { $0 }.joined(separator: " · ")
+            return QuotaGroupLabelLocalizer.displayComposed(label)
+        }
+        return titles.isEmpty ? nil : titles.joined(separator: " · ")
+    }
+
+    private func ledgerRow(_ entry: ResetCreditLedgerEntry) -> some View {
+        let used = entry.kind == .used
+        return HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: used ? "ticket" : "plus.circle")
+                .foregroundStyle(used ? Color.blue : Color.green)
+            Text(used ? L10n.ResetJournal.credit : L10n.Quota.ResetCredits.title)
+                .lineLimit(1)
+            Text(used ? "−1" : "+1").monospacedDigit()
+            Spacer(minLength: 6)
+            Text((entry.event.isInferred ? "≈ " : "") + ledgerDate(entry.event.occurredAt))
+                .monospacedDigit()
+        }
+        .font(.system(size: density.resetCountdownFontSize))
+        .foregroundStyle(.secondary)
+        .padding(.top, 4)
+    }
+
+    private func ledgerDate(_ date: Date) -> String {
+        AppLocale.dateFormatter(template: "MMMdHHmm", timeZone: .current).string(from: date)
     }
 
     private func expiryText(_ date: Date) -> String {

@@ -197,7 +197,7 @@ struct FillTimelineChart: View {
                     // its quota fills its track to the top, where a marker
                     // would be the same colour as the fill under it. Shrinks
                     // with the bar so it never overlaps its neighbour.
-                    if cycle.isCompleted && (cycle.refilledEarly || cycle.resetDetails?.creditRedeemedAt != nil) {
+                    if cycle.isCompleted && (cycle.refilledEarly || cycle.creditRedemptionDate != nil) {
                         let kind = ResetJournalKind(cycle)
                         let diameter = min(12, barWidth)
                         let bounds = CGRect(x: rect.midX - diameter / 2, y: 0, width: diameter, height: diameter)
@@ -266,7 +266,7 @@ struct FillTimelineChart: View {
     /// What the provider did to the clock, when it did anything unusual. The
     /// two early shapes mean opposite things, so the caption says which.
     private func resetDescription(_ cycle: SubscriptionWindowSample) -> String? {
-        if cycle.resetDetails?.creditRedeemedAt != nil { return L10n.ResetJournal.credit }
+        if cycle.creditRedemptionDate != nil { return L10n.ResetJournal.credit }
         return switch cycle.resetKind {
         case .earlyClockRestarted: L10n.ResetHistory.Reset.earlyClockRestarted
         case .earlyClockUnchanged: L10n.ResetHistory.Reset.earlyClockUnchanged

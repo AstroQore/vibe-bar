@@ -233,10 +233,13 @@ struct QuotaGroupCard: View {
                     self.row(for: row)
                 }
                 groupHistoryChart
-                if module.tool == .codex, module.linkedSectionTitle != nil,
-                   let credits = environment.quota(for: .codex)?.resetCredits, credits.hasAvailable {
+                if module.linkedSectionTitle != nil,
+                   let quota = module.accountId.flatMap({ quotaService.cachedQuota(for: $0) })
+                       ?? environment.quota(for: module.tool),
+                   case let ledger = quotaService.resetCreditLedger[quota.accountId] ?? [],
+                   ResetCreditsRow.shows(credits: quota.resetCredits, ledger: ledger) {
                     Divider()
-                    ResetCreditsRow(credits: credits, density: density)
+                    ResetCreditsRow(credits: quota.resetCredits, ledger: ledger, buckets: quota.buckets, density: density)
                 }
             }
         }

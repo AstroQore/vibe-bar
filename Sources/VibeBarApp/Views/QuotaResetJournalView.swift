@@ -5,7 +5,7 @@ enum ResetJournalKind: String, CaseIterable, Identifiable {
     case normal, earlyRestarted, earlyUnchanged, credit, unknown
     var id: String { rawValue }
     init(_ sample: SubscriptionWindowSample) {
-        self.init(resetKind: sample.resetKind, creditRedeemedAt: sample.resetDetails?.creditRedeemedAt)
+        self.init(resetKind: sample.resetKind, creditRedeemedAt: sample.creditRedemptionDate)
     }
     init(resetKind: SubscriptionWindowSample.ResetKind?, creditRedeemedAt: Date?) {
         if creditRedeemedAt != nil { self = .credit; return }
@@ -91,22 +91,26 @@ struct QuotaResetJournalView: View {
                 && (bucketId == nil || bucketId == sample.bucketId)
         }.sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
     }
-    private var unmatchedReceipts: [QuotaResetRedemption] {
-        guard bucketId == nil, tools == nil || tools!.contains(.codex) else { return [] }
-        let all = samples
+    /// Credits spent that no recorded refill was matched to.
+    private func unmatchedReceipts(_ all: [SubscriptionWindowSample]) -> [QuotaResetRedemption] {
+        guard bucketId == nil else { return [] }
+        let matched = Set(all.compactMap { sample in
+            sample.creditRedemptionDate.map { sample.accountId + "@" + String($0.timeIntervalSince1970) }
+        })
         return quotaService.resetRedemptions.filter { receipt in
-            (accountId == nil || accountId == receipt.accountId) && !all.contains {
-                $0.accountId == receipt.accountId && $0.resetDetails?.creditRedeemedAt == receipt.credit.redeemedAt
-            }
-        }.sorted { $0.credit.redeemedAt > $1.credit.redeemedAt }
+            (accountId == nil || accountId == receipt.accountId)
+                && (tools == nil || tools!.contains(receipt.resolvedTool))
+                && !matched.contains(receipt.accountId + "@" + String(receipt.credit.occurredAt.timeIntervalSince1970))
+        }.sorted { $0.credit.occurredAt > $1.credit.occurredAt }
     }
 
     @EnvironmentObject private var settingsStore: SettingsStore
     @State private var expandedID: String?
 
     var body: some View {
-        let filtered = samples.filter { selection == nil || ResetJournalKind($0) == selection }
-        let receipts = selection == nil || selection == .credit ? unmatchedReceipts : []
+        let all = samples
+        let filtered = all.filter { selection == nil || ResetJournalKind($0) == selection }
+        let receipts = selection == nil || selection == .credit ? unmatchedReceipts(all) : []
         let density = Theme.overviewDensity(for: settingsStore.settings.popoverDensity)
         DetailPopoverShell(title: L10n.ResetJournal.title, density: density,
                            detail: AppLocale.number(filtered.count + receipts.count),
@@ -143,7 +147,7 @@ struct QuotaResetJournalView: View {
                                 Text(L10n.ResetJournal.creditOnly).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(shortDate(receipt.credit.redeemedAt)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                            Text(shortDate(receipt.credit.occurredAt)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                         }.padding(.vertical, 10)
                         Divider()
                     }
@@ -184,9 +188,8 @@ struct QuotaResetJournalView: View {
                         field(L10n.ResetJournal.beforeReset, date(details.previousResetAt))
                         field(L10n.ResetJournal.afterReset, date(details.nextResetAt))
                         field(L10n.ResetJournal.observationRange, date(details.observedAfter) + " → " + date(details.observedBefore))
-                        if let redeemed = details.creditRedeemedAt {
-                            field(L10n.ResetJournal.redeemedAt, date(redeemed))
-                            Text(L10n.ResetJournal.creditConfirmed).font(.caption).foregroundStyle(.secondary)
+                        if let redeemed = sample.creditRedemptionDate {
+                            creditFields(sample, redeemed: redeemed)
                         } else if sample.refilledEarly {
                             Text(L10n.ResetJournal.sourceUnknown).font(.caption).foregroundStyle(.secondary)
                         }
@@ -194,10 +197,28 @@ struct QuotaResetJournalView: View {
                             Text(plan).font(.caption).foregroundStyle(.tertiary)
                         }
                     } else {
+                        if let redeemed = sample.creditRedemptionDate {
+                            creditFields(sample, redeemed: redeemed)
+                        }
                         Text(L10n.ResetJournal.missingDetails).font(.caption).foregroundStyle(.secondary)
                     }
                 }.font(.system(size: 10)).padding(.leading, 24).padding(.bottom, 12)
             }
+        }
+    }
+
+    /// A receipt gives the redemption time and says so; an inferred credit
+    /// (Claude, Grok: the count fell while the credit was still valid) has
+    /// only the reads around it, which the observation range already shows.
+    @ViewBuilder
+    private func creditFields(_ sample: SubscriptionWindowSample, redeemed: Date) -> some View {
+        if sample.creditRedemptionInferred {
+            if sample.resetDetails == nil {
+                field(L10n.ResetJournal.observationRange, date(sample.lastSeenAt) + " → " + date(redeemed))
+            }
+        } else {
+            field(L10n.ResetJournal.redeemedAt, date(redeemed))
+            Text(L10n.ResetJournal.creditConfirmed).font(.caption).foregroundStyle(.secondary)
         }
     }
 

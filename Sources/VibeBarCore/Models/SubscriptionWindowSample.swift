@@ -55,8 +55,20 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
     /// Original evidence retained when this cycle closes; older cycles may
     /// lack it and must not invent their former deadlines or their reset source.
     public var resetDetails: QuotaResetDetails?
+    /// When a reset credit was spent on this refill, for every cycle — also
+    /// the ones closed before `resetDetails` existed, which a receipt that
+    /// arrives later can still be matched to. `resetDetails.creditRedeemedAt`
+    /// keeps being written for receipts, because older builds read only that.
+    public var creditResetAt: Date?
+    /// True when `creditResetAt` was inferred from a falling credit count
+    /// rather than read from a receipt.
+    public var creditResetInferred: Bool?
 
     public var isCompleted: Bool { completedAt != nil }
+
+    /// The credit spent on this refill, whichever record holds it.
+    public var creditRedemptionDate: Date? { creditResetAt ?? resetDetails?.creditRedeemedAt }
+    public var creditRedemptionInferred: Bool { creditRedemptionDate != nil && creditResetInferred == true }
 
     /// Did this window refill before it said it would?
     public var refilledEarly: Bool {
@@ -85,7 +97,9 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
         completionReason: CompletionReason? = nil,
         resetKind: ResetKind? = nil,
         intervalSeconds: TimeInterval? = nil,
-        resetDetails: QuotaResetDetails? = nil
+        resetDetails: QuotaResetDetails? = nil,
+        creditResetAt: Date? = nil,
+        creditResetInferred: Bool? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -103,6 +117,8 @@ public struct SubscriptionWindowSample: Codable, Hashable, Sendable {
         self.resetKind = resetKind
         self.intervalSeconds = intervalSeconds
         self.resetDetails = resetDetails
+        self.creditResetAt = creditResetAt
+        self.creditResetInferred = creditResetInferred
     }
 
     private static func clamp(_ value: Double) -> Double {
@@ -136,12 +152,27 @@ public struct QuotaResetDetails: Codable, Hashable, Sendable {
     }
 }
 
+/// A reset credit spent (or, in the grants list, received) by one account.
 public struct QuotaResetRedemption: Codable, Hashable, Sendable, Identifiable {
     public var accountId: String
-    public var credit: CodexResetCreditRedemption
+    /// Nil on receipts written before other providers had credits: those
+    /// were all Codex.
+    public var tool: ToolType?
+    public var credit: ResetCreditEvent
     public var id: String { accountId + ":" + credit.id }
-    public init(accountId: String, credit: CodexResetCreditRedemption) {
-        self.accountId = accountId; self.credit = credit
+    public var resolvedTool: ToolType { tool ?? .codex }
+    public init(accountId: String, tool: ToolType? = nil, credit: ResetCreditEvent) {
+        self.accountId = accountId; self.tool = tool; self.credit = credit
+    }
+}
+
+/// The last per-credit inventory read for one account, which the next read
+/// is compared against to infer a spent credit.
+public struct ResetCreditInventory: Codable, Hashable, Sendable {
+    public var observedAt: Date
+    public var tokens: [ResetCreditToken]
+    public init(observedAt: Date, tokens: [ResetCreditToken]) {
+        self.observedAt = observedAt; self.tokens = tokens
     }
 }
 

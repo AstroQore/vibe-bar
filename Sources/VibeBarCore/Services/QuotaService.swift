@@ -44,6 +44,9 @@ public final class QuotaService: ObservableObject {
     /// dictionary directly via the `@Published` projection.
     @Published public private(set) var historyByAccountBucket: [SubscriptionHistoryKey: [SubscriptionWindowSample]] = [:]
     @Published public private(set) var resetRedemptions: [QuotaResetRedemption] = []
+    /// Newest-first credit record (spent and received) per account id,
+    /// derived whenever the store's credit lists change.
+    @Published public private(set) var resetCreditLedger: [String: [ResetCreditLedgerEntry]] = [:]
     @Published public private(set) var featureResetHistory: [SubscriptionWindowSample] = []
     /// Adaptive point samples for every independently resettable quota. These
     /// power personal pace forecasts; completed-cycle summaries remain in
@@ -124,7 +127,7 @@ public final class QuotaService: ObservableObject {
             )
             let samples = await SubscriptionHistoryStore.shared.allSamples()
             self?.applyInitialSubscriptionHistory(samples)
-            self?.resetRedemptions = await SubscriptionHistoryStore.shared.allRedemptions()
+            await self?.reloadResetCredits()
             self?.featureResetHistory = await SubscriptionHistoryStore.shared.allFeatureResets()
         }
     }
@@ -626,11 +629,21 @@ public final class QuotaService: ObservableObject {
     /// once; the grouping and the newest-first order are the store's own
     /// (`completedAt ?? lastSeenAt`), reproduced here so nothing downstream
     /// sees a different order than it used to.
+    /// Publishes only on change: every refresh lands here, and an equal
+    /// assignment would still re-render every card that reads the record.
+    private func reloadResetCredits() async {
+        let redemptions = await SubscriptionHistoryStore.shared.allRedemptions()
+        let grants = await SubscriptionHistoryStore.shared.allResetCreditGrants()
+        if redemptions != resetRedemptions { resetRedemptions = redemptions }
+        let ledger = ResetCreditLedgerEntry.ledger(redemptions: redemptions, grants: grants)
+        if ledger != resetCreditLedger { resetCreditLedger = ledger }
+    }
+
     private func refreshSubscriptionHistory(for quota: AccountQuota) async {
         let bucketIds = Set(quota.buckets.map(\.id))
         guard !bucketIds.isEmpty else { return }
         let all = await SubscriptionHistoryStore.shared.allSamples()
-        resetRedemptions = await SubscriptionHistoryStore.shared.allRedemptions()
+        await reloadResetCredits()
         featureResetHistory = await SubscriptionHistoryStore.shared.allFeatureResets()
         var grouped: [String: [SubscriptionWindowSample]] = [:]
         for sample in all

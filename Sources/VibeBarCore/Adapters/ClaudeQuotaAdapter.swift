@@ -197,7 +197,8 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
             email: webAccount?.email ?? account.email,
             queriedAt: Date(),
             error: nil,
-            providerExtras: extras
+            providerExtras: extras,
+            resetCredits: ClaudeResetCreditsParser.parse(data: data, buckets: buckets)
         )
     }
 
@@ -223,8 +224,12 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
         return (fetched, false)
     }
 
+    /// `cedar_ember=1` asks for the usage-limit resets block
+    /// (`ClaudeResetCreditsParser`); without it the key comes back `null`.
+    /// claude.ai's own page also sends `skip_spend=1`, which is left off so
+    /// the `extra_usage` spend fields this adapter reads stay in the payload.
     private func usageEndpoint(organizationID: String) -> URL {
-        URL(string: "https://claude.ai/api/organizations/\(organizationID)/usage")!
+        URL(string: "https://claude.ai/api/organizations/\(organizationID)/usage?cedar_ember=1")!
     }
 
     private func configureClaudeWebHeaders(_ request: inout URLRequest, cookieHeader: String) {
