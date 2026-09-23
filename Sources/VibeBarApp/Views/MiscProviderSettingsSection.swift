@@ -342,7 +342,7 @@ struct MiscProviderCredentialRows: View {
                 prompt: L10n.Settings.Misc.Prompt.warp,
                 helpText: "Open Warp → Settings → AI → API Keys to mint one. Stored in macOS Keychain. Env fallback: WARP_API_KEY, then WARP_TOKEN."
             )
-        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .museAgent, .devin, .mistralVibe:
             // Partial-primary and primary providers don't ship a misc-card
             // UI: `AppSettings` only builds instances for
             // `isMiscPageProvider` tools, and their credentials live in the
@@ -442,7 +442,7 @@ extension ToolType {
             return "The key comes from openrouter.ai → Keys and only needs to read credits. Set the API URL when you route OpenRouter through a proxy."
         case .warp:
             return "The key is minted inside Warp itself: Warp → Settings → AI → API Keys."
-        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .museAgent, .devin, .mistralVibe:
             return nil
         }
     }
@@ -1211,6 +1211,13 @@ struct CookieSourceControls: View {
     }
 
     private func triggerRefresh() {
+        // A dedicated provider's account is detected from its saved slots, so
+        // the import or delete that just happened changes its source; read it
+        // again before refreshing, or the panel and the Overview keep the old
+        // answer until the next global reload.
+        if tool.supportsDedicatedCard {
+            environment.reloadAccounts()
+        }
         // A dedicated provider's account carries its own id rather than the
         // misc instance id, so fall back to the provider's account.
         guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID)

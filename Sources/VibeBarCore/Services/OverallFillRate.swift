@@ -43,7 +43,7 @@ public enum OverallFillRate {
             return quota.buckets
                 .first(where: { $0.id == "weekly" })
                 .flatMap { $0.usedPercent.isFinite ? $0.usedPercent : nil }
-        case .grok, .muse, .devin:
+        case .grok, .muse, .museAgent, .devin:
             return quota.buckets
                 .first(where: { $0.id == "weekly" })
                 .flatMap { $0.usedPercent.isFinite ? $0.usedPercent : nil }

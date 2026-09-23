@@ -343,6 +343,12 @@ enum PageModuleCatalog {
                 if member == .cursor,
                    !(environment.account(for: .cursor).map { $0.source != .notConfigured } ?? false),
                    environment.quota(for: .cursor) == nil { return [] }
+                // Muse keeps an account while signed out so its Settings
+                // controls have something to refresh; like Cursor it earns no
+                // Overview row until a session is saved or quota came back.
+                if member == .museAgent,
+                   !(environment.account(for: .museAgent).map { $0.source != .notConfigured } ?? false),
+                   environment.quota(for: .museAgent)?.buckets.isEmpty ?? true { return [] }
                 let accounts = member == .gemini
                     ? environment.accountStore.accounts(for: .gemini).sorted { $0.id < $1.id }
                     : (environment.account(for: member).map { [$0] } ?? [])
@@ -540,6 +546,17 @@ enum PageModuleCatalog {
                 additional = (environment.quotaService.cachedQuota(for: chat.id)?.buckets ?? [])
                     .map { FillTimelineSeries(tool: .chatgptChat, accountId: chat.id, bucket: $0) }
             }
+        } else if tool == .muse {
+            // Muse, Meta AI's second SubProvider, stacks under Muse Code the
+            // way ChatGPT Chat stacks with ChatGPT Agentic. Only buckets it
+            // actually returned are drawn, so a Muse nobody set up adds no
+            // card to the page.
+            accountId = environment.account(for: .muse)?.id
+            buckets = environment.quota(for: .muse)?.buckets ?? []
+            if let agent = environment.account(for: .museAgent) {
+                additional = (environment.quotaService.cachedQuota(for: agent.id)?.buckets ?? [])
+                    .map { FillTimelineSeries(tool: .museAgent, accountId: agent.id, bucket: $0) }
+            }
         } else if tool == .grok {
             accountId = environment.account(for: .grok)?.id
             buckets = environment.quota(for: .grok)?.buckets ?? []
@@ -565,6 +582,7 @@ enum PageModuleCatalog {
     static func quotaRefreshTools(for tool: ToolType) -> [ToolType] {
         switch tool {
         case .codex: ToolType.codex.coreProviderMembers
+        case .muse: ToolType.muse.coreProviderMembers
         case .gemini: ToolType.googleAIPair
         case .grok: ToolType.grokFamily
         default: [tool]

@@ -86,6 +86,11 @@ from `cognition.com/icon.svg`, `ProviderIcon-devin.svg` from
 `mistralai/mistral-vibe`'s `distribution/zed/icons/mistral_vibe.svg`. Only the
 canvas was squared for the icon renderer; each file names its source.
 
+The Muse mark, `ProviderIcon-museagent.svg`, is Meta's own published logo for
+Muse, `muse.ai/images/hatch/muse-logo.svg`: its single path is reproduced
+without redrawing, filled in one colour instead of the original blue gradient,
+on a canvas squared for the icon renderer. It remains Meta's trademark.
+
 ### Fusion Pixel 12px (缝合怪像素字体)
 
 - Project:

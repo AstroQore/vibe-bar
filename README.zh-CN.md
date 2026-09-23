@@ -316,6 +316,7 @@ API Key 发到 `dot.mindreset.tech`，由那边画到你的设备上。在你填
 | Devin | Cognition 的 Daily 与 Weekly 窗口，来自 `devin` CLI 的套餐缓存；Devin 状态 | `~/.local/share/devin/cli/sessions.db`（CLI 与 Devin 桌面 app 共用），按模型计价 |
 | Mistral Vibe | Mistral AI 的 Monthly 窗口，来自 console.mistral.ai 的浏览器会话；Mistral 状态 | `~/.vibe/logs/session/*/meta.json`，按 Mistral API 单价折算 |
 | Muse Code | Meta AI 的 5 Hours 与 Weekly 窗口，macOS 允许后读取 `muse` CLI 的登录信息；Meta Model API 状态 | `~/.local/share/muse/sessions/**/session.jsonl` —— token 用量，成本按 Meta API 单价折算（订阅本身不按 token 计费） |
+| Muse | Meta AI 的 Weekly 窗口与套餐，来自 muse.ai 的浏览器会话，调用网页自身的订阅请求（其随部署变化的 id 从 muse.ai 的公开脚本中自动发现并缓存）；没有公开状态页 | Muse.app 缓存的主聊天（`~/Library/Caches/ConversationCache/hatch-*.json`），作为只读会话 —— 不含模型与 token 数，因此没有成本 |
 | Misc Providers | 各服务商自己的 Coding/Token Plan 接口 | 除非 Adapter 能取得本地用量，否则仅显示额度 |
 
 服务商的接口随时可能变化。Vibe Bar 会明确显示刷新错误，保留上一次成功的快照，

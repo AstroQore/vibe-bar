@@ -18,7 +18,7 @@ final class MCPResourceCatalogTests: XCTestCase {
                 "The naming spec never mentions the harness key '\(harness.rawValue)'."
             )
         }
-        XCTAssertEqual(Harness.allCases.count, 12, "A new harness needs a row in the evidence table.")
+        XCTAssertEqual(Harness.allCases.count, 13, "A new harness needs a row in the evidence table.")
     }
 
     func testEveryL1CompanyAppears() {

@@ -88,7 +88,8 @@
       "gemini": "gemini.all-models",
       "grok": "grok.all-models",
       "mistralVibe": "mistralVibe.all-models",
-      "muse": "muse.all-models"
+      "muse": "muse.all-models",
+      "museAgent": "museAgent.all-models"
     },
     "exact": [
       {
@@ -165,7 +166,8 @@
     "gemini.pro": "Pro",
     "grok.all-models": "All",
     "mistralVibe.all-models": "All",
-    "muse.all-models": "All"
+    "muse.all-models": "All",
+    "museAgent.all-models": "All"
   },
   "hierarchy": {
     "alibaba": {
@@ -247,6 +249,10 @@
     "muse": {
       "company": "Meta AI",
       "subProvider": "Muse Code"
+    },
+    "museAgent": {
+      "company": "Meta AI",
+      "subProvider": "Muse"
     },
     "ollama": {
       "company": "Ollama",

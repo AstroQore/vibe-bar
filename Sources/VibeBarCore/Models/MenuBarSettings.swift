@@ -526,6 +526,12 @@ public enum MenuBarFieldCatalog {
         option(.muse, "weekly", "Weekly", "Weekly")
     ]
 
+    /// Muse, the personal agent — Meta AI's second SubProvider. One weekly
+    /// window, the only allowance muse.ai meters.
+    public static let museAgentFields: [MenuBarFieldOption] = [
+        option(.museAgent, "weekly", "Weekly", "Weekly")
+    ]
+
     public static let devinFields: [MenuBarFieldOption] = [
         option(.devin, "daily", "Daily", "Daily"),
         option(.devin, "weekly", "Weekly", "Weekly")
@@ -538,7 +544,7 @@ public enum MenuBarFieldCatalog {
     public static let allFields: [MenuBarFieldOption] =
         chatGPTChatFields + codexFields + claudeFields + geminiFields + antigravityFields
             + grokFields + cursorFields + grokBotFields + museFields
-            + devinFields + mistralVibeFields
+            + museAgentFields + devinFields + mistralVibeFields
 
     public static func fields(for kind: MenuBarItemKind) -> [MenuBarFieldOption] {
         allFields

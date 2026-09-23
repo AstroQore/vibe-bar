@@ -28,6 +28,10 @@ final class HarnessQuotaTests: XCTestCase {
             // Cursor's adapter, so that is also where its company comes from.
             .grokBot:      (.cursor, .grok),
             .museCode:     (.muse, .muse),
+            // Muse, the personal agent, is Meta AI's second SubProvider; its
+            // harness spends that SubProvider's quota, under Muse Code's
+            // company.
+            .museAgent:    (.museAgent, .muse),
             .devin:        (.devin, .devin),
             .mistralVibe:  (.mistralVibe, .mistralVibe)
         ]
@@ -44,10 +48,15 @@ final class HarnessQuotaTests: XCTestCase {
         XCTAssertEqual(Harness.antigravity.companyName, "Google AI")
         XCTAssertEqual(Harness.cursor.companyName, "SpaceXAI")
         XCTAssertEqual(Harness.museCode.companyName, "Meta AI")
+        XCTAssertEqual(Harness.museAgent.companyName, "Meta AI")
+        XCTAssertEqual(Harness.museAgent.displayName, "Muse")
         XCTAssertEqual(Harness.devin.companyName, "Cognition")
         XCTAssertEqual(Harness.mistralVibe.companyName, "Mistral AI")
     }
 
+    /// Every cost-aware tool has a harness to attribute rows to. The one tool
+    /// with a harness and no cost is Muse: its sessions are listed, but its
+    /// cache carries no tokens, so no ledger row ever needs the backfill.
     func testDefaultHarnessCoversEveryCostAwareToolAndNothingElse() {
         XCTAssertEqual(Harness.defaultHarness(for: .codex), .codex)
         XCTAssertEqual(Harness.defaultHarness(for: .claude), .claudeCode)
@@ -58,8 +67,10 @@ final class HarnessQuotaTests: XCTestCase {
         XCTAssertEqual(Harness.defaultHarness(for: .muse), .museCode)
         XCTAssertEqual(Harness.defaultHarness(for: .devin), .devin)
         XCTAssertEqual(Harness.defaultHarness(for: .mistralVibe), .mistralVibe)
+        XCTAssertEqual(Harness.defaultHarness(for: .museAgent), .museAgent)
+        XCTAssertFalse(ToolType.museAgent.supportsTokenCost)
 
-        for tool in ToolType.allCases {
+        for tool in ToolType.allCases where tool != .museAgent {
             if tool.supportsTokenCost {
                 XCTAssertNotNil(
                     Harness.defaultHarness(for: tool),
@@ -76,7 +87,8 @@ final class HarnessQuotaTests: XCTestCase {
         XCTAssertEqual(Harness.harnesses(forCompany: .claude), [.claudeCode, .claudeCowork])
         XCTAssertEqual(Harness.harnesses(forCompany: .gemini), [.geminiCLI, .antigravity])
         XCTAssertEqual(Harness.harnesses(forCompany: .grok), [.grokBuild, .cursor, .grokBot])
-        XCTAssertEqual(Harness.harnesses(forCompany: .muse), [.museCode])
+        XCTAssertEqual(Harness.harnesses(forCompany: .muse), [.museCode, .museAgent])
+        XCTAssertEqual(Harness.harnesses(forCompany: .museAgent), [.museCode, .museAgent])
         // A non-representative member resolves to the same company list.
         XCTAssertEqual(
             Harness.harnesses(forCompany: .cursor),
@@ -98,7 +110,7 @@ final class HarnessQuotaTests: XCTestCase {
                 [.claudeCode, .claudeCowork],
                 [.geminiCLI, .antigravity],
                 [.grokBuild, .cursor, .grokBot],
-                [.museCode],
+                [.museCode, .museAgent],
                 [.devin],
                 [.mistralVibe]
             ]

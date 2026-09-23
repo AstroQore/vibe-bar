@@ -346,6 +346,10 @@ enum Theme {
         // Meta AI's ring runs blue to magenta; blue is Gemini's and violet
         // AntiGravity's, so Muse Code takes the magenta end.
         case .muse:        return Color(red: 0.85, green: 0.30, blue: 0.65)  // meta ai magenta
+        // Muse sits beside Muse Code in the Meta AI family, so it keeps the
+        // family's magenta and is told apart by lightness, as Cursor is from
+        // Grok. Its own blue logo would land on Gemini's and Devin's hue.
+        case .museAgent:   return Color(red: 0.93, green: 0.52, blue: 0.80)  // light meta magenta
         case .devin:       return Color(red: 0.22, green: 0.41, blue: 0.79)  // devin blue
         case .mistralVibe: return Color(red: 0.98, green: 0.31, blue: 0.06)  // mistral orange
         case .mimo:        return Color(red: 0.97, green: 0.50, blue: 0.20)  // xiaomi orange

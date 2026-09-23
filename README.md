@@ -365,6 +365,7 @@ the room costs more than the pixels it saves.
 | Devin | Cognition's Daily and Weekly windows from the `devin` CLI's plan cache; Devin status | `~/.local/share/devin/cli/sessions.db` (CLI and Devin app), costed by model |
 | Mistral Vibe | Mistral AI's Monthly window from a console.mistral.ai browser session; Mistral status | `~/.vibe/logs/session/*/meta.json`, costed at Mistral's API rates |
 | Muse Code | Meta AI's 5 Hours and Weekly windows, read with the `muse` CLI's login once macOS allows it; Meta Model API status | `~/.local/share/muse/sessions/**/session.jsonl` — tokens, costed at Meta's API rates (a subscription has no per-token bill) |
+| Muse | Meta AI's Weekly window and plan from a muse.ai browser session, through the web app's own subscription request (its per-deployment id is found in muse.ai's public scripts and cached); no public status page | Muse.app's cached main chat (`~/Library/Caches/ConversationCache/hatch-*.json`) as read-only sessions — no model or token counts, so no cost |
 | Misc providers | Each provider's own coding- or token-plan endpoint | Quota-only unless an adapter exposes local usage |
 
 Provider contracts change without notice. Vibe Bar keeps refresh errors

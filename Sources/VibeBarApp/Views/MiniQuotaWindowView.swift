@@ -541,6 +541,7 @@ func providerTitle(for tool: ToolType) -> String {
     case .kimi:        return "KIMI"
     case .cursor:      return "CURSOR"
     case .muse:        return "MUSE CODE"
+    case .museAgent:   return "MUSE"
     case .devin:       return "DEVIN"
     case .mistralVibe: return "MISTRAL VIBE"
     case .mimo:        return "MIMO"
@@ -701,6 +702,7 @@ private func miniPrimaryGroupTitle(
     case .gemini: key = "gemini.all-models"
     case .grok: key = "grok.all-models"
     case .muse: key = "muse.all-models"
+    case .museAgent: key = "museAgent.all-models"
     case .devin: key = "devin.all-models"
     case .mistralVibe: key = "mistralVibe.all-models"
     default: return nil

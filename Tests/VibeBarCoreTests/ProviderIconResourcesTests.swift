@@ -29,6 +29,7 @@ final class ProviderIconResourcesTests: XCTestCase {
             "ollama",
             "openrouter",
             "muse",
+            "museagent",
             // Brand marks that are not a tool's own — see `BrandMark`.
             "spacexai",
             "googleai",
