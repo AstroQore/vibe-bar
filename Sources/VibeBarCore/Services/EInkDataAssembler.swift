@@ -51,6 +51,7 @@ public struct EInkDataAssembler: Sendable {
         QuotaSelector(tool: .gemini, bucketID: "weekly"),
         QuotaSelector(tool: .cursor, bucketID: "models"),
         QuotaSelector(tool: .muse, bucketID: "weekly"),
+        QuotaSelector(tool: .museAgent, bucketID: "weekly"),
         QuotaSelector(tool: .devin, bucketID: "weekly"),
         QuotaSelector(tool: .mistralVibe, bucketID: "monthly")
     ]

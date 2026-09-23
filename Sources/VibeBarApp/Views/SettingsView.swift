@@ -637,28 +637,55 @@ struct SettingsView: View {
                     settingsSection("Meta AI") {
                         coreProviderSummary(
                             representative: .muse,
-                            healthProviders: [.muse]
+                            healthProviders: ToolType.muse.coreProviderMembers
                         )
-                        coreProviderPlanBadgeRows(for: [.muse])
+                        coreProviderPlanBadgeRows(for: ToolType.muse.coreProviderMembers)
                         Divider()
                             .padding(.vertical, 2)
-                        Text(L10n.Settings.metaAIIntro)
+                        Text(L10n.Settings.MetaAI.intro)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         sourceSummary(label: L10n.Settings.usageSource, value: L10n.Settings.Route.museKeychain)
                         museKeychainControls
 
-                        Text(L10n.Settings.Muse.networkNote)
+                        Divider()
+                            .padding(.vertical, 2)
+
+                        // Muse, the personal agent: a muse.ai web session in
+                        // the shared cookie slots, off until one is saved.
+                        sourceSummary(
+                            label: L10n.Settings.providerSource(provider: ToolType.museAgent.productName),
+                            value: L10n.Settings.Route.browserCookies
+                        )
+                        if environment.account(for: .museAgent)?.source == .browserCookie {
+                            Label(L10n.Settings.MuseAgent.sessionSaved, systemImage: "checkmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                        } else {
+                            Label(L10n.Settings.MuseAgent.noSession, systemImage: "exclamationmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        CookieSourceControls(
+                            tool: .museAgent,
+                            instanceID: ToolType.museAgent.rawValue,
+                            manualPrompt: "Paste muse.ai Cookie header (hatch_sess=…; …)",
+                            emphasis: .standard
+                        )
+
+                        Text(L10n.Settings.MetaAI.networkNote)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
                         Divider()
                             .padding(.vertical, 2)
-                        connectionHealthRows(provider: .muse)
+                        connectionHealthRows(providers: ToolType.muse.coreProviderMembers)
                         Button {
                             environment.recheckPrimaryRouteHealth(provider: .muse)
+                            environment.recheckPrimaryRouteHealth(provider: .museAgent)
                         } label: {
                             Label(L10n.Settings.checkConnections(company: "Meta AI"), systemImage: "checkmark.circle")
                         }
@@ -873,11 +900,17 @@ struct SettingsView: View {
     }
 
     private func connectionHealthRows(provider: ToolType) -> some View {
+        connectionHealthRows(providers: [provider])
+    }
+
+    /// One "Connection health" block for every route of `providers`, for a
+    /// company page whose SubProviders each have routes of their own.
+    private func connectionHealthRows(providers: [ToolType]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(L10n.Settings.connectionHealth)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ForEach(PrimaryProviderRoute.routes(for: provider)) { route in
+            ForEach(providers.flatMap(PrimaryProviderRoute.routes(for:))) { route in
                 let health = environment.routeHealth[route]
                     ?? PrimaryProviderRouteHealth(
                         route: route,
@@ -1574,6 +1607,7 @@ struct MiniWindowFieldProviderSection: Identifiable {
             fields: MenuBarFieldCatalog.grokBotFields
         ),
         .init(tool: .muse,        title: ToolType.muse.productName,        fields: MenuBarFieldCatalog.museFields),
+        .init(tool: .museAgent,   title: ToolType.museAgent.productName,   fields: MenuBarFieldCatalog.museAgentFields),
         .init(tool: .devin,       title: ToolType.devin.productName,       fields: MenuBarFieldCatalog.devinFields),
         .init(tool: .mistralVibe, title: ToolType.mistralVibe.productName, fields: MenuBarFieldCatalog.mistralVibeFields)
     ]

@@ -31,6 +31,9 @@ extension Harness {
         // badge draws — see `HarnessBrandIconView` in the app target.
         case .grokBot:                  .cursor
         case .museCode:                 .muse
+        // Muse, the personal agent: sessions only — its cache carries no
+        // model and no tokens, so nothing it leaves reaches the ledger.
+        case .museAgent:                .museAgent
         case .devin:                    .devin
         case .mistralVibe:              .mistralVibe
         }
@@ -64,6 +67,7 @@ extension Harness {
         case .grok:        .grokBuild
         case .cursor:      .cursor
         case .muse:        .museCode
+        case .museAgent:   .museAgent
         case .devin:       .devin
         case .mistralVibe: .mistralVibe
         case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,

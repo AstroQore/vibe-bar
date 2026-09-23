@@ -48,7 +48,7 @@ public enum CostUsageScanner {
             return await scanDevin(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
         case .mistralVibe:
             return await scanMistralVibe(homeDirectory: homeDirectory, now: now, retentionDays: retentionDays, pricing: pricing, eventSink: eventSink)
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .museAgent, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers don't expose token-level cost data through
             // any documented public protocol. The cost-history pipeline
             // is gated by `tool.supportsTokenCost` upstream. Returning
@@ -2190,7 +2190,7 @@ public enum CostUsageScanner {
                 cacheCreationTokens: event.cacheCreation ?? 0,
                 outputTokens: event.output
             )
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .museAgent, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             return nil
         }
     }

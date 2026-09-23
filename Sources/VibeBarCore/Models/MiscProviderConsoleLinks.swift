@@ -137,7 +137,7 @@ public enum MiscProviderConsole {
         case .ollama:                             return "Open ollama.com"
         case .openRouter:                         return "Open openrouter.ai"
         case .warp:                               return "Open app.warp.dev"
-        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .devin, .mistralVibe:
+        case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .cursor, .muse, .museAgent, .devin, .mistralVibe:
             return "Open status page"
         }
     }

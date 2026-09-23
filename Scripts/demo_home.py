@@ -20,7 +20,7 @@ builds that directory from a maintainer's live ``~/.vibebar`` store:
   Build, Muse Code, Devin and Mistral Vibe under ``/Users/example/Code``,
   and two dozen public skills linked into every managed harness directory.
 * Devin's and Mistral Vibe's quota caches, cost snapshots and cached
-  status pages (and Muse Code's status) are fabricated when the source store
+  status pages (and Muse Code's status, and Muse's quota) are fabricated when the source store
   has none yet, so their pages have something to show before the
   maintainer's own app has refreshed them once.
 
@@ -79,11 +79,12 @@ FIXED_PRIMARY_IDS = {
     "oauth-muse": ("muse", "Muse Code", "oauthCLI"),
     "local-devin": ("devin", "Devin", "cliDetected"),
     "misc-mistralVibe": ("mistralVibe", "Mistral Vibe", "browserCookie"),
+    "misc-museAgent": ("museAgent", "Muse", "browserCookie"),
 }
 # Always-present dedicated accounts whose id borrows the misc prefix; unlike
 # `misc-cursor` they are not derived from a settings instance, so a demo home
 # has to declare them.
-DEDICATED_MISC_IDS = {"misc-mistralVibe"}
+DEDICATED_MISC_IDS = {"misc-mistralVibe", "misc-museAgent"}
 CODEX_SOURCES = {"oauth-codex": "oauthCLI", "web-codex": "webCookie", "cli-codex": "cliDetected"}
 
 
@@ -261,8 +262,8 @@ class Builder:
         self.fabricate_new_provider_quotas()
 
     def fabricate_new_provider_quotas(self) -> None:
-        """Devin and Mistral Vibe caches, shaped as their adapters write them,
-        for a source store that has not refreshed either provider yet."""
+        """Devin, Mistral Vibe and Muse caches, shaped as their adapters write
+        them, for a source store that has not refreshed those providers yet."""
         day, week = 86_400, 604_800
         fabricated = {
             "local-devin": {
@@ -281,6 +282,14 @@ class Builder:
                 "buckets": [
                     {"id": "monthly", "title": "Monthly", "shortLabel": "Monthly", "usedPercent": 17,
                      "rawWindowSeconds": 30 * day, "resetAt": ref_seconds(self.now + dt.timedelta(days=13, hours=6))},
+                ],
+            },
+            "misc-museAgent": {
+                "tool": "museAgent",
+                "plan": "Free",
+                "buckets": [
+                    {"id": "weekly", "title": "Weekly", "shortLabel": "Weekly", "usedPercent": 23,
+                     "rawWindowSeconds": week, "resetAt": ref_seconds(self.now + dt.timedelta(days=3, hours=7))},
                 ],
             },
         }
@@ -477,7 +486,13 @@ class Builder:
         # it has an account for.
         order = settings.setdefault("coreProviderOrder", [])
         visible_core = settings.setdefault("visibleCoreProviders", [])
-        for tool, account_id in (("devin", "local-devin"), ("mistralVibe", "misc-mistralVibe")):
+        # Muse is Meta AI's second SubProvider, so its account shows the
+        # Meta AI company (`muse` is the representative stored here).
+        for tool, account_id in (
+            ("devin", "local-devin"),
+            ("mistralVibe", "misc-mistralVibe"),
+            ("muse", "misc-museAgent"),
+        ):
             if account_id not in self.account_ids:
                 continue
             if tool not in order:

@@ -92,7 +92,7 @@ final class MenuBarFieldCatalogTests: XCTestCase {
             + MenuBarFieldCatalog.geminiFields + MenuBarFieldCatalog.antigravityFields
             + MenuBarFieldCatalog.grokFields + MenuBarFieldCatalog.cursorFields
             + MenuBarFieldCatalog.grokBotFields + MenuBarFieldCatalog.museFields
-            + MenuBarFieldCatalog.devinFields + MenuBarFieldCatalog.mistralVibeFields
+            + MenuBarFieldCatalog.museAgentFields + MenuBarFieldCatalog.devinFields + MenuBarFieldCatalog.mistralVibeFields
         XCTAssertEqual(sliced.map(\.id), all)
     }
 
@@ -118,7 +118,7 @@ final class MenuBarFieldCatalogTests: XCTestCase {
                 ["Claude"],
                 ["Gemini Web", "AntiGravity"],
                 ["Grok", "Cursor", "Grok Bot"],
-                ["Muse Code"],
+                ["Muse Code", "Muse"],
                 ["Devin"],
                 ["Mistral Vibe"]
             ]

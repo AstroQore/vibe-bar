@@ -224,7 +224,7 @@ struct PopoverRoot: View {
         case .claude: return [.claude]
         case .googleAI: return ToolType.googleAIPair
         case .grok: return ToolType.grokFamily
-        case .metaAI: return [.muse]
+        case .metaAI: return ToolType.muse.coreProviderMembers
         case .cognition: return [.devin]
         case .mistralAI: return [.mistralVibe]
         case .misc: return settingsStore.settings.visibleMiscProviderList
@@ -1827,7 +1827,7 @@ private struct OverviewCostCard: View {
         case .muse: return L10n.Cost.Empty.muse
         case .devin: return L10n.Cost.Empty.devin
         case .mistralVibe: return L10n.Cost.Empty.mistralVibe
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
+        case .chatgptChat, .museAgent, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi, .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:
             // Misc providers' empty cost-history view shouldn't be
             // reachable (cost cards are gated on
             // `tool.supportsTokenCost`), but render a graceful
@@ -2512,6 +2512,7 @@ struct ProviderQuotaCard: View {
         case .grok: return L10n.Quota.Login.grok
         case .cursor: return L10n.Quota.Login.cursor
         case .muse: return L10n.Quota.Login.muse
+        case .museAgent: return L10n.Quota.Login.museAgent
         case .devin: return L10n.Quota.Login.devin
         case .mistralVibe: return L10n.Quota.Login.mistralVibe
         case .alibaba, .alibabaTokenPlan, .gemini, .antigravity, .copilot, .zai, .minimax, .kimi, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan, .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo, .kilo, .kiro, .ollama, .openRouter, .warp:

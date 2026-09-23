@@ -14,6 +14,7 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
     case grokAuthJSON
     case grokBrowserCookies
     case museKeychain
+    case museAgentBrowserCookies
     case devinWebSession
     case devinStatusCache
     case mistralBrowserCookies
@@ -34,6 +35,8 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
             return .grok
         case .museKeychain:
             return .muse
+        case .museAgentBrowserCookies:
+            return .museAgent
         case .devinWebSession, .devinStatusCache:
             return .devin
         case .mistralBrowserCookies:
@@ -56,6 +59,7 @@ public enum PrimaryProviderRoute: String, CaseIterable, Identifiable, Sendable {
         case .grokAuthJSON: return L10n.Settings.Route.grokAuthFile
         case .grokBrowserCookies: return L10n.Settings.Route.browserCookies
         case .museKeychain: return L10n.Settings.Route.museKeychain
+        case .museAgentBrowserCookies: return L10n.Settings.Route.museAgentSession
         case .devinWebSession: return L10n.Settings.Route.browserCookies
         case .devinStatusCache: return L10n.Settings.Route.devinStatusCache
         case .mistralBrowserCookies: return L10n.Settings.Route.browserCookies
@@ -191,6 +195,14 @@ public enum PrimaryProviderRouteHealthChecker {
                 route: route,
                 state: MuseCredentialReader.accessState(),
                 now: now
+            )
+        case .museAgentBrowserCookies:
+            let saved = MiscCookieSlotStore.hasAnySlot(for: .museAgent)
+            return PrimaryProviderRouteHealth(
+                route: route,
+                status: saved ? .ok : .missing,
+                detail: saved ? L10n.Settings.RouteHealth.savedInKeychain : L10n.Settings.RouteHealth.noSavedCookie,
+                checkedAt: now
             )
         case .devinWebSession:
             let saved = MiscCookieSlotStore.hasAnySlot(for: .devin)

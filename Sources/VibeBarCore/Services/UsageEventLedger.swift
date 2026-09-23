@@ -1461,7 +1461,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 cacheCreationTokens: cacheCreation,
                 outputTokens: output
             )
-        case .chatgptChat, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
+        case .chatgptChat, .museAgent, .alibaba, .alibabaTokenPlan, .copilot, .zai, .minimax, .kimi,
              .cursor, .mimo, .iflytek, .tencentHunyuan, .tencentTokenPlan,
              .volcengine, .volcengineAgentPlan, .baiduQianfan, .openCodeGo,
              .kilo, .kiro, .ollama, .openRouter, .warp:
