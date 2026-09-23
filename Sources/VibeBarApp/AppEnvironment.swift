@@ -674,6 +674,22 @@ final class AppEnvironment: ObservableObject {
         return quotaService.cachedQuota(for: account.id)
     }
 
+    /// Re-reads every account from the current settings without importing
+    /// anything. A cookie import or delete changes what an always-present
+    /// account (Muse, Mistral Vibe, Devin, Cursor) reports as its source, and
+    /// that is only computed here — so the settings panel that made the change
+    /// calls this before refreshing.
+    func reloadAccounts() {
+        accountStore.reload(
+            chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
+            codexUsageMode: settingsStore.settings.codexUsageMode,
+            claudeUsageMode: settingsStore.claudeUsageMode,
+            geminiUsageMode: settingsStore.geminiUsageMode,
+            antigravityUsageMode: settingsStore.antigravityUsageMode,
+            miscProviderInstances: settingsStore.settings.miscProviderInstances
+        )
+    }
+
     func reloadProviderCredentialsAndRefresh() {
         // The Refresh button reaches here too. Demo mode has nothing to
         // reload — no cookies, no credentials, no routes — and the importers

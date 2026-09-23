@@ -1211,6 +1211,13 @@ struct CookieSourceControls: View {
     }
 
     private func triggerRefresh() {
+        // A dedicated provider's account is detected from its saved slots, so
+        // the import or delete that just happened changes its source; read it
+        // again before refreshing, or the panel and the Overview keep the old
+        // answer until the next global reload.
+        if tool.supportsDedicatedCard {
+            environment.reloadAccounts()
+        }
         // A dedicated provider's account carries its own id rather than the
         // misc instance id, so fall back to the provider's account.
         guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID)

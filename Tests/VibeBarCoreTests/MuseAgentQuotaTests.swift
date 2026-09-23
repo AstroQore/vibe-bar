@@ -378,6 +378,68 @@ final class MuseAgentQuotaTests: XCTestCase {
         XCTAssertEqual(count, 2)
     }
 
+    /// The freshly found id is refused too (page and chunks from different
+    /// deployments): the next refresh inside the back-off window posts the
+    /// remembered id once and does not scan the app again.
+    func testAReplacementThatIsAlsoRefusedIsThrottled() async throws {
+        let home = try temporaryHome()
+        try seed(home: home, actionID: Self.actionID)
+        let transport = FakeMuseTransport { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("POST", _):
+                return (404, ["x-nextjs-action-not-found": "1"], Data("Server action not found.".utf8))
+            case (_, "/"):
+                return (200, [:], Data(#""static/chunks/a.js""#.utf8))
+            case (_, "/_next/static/chunks/a.js"):
+                return (200, [:], Data(Self.chunk(declaring: Self.newActionID).utf8))
+            default:
+                return (404, [:], Data())
+            }
+        }
+        let adapter = MuseAgentQuotaAdapter(transport: transport, resolver: MuseAgentActionResolver(homeDirectory: home))
+        do { _ = try await adapter.fetchSnapshot(cookieHeader: Self.cookie); XCTFail("first") } catch {
+            guard case QuotaError.parseFailure = error else { return XCTFail("\(error)") }
+        }
+        let firstGets = await transport.requests.filter { $0.httpMethod != "POST" }.count
+        do { _ = try await adapter.fetchSnapshot(cookieHeader: Self.cookie); XCTFail("second") } catch {
+            guard case QuotaError.parseFailure = error else { return XCTFail("\(error)") }
+        }
+        let requests = await transport.requests
+        XCTAssertEqual(requests.filter { $0.httpMethod != "POST" }.count, firstGets, "no second scan")
+        XCTAssertEqual(requests.last?.value(forHTTPHeaderField: "Next-Action"), Self.newActionID)
+    }
+
+    /// Two cookie slots refresh at once with nothing cached. The first one's
+    /// session has expired; the second must still get its own answer rather
+    /// than inherit the first slot's sign-in error.
+    func testASignedOutSlotDoesNotFailAnotherSlotsDiscovery() async throws {
+        let home = try temporaryHome()
+        let expired = "hatch_sess=synthetic-expired"
+        let transport = FakeMuseTransport(delay: { request in
+            request.value(forHTTPHeaderField: "Cookie") == expired ? 50_000_000 : 0
+        }) { request in
+            switch request.url?.path {
+            case "/" where request.value(forHTTPHeaderField: "Cookie") == expired:
+                return (307, ["Location": "https://auth.muse.ai/aymh/x"], Data())
+            case "/":
+                return (200, [:], Data(#""static/chunks/a.js""#.utf8))
+            case "/_next/static/chunks/a.js":
+                return (200, [:], Data(Self.chunk(declaring: Self.newActionID).utf8))
+            default:
+                return (404, [:], Data())
+            }
+        }
+        let resolver = MuseAgentActionResolver(homeDirectory: home)
+        async let first: MuseAgentActionRecord = resolver.rediscover(invalidating: nil, cookieHeader: expired, transport: transport)
+        try await Task.sleep(nanoseconds: 5_000_000)
+        async let second: MuseAgentActionRecord = resolver.rediscover(invalidating: nil, cookieHeader: Self.cookie, transport: transport)
+        let found = try await second
+        XCTAssertEqual(found.actionID, Self.newActionID)
+        do { _ = try await first; XCTFail("expected needsLogin") } catch {
+            XCTAssertEqual(error as? QuotaError, .needsLogin)
+        }
+    }
+
     func testAForbiddenActionIsALoginError() async throws {
         let home = try temporaryHome()
         try seed(home: home, actionID: Self.actionID)
@@ -442,12 +504,14 @@ private actor FakeMuseTransport: MuseAgentHTTPTransport {
     typealias Handler = @Sendable (URLRequest) -> (Int, [String: String], Data)
 
     private let handler: Handler
+    private let delay: @Sendable (URLRequest) -> UInt64
     private(set) var requests: [URLRequest] = []
     private var inFlight = 0
     private(set) var peakConcurrency = 0
 
-    init(_ handler: @escaping Handler) {
+    init(delay: @escaping @Sendable (URLRequest) -> UInt64 = { _ in 0 }, _ handler: @escaping Handler) {
         self.handler = handler
+        self.delay = delay
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -456,6 +520,8 @@ private actor FakeMuseTransport: MuseAgentHTTPTransport {
         peakConcurrency = max(peakConcurrency, inFlight)
         // Let other chunk reads start, so the concurrency cap is observable.
         await Task.yield()
+        let nanoseconds = delay(request)
+        if nanoseconds > 0 { try await Task.sleep(nanoseconds: nanoseconds) }
         inFlight -= 1
         let (status, headers, data) = handler(request)
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: headers)!

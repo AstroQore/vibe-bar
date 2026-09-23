@@ -126,6 +126,7 @@ public struct MuseAgentQuotaAdapter: QuotaAdapter {
             case let .answered(data):
                 return try MuseAgentSubscriptionParser.parse(data: data)
             case .actionNotFound:
+                await resolver.recordRejection(of: record.actionID)
                 throw QuotaError.parseFailure(MuseAgentActionDiscovery.changedMessage)
             }
         }
@@ -204,9 +205,22 @@ public protocol MuseAgentHTTPTransport: Sendable {
 public struct URLSessionMuseAgentTransport: MuseAgentHTTPTransport {
     private let session: URLSession
 
-    public init(session: URLSession = .shared) {
+    public init(session: URLSession = URLSessionMuseAgentTransport.defaultSession) {
         self.session = session
     }
+
+    /// The default configuration (so the system proxy still applies) with a
+    /// hard ceiling on each request's total time, not only on silence: the
+    /// action-id search runs outside the quota refresh's own timeout, and a
+    /// response that trickles in must not keep it alive.
+    public static let defaultSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 20
+        configuration.timeoutIntervalForResource = 45
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        return URLSession(configuration: configuration)
+    }()
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await session.data(for: request, delegate: NoRedirectDelegate.shared)

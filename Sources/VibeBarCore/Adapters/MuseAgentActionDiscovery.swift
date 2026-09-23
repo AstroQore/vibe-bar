@@ -322,7 +322,13 @@ public actor MuseAgentActionResolver {
     ) async throws -> MuseAgentActionRecord {
         loadIfNeeded()
         if let record, record.actionID != stale { return record }
-        if let inFlight { return try await inFlight.value }
+        if let inFlight {
+            // Share another caller's answer, not its failure: it searched with
+            // its own cookie slot, and a signed-out slot says nothing about
+            // this one. A page-level failure is in `lastFailure` by now and is
+            // honoured just below.
+            if let shared = try? await inFlight.value { return shared }
+        }
         if let lastFailure, now().timeIntervalSince(lastFailure.at) < failureBackoff {
             throw lastFailure.error
         }
@@ -345,6 +351,16 @@ public actor MuseAgentActionResolver {
             }
             throw quotaError
         }
+    }
+
+    /// The server refused an id this resolver had just found. The page and
+    /// its chunks disagree (a deployment mid-rollout, or the app changed
+    /// shape), so searching again right away would find the same id: hold the
+    /// next search back like any other failed one.
+    public func recordRejection(of actionID: String) {
+        loadIfNeeded()
+        guard record?.actionID == actionID else { return }
+        lastFailure = (now(), .parseFailure(MuseAgentActionDiscovery.changedMessage))
     }
 
     private func loadIfNeeded() {
