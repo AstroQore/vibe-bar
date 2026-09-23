@@ -252,21 +252,35 @@ public struct MuseAgentActionDiscovery: Sendable {
         return String(decoding: data.prefix(256), as: UTF8.self).contains("Server action not found")
     }
 
+    /// Each segment is appended on its own, so a Next.js route segment such
+    /// as `(group)` or `[slug]` is percent-encoded rather than parsed.
     static func chunkURL(_ name: String) -> URL? {
         guard isSafeChunkName(name) else { return nil }
-        return URL(string: name, relativeTo: chunkBaseURL)?.absoluteURL
+        return name.split(separator: "/").reduce(chunkBaseURL) { url, segment in
+            url.appendingPathComponent(String(segment), isDirectory: false)
+        }
     }
 
+    /// A chunk path below `/_next/static/chunks/`: flat (Turbopack's
+    /// `0_abc.js`) or nested (webpack's `app/page-9.js`), made of plain
+    /// segments only — none empty, none `.` or `..` — so a reference can never
+    /// point the download anywhere else.
     static func isSafeChunkName(_ name: String) -> Bool {
-        guard name.hasSuffix(".js"), !name.hasPrefix("."), !name.contains(".."), name.count <= 160 else { return false }
-        return name.unicodeScalars.allSatisfy { safeChunkCharacters.contains($0) }
+        guard name.hasSuffix(".js"), name.count <= 240 else { return false }
+        let segments = name.split(separator: "/", omittingEmptySubsequences: false)
+        guard segments.count <= 8 else { return false }
+        return segments.allSatisfy { segment in
+            !segment.isEmpty && segment != "." && segment != ".."
+                && !segment.hasPrefix(".")
+                && segment.unicodeScalars.allSatisfy { safeChunkCharacters.contains($0) }
+        }
     }
 
     private static let safeChunkCharacters = CharacterSet(
-        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-."
+        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.~()[]@"
     )
     private static let chunkPattern = try! NSRegularExpression(
-        pattern: #"static/chunks/([A-Za-z0-9_\-.]+?\.js)"#
+        pattern: #"static/chunks/([A-Za-z0-9_\-.~()\[\]@/]+?\.js)"#
     )
     private static let deploymentPattern = try! NSRegularExpression(pattern: #"dpl_[A-Za-z0-9]+"#)
     private static let actionPattern = try! NSRegularExpression(

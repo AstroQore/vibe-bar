@@ -154,12 +154,24 @@ final class MuseAgentQuotaTests: XCTestCase {
         <script src="/_next/static/chunks/webpack-1a2b.js"></script>
         <link rel="preload" href="/_next/static/chunks/0_examplechunk.js"/>
         "static/chunks/..%2Fsecret.js" "static/chunks/app/page-9.js" "static/chunks/main-app.js"
+        "static/chunks/app/(shell)/settings/[tab]/page-3f.js" "static/chunks/app/../../etc.js"
+        "static/chunks//double.js" "static/chunks/app/./dot.js"
         <meta name="deployment" content="dpl_AbC123xyz"/>
         """
         XCTAssertEqual(
             MuseAgentActionDiscovery.chunkNames(in: html),
-            ["0_examplechunk.js", "webpack-1a2b.js", "main-app.js"]
+            ["0_examplechunk.js", "webpack-1a2b.js", "app/page-9.js", "main-app.js",
+             "app/(shell)/settings/[tab]/page-3f.js"]
         )
+        XCTAssertEqual(
+            MuseAgentActionDiscovery.chunkURL("app/page-9.js")?.absoluteString,
+            "https://muse.ai/_next/static/chunks/app/page-9.js"
+        )
+        XCTAssertEqual(
+            MuseAgentActionDiscovery.chunkURL("app/(shell)/settings/[tab]/page-3f.js")?.path,
+            "/_next/static/chunks/app/(shell)/settings/[tab]/page-3f.js"
+        )
+        XCTAssertNil(MuseAgentActionDiscovery.chunkURL("app/../../x.js"))
         XCTAssertEqual(MuseAgentActionDiscovery.deploymentID(inHTML: html), "dpl_AbC123xyz")
         XCTAssertNil(MuseAgentActionDiscovery.deploymentID(inHTML: "<html></html>"))
         XCTAssertNil(MuseAgentActionDiscovery.chunkURL("../x.js"))
