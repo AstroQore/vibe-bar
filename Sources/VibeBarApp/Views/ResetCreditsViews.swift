@@ -43,6 +43,33 @@ struct ResetCreditsRow: View {
 
 /// The available credits' detail: the windows they clear and one line per
 /// credit with its expiry. Draws nothing when no credit is left.
+/// The Overview's view of a SubProvider's reset credits: the title row with
+/// the count, then the inventory — cleared windows and each credit's expiry.
+/// No record lines; those are the provider page's and the Resets page's.
+struct ResetCreditsInventoryRow: View {
+    let credits: ResetCredits?
+    let buckets: [QuotaBucket]
+    let density: Theme.Density
+
+    var body: some View {
+        let count = credits?.availableCount ?? 0
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: density.resetCountdownFontSize))
+                    .foregroundStyle(.secondary)
+                Text(L10n.Quota.ResetCredits.title)
+                    .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                Spacer(minLength: 6)
+                Text(AppLocale.number(count))
+                    .font(.system(size: density.bucketPercentFontSize, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(count > 0 ? Color.green : Color.secondary)
+            }
+            ResetCreditsInventory(credits: credits, buckets: buckets, density: density)
+        }
+    }
+}
+
 struct ResetCreditsInventory: View {
     let credits: ResetCredits?
     let buckets: [QuotaBucket]

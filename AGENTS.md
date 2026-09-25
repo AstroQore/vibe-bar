@@ -1386,9 +1386,12 @@ Workbench.
 Usage-limit reset credits are one provider-neutral model, `ResetCredits`
 (`AccountQuota.resetCredits`; Codex from `/wham/rate-limit-reset-credits`,
 Claude from the usage payload's `cedar_ember` block, Grok from
-`ConsumerUiSvc/GetRemainingResets`). Where they are drawn is fixed: never on
-the Overview (a credit belongs to one SubProvider); the provider page's quota
-card shows the inventory and the latest four lines (`ResetCreditsRow`); the
+`ConsumerUiSvc/GetRemainingResets`). Where they are drawn is fixed. The
+Overview shows a SubProvider's *inventory* only — how many credits are left and
+when each expires (`ResetCreditsInventoryRow`) — never their record: which
+were received or spent, and when, is not an Overview concern. The provider
+page's quota card shows the inventory and the latest four lines
+(`ResetCreditsRow`); the
 Workbench Resets page's `ResetCreditsRecordCard` holds the whole record, folded
 past `ResetCreditLedgerDisplay.collapsedLimit`; and the reset journal lists
 every credit received and every spent one no refill was matched to in its one
