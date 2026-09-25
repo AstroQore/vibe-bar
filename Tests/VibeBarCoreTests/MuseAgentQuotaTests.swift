@@ -227,6 +227,12 @@ final class MuseAgentQuotaTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "text/x-component")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "text/plain;charset=UTF-8")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Origin"), "https://muse.ai")
+        // Without the page's fetch metadata muse.ai answers 403 for every id.
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Sec-Fetch-Site"), "same-origin")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Sec-Fetch-Mode"), "cors")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Sec-Fetch-Dest"), "empty")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Referer"), "https://muse.ai/")
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "Accept-Language"))
         XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), Self.cookie)
         XCTAssertEqual(request.httpBody, Data("[]".utf8))
         XCTAssertFalse(request.httpShouldHandleCookies)
