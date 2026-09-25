@@ -47,6 +47,12 @@ public final class QuotaService: ObservableObject {
     /// Newest-first credit record (spent and received) per account id,
     /// derived whenever the store's credit lists change.
     @Published public private(set) var resetCreditLedger: [String: [ResetCreditLedgerEntry]] = [:]
+    /// Used / received counts per account id, derived with the ledger so the
+    /// Workbench record heads each account without counting while rendering.
+    @Published public private(set) var resetCreditSummary: [String: ResetCreditLedgerSummary] = [:]
+    /// Credits received, as stored. The reset journal lists them with their
+    /// tool, which the per-account ledger does not carry.
+    @Published public private(set) var resetCreditGrants: [QuotaResetRedemption] = []
     @Published public private(set) var featureResetHistory: [SubscriptionWindowSample] = []
     /// Adaptive point samples for every independently resettable quota. These
     /// power personal pace forecasts; completed-cycle summaries remain in
@@ -636,8 +642,12 @@ public final class QuotaService: ObservableObject {
         let redemptions = await SubscriptionHistoryStore.shared.allRedemptions()
         let grants = await SubscriptionHistoryStore.shared.allResetCreditGrants()
         if redemptions != resetRedemptions { resetRedemptions = redemptions }
+        if grants != resetCreditGrants { resetCreditGrants = grants }
         let ledger = ResetCreditLedgerEntry.ledger(redemptions: redemptions, grants: grants)
-        if ledger != resetCreditLedger { resetCreditLedger = ledger }
+        if ledger != resetCreditLedger {
+            resetCreditLedger = ledger
+            resetCreditSummary = ResetCreditLedgerSummary.summaries(ledger)
+        }
     }
 
     private func refreshSubscriptionHistory(for quota: AccountQuota) async {

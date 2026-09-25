@@ -90,6 +90,8 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/Workbench/WorkbenchPlaceholderPage.swift",
     "Sources/VibeBarApp/Views/Workbench/WorkbenchRootView.swift",
     "Sources/VibeBarApp/Views/Workbench/ResetsPage.swift",
+    "Sources/VibeBarApp/Views/Workbench/ResetCreditsRecordCard.swift",
+    "Sources/VibeBarApp/Views/ResetCreditsViews.swift",
     "Sources/VibeBarApp/Views/Workbench/UsageStatsPage.swift",
     "Sources/VibeBarApp/Views/Workbench/UsageHeroCards.swift",
     "Sources/VibeBarApp/Views/Workbench/UsageCompositionCards.swift",
