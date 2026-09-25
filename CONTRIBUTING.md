@@ -85,12 +85,17 @@ See `AGENTS.md` § 6 for the full reasoning.
   the user's filesystem with the same discipline a sandboxed app would:
   read only the credential / cookie / config files you actually need,
   never write outside `~/.vibebar/`, and never log raw secrets.
-- There are exactly two exceptions: whole-session deletion through
-  `SessionDeleter`, performed only at the user's explicit request and on
-  the containment / symlink / re-parsed-session-id terms `AGENTS.md` § 5
-  sets out; and the Skills manager, which writes only to
-  `~/.agents/skills/` and the allowlisted app skills directories, and
-  only through `SkillSyncEngine` / `SkillsService` (`AGENTS.md` § 7).
+- The exceptions are the ones `AGENTS.md` § 5 and § 7 spell out: whole-session
+  deletion through `SessionDeleter`, performed only at the user's explicit
+  request and on the containment / symlink / re-parsed-session-id terms
+  there; the Skills manager, which writes only to `~/.agents/skills/` and
+  the allowlisted app skills directories, and only through
+  `SkillSyncEngine` / `SkillsService`; the E-ink displays feature, whose
+  only off-Mac writes go through `EInkSyncService`; and CLI credential
+  write-back — a refreshed OAuth token written atomically (0600) back into
+  the CLI's own `~/.codex/auth.json` or `~/.grok/auth.json`, touching only
+  the token fields of the entry that was refreshed, because the file is the
+  shared source of truth and the identity provider rotates refresh tokens.
 
 ## Implementation Notes
 
