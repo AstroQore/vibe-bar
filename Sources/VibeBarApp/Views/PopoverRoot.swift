@@ -2241,10 +2241,11 @@ private func groupExtraBuckets(_ buckets: [QuotaBucket]) -> [ExtraGroup] {
 /// back to "first account for this tool", which is the single-account
 /// behaviour every other provider uses today.
 ///
-/// Every caller is an Overview card, so it draws no limit reset credits: a
-/// credit belongs to one SubProvider. Its inventory is on that provider's
-/// page (`QuotaGroupCard`) and its record on the Workbench Resets page
-/// (`ResetCreditsRecordCard`) and in the reset journal.
+/// Every caller is an Overview card. It draws a SubProvider's limit reset
+/// credits as *inventory* — how many are left and when each expires — but
+/// never their record: which were received or spent, and when, belongs to
+/// that provider's own page (`QuotaGroupCard`), the Workbench Resets page
+/// (`ResetCreditsRecordCard`) and the reset journal.
 struct ProviderQuotaCard: View {
     let tool: ToolType
     var accountId: String?
@@ -2334,6 +2335,9 @@ struct ProviderQuotaCard: View {
                 let bucketAccountId = resolvedAccount?.id
                 PageClock(interval: 30) { tickDate in
                     bucketContent(buckets, accountId: bucketAccountId, now: tickDate)
+                }
+                if let quota = resolvedQuota, quota.resetCredits?.hasAvailable == true {
+                    ResetCreditsInventoryRow(credits: quota.resetCredits, buckets: quota.buckets, density: density)
                 }
                 if let liveError = resolvedLiveError {
                     messageRow(text: L10n.Quota.Update.failed(reason: liveError.userFacingMessage), color: .orange)
