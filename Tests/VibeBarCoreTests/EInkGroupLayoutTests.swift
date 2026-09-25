@@ -276,6 +276,16 @@ final class EInkGroupLayoutTests: XCTestCase {
 
     // MARK: - What each template promises
 
+    func testUnevenScreensFillBeforeTheyPaginate() {
+        // Portrait 8 beside landscape 4: twelve rows fit one page, so the
+        // first screen takes eight, not an even six.
+        XCTAssertEqual(EInkGroupLayouts.distribute(Array(1...12), capacities: [8, 4]).map(\.count), [8, 4])
+        // Room to spare stays balanced.
+        XCTAssertEqual(EInkGroupLayouts.distribute(Array(1...5), capacities: [6, 6]).map(\.count), [3, 2])
+        XCTAssertEqual(EInkGroupLayouts.paneShare(12, capacity: 8, following: 4, panesLeft: 2), 8)
+        XCTAssertEqual(EInkGroupLayouts.paneShare(0, capacity: 8, following: 4, panesLeft: 2), 0)
+    }
+
     func testCapacitiesAreCountedScreenByScreen() {
         let across = EInkGroupLayouts.readingOrder([EInkRect(x: 296, y: 0, width: 296, height: 152),
                                                     EInkRect(x: 0, y: 0, width: 296, height: 152)])

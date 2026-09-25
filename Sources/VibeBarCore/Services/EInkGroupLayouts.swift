@@ -176,7 +176,8 @@ public enum EInkGroupLayouts {
             paneSlide.options = chromeOptions(slide.options, pane: pane, panes: panes)
             let remaining = rows.count - start
             let panesLeft = panes.count - index
-            var take = min(preset.capacity(for: shape(pane)), evenShare(remaining, panesLeft))
+            let following = panes[(index + 1)...].reduce(0) { $0 + preset.capacity(for: shape($1)) }
+            var take = paneShare(remaining, capacity: preset.capacity(for: shape(pane)), following: following, panesLeft: panesLeft)
             // A ledger of long names holds fewer slots than its capacity, and
             // the ones it would drop belong on the next screen, not on the
             // next page.
@@ -213,12 +214,23 @@ public enum EInkGroupLayouts {
         return (remaining + panes - 1) / panes
     }
 
+    /// This screen's share: an even split for balance, but never so few
+    /// that the screens after it — with their own capacities — could not
+    /// hold the rest. A portrait pane of 8 next to a landscape pane of 4
+    /// takes 8 of 12 rows, not 6, so the last two do not spill onto a page
+    /// of their own.
+    static func paneShare(_ remaining: Int, capacity: Int, following: Int, panesLeft: Int) -> Int {
+        guard remaining > 0 else { return 0 }
+        return min(capacity, max(evenShare(remaining, panesLeft), remaining - following))
+    }
+
     /// Items spread over screens: as even as the capacities allow, in order.
     static func distribute<T>(_ items: [T], capacities: [Int]) -> [[T]] {
         var result: [[T]] = []
         var start = 0
         for (index, capacity) in capacities.enumerated() {
-            let take = min(capacity, evenShare(items.count - start, capacities.count - index))
+            let following = capacities[(index + 1)...].reduce(0, +)
+            let take = paneShare(items.count - start, capacity: capacity, following: following, panesLeft: capacities.count - index)
             result.append(Array(items[start..<(start + take)]))
             start += take
         }
@@ -455,7 +467,8 @@ public enum EInkGroupLayouts {
         var children: [EInkNode] = []
         var start = 0
         for (index, run) in runs.enumerated() {
-            let take = min(capacities[index], evenShare(rows.count - start, runs.count - index))
+            let following = capacities[(index + 1)...].reduce(0, +)
+            let take = paneShare(rows.count - start, capacity: capacities[index], following: following, panesLeft: runs.count - index)
             let share = Array(rows[start..<(start + take)])
             start += take
             if run.count == 2 {
