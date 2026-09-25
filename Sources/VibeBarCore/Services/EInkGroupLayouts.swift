@@ -866,7 +866,23 @@ public enum EInkGroupLayouts {
     /// the seam is nudged wholly onto the side that held more of it.
     public static func keepingTextOffSeams(_ boxes: [EInkDrawBox], panes: [EInkRect]) -> [EInkDrawBox] {
         guard panes.count > 1 else { return boxes }
-        return boxes.map { box in
+        return boxes.map { keepingTextOffSeams($0, panes: panes) }
+    }
+
+    /// The same relocation for boxes that still carry their binding and
+    /// module — what the Studio explodes a spanning preset into. The
+    /// metadata rides along untouched; only the frame moves.
+    public static func keepingTextOffSeams(_ placed: [EInkPlacedBox], panes: [EInkRect]) -> [EInkPlacedBox] {
+        guard panes.count > 1 else { return placed }
+        return placed.map { item in
+            var copy = item
+            copy.box = keepingTextOffSeams(item.box, panes: panes)
+            return copy
+        }
+    }
+
+    static func keepingTextOffSeams(_ box: EInkDrawBox, panes: [EInkRect]) -> EInkDrawBox {
+        do {
             guard case let .text(value, font, alignment) = box.content,
                   panes.filter({ overlap(box.frame, $0) > 0 }).count > 1 else { return box }
             let measured = EInkTextMetrics.width(value, font: font) + EInkSlotLabel.measurementSlack

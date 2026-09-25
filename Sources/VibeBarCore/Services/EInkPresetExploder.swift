@@ -40,8 +40,17 @@ public enum EInkPresetExploder {
             // A group page explodes screen by screen, as it draws.
             panes: orientation == .degrees0 ? profile.panes : []
         )
+        // A one-picture preset (heatmap, trend, harness table) spans the
+        // screens as one tree; the renderer moves its text off the bezel at
+        // draw time. A custom slide gets no such pass, so the elements the
+        // Studio starts from must already sit where the renderer would have
+        // put them — or an unchanged Save would hand the seam its labels back.
+        var placed = EInkBoxLayout.resolveAnnotated(tree, in: frame)
+        if orientation == .degrees0, profile.panes.count > 1 {
+            placed = EInkGroupLayouts.keepingTextOffSeams(placed, panes: profile.panes)
+        }
         return layout(
-            from: EInkBoxLayout.resolveAnnotated(tree, in: frame),
+            from: placed,
             profile: profile,
             orientation: orientation,
             snapshot: snapshot,

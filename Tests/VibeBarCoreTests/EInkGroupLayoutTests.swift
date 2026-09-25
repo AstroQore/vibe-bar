@@ -274,6 +274,28 @@ final class EInkGroupLayoutTests: XCTestCase {
         }
     }
 
+    /// Opening a spanning template in the Studio explodes it into custom
+    /// elements; those must already sit where the renderer would draw them,
+    /// or an unchanged Save hands the seam its labels back.
+    func testExplodingASpanningTemplateKeepsItsTextOffTheSeam() throws {
+        let snapshot = snapshot(.short)
+        for arrangement in Self.arrangements {
+            let profile = try XCTUnwrap(arrangement.group.canvasProfile(for: arrangement.ids, devices: arrangement.devices))
+            let panes = profile.panes
+            XCTAssertEqual(panes.count, 2, arrangement.name)
+            for preset in [EInkPreset.heatmap, .usageTrend, .usageTable, .usageDual, .topModels] {
+                let layout = EInkPresetExploder.explode(slide: slide(preset, snapshot), orientation: .degrees0,
+                                                        profile: profile, snapshot: snapshot)
+                for element in layout.elements where element.kind == .text {
+                    let frame = EInkRect(x: Int(element.x.rounded()), y: Int(element.y.rounded()),
+                                         width: Int(element.width.rounded()), height: Int(element.height.rounded()))
+                    let touched = panes.filter { EInkGroupLayouts.overlap(frame, $0) > 0 }.count
+                    XCTAssertLessThanOrEqual(touched, 1, "\(preset.rawValue)/\(arrangement.name): element at \(frame) straddles the seam")
+                }
+            }
+        }
+    }
+
     // MARK: - What each template promises
 
     func testUnevenScreensFillBeforeTheyPaginate() {
