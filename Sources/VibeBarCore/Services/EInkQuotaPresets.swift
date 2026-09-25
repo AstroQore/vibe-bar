@@ -211,7 +211,11 @@ extension EInkPresets {
 
     /// The ledger's countdown column for these slots.
     static func ledgerCountdownWidth(_ rows: [EInkQuotaRow]) -> Int {
-        max(42, rows.map { EInkTextMetrics.width($0.countdown, font: pixel) }.max() ?? 0)
+        // The column clips, and the metrics can run a pixel or two under the
+        // device font, so a measured width carries the same slack the wide
+        // ledger reserves.
+        let measured = rows.map { EInkTextMetrics.width($0.countdown, font: pixel) }.max() ?? 0
+        return max(42, measured == 0 ? 0 : measured + EInkSlotLabel.measurementSlack)
     }
 
     /// The label column and the per-slot line break-up for a landscape
