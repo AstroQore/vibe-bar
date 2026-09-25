@@ -70,6 +70,23 @@ public struct EInkScreenGroup: Codable, Equatable, Identifiable, Sendable {
         return EInkRect(x: x, y: y, width: right - x, height: bottom - y)
     }
 
+    /// The canvas a region of these screens is authored on: the bounding box
+    /// of the screens, carrying each screen's rectangle inside it.
+    ///
+    /// The panes are what keep a combined page honest about its hardware. The
+    /// canvas is one picture, but it is shown on separate panels with a bezel
+    /// between them, and a text box laid across that bezel is a word cut in
+    /// half on the desk. Layouts read the panes to keep every box on one
+    /// screen; see `EInkGroupLayouts`.
+    public func canvasProfile(for deviceIDs: [String], devices: [EInkDeviceConfig]) -> EInkDeviceProfile? {
+        guard let bounds = bounds(for: deviceIDs, devices: devices) else { return nil }
+        var profile = EInkDeviceProfile(width: bounds.width, height: bounds.height)
+        let panes = deviceIDs.compactMap { rect(for: $0, devices: devices) }
+            .map { EInkRect(x: $0.x - bounds.x, y: $0.y - bounds.y, width: $0.width, height: $0.height) }
+        profile.panes = panes.count > 1 ? EInkGroupLayouts.readingOrder(panes) : []
+        return profile
+    }
+
     /// Invalid spatial arrangements are refused at render time, rather than
     /// silently moving a screen or changing what an existing page means.
     func sanitized(devices: [EInkDeviceConfig], claimed: inout Set<String>) -> Self {

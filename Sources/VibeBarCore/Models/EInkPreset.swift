@@ -22,6 +22,18 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
     case resets
     case heatmap
     case topModels
+    /// Screen groups only: the first screen draws two buckets large — the
+    /// figure, a thick bar, the verdict and the reset — and every other screen
+    /// continues the selection as a compact ledger.
+    case headline
+    /// Screen groups only: one ledger row reads across two screens side by
+    /// side — the full name and the percentage on the left panel, the bar,
+    /// the countdown and the verdict on the right — with every box on its own
+    /// side of the bezel.
+    case wideLedger
+    /// Screen groups only: every screen is a grid of cards, one bucket each,
+    /// split by a cross of rules.
+    case cards
     /// Pushed by the sync engine when a bucket crosses its alert threshold,
     /// with `border: 1`. Not a layout the user places on a slide.
     case alert
@@ -42,6 +54,7 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
     public var selectionAxis: SelectionAxis {
         switch self {
         case .quotaLedger, .quotaRings, .quotaRail, .briefing, .forecast, .resets: .quotaFields
+        case .headline, .wideLedger, .cards: .quotaFields
         case .usageTiles, .usageSplit: .usagePeriods
         case .usageTable, .usageDual: .harnessRows
         // A heatmap is the whole week, the top models are the top models, and
@@ -78,7 +91,40 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
         case .forecast: return portrait ? 6 : 4
         case .resets: return portrait ? 7 : 5
         case .heatmap, .topModels, .alert: return 1
+        // One panel of each, for a group template drawn on a screen of its
+        // own: the headline's two large buckets, the ledger a wide ledger
+        // falls back to, and a 2 × 2 (or 1 × 4) grid of cards.
+        case .headline: return 2
+        case .wideLedger: return portrait ? 6 : 5
+        case .cards: return 4
         }
+    }
+
+    /// Screen-group templates: layouts that exist to spread one selection
+    /// over several panels, and are only offered on a combined page.
+    public var isGroupLayout: Bool {
+        switch self {
+        case .headline, .wideLedger, .cards: true
+        default: false
+        }
+    }
+
+    /// The group templates, in the order the layout picker offers them.
+    public static var groupLayouts: [EInkPreset] { allCases.filter(\.isGroupLayout) }
+
+    /// How many items one page of this layout holds on a canvas.
+    ///
+    /// A canvas made of several screens is counted screen by screen — the
+    /// pane-aware layouts never let a list run across the bezel, so what a
+    /// page holds is what each panel holds, added up. A single canvas keeps
+    /// the area rule.
+    public func pageCapacity(for orientation: EInkOrientation, profile: EInkDeviceProfile) -> Int {
+        if profile.panes.count > 1, orientation == .degrees0,
+           let capacity = EInkGroupLayouts.capacity(self, panes: profile.panes) {
+            return capacity
+        }
+        let size = profile.frameSize(for: orientation)
+        return pageCapacity(for: orientation, width: size.width, height: size.height)
     }
 
     /// Larger combined canvases can carry more rows. This is an upper bound;
@@ -113,6 +159,9 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
         case .resets: "Resets"
         case .heatmap: "Heatmap"
         case .topModels: "Top Models"
+        case .headline: "Group · Headline"
+        case .wideLedger: "Group · Wide Ledger"
+        case .cards: "Group · Cards"
         case .alert: "Alert"
         }
     }
@@ -122,7 +171,9 @@ public enum EInkPreset: String, Codable, CaseIterable, Sendable {
     /// Everything a slide may be set to. `alert` is the engine's and appears
     /// in no picker: it names one bucket that just tripped a threshold, which
     /// is not something a user can place in advance.
-    public static var userSelectable: [EInkPreset] { allCases.filter { $0 != .alert } }
+    /// The group templates are offered only on a combined group page, where
+    /// there is more than one screen to spread them over.
+    public static var userSelectable: [EInkPreset] { allCases.filter { $0 != .alert && !$0.isGroupLayout } }
 
     /// How many rows the layout prints when nothing is selectable — the
     /// heatmap's weekdays, the top model list.

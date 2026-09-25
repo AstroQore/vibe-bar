@@ -89,3 +89,42 @@ public enum EInkPreviewPlanner {
         }
     }
 }
+
+public extension EInkPreviewPlanner {
+    /// One page of a screen group, as each of its screens will show it.
+    ///
+    /// The boxes are `EInkScreenGroupRenderer.boxes` — the very call the sync
+    /// engine encodes and pushes — wrapped per screen, so the arrangement the
+    /// Settings pane draws cannot disagree with what the panels receive. An
+    /// arrangement or page that cannot be drawn returns no plans at all, the
+    /// same refusal the engine makes.
+    static func planGroup(
+        group: EInkScreenGroup,
+        frame: EInkScreenFrame,
+        devices: [EInkDeviceConfig],
+        snapshot: EInkDataSnapshot,
+        layouts: [String: EInkCanvasLayout] = [:]
+    ) -> [String: EInkPreviewPlan] {
+        guard let boxes = try? EInkScreenGroupRenderer.boxes(
+            group: group,
+            frame: frame,
+            devices: devices,
+            snapshot: snapshot,
+            layouts: layouts
+        ) else { return [:] }
+        var plans: [String: EInkPreviewPlan] = [:]
+        for screen in group.screens {
+            guard let device = devices.first(where: { $0.deviceID == screen.deviceID }) else { continue }
+            let size = device.profile.frameSize(for: device.orientation)
+            plans[screen.deviceID] = EInkPreviewPlan(
+                boxes: boxes[screen.deviceID] ?? [],
+                authoredWidth: size.width,
+                authoredHeight: size.height,
+                panelWidth: device.profile.width,
+                panelHeight: device.profile.height,
+                orientation: device.orientation
+            )
+        }
+        return plans
+    }
+}

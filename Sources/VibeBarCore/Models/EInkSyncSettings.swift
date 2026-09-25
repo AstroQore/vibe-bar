@@ -129,6 +129,15 @@ public struct EInkDeviceProfile: Codable, Equatable, Sendable {
     public var model: EInkDeviceModel
     public var width: Int
     public var height: Int
+    /// The physical screens a combined canvas is made of, in the canvas's own
+    /// coordinates and reading order. Empty for one panel.
+    ///
+    /// Runtime only — never encoded. A group builds it from its arrangement
+    /// (`EInkScreenGroup.canvasProfile`) every time it renders, so the
+    /// layouts that must never put a box across the bezel between two panels
+    /// (`EInkGroupLayouts`) know where that bezel is, and pagination measures
+    /// the same panes the renderer draws.
+    public var panes: [EInkRect] = []
 
     public init(model: EInkDeviceModel = .quote0, width: Int = 296, height: Int = 152) {
         self.model = model

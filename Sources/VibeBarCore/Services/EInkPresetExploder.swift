@@ -36,7 +36,9 @@ public enum EInkPresetExploder {
             orientation: orientation,
             snapshot: snapshot,
             frame: frame,
-            calendar: calendar
+            calendar: calendar,
+            // A group page explodes screen by screen, as it draws.
+            panes: orientation == .degrees0 ? profile.panes : []
         )
         return layout(
             from: EInkBoxLayout.resolveAnnotated(tree, in: frame),
