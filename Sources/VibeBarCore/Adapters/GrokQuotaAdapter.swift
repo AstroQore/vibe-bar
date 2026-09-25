@@ -23,6 +23,10 @@ public struct GrokQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .grok
 
     private let session: URLSession
+    /// The token exchange's own session: bounded in total time, because the
+    /// exchange runs in a shared task the quota refresh's timeout cannot
+    /// cancel. Separate from the billing session on purpose.
+    private let tokenSession: URLSession
     private let homeDirectory: String
     private let now: @Sendable () -> Date
     private let cookieHeader: @Sendable () -> String?
@@ -33,12 +37,14 @@ public struct GrokQuotaAdapter: QuotaAdapter {
 
     public init(
         session: URLSession = .shared,
+        tokenSession: URLSession = GrokOAuthTokenRefresher.defaultSession,
         homeDirectory: String = RealHomeDirectory.path,
         now: @escaping @Sendable () -> Date = { Date() },
         cookieHeader: @escaping @Sendable () -> String? = { try? GrokWebCookieStore.readCookieHeader() },
         refresher: GrokOAuthTokenRefresher = .shared
     ) {
         self.session = session
+        self.tokenSession = tokenSession
         self.homeDirectory = homeDirectory
         self.now = now
         self.cookieHeader = cookieHeader
@@ -61,6 +67,12 @@ public struct GrokQuotaAdapter: QuotaAdapter {
                     refreshedThisFetch = true
                 } catch {
                     refreshFailure = Self.quotaError(for: error)
+                    // Inside the leeway the bearer is still valid: an outage
+                    // at the token endpoint is no reason not to use it. A
+                    // refusal is — the login is gone.
+                    if refreshFailure != .needsLogin, !loaded.isExpired(at: now()) {
+                        credentials = loaded
+                    }
                 }
             } else if !loaded.isExpired(at: now()) {
                 credentials = loaded
@@ -114,7 +126,7 @@ public struct GrokQuotaAdapter: QuotaAdapter {
     private func refresh(_ credentials: GrokCredentials) async throws -> GrokCredentials {
         try await refresher.refresh(
             credentials,
-            session: session,
+            session: tokenSession,
             homeDirectory: homeDirectory,
             now: now
         )

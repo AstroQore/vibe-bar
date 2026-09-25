@@ -135,6 +135,20 @@ final class GrokOAuthRefreshTests: XCTestCase {
         XCTAssertEqual(state.billingBearers, ["new-bearer"])
     }
 
+    func testOutageInsideLeewayStillUsesTheValidBearer() async throws {
+        // 30 s before expiry the bearer is still good; a token-endpoint
+        // outage must not stop it from fetching billing.
+        try writeAuth(Self.authJSON(key: "old-bearer", refreshToken: "refresh-1", expiresAt: "2026-09-24T18:00:30.000000Z"))
+        GrokRefreshStubURLProtocol.configure(validBearers: ["old-bearer"], tokenResponse: (503, "unavailable"))
+
+        let quota = try await makeAdapter().fetch(for: Self.account)
+
+        XCTAssertFalse(quota.buckets.isEmpty)
+        let state = GrokRefreshStubURLProtocol.snapshot()
+        XCTAssertEqual(state.tokenRequests.count, 1)
+        XCTAssertEqual(state.billingBearers, ["old-bearer"])
+    }
+
     // MARK: - Adapter: refusal and fallbacks
 
     func testRejectedRefreshFallsBackToCookies() async throws {
@@ -305,6 +319,7 @@ final class GrokOAuthRefreshTests: XCTestCase {
     private func makeAdapter(cookie: String? = nil) -> GrokQuotaAdapter {
         GrokQuotaAdapter(
             session: Self.stubSession(),
+            tokenSession: Self.stubSession(),
             homeDirectory: home.path,
             now: { Self.fixedNow },
             cookieHeader: { cookie },
