@@ -3,7 +3,8 @@ import VibeBarCore
 
 /// Workbench · Resets & Subscriptions: every quota cycle on this Mac in one
 /// place — the refill horizon, each SubProvider's cycle with its fill curve
-/// and forecast, a fourteen-day reset calendar, and the run-out ranking.
+/// and forecast, a fourteen-day reset calendar, the run-out ranking, and the
+/// limit reset credits record.
 struct ResetsPage: View {
     let density: Theme.Density
 
@@ -73,6 +74,10 @@ struct ResetsPage: View {
                     }
                     .frame(width: 320)
                 }
+                // The credit record — inventory, used/received counts and every
+                // line — gathered here rather than one preview per cycle card.
+                // Draws its own card and nothing when no account has credits.
+                ResetCreditsRecordCard(density: density)
             }
             .padding(16)
         }
@@ -219,12 +224,6 @@ struct ResetsPage: View {
             }
             fillCurve(cycle)
             ResetJournalButton(tools: [cycle.tool], accountId: cycle.accountId).font(.caption)
-            if cycle.groupTitle == nil, let quota = quotaService.cachedQuota(for: cycle.accountId),
-               case let ledger = quotaService.resetCreditLedger[cycle.accountId] ?? [],
-               ResetCreditsRow.shows(credits: quota.resetCredits, ledger: ledger) {
-                Divider()
-                ResetCreditsRow(credits: quota.resetCredits, ledger: ledger, buckets: quota.buckets, density: density)
-            }
         }
     }
 

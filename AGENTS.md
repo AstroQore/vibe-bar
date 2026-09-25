@@ -443,9 +443,12 @@ Inaccessible stale entries fail closed and are re-imported from the owning
 provider's settings. Never put external CLI credentials or browser Safe
 Storage keys in this Vault. Legacy plaintext cookie files under
 `~/.vibebar/cookies/` may be read once for migration and must be deleted
-immediately afterward. The app reads (never writes) Codex and Claude CLI
-credential files and their session JSONL logs. Treat those as read-only
-inputs.
+immediately afterward. The app reads Codex, Claude and Grok CLI
+credential files and their session JSONL logs and treats them as
+read-only inputs, with one narrow exception: after an OAuth refresh it
+writes the renewed tokens back to the CLI's own credential file
+(`~/.codex/auth.json` via `CodexCredentialReader.saveOAuth`,
+`~/.grok/auth.json` via `GrokCredentialsStore.writeRefreshed`; see § 7).
 
 There is exactly one exception, and it is whole-session deletion:
 `SessionDeleter` (agent-session-kit) removes a session's
@@ -817,6 +820,19 @@ capture against § 8 before committing it — a screenshot is source content.
   discipline a sandboxed app would: read only the credential / cookie /
   config files you actually need, never write outside `~/.vibebar/`,
   and never log raw secrets.
+- **CLI credential write-back is a narrow exception to that write
+  scope.** When Vibe Bar renews an expired CLI OAuth bearer it writes the
+  result back to the file the CLI reads, because that file is the shared
+  source of truth and a rotated refresh token held by only one client
+  strands the other. Codex: `CodexOAuthTokenRefresher` →
+  `CodexCredentialReader.saveOAuth` (`~/.codex/auth.json`). Grok:
+  `GrokOAuthTokenRefresher` → `GrokCredentialsStore.writeRefreshed`
+  (`~/.grok/auth.json`), which changes only the refreshed entry's `key`,
+  `expires_at`, `refresh_token` (when rotated) and `last_refresh`, keeps
+  every other field and entry, skips the write when the entry's refresh
+  token changed underneath it, writes atomically, and leaves the file
+  `0600`. A write failure is logged (sanitized) and never fails the
+  quota fetch. No other code path writes a CLI credential file.
 - **The Skills manager is a narrow, documented exception to that write
   scope.** It writes to `~/.agents/skills/`, the allowlisted app skills
   directories, and only the native per-skill user-config fields below. The
@@ -1370,7 +1386,13 @@ Workbench.
 Usage-limit reset credits are one provider-neutral model, `ResetCredits`
 (`AccountQuota.resetCredits`; Codex from `/wham/rate-limit-reset-credits`,
 Claude from the usage payload's `cedar_ember` block, Grok from
-`ConsumerUiSvc/GetRemainingResets`), drawn by the same `ResetCreditsRow`.
+`ConsumerUiSvc/GetRemainingResets`). Where they are drawn is fixed: never on
+the Overview (a credit belongs to one SubProvider); the provider page's quota
+card shows the inventory and the latest four lines (`ResetCreditsRow`); the
+Workbench Resets page's `ResetCreditsRecordCard` holds the whole record, folded
+past `ResetCreditLedgerDisplay.collapsedLimit`; and the reset journal lists
+every credit received and every spent one no refill was matched to in its one
+timeline (`ResetJournalTimeline`), "≈" marking an inferred use.
 Spent credits live in the history file's `redemptions` (older builds read that
 key as Codex receipts, so only spent credits go there); received ones in
 `resetCreditGrants`. Codex publishes receipts —
