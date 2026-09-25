@@ -2260,6 +2260,10 @@ struct ProviderQuotaCard: View {
     var embedded: Bool = false
     var includedBucketIDs: Set<String>?
     var suppressGroupTitles: Bool = false
+    /// Per-model granularity splits one SubProvider over several cards; the
+    /// reset-credit inventory is the SubProvider's, so only the card the
+    /// partition marks as carrying shared metadata draws it.
+    var showsResetCreditInventory: Bool = true
     var showsFreshnessWarning: Bool = true
 
     @EnvironmentObject var environment: AppEnvironment
@@ -2336,7 +2340,7 @@ struct ProviderQuotaCard: View {
                 PageClock(interval: 30) { tickDate in
                     bucketContent(buckets, accountId: bucketAccountId, now: tickDate)
                 }
-                if let quota = resolvedQuota, quota.resetCredits?.hasAvailable == true {
+                if showsResetCreditInventory, let quota = resolvedQuota, quota.resetCredits?.hasAvailable == true {
                     ResetCreditsInventoryRow(credits: quota.resetCredits, buckets: quota.buckets, density: density)
                 }
                 if let liveError = resolvedLiveError {
