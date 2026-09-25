@@ -51,6 +51,23 @@ struct ResetCreditsRecordCard: View {
                 ))
             }
         }
+        // A record outlives its login: after a sign-out or an account switch
+        // the identity leaves the store, but its history is still loaded.
+        // The redemption and grant records name the tool, so the column
+        // keeps its brand.
+        for (accountId, ledger) in quotaService.resetCreditLedger where !ledger.isEmpty && seen.insert(accountId).inserted {
+            let record = quotaService.resetRedemptions.first { $0.accountId == accountId }
+                ?? quotaService.resetCreditGrants.first { $0.accountId == accountId }
+            out.append(Record(
+                tool: record?.resolvedTool ?? .codex,
+                accountId: accountId,
+                accountLabel: nil,
+                credits: nil,
+                buckets: [],
+                ledger: ledger,
+                summary: quotaService.resetCreditSummary[accountId] ?? ResetCreditLedgerSummary()
+            ))
+        }
         return out
     }
 
