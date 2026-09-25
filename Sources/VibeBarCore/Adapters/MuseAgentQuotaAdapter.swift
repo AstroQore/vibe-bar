@@ -184,6 +184,17 @@ public struct MuseAgentQuotaAdapter: QuotaAdapter {
         request.setValue("text/x-component", forHTTPHeaderField: "Accept")
         request.setValue("text/plain;charset=UTF-8", forHTTPHeaderField: "Content-Type")
         request.setValue(origin.absoluteString, forHTTPHeaderField: "Origin")
+        // The action is answered only for a request that looks like the
+        // page's own fetch: without the fetch-metadata headers a browser
+        // adds, muse.ai returns 403 for every id — valid or stale — which
+        // reads as "signed out" and hides a stale id that should have been
+        // rediscovered (verified 2026-09-25: with them a current id answers
+        // 200 and a stale one 404 action-not-found).
+        request.setValue("same-origin", forHTTPHeaderField: "Sec-Fetch-Site")
+        request.setValue("cors", forHTTPHeaderField: "Sec-Fetch-Mode")
+        request.setValue("empty", forHTTPHeaderField: "Sec-Fetch-Dest")
+        request.setValue(origin.absoluteString + "/", forHTTPHeaderField: "Referer")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
         return request
     }
