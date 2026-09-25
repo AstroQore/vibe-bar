@@ -2,10 +2,18 @@ import SwiftUI
 import VibeBarCore
 
 enum ResetJournalKind: String, CaseIterable, Identifiable {
-    case normal, earlyRestarted, earlyUnchanged, credit, unknown
+    case normal, earlyRestarted, earlyUnchanged, credit, creditGranted, unknown
     var id: String { rawValue }
     init(_ sample: SubscriptionWindowSample) {
         self.init(resetKind: sample.resetKind, creditRedeemedAt: sample.creditRedemptionDate)
+    }
+    /// A refill keeps its own kind; a standalone credit line is a credit
+    /// used (no refill matched) or a credit received.
+    init(_ item: ResetJournalItem) {
+        switch item {
+        case let .cycle(sample): self.init(sample)
+        case let .credit(credit): self = credit.entry.kind == .used ? .credit : .creditGranted
+        }
     }
     init(resetKind: SubscriptionWindowSample.ResetKind?, creditRedeemedAt: Date?) {
         if creditRedeemedAt != nil { self = .credit; return }
@@ -22,6 +30,7 @@ enum ResetJournalKind: String, CaseIterable, Identifiable {
         case .earlyRestarted: L10n.ResetJournal.earlyRestarted
         case .earlyUnchanged: L10n.ResetJournal.earlyUnchanged
         case .credit: L10n.ResetJournal.credit
+        case .creditGranted: L10n.ResetJournal.creditGranted
         case .unknown: L10n.ResetJournal.unknown
         }
     }
@@ -31,6 +40,7 @@ enum ResetJournalKind: String, CaseIterable, Identifiable {
         case .earlyRestarted: "arrow.clockwise"
         case .earlyUnchanged: "plus.circle"
         case .credit: "ticket"
+        case .creditGranted: "plus.circle"
         case .unknown: "questionmark"
         }
     }
@@ -40,6 +50,7 @@ enum ResetJournalKind: String, CaseIterable, Identifiable {
         case .earlyRestarted: .teal
         case .earlyUnchanged: .orange
         case .credit: .blue
+        case .creditGranted: .green
         }
     }
     func drawMarker(_ context: inout GraphicsContext, in bounds: CGRect) {
@@ -80,41 +91,32 @@ struct QuotaResetJournalView: View {
     @State private var selection: ResetJournalKind?
     @State private var visibleLimit = 100
 
-    private var samples: [SubscriptionWindowSample] {
-        let featureRecords = quotaService.featureResetHistory
-        let featureIDs = Set(featureRecords.map(\.journalID))
-        let cycles = quotaService.historyByAccountBucket.values.flatMap { $0 }
-            .filter { !featureIDs.contains($0.journalID) }
-        return (cycles + featureRecords).filter { sample in
-            sample.isCompleted && (tools == nil || tools!.contains(sample.tool))
-                && (accountId == nil || accountId == sample.accountId)
-                && (bucketId == nil || bucketId == sample.bucketId)
-        }.sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
-    }
-    /// Credits spent that no recorded refill was matched to.
-    private func unmatchedReceipts(_ all: [SubscriptionWindowSample]) -> [QuotaResetRedemption] {
-        guard bucketId == nil else { return [] }
-        let matched = Set(all.compactMap { sample in
-            sample.creditRedemptionDate.map { sample.accountId + "@" + String($0.timeIntervalSince1970) }
-        })
-        return quotaService.resetRedemptions.filter { receipt in
-            (accountId == nil || accountId == receipt.accountId)
-                && (tools == nil || tools!.contains(receipt.resolvedTool))
-                && !matched.contains(receipt.accountId + "@" + String(receipt.credit.occurredAt.timeIntervalSince1970))
-        }.sorted { $0.credit.occurredAt > $1.credit.occurredAt }
+    /// Refills and credit lines in one newest-first timeline: a credit
+    /// received, or spent with no refill matched to it, sits between the
+    /// refills it happened between. A spent credit that was matched is the
+    /// refill's own "Reset credit used" row.
+    private var items: [ResetJournalItem] {
+        ResetJournalTimeline.items(
+            cycles: quotaService.historyByAccountBucket.values.flatMap { $0 },
+            featureResets: quotaService.featureResetHistory,
+            redemptions: quotaService.resetRedemptions,
+            grants: quotaService.resetCreditGrants,
+            tools: tools,
+            accountId: accountId,
+            bucketId: bucketId
+        )
     }
 
     @EnvironmentObject private var settingsStore: SettingsStore
     @State private var expandedID: String?
 
     var body: some View {
-        let all = samples
-        let filtered = all.filter { selection == nil || ResetJournalKind($0) == selection }
-        let receipts = selection == nil || selection == .credit ? unmatchedReceipts(all) : []
+        let all = items
+        let filtered = selection.map { kind in all.filter { ResetJournalKind($0) == kind } } ?? all
         let density = Theme.overviewDensity(for: settingsStore.settings.popoverDensity)
         DetailPopoverShell(title: L10n.ResetJournal.title, density: density,
-                           detail: AppLocale.number(filtered.count + receipts.count),
-                           height: CGFloat(min(640, max(280, 110 + min(filtered.count + receipts.count, 10) * 54 + (expandedID == nil ? 0 : 180))))) {
+                           detail: AppLocale.number(filtered.count),
+                           height: CGFloat(min(640, max(280, 110 + min(filtered.count, 10) * 54 + (expandedID == nil ? 0 : 180))))) {
             HStack {
                 Picker(L10n.ResetJournal.title, selection: $selection) {
                     Text(L10n.Common.all).tag(Optional<ResetJournalKind>.none)
@@ -128,32 +130,52 @@ struct QuotaResetJournalView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if filtered.isEmpty && receipts.isEmpty {
+                    if filtered.isEmpty {
                         Text(L10n.ResetJournal.empty).font(.callout).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 40)
                     }
-                    ForEach(Array(filtered.prefix(visibleLimit)), id: \.journalID) { sample in
-                        eventRow(sample)
+                    ForEach(Array(filtered.prefix(visibleLimit))) { item in
+                        switch item {
+                        case let .cycle(sample): eventRow(sample)
+                        case let .credit(credit): creditRow(credit)
+                        }
                         Divider().padding(.leading, 24)
                     }
                     if filtered.count > visibleLimit {
                         Button(L10n.ResetJournal.more) { visibleLimit += 100 }.padding(.vertical, 10)
                     }
-                    ForEach(receipts) { receipt in
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "ticket").foregroundStyle(.blue).frame(width: 16)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(L10n.ResetJournal.credit).font(.system(size: 12, weight: .medium))
-                                Text(L10n.ResetJournal.creditOnly).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(shortDate(receipt.credit.occurredAt)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                        }.padding(.vertical, 10)
-                        Divider()
-                    }
                 }
             }
         }
+    }
+
+    /// A credit line: received (+1), or spent (−1) with no refill matched to
+    /// it. "≈" marks a use inferred from a falling count, not a receipt.
+    private func creditRow(_ credit: ResetJournalCreditEntry) -> some View {
+        let kind: ResetJournalKind = credit.entry.kind == .used ? .credit : .creditGranted
+        let inferred = credit.entry.event.isInferred
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: kind.symbol).foregroundStyle(kind.color).frame(width: 16, height: 16)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(kind.title).font(.system(size: 12, weight: .medium)).foregroundStyle(.primary)
+                Text(credit.tool.vendorName + " · " + credit.tool.quotaSubProviderName())
+                    .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                if inferred {
+                    Text(L10n.ResetJournal.creditInferred).font(.caption).foregroundStyle(.secondary)
+                } else if kind == .credit {
+                    Text(L10n.ResetJournal.creditOnly).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text((inferred ? "≈ " : "") + shortDate(credit.entry.event.occurredAt))
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(kind == .credit ? "−1" : "+1").font(.system(size: 11, weight: .medium)).foregroundStyle(.primary)
+            }.monospacedDigit()
+            // Keeps the figures in line with the refill rows' disclosure chevron.
+            Color.clear.frame(width: 8, height: 8)
+        }
+        .padding(.vertical, 11)
     }
 
     private func eventRow(_ sample: SubscriptionWindowSample) -> some View {
@@ -255,6 +277,3 @@ struct QuotaResetJournalView: View {
     }
 }
 
-private extension SubscriptionWindowSample {
-    var journalID: String { accountId + ":" + bucketId + ":" + String((completedAt ?? windowEnd).timeIntervalSince1970) }
-}
