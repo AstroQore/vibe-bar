@@ -79,6 +79,6 @@ struct OverviewQuotaPartitionCard: View {
     private func content(accountId: String?) -> some View {
         ProviderQuotaCard(tool: partition.tool, accountId: accountId, density: density, compact: false,
             embedded: true, includedBucketIDs: partition.bucketIDs.isEmpty ? nil : Set(partition.bucketIDs),
-            suppressGroupTitles: partition.suppressGroupTitles, showsResetCredits: partition.showsSharedMetadata)
+            suppressGroupTitles: partition.suppressGroupTitles)
     }
 }
