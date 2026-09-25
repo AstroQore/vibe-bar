@@ -204,6 +204,19 @@ extension EInkPresets {
         /// What the marks take off the front of every row, so the bars still
         /// line up when only some slots carry one.
         var logoWidth: Int
+        /// The countdown column: 42 px, or the widest countdown when one is
+        /// wider — "12h 00m" is 48, and a figure is never cut.
+        var countdownWidth: Int = 42
+    }
+
+    /// The ledger's countdown column for these slots.
+    static func ledgerCountdownWidth(_ rows: [EInkQuotaRow]) -> Int {
+        // The 42 px floor already covers the metrics running a pixel or two
+        // under the device font for the usual "4d 00h". A wider countdown is
+        // sized to its measurement plus the same slack the wide ledger
+        // reserves, since the column clips.
+        let measured = rows.map { EInkTextMetrics.width($0.countdown, font: pixel) }.max() ?? 0
+        return measured <= 42 ? 42 : measured + EInkSlotLabel.measurementSlack
     }
 
     /// The label column and the per-slot line break-up for a landscape
@@ -216,10 +229,12 @@ extension EInkPresets {
     ) -> LedgerPlan {
         let styles = rows.map { labelStyle($0, snapshot: snapshot, options: options, size: EInkLogo.rowSize) }
         let logoWidth = styles.contains(where: \.drawsLogo) ? EInkLogo.rowSize + 5 : 0
-        // 34 percent + 42 countdown + three 5 px gaps is what the figures
-        // cost; the bar keeps `barMinimumWidth` of the rest and the column
-        // takes everything left over.
-        let figures = 34 + 42 + 5 * 3
+        // 34 percent + the countdown (42, or wider for "12h 00m") + three
+        // 5 px gaps is what the figures cost; the bar keeps
+        // `barMinimumWidth` of the rest and the column takes everything left
+        // over.
+        let countdownWidth = ledgerCountdownWidth(rows)
+        let figures = 34 + countdownWidth + 5 * 3
         let maximum = max(0, content - figures - barMinimumWidth - logoWidth)
         let column = labelColumnWidth(
             zip(rows, styles).map { quota, style in
@@ -242,15 +257,21 @@ extension EInkPresets {
             column: column,
             lines: zip(rows, styles).map { ledgerLines($0, style: $1, column: column, full: content - logoWidth) },
             styles: styles,
-            logoWidth: logoWidth
+            logoWidth: logoWidth,
+            countdownWidth: countdownWidth
         )
     }
 
+    /// `rowBoundFigures` keeps the 14 px percentage inside its row when a row
+    /// is squeezed to 13 px, rather than letting its box reach a pixel into
+    /// the line under it. The group layouts ask for it — their audit allows
+    /// no two boxes to touch — and the figure is still never clipped.
     static func ledgerLandscape(
         _ rows: [EInkQuotaRow],
         _ snapshot: EInkDataSnapshot,
         frame: EInkRect,
-        options: EInkSlideOptions = .default
+        options: EInkSlideOptions = .default,
+        rowBoundFigures: Bool = false
     ) -> EInkNode {
         let gap = 4
         let chrome = chrome(
@@ -285,7 +306,9 @@ extension EInkPresets {
                 logo: plan.styles[index].drawsLogo
                     ? logoNode(quota, snapshot: snapshot, size: EInkLogo.rowSize)
                     : nil,
-                logoWidth: plan.logoWidth
+                logoWidth: plan.logoWidth,
+                countdownWidth: plan.countdownWidth,
+                rowBoundFigures: rowBoundFigures
             )
         }
         return screen(
@@ -305,7 +328,9 @@ extension EInkPresets {
         unit: Int,
         content: Int,
         logo: EInkNode? = nil,
-        logoWidth: Int = 0
+        logoWidth: Int = 0,
+        countdownWidth: Int = 42,
+        rowBoundFigures: Bool = false
     ) -> EInkNode {
         // Every row reserves the same width for a mark, drawn or not: a panel
         // where three slots carry a logo and two do not still has one column
@@ -329,9 +354,12 @@ extension EInkPresets {
         let figures = row(
             mark + label + [
                 horizontalBar(quota.remainingPercent).bound(.quota(quota.fieldID, .percent)),
-                text("\(quota.remainingPercent)%", sans(14), width: .points(34), align: .trailing)
+                (rowBoundFigures
+                    ? text("\(quota.remainingPercent)%", sans(14), width: .points(34), height: .points(unit),
+                           align: .trailing, clips: false)
+                    : text("\(quota.remainingPercent)%", sans(14), width: .points(34), align: .trailing))
                     .bound(.quota(quota.fieldID, .percent)),
-                text(quota.countdown, pixel, width: .points(42), align: .trailing)
+                text(quota.countdown, pixel, width: .points(countdownWidth), align: .trailing)
                     .bound(.quota(quota.fieldID, .countdown))
             ],
             height: .points(unit),

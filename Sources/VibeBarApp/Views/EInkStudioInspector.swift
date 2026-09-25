@@ -709,6 +709,9 @@ enum EInkNaming {
         case .resets: L10n.Workbench.Page.Resets.title
         case .heatmap: L10n.Settings.Eink.Preset.heatmap
         case .topModels: L10n.Settings.Eink.Preset.topModels
+        case .headline: L10n.Settings.Eink.Preset.headline
+        case .wideLedger: L10n.Settings.Eink.Preset.wideLedger
+        case .cards: L10n.Settings.Eink.Preset.cards
         // Never in a picker — the engine places it — but it is named in a
         // slide list and in the Studio's layer list all the same.
         case .alert: L10n.Settings.Eink.alerts
@@ -726,6 +729,18 @@ enum EInkNaming {
 
     static func isInsight(_ preset: EInkPreset) -> Bool {
         !preset.isQuotaPreset && !isUsage(preset) && preset != .alert
+    }
+
+    /// What a layout does on a combined group page, in one line: the group
+    /// templates say what each screen draws, and every other list layout is
+    /// drawn screen by screen with its share of the list.
+    static func groupDetail(_ preset: EInkPreset) -> String? {
+        switch preset {
+        case .headline: L10n.Settings.Eink.GroupLayout.headlineDetail
+        case .wideLedger: L10n.Settings.Eink.GroupLayout.wideLedgerDetail
+        case .cards: L10n.Settings.Eink.GroupLayout.cardsDetail
+        default: EInkGroupLayouts.isPaneAware(preset) ? L10n.Settings.Eink.GroupLayout.tiledDetail : nil
+        }
     }
 
     /// Which way the device is turned, in the words the existing catalogue

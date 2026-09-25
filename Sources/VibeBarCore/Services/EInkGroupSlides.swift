@@ -123,7 +123,7 @@ public enum EInkGroupSlides {
         var copy = frame
         copy.regions = frame.regions.flatMap { region in
             guard region.id == regionID, region.deviceIDs.count > 1 else { return [region] }
-            return region.deviceIDs.map { EInkScreenRegion(deviceIDs: [$0], slide: region.slide) }
+            return region.deviceIDs.map { EInkScreenRegion(deviceIDs: [$0], slide: region.slide.forOneScreen) }
         }
         return copy
     }

@@ -977,6 +977,21 @@ capture against § 8 before committing it — a screenshot is source content.
   centres the taller subtree and spins it about its centre. Preview and
   device share that one code path (`DotCanvasEncoder.rootElement`), so
   a layout that looks right at 90° in Settings is right on glass.
+
+  **A combined group page is laid out screen by screen.** Its canvas is
+  every screen put together (592 × 152 for two side by side), but it is
+  shown on separate panels with a bezel between them, so no box may cross
+  a seam. `EInkScreenGroup.canvasProfile` carries each screen's rectangle
+  (`EInkDeviceProfile.panes`, runtime only) and `EInkGroupLayouts` lays a
+  list template out once per screen, clamped to that screen's own margin,
+  with the selection continued from one screen to the next; the group
+  templates (Headline and list, Wide ledger, Card grid) decide what each
+  screen draws, and only a one-picture template (heatmap, trend, harness
+  tables) still spans the canvas, with its text moved off the seams.
+  Capacity and pagination count screens, not area, and the Settings
+  preview is `EInkPreviewPlanner.planGroup` — the engine's own
+  `EInkScreenGroupRenderer.boxes`. `EInkGroupLayoutTests` audits every
+  template on both arrangements; `VIBEBAR_EINK_PNG_DIR` makes it draw them.
 - **Performance.** Avoid `TimelineView(.periodic(...))` in deep view
   trees that may be eagerly instantiated; prefer scoping to the visible
   surface. The mini window's screen position is persisted to its own

@@ -7,7 +7,7 @@ public enum EInkPagination {
                              profile: EInkDeviceProfile = .quote0, snapshot: EInkDataSnapshot? = nil) -> [EInkSlide] {
         guard let preset = slide.kind.preset else { return [slide] }
         let size = profile.frameSize(for: orientation)
-        let capacity = max(1, preset.pageCapacity(for: orientation, width: size.width, height: size.height))
+        let capacity = max(1, preset.pageCapacity(for: orientation, profile: profile))
         var pages: [EInkSlide] = []
         switch preset.selectionAxis {
         case .quotaFields:
@@ -45,8 +45,7 @@ public enum EInkPagination {
                     while !candidate.isEmpty {
                         page.quotaFieldIDs = candidate; page.options.slotOrder = candidate
                         guard let tree = try? EInkRenderer.tree(slide: page, orientation: orientation, profile: profile, snapshot: snapshot) else { break }
-                        if candidate.count > 1,
-                           (try? DotCanvasEncoder.encode(tree, orientation: orientation, profile: profile)) == nil {
+                        if candidate.count > 1, !encodes(tree, orientation: orientation, profile: profile) {
                             candidate.removeLast()
                             continue
                         }
@@ -101,6 +100,20 @@ public enum EInkPagination {
         return result
     }
 
+    /// Whether a page fits the device's Canvas limits. A canvas made of
+    /// several screens is sent as one payload per screen, so each screen is
+    /// measured against the limits on its own — the whole canvas's element
+    /// count is not a number any panel ever receives.
+    private static func encodes(_ tree: EInkNode, orientation: EInkOrientation, profile: EInkDeviceProfile) -> Bool {
+        guard profile.panes.count > 1, orientation == .degrees0 else {
+            return (try? DotCanvasEncoder.encode(tree, orientation: orientation, profile: profile)) != nil
+        }
+        let boxes = EInkBoxLayout.resolve(tree, in: EInkRect(x: 0, y: 0, width: profile.width, height: profile.height))
+        return EInkScreenGroupRenderer.split(boxes, panes: profile.panes).allSatisfy {
+            (try? DotCanvasEncoder.encode(boxes: $0, orientation: .degrees0)) != nil
+        }
+    }
+
     private static func drawnFieldIDs(_ node: EInkNode) -> Set<String> {
         var result = Set(node.binding?.fieldID.map { [$0] } ?? [])
         if let module = node.moduleID, module.hasPrefix(EInkPresets.slotModulePrefix) {
@@ -130,8 +143,7 @@ public enum EInkPagination {
         } else { selected = group.frames }
         return selected.flatMap { frame in
             let regionPages = frame.regions.map { region in
-                let bounds = group.bounds(for: region.deviceIDs, devices: devices)
-                let profile = bounds.map { EInkDeviceProfile(width: $0.width, height: $0.height) } ?? .quote0
+                let profile = group.canvasProfile(for: region.deviceIDs, devices: devices) ?? .quote0
                 return pages(region.slide, orientation: .degrees0, profile: profile, snapshot: snapshot)
             }
             let count = regionPages.map(\.count).max() ?? 1

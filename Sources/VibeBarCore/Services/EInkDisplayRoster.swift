@@ -65,16 +65,32 @@ public extension EInkScreenFrame {
             var copy = self
             copy.regions = screenIDs.map { id in
                 guard let owner = regions.first(where: { $0.deviceIDs.contains(id) }) else {
-                    return EInkScreenRegion(deviceIDs: [id], slide: first.slide)
+                    return EInkScreenRegion(deviceIDs: [id], slide: first.slide.forOneScreen)
                 }
                 // A region that already covers exactly this screen keeps its
                 // id, so its custom layout and its place in the editor's tab
                 // strip survive a round trip through Combined.
                 if owner.deviceIDs == [id] { return owner }
-                return EInkScreenRegion(deviceIDs: [id], slide: owner.slide)
+                return EInkScreenRegion(deviceIDs: [id], slide: owner.slide.forOneScreen)
             }
             return copy
         }
+    }
+}
+
+public extension EInkSlide {
+    /// This slide as one screen of its own draws it.
+    ///
+    /// The group templates spread a selection over several screens and are
+    /// offered only there, so a page taken apart hands each screen the ledger
+    /// the templates are built from — keeping every bucket, every name and
+    /// every option — rather than a template its own layout picker cannot
+    /// name.
+    var forOneScreen: EInkSlide {
+        guard kind.preset?.isGroupLayout == true else { return self }
+        var copy = self
+        copy.kind = .preset(.quotaLedger)
+        return copy
     }
 }
 
