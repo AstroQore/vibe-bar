@@ -986,6 +986,7 @@ struct EInkDisplaysSettingsSection: View {
                 region: request.region,
                 width: request.width,
                 height: request.height,
+                panes: request.panes,
                 snapshot: request.snapshot
             ) { slide, layout in
                 saveStudioPage(request: request, slide: slide, layout: layout)
@@ -1003,12 +1004,12 @@ struct EInkDisplaysSettingsSection: View {
     /// back where each field belongs. No control has to know which it has.
     private func groupConfig(_ group: EInkScreenGroup) -> EInkDeviceConfig {
         let behavior = group.resolvedBehavior(devices: devices)
-        let bounds = group.bounds(for: group.orderedScreenIDs, devices: devices)
-            ?? EInkRect(x: 0, y: 0, width: EInkDeviceProfile.quote0.width, height: EInkDeviceProfile.quote0.height)
         var config = EInkDeviceConfig(
             deviceID: group.id,
             alias: group.name,
-            profile: EInkDeviceProfile(width: bounds.width, height: bounds.height),
+            // The screens' own rectangles ride along, so capacity and pages
+            // are counted screen by screen exactly as the engine counts them.
+            profile: group.canvasProfile(for: group.orderedScreenIDs, devices: devices) ?? .quote0,
             enabled: group.enabled,
             // A group's pages are authored upright on the canvas its screens
             // make; each screen's own rotation is hardware, and lives on the
@@ -1036,8 +1037,8 @@ struct EInkDisplaysSettingsSection: View {
         var config = groupConfig(group)
         if let frame = selectedFrame(group),
            let region = activeRegion(in: frame, group: group),
-           let bounds = group.bounds(for: region.deviceIDs, devices: devices) {
-            config.profile = EInkDeviceProfile(width: bounds.width, height: bounds.height)
+           let profile = group.canvasProfile(for: region.deviceIDs, devices: devices) {
+            config.profile = profile
         }
         return config
     }
@@ -1102,6 +1103,7 @@ struct EInkDisplaysSettingsSection: View {
             mode: mode,
             allowsCustom: group.screens.count > 2 || mode == .custom,
             canSplitActive: (active?.deviceIDs.count ?? 0) > 1,
+            offersGroupLayouts: (active?.deviceIDs.count ?? 0) > 1,
             mergeTargets: regions
                 .filter { $0.id != active?.id }
                 .map { .init(id: $0.id, name: regionName($0, group: group)) },
@@ -1324,6 +1326,7 @@ struct EInkDisplaysSettingsSection: View {
         let region: EInkScreenRegion
         let width: Int
         let height: Int
+        let panes: [EInkRect]
         let snapshot: EInkDataSnapshot
     }
 
@@ -1384,13 +1387,14 @@ struct EInkDisplaysSettingsSection: View {
         region: EInkScreenRegion,
         snapshot: EInkDataSnapshot
     ) {
-        guard let bounds = group.bounds(for: region.deviceIDs, devices: devices) else { return }
+        guard let profile = group.canvasProfile(for: region.deviceIDs, devices: devices) else { return }
         studioRequest = StudioRequest(
             groupID: group.id,
             pageID: pageID,
             region: region,
-            width: bounds.width,
-            height: bounds.height,
+            width: profile.width,
+            height: profile.height,
+            panes: profile.panes,
             snapshot: snapshot
         )
     }
@@ -1484,32 +1488,19 @@ struct EInkDisplaysSettingsSection: View {
         groupPreviewPageCount = max(1, pages.count)
         let index = min(groupPreviewPage, max(0, pages.count - 1))
         if index != groupPreviewPage { groupPreviewPage = index }
-        guard pages.indices.contains(index),
-              let boxes = try? EInkScreenGroupRenderer.boxes(
-                  group: group,
-                  frame: pages[index],
-                  devices: devices,
-                  snapshot: snapshot,
-                  layouts: settingsStore.settings.einkCanvasLayouts
-              )
-        else {
+        guard pages.indices.contains(index) else {
             groupPlans = [:]
             return
         }
-        var plans: [String: EInkPreviewPlan] = [:]
-        for screen in group.screens {
-            guard let device = devices.first(where: { $0.deviceID == screen.deviceID }) else { continue }
-            let size = device.profile.frameSize(for: device.orientation)
-            plans[screen.deviceID] = EInkPreviewPlan(
-                boxes: boxes[screen.deviceID] ?? [],
-                authoredWidth: size.width,
-                authoredHeight: size.height,
-                panelWidth: device.profile.width,
-                panelHeight: device.profile.height,
-                orientation: device.orientation
-            )
-        }
-        groupPlans = plans
+        // The engine's own call, wrapped per screen — see
+        // `EInkPreviewPlanner.planGroup`.
+        groupPlans = EInkPreviewPlanner.planGroup(
+            group: group,
+            frame: pages[index],
+            devices: devices,
+            snapshot: snapshot,
+            layouts: settingsStore.settings.einkCanvasLayouts
+        )
     }
 
     private func rebuildPickerSections() {

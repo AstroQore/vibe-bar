@@ -8,6 +8,9 @@ struct EInkGroupPageStudio: View {
     let region: EInkScreenRegion
     let width: Int
     let height: Int
+    /// The screens under the region, so a preset explodes the way it draws —
+    /// screen by screen, nothing across a bezel.
+    var panes: [EInkRect] = []
     let snapshot: EInkDataSnapshot?
     let onSave: (EInkSlide, EInkCanvasLayout) -> Void
     @EnvironmentObject private var settingsStore: SettingsStore
@@ -21,7 +24,11 @@ struct EInkGroupPageStudio: View {
     @State private var ready = false
     @StateObject private var pending = PendingEditQueue()
 
-    private var profile: EInkDeviceProfile { EInkDeviceProfile(width: width, height: height) }
+    private var profile: EInkDeviceProfile {
+        var profile = EInkDeviceProfile(width: width, height: height)
+        profile.panes = panes
+        return profile
+    }
     private var scale: CGFloat { min(2, 650 / CGFloat(max(1, width))) }
 
     var body: some View {

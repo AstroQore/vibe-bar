@@ -146,8 +146,11 @@ final class EInkSettingsTests: XCTestCase {
         XCTAssertEqual(EInkPreset.resets.capacity(for: portrait), 7)
         XCTAssertEqual(EInkPreset.heatmap.capacity(for: landscape), 1)
         XCTAssertEqual(EInkPreset.topModels.rowCount(for: portrait), 7)
-        XCTAssertEqual(EInkPreset.allCases.count, 14)
+        // The three screen-group templates are offered on a combined group
+        // page only, never in a single screen's picker.
+        XCTAssertEqual(EInkPreset.allCases.count, 17)
         XCTAssertEqual(EInkPreset.userSelectable.count, 13)
+        XCTAssertEqual(EInkPreset.groupLayouts.count, 3)
         XCTAssertFalse(EInkPreset.userSelectable.contains(.alert))
     }
 

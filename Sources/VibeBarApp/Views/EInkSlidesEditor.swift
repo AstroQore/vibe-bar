@@ -23,6 +23,9 @@ struct EInkSlidesGroupContext {
     /// Custom is a three-screen-and-up shape, and a page already in it.
     var allowsCustom: Bool
     var canSplitActive: Bool
+    /// The page's active region spans several screens, so the screen-group
+    /// templates can be offered for it.
+    var offersGroupLayouts: Bool
     var mergeTargets: [Screen]
     var setMode: (EInkScreenMode) -> Void
     var selectScreen: (String) -> Void
@@ -88,6 +91,13 @@ struct EInkSlidesEditor: View {
     /// § 7 forbids on an interactive surface.
     @State private var companies: [SlotCompany] = []
     @State private var percentByField: [String: Int] = [:]
+    /// The content list at the top of the editor: every bucket the slide
+    /// shows, in order and marked with the page it lands on, then every one it
+    /// could add. Rebuilt with the caches above, never in `body`.
+    @State private var contentChips: [ContentChip] = []
+    /// How many items one page of the selected layout holds on the canvas
+    /// the editor is drawing — a group's screens counted one by one.
+    @State private var contentCapacity = 0
 
     private static let slideSpace = "vibebar.eink.slides"
     private static let dragThreshold: CGFloat = 5
@@ -153,13 +163,51 @@ struct EInkSlidesEditor: View {
             registry: quotaService.fieldRegistry
         )
         rebuildPercentages()
+        var pageSlides: [EInkSlide] = []
         if let slide = selectedSlide, let snapshot {
-            previewPages = EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot).map {
+            pageSlides = EInkPagination.pages(slide, orientation: device.orientation, profile: device.profile, snapshot: snapshot)
+            previewPages = pageSlides.map {
                 EInkPreviewPlanner.plan(slide: $0, orientation: device.orientation, profile: device.profile,
                     snapshot: snapshot, layouts: settingsStore.settings.einkCanvasLayouts)
             }
             previewPage = min(previewPage, max(0, previewPages.count - 1))
         }
+        rebuildContent(pageSlides: pageSlides)
+    }
+
+    /// The chips of the content list, and the capacity beside its heading.
+    private func rebuildContent(pageSlides: [EInkSlide]) {
+        guard let slide = selectedSlide, let preset = slide.kind.preset else {
+            contentChips = []
+            contentCapacity = 0
+            return
+        }
+        contentCapacity = preset.pageCapacity(for: device.orientation, profile: device.profile)
+        guard preset.selectionAxis == .quotaFields else {
+            contentChips = []
+            return
+        }
+        var pageByField: [String: Int] = [:]
+        for (index, page) in pageSlides.enumerated() {
+            for fieldID in page.quotaFieldIDs where pageByField[fieldID] == nil { pageByField[fieldID] = index + 1 }
+        }
+        let shown = slide.orderedQuotaFieldIDs
+        let taken = Set(shown)
+        // A page is marked where it first starts: a long name the panel
+        // could not fit moves to the next page, so the order and the pages do
+        // not always run together, and a marker is only honest once.
+        var reached = 1
+        var chips = shown.map { fieldID in
+            let page = pageByField[fieldID] ?? 1
+            defer { reached = max(reached, page) }
+            return ContentChip(id: fieldID, title: chipName(fieldID), tool: EInkDataAssembler.selector(fieldID: fieldID)?.tool,
+                               percent: percentByField[fieldID], isShown: true, page: page, startsPage: page > reached)
+        }
+        chips += availableQuotaFieldIDs.filter { !taken.contains($0) }.map { fieldID in
+            ContentChip(id: fieldID, title: chipName(fieldID), tool: EInkDataAssembler.selector(fieldID: fieldID)?.tool,
+                        percent: percentByField[fieldID], isShown: false, page: 0, startsPage: false)
+        }
+        contentChips = chips
     }
 
     private func rebuildPercentages() {
@@ -392,12 +440,22 @@ struct EInkSlidesEditor: View {
                 Spacer(minLength: 0)
             }
 
+            if group?.offersGroupLayouts == true, let preset = slide.kind.preset,
+               let detail = EInkNaming.groupDetail(preset) {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            contentSection(slide)
+
+            Divider().padding(.vertical, 2)
             studioRow(slide)
 
             Divider().padding(.vertical, 2)
             compositionEditor(slide)
 
-            Divider().padding(.vertical, 2)
             selectionEditor(slide)
         }
     }
@@ -420,6 +478,15 @@ struct EInkSlidesEditor: View {
             Section(L10n.Settings.Eink.Group.insight) {
                 ForEach(EInkPreset.userSelectable.filter { EInkNaming.isInsight($0) }, id: \.rawValue) { preset in
                     Text(EInkNaming.preset(preset)).tag(preset.rawValue)
+                }
+            }
+            // Only where there are screens to spread them over — and always
+            // for a page already using one, so the picker can name it.
+            if group?.offersGroupLayouts == true || slide.kind.preset?.isGroupLayout == true {
+                Section(L10n.Settings.Eink.Group.screenGroup) {
+                    ForEach(EInkPreset.groupLayouts, id: \.rawValue) { preset in
+                        Text(EInkNaming.preset(preset)).tag(preset.rawValue)
+                    }
                 }
             }
             Text(L10n.Settings.Eink.customLayout).tag(Self.customTag)
@@ -580,26 +647,13 @@ struct EInkSlidesEditor: View {
 
     // MARK: - Selection
 
+    /// What the enabled slots print: their names, their marks, their order.
+    /// *Which* slots are enabled is the content list at the top.
     @ViewBuilder
     private func selectionEditor(_ slide: EInkSlide) -> some View {
-        if let preset = slide.kind.preset {
-            let capacity = preset.capacity(for: device.orientation)
-            switch preset.selectionAxis {
-            case .quotaFields:
-                slotArrangement(slide, capacity: capacity)
-            case .usagePeriods:
-                periodPicker(slide, capacity: capacity)
-            case .harnessRows:
-                Text(L10n.Settings.Eink.noSelection)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            case .none:
-                Text(L10n.Settings.Eink.fixedContent)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        if slide.kind.preset?.selectionAxis == .quotaFields {
+            Divider().padding(.vertical, 2)
+            slotArrangement(slide)
         }
     }
 
@@ -614,16 +668,13 @@ struct EInkSlidesEditor: View {
     /// separate "Order" list, which the owner's review called out: two
     /// controls for one decision, in a shape nothing else in Vibe Bar uses,
     /// and no way to rename a whole provider without renaming five slots.
-    private func slotArrangement(_ slide: EInkSlide, capacity: Int) -> some View {
+    private func slotArrangement(_ slide: EInkSlide) -> some View {
         let ids = slide.orderedQuotaFieldIDs
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(L10n.Settings.Eink.buckets)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(L10n.Settings.Eink.Workflow.selectionPages(items: ids.count, pages: max(1, previewPages.count)))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
                 if slide.kind.preset?.isQuotaPreset == true {
                     Text(L10n.Settings.Eink.labelStyle)
@@ -653,8 +704,6 @@ struct EInkSlidesEditor: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            candidateList(slide, shown: ids, capacity: capacity)
         }
     }
 
@@ -802,50 +851,184 @@ struct EInkSlidesEditor: View {
         .help(fieldID)
     }
 
-    /// The buckets this account returns that the slide is not already showing,
-    /// grouped the way the shown list is.
+    // MARK: - Content
+
+    /// One entry of the content list.
+    struct ContentChip: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let tool: ToolType?
+        let percent: Int?
+        let isShown: Bool
+        /// 1-based page the bucket lands on; 0 for one not shown.
+        let page: Int
+        /// The first bucket of a page after the first, which the list marks.
+        let startsPage: Bool
+    }
+
+    /// Which items the page shows, chosen at the top of the editor.
     ///
-    /// Only what the account actually exposes: round 2 offered the whole
-    /// static catalog, so a Gemini-only Mac could tick five Claude rows that
-    /// never drew.
-    private func candidateList(_ slide: EInkSlide, shown: [String], capacity: Int) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button(L10n.Settings.Eink.Workflow.chooseContent) {
-                let groups = candidateSections(shown: []).map { section in
-                    EInkContentPicker.Section(id: section.id, title: section.title,
-                        choices: section.fieldIDs.map { EInkContentPicker.Choice(id: $0, title: candidateName($0)) })
+    /// Every candidate of the layout's axis is one chip: the shown ones first,
+    /// in the order the panel prints them and marked where a new page starts,
+    /// then the ones the account could add. A tick shows or hides one, a drag
+    /// moves one, and the settings are written once per tick or drop — never
+    /// while a drag is in flight. The sheet stays as the way to search.
+    @ViewBuilder
+    private func contentSection(_ slide: EInkSlide) -> some View {
+        if let preset = slide.kind.preset {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(L10n.Settings.Eink.Content.title)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    if preset.selectionAxis == .quotaFields || preset.selectionAxis == .usagePeriods {
+                        Text(L10n.Settings.Eink.Content.capacity(count: contentCapacity))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                        Text(L10n.Settings.Eink.Workflow.selectionPages(
+                            items: preset.selectionAxis == .quotaFields ? slide.quotaFieldIDs.count : slide.usagePeriods.count,
+                            pages: max(1, previewPages.count)
+                        ))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                    }
+                    Spacer(minLength: 8)
+                    if preset.selectionAxis == .quotaFields {
+                        Button(L10n.Settings.Eink.Workflow.chooseContent) { presentContentPicker(slide) }
+                            .buttonStyle(.vibeBar)
+                    }
                 }
-                contentRequest = EInkContentPicker.Request(slideID: slide.id, initial: slide.orderedQuotaFieldIDs, sections: groups)
+                switch preset.selectionAxis {
+                case .quotaFields:
+                    MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
+                        ForEach(contentChips) { chip in
+                            if chip.startsPage {
+                                Text(L10n.Settings.Eink.Content.page(number: chip.page))
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            quotaChip(slide, chip)
+                        }
+                    }
+                    Text(L10n.Settings.Eink.Content.hint)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text(L10n.Settings.Eink.Workflow.automaticPages)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                case .usagePeriods:
+                    MenuBarChipFlow(spacing: 5, lineSpacing: 5) {
+                        ForEach(EInkUsagePeriod.allCases, id: \.rawValue) { period in
+                            let isOn = slide.usagePeriods.contains(period)
+                            chipButton(title: EInkNaming.period(period), isOn: isOn, tool: nil, percent: nil) {
+                                periodBinding(slide, period: period, capacity: 0).wrappedValue = !isOn
+                            }
+                            // One always stays on: an empty selection reads as
+                            // all four to the renderer.
+                            .disabled(isOn && slide.usagePeriods.count == 1)
+                        }
+                    }
+                case .harnessRows:
+                    Text(L10n.Settings.Eink.noSelection)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                case .none:
+                    Text(L10n.Settings.Eink.fixedContent)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            Text(L10n.Settings.Eink.Workflow.automaticPages)
-                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 
-    private func periodPicker(_ slide: EInkSlide, capacity: Int) -> some View {
-        let selected = slide.usagePeriods
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text(L10n.Usage.Breakdown.periods)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                Text(L10n.Settings.Eink.Workflow.selectionPages(items: selected.count, pages: max(1, previewPages.count)))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
-            ForEach(EInkUsagePeriod.allCases, id: \.rawValue) { period in
-                Toggle(
-                    EInkNaming.period(period),
-                    isOn: periodBinding(slide, period: period, capacity: capacity)
-                )
-                .toggleStyle(.checkbox)
-                .controlSize(.small)
-                .disabled(
-                    selected.count == 1 && selected.contains(period)
-                )
-            }
+    /// A quota chip: tick to show or hide, drag one onto a shown chip to move
+    /// it there.
+    private func quotaChip(_ slide: EInkSlide, _ chip: ContentChip) -> some View {
+        chipButton(title: chip.title, isOn: chip.isShown, tool: chip.tool, percent: chip.percent) {
+            setBucket(slide, fieldID: chip.id, selected: !chip.isShown, capacity: 0)
         }
+        // The last shown bucket stays: an empty selection means "Vibe Bar's
+        // own order" to the renderer, which would put back what was removed.
+        .disabled(chip.isShown && slide.quotaFieldIDs.count <= 1)
+        .help(chip.id)
+        .draggable(Self.chipDragPrefix + chip.id)
+        .dropDestination(for: String.self) { items, _ in
+            guard let item = items.first, item.hasPrefix(Self.chipDragPrefix) else { return false }
+            return dropChip(slide, dragged: String(item.dropFirst(Self.chipDragPrefix.count)), onto: chip)
+        }
+    }
+
+    private static let chipDragPrefix = "vibebar-eink-content:"
+
+    /// Moves `dragged` to where `target` is. Dropping a candidate onto the
+    /// shown run adds it there; a drop onto a candidate changes nothing.
+    private func dropChip(_ slide: EInkSlide, dragged: String, onto target: ContentChip) -> Bool {
+        guard dragged != target.id, target.isShown else { return false }
+        var order = slide.orderedQuotaFieldIDs
+        let adding = !order.contains(dragged)
+        order.removeAll { $0 == dragged }
+        guard let index = order.firstIndex(of: target.id) else { return false }
+        order.insert(dragged, at: index)
+        updateSlide(slide.id) { current in
+            if adding { current.quotaFieldIDs.append(dragged) }
+            current.options.slotOrder = order
+        }
+        return true
+    }
+
+    private func chipButton(
+        title: String,
+        isOn: Bool,
+        tool: ToolType?,
+        percent: Int?,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                if let tool {
+                    Circle()
+                        .fill(Theme.providerAccent(for: tool))
+                        .frame(width: 6, height: 6)
+                }
+                Text(title)
+                    .font(.system(size: 11, weight: isOn ? .medium : .regular))
+                    .lineLimit(1)
+                if let percent {
+                    // `AppLocale.percent` takes a fraction.
+                    Text(AppLocale.percent(Double(percent) / 100))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isOn ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.05))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(isOn ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08), lineWidth: 1)
+            )
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The searchable sheet, for an account with more buckets than a glance
+    /// at the chips covers.
+    private func presentContentPicker(_ slide: EInkSlide) {
+        let groups = candidateSections(shown: []).map { section in
+            EInkContentPicker.Section(id: section.id, title: section.title,
+                choices: section.fieldIDs.map { EInkContentPicker.Choice(id: $0, title: candidateName($0)) })
+        }
+        contentRequest = EInkContentPicker.Request(slideID: slide.id, initial: slide.orderedQuotaFieldIDs, sections: groups)
     }
 
     // MARK: - Preview
@@ -1433,6 +1616,14 @@ struct EInkSlidesEditor: View {
         let fallback = MenuBarFieldCatalog.field(id: fieldID, registry: quotaService.fieldRegistry)?.title
             ?? parts.joined(separator: EInkSlotLabel.separator)
         return QuotaGroupLabelLocalizer.display(detail.isEmpty ? (fallback.isEmpty ? fieldID : fallback) : detail)
+    }
+
+    /// What a chip calls its bucket: every tier, since a chip has no heading
+    /// above it.
+    private func chipName(_ fieldID: String) -> String {
+        let parts = EInkSlotLabel.parts(for: fieldID, registry: quotaService.fieldRegistry)
+        guard !parts.isEmpty else { return fieldID }
+        return parts.map(QuotaGroupLabelLocalizer.display).joined(separator: EInkSlotLabel.separator)
     }
 
     /// One provider's worth of buckets the slide could still add.

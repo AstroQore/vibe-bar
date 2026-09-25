@@ -91,7 +91,10 @@ public enum EInkRenderer {
             orientation: orientation,
             snapshot: snapshot,
             frame: frame,
-            calendar: calendar
+            calendar: calendar,
+            // A group canvas is authored upright; the panes say where its
+            // screens meet.
+            panes: orientation == .degrees0 ? profile.panes : []
         )
     }
 
@@ -106,8 +109,23 @@ public enum EInkRenderer {
         frame: EInkRect,
         calendar: Calendar = .current,
         fieldIDs: [String]? = nil,
-        periods: [EInkUsagePeriod]? = nil
+        periods: [EInkUsagePeriod]? = nil,
+        panes: [EInkRect] = []
     ) -> EInkNode {
+        // Several screens under one canvas: lay the template out screen by
+        // screen, so nothing is drawn across a bezel (`EInkGroupLayouts`).
+        if let grouped = EInkGroupLayouts.tree(
+            preset,
+            slide: slide,
+            snapshot: snapshot,
+            frame: frame,
+            panes: panes,
+            calendar: calendar,
+            fieldIDs: fieldIDs,
+            periods: periods
+        ) {
+            return grouped
+        }
         let capacity = preset.pageCapacity(for: orientation, width: frame.width, height: frame.height)
         let portrait = preset.layoutOrientation(orientation, width: frame.width, height: frame.height).isPortrait
         let options = slide.options
@@ -120,7 +138,9 @@ public enum EInkRenderer {
         }
 
         switch preset {
-        case .quotaLedger:
+        case .quotaLedger, .wideLedger:
+            // A wide ledger needs two screens side by side; on one screen it
+            // is the ledger it widens.
             let rows = quotaRows()
             return portrait
                 ? EInkPresets.ledgerPortrait(rows, snapshot, frame: frame, options: options)
@@ -182,6 +202,11 @@ public enum EInkRenderer {
                 limit: preset.rowCount(for: orientation),
                 options: options
             )
+        case .headline:
+            // On one screen, a headline page is its headline screen alone.
+            return EInkGroupLayouts.heroPane(quotaRows(), snapshot, frame: frame, options: options, calendar: calendar)
+        case .cards:
+            return EInkGroupLayouts.cardsPane(quotaRows(), snapshot, frame: frame, options: options, calendar: calendar)
         case .alert:
             // The slide names the bucket that tripped; the engine builds it.
             let row = selected.first.flatMap { fieldID in
