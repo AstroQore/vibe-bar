@@ -73,13 +73,27 @@ public actor GrokOAuthTokenRefresher {
         self.options = options
     }
 
+    /// The default configuration (so the system proxy still applies) with a
+    /// hard ceiling on the exchange's total time, not only on silence: the
+    /// refresh runs in a shared, unstructured task that the quota refresh's
+    /// own timeout cannot cancel, so a trickling token endpoint must end
+    /// here rather than keep the account marked timed out.
+    public static let defaultSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 20
+        configuration.timeoutIntervalForResource = 30
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        return URLSession(configuration: configuration)
+    }()
+
     /// Exchanges `credentials.refreshToken` for a new bearer and, when
     /// `persist` is true, writes it back to `auth.json` under
     /// `homeDirectory`. A write failure is logged and does not fail the
     /// refresh.
     public func refresh(
         _ credentials: GrokCredentials,
-        session: URLSession = .shared,
+        session: URLSession = GrokOAuthTokenRefresher.defaultSession,
         homeDirectory: String = RealHomeDirectory.path,
         persist: Bool = true,
         now: @escaping @Sendable () -> Date = { Date() }
