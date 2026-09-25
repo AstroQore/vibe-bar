@@ -177,6 +177,31 @@ private final class RequestedFields: @unchecked Sendable {
     }
 }
 
+/// Polls `condition` until it becomes true or `timeout` elapses, sleeping
+/// briefly between checks.
+///
+/// Deterministic replacement for fixed-iteration `Task.yield()` loops: a
+/// bounded `for _ in 0..<N { await Task.yield() }` loop gives no guarantee
+/// about how much real work — or wall time — happens per yield, so on a
+/// slow CI runner it can exit before the awaited condition ever becomes
+/// true, letting the test silently observe the wrong state. This waits on
+/// a `ContinuousClock` deadline (the same monotonic clock `FakeDotClient`
+/// uses) instead of an iteration count, and reports whether the condition
+/// was actually met so callers can fail loudly rather than proceed blind.
+@discardableResult
+private func waitUntil(
+    timeout: Duration = .seconds(5),
+    pollInterval: Duration = .milliseconds(2),
+    _ condition: () -> Bool
+) async -> Bool {
+    let deadline = ContinuousClock.now + timeout
+    while !condition() {
+        if ContinuousClock.now >= deadline { return condition() }
+        try? await Task.sleep(for: pollInterval)
+    }
+    return true
+}
+
 @MainActor
 final class EInkSyncServiceTests: XCTestCase {
     private var temporaryHome: URL!
@@ -216,13 +241,34 @@ final class EInkSyncServiceTests: XCTestCase {
             var config = alertDevice()
             config.playbackMode = mode
             config.taskKeys = ["k1"]
+            // A distinct id per mode, not the shared "panel-1": `service(...)`
+            // backs every call in this test method with the same on-disk
+            // `EInkSyncStateStore(homeDirectory: temporaryHome.path)`, so two
+            // iterations sharing one device id would have the second one load
+            // the first iteration's persisted `alertingFieldID`/`slideIndex`.
+            // That made the second iteration start already "mid-alert"
+            // instead of transitioning into it, which skipped the branch that
+            // seeks the carousel to the alert slide and made the final
+            // assertion depend on whatever the first iteration happened to
+            // leave behind — the actual source of this test's flakiness.
+            let deviceID = "panel-1-\(mode)"
+            config.deviceID = deviceID
             let service = service(client: client, device: config, snapshot: alertingSnapshot(remaining: 4), requestSpacing: .zero)
             service.start()
-            for _ in 0..<100 where client.pushes.isEmpty { await Task.yield() }
-            _ = await service.refresh(deviceID: "panel-1")
-            XCTAssertTrue(service.hasCarouselLoop(deviceID: "panel-1"))
+            // Wait for the loop's *whole* first pass to settle, not merely
+            // for a push to land: `noteNextRefresh` only runs after the
+            // triggering `refresh(deviceID:)` call has fully returned (push
+            // written, carousel/alert state updated), while `sendCanvas` is
+            // recorded partway through that same pass. Waiting on the push
+            // alone let this test's own `refresh(deviceID:)` call below join
+            // or race an already-in-flight pass whose state hadn't finished
+            // settling yet.
+            let scheduled = await waitUntil { service.state(for: deviceID).nextRefreshAt != nil }
+            XCTAssertTrue(scheduled, "expected service.start() to complete its first pass for \(mode)")
+            _ = await service.refresh(deviceID: deviceID)
+            XCTAssertTrue(service.hasCarouselLoop(deviceID: deviceID))
             client.reset()
-            await service.advanceCarousel(deviceID: "panel-1")
+            await service.advanceCarousel(deviceID: deviceID)
             XCTAssertFalse(client.pushes.first?.payload.taskAlias?.contains("Alert") == true)
             service.stop()
         }
@@ -342,7 +388,8 @@ final class EInkSyncServiceTests: XCTestCase {
         let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
         service.apply(settings: settings, layouts: [:])
         service.start()
-        for _ in 0..<200 where service.state(for: "panel-1").nextRefreshAt == nil { await Task.yield() }
+        let scheduled = await waitUntil { service.state(for: "panel-1").nextRefreshAt != nil }
+        XCTAssertTrue(scheduled, "expected service.start() to schedule a refresh")
         XCTAssertNotNil(service.state(for: "panel-1").nextRefreshAt)
         XCTAssertEqual(service.state(for: "panel-1").nextRefreshAt, service.state(for: "panel-2").nextRefreshAt)
         XCTAssertFalse(service.hasCarouselLoop(deviceID: "panel-1"))
@@ -359,7 +406,8 @@ final class EInkSyncServiceTests: XCTestCase {
         let service = service(client: client, device: settings.devices[0], requestSpacing: .zero)
         service.apply(settings: settings, layouts: [:])
         service.start()
-        for _ in 0..<30 { await Task.yield() }
+        let scheduled = await waitUntil { service.state(for: "panel-1").nextRefreshAt != nil }
+        XCTAssertTrue(scheduled, "expected service.start() to schedule a refresh")
         await service.refresh(deviceID: "panel-1")
         XCTAssertEqual(Set(client.pushes.map(\.deviceID)), ["panel-1", "panel-2"])
         service.stop()
