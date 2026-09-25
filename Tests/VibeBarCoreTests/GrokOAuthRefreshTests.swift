@@ -229,6 +229,44 @@ final class GrokOAuthRefreshTests: XCTestCase {
         XCTAssertTrue(state.billingBearers.isEmpty)
     }
 
+    /// The exchange rotates the refresh token but the write-back fails, so
+    /// the file keeps the spent token. When the in-memory bearer nears
+    /// expiry, the next refresh must exchange the rotated token it still
+    /// holds — not the spent one from disk — and persist it this time.
+    func testRenewsFromCachedRotatedPairAfterWriteBackFailure() async throws {
+        try writeAuth(Self.authJSON(key: "old-bearer", refreshToken: "refresh-1", expiresAt: "2026-09-24T12:00:00.000000Z"))
+        GrokRefreshStubURLProtocol.configure(
+            validBearers: [],
+            tokenResponse: (200, #"{"access_token":"bearer-2","refresh_token":"refresh-2","expires_in":3600}"#)
+        )
+        let refresher = GrokOAuthTokenRefresher()
+        let session = Self.stubSession()
+        let disk = try GrokCredentialsStore.load(homeDirectory: home.path)
+
+        // Make the write-back fail: the auth directory is not writable.
+        let authDir = authURL.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: authDir.path)
+        let first = try await refresher.refresh(disk, session: session, homeDirectory: home.path, now: { Self.fixedNow })
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: authDir.path)
+        XCTAssertEqual(first.refreshToken, "refresh-2")
+        XCTAssertEqual(try GrokCredentialsStore.load(homeDirectory: home.path).refreshToken, "refresh-1", "write-back failed, file unchanged")
+
+        // Later: the file still says refresh-1, the cached bearer is about to expire.
+        GrokRefreshStubURLProtocol.configure(
+            validBearers: [],
+            tokenResponse: (200, #"{"access_token":"bearer-3","refresh_token":"refresh-3","expires_in":3600}"#)
+        )
+        let later = Self.fixedNow.addingTimeInterval(3600 - 30)
+        let diskAgain = try GrokCredentialsStore.load(homeDirectory: home.path)
+        let second = try await refresher.refresh(diskAgain, session: session, homeDirectory: home.path, now: { later })
+
+        XCTAssertEqual(second.accessToken, "bearer-3")
+        let state = GrokRefreshStubURLProtocol.snapshot()
+        XCTAssertEqual(state.tokenRequests.count, 2)
+        XCTAssertEqual(state.tokenRequests[1].form["refresh_token"], "refresh-2", "renews from the rotated token, not the spent one")
+        XCTAssertEqual(try GrokCredentialsStore.load(homeDirectory: home.path).refreshToken, "refresh-3", "persisted this time")
+    }
+
     // MARK: - Refresher: single flight and options
 
     func testConcurrentRefreshesShareOneExchange() async throws {

@@ -96,7 +96,8 @@ public actor GrokOAuthTokenRefresher {
         session: URLSession = GrokOAuthTokenRefresher.defaultSession,
         homeDirectory: String = RealHomeDirectory.path,
         persist: Bool = true,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        onDiskRefreshToken: String? = nil
     ) async throws -> GrokCredentials {
         guard credentials.canRefresh,
               let refreshToken = credentials.refreshToken,
@@ -105,9 +106,24 @@ public actor GrokOAuthTokenRefresher {
 
         if let lastExchange,
            lastExchange.spentRefreshToken == refreshToken,
-           lastExchange.result.accessToken != credentials.accessToken,
-           !lastExchange.result.expiresSoon(at: now()) {
-            return lastExchange.result
+           lastExchange.result.accessToken != credentials.accessToken {
+            if !lastExchange.result.expiresSoon(at: now()) {
+                return lastExchange.result
+            }
+            // The caller still holds the spent token — the write-back must
+            // have failed — but the rotated pair from that exchange is the
+            // one xAI now honours. Renew from it, and try the write-back
+            // again against the token the file still holds.
+            if let rotated = lastExchange.result.refreshToken, rotated != refreshToken {
+                return try await refresh(
+                    lastExchange.result,
+                    session: session,
+                    homeDirectory: homeDirectory,
+                    persist: persist,
+                    now: now,
+                    onDiskRefreshToken: onDiskRefreshToken ?? refreshToken
+                )
+            }
         }
         if let running = inFlight[refreshToken] {
             return try await running.value
@@ -127,7 +143,7 @@ public actor GrokOAuthTokenRefresher {
                 do {
                     let outcome = try GrokCredentialsStore.writeRefreshed(
                         refreshed,
-                        previousRefreshToken: refreshToken,
+                        previousRefreshToken: onDiskRefreshToken ?? refreshToken,
                         now: now(),
                         homeDirectory: homeDirectory
                     )
