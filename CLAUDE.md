@@ -86,7 +86,11 @@ ignored. The full reasoning and grep recipes live in `AGENTS.md`.
    reaches a panel, the API key stays in the vault behind
    `EInkCredentialStore`, and the only new file is
    `~/.vibebar/eink_state.json`. See `AGENTS.md` § 7 for the full
-   terms of all three.
+   terms of all three. Separately, an OAuth refresh may write the
+   renewed tokens back to the CLI's own credential file
+   (`~/.codex/auth.json`, `~/.grok/auth.json`) — only through
+   `CodexCredentialReader.saveOAuth` / `GrokCredentialsStore.writeRefreshed`
+   (`AGENTS.md` § 7).
 4. **Verification before completion.** Before claiming a change works,
    run all four:
 

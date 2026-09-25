@@ -7,7 +7,9 @@ import Foundation
 ///
 /// 1. **`~/.grok/auth.json` bearer** (preferred). Written by
 ///    `grok login`. Carries the SuperGrok email and plan label so the
-///    card chrome is rich.
+///    card chrome is rich. The OIDC bearer lives six hours; an expired
+///    one is renewed with the entry's refresh token through
+///    `GrokOAuthTokenRefresher` and written back to the file.
 /// 2. **grok.com browser cookies** (fallback). Imported via
 ///    `GrokBrowserCookieImporter` from Chrome / Safari / etc., stored
 ///    minimised in Keychain by `GrokWebCookieStore`. Used when the
@@ -24,45 +26,116 @@ public struct GrokQuotaAdapter: QuotaAdapter {
     private let homeDirectory: String
     private let now: @Sendable () -> Date
     private let cookieHeader: @Sendable () -> String?
+    private let refresher: GrokOAuthTokenRefresher
+
+    /// A bearer this close to `expires_at` is refreshed before use.
+    static let refreshLeeway: TimeInterval = 60
 
     public init(
         session: URLSession = .shared,
         homeDirectory: String = RealHomeDirectory.path,
         now: @escaping @Sendable () -> Date = { Date() },
-        cookieHeader: @escaping @Sendable () -> String? = { try? GrokWebCookieStore.readCookieHeader() }
+        cookieHeader: @escaping @Sendable () -> String? = { try? GrokWebCookieStore.readCookieHeader() },
+        refresher: GrokOAuthTokenRefresher = .shared
     ) {
         self.session = session
         self.homeDirectory = homeDirectory
         self.now = now
         self.cookieHeader = cookieHeader
+        self.refresher = refresher
     }
 
     public func fetch(for account: AccountIdentity) async throws -> AccountQuota {
-        let credentials = (try? GrokCredentialsStore.load(homeDirectory: homeDirectory)).flatMap { creds in
-            creds.isExpired ? nil : creds
+        let loaded = try? GrokCredentialsStore.load(homeDirectory: homeDirectory)
+        var credentials: GrokCredentials?
+        var refreshedThisFetch = false
+        var refreshFailure: QuotaError?
+
+        if let loaded {
+            if loaded.canRefresh, loaded.expiresSoon(at: now(), leeway: Self.refreshLeeway) {
+                // The CLI renews its six-hour bearer silently and may not
+                // write it back, so an expired entry with a refresh token
+                // is renewed here instead of being treated as a logout.
+                do {
+                    credentials = try await refresh(loaded)
+                    refreshedThisFetch = true
+                } catch {
+                    refreshFailure = Self.quotaError(for: error)
+                }
+            } else if !loaded.isExpired(at: now()) {
+                credentials = loaded
+            }
         }
 
         if let credentials {
             do {
                 return try await fetchWithBearer(credentials: credentials, account: account)
             } catch let error as QuotaError where error == .needsLogin || error == .noCredential {
-                // The bearer was refused. A web session, when there is
-                // one, reads the same billing — the fallback AccountStore
-                // promises for this account — so it is tried before the
-                // refusal is reported.
-                guard let header = cookieHeader() else { throw error }
+                // A bearer refused before its expiry (revoked, or the
+                // clock is off) gets one refresh and one retry — unless
+                // it was minted by this very fetch.
+                var lastError = error
+                if credentials.canRefresh, !refreshedThisFetch {
+                    do {
+                        let renewed = try await refresh(credentials)
+                        return try await fetchWithBearer(credentials: renewed, account: account)
+                    } catch let retryError as QuotaError {
+                        lastError = retryError
+                    } catch {
+                        lastError = Self.quotaError(for: error)
+                    }
+                }
+                // A web session, when there is one, reads the same
+                // billing — the fallback AccountStore promises for this
+                // account — so it is tried before the refusal is reported.
+                guard let header = cookieHeader() else { throw lastError }
                 return try await fetchWithCookies(header: header, account: account)
             }
         }
 
         if let header = cookieHeader() {
-            return try await fetchWithCookies(header: header, account: account)
+            do {
+                return try await fetchWithCookies(header: header, account: account)
+            } catch {
+                // A refresh that could not reach xAI says more about the
+                // outage than the cookie's own failure does.
+                if let refreshFailure, case .network = refreshFailure { throw refreshFailure }
+                throw error
+            }
         }
 
-        // Neither source available. Prefer the auth.json error message
+        // Neither source available. A refused refresh means the CLI login
+        // itself is gone; otherwise prefer the auth.json error message
         // because it's actionable (`grok login` is the canonical
         // documented path) and tells the user exactly what to do.
-        throw QuotaError.noCredential
+        throw refreshFailure ?? QuotaError.noCredential
+    }
+
+    private func refresh(_ credentials: GrokCredentials) async throws -> GrokCredentials {
+        try await refresher.refresh(
+            credentials,
+            session: session,
+            homeDirectory: homeDirectory,
+            now: now
+        )
+    }
+
+    /// `.rejected` is the one refresh outcome that means "log in again";
+    /// the rest are transient and must not tell the user their login is
+    /// gone.
+    static func quotaError(for error: Error) -> QuotaError {
+        switch error as? GrokOAuthTokenRefresher.RefreshError {
+        case .rejected?:
+            return .needsLogin
+        case .notRefreshable?:
+            return .noCredential
+        case .network(let message)?:
+            return .network("Grok token refresh: \(message)")
+        case .invalidResponse(let message)?:
+            return .network("Grok token refresh: \(message)")
+        case nil:
+            return mapURLError(error)
+        }
     }
 
     private func fetchWithBearer(

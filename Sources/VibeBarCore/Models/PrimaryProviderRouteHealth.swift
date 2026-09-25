@@ -317,7 +317,10 @@ public enum PrimaryProviderRouteHealthChecker {
     ) -> PrimaryProviderRouteHealth {
         do {
             let credentials = try GrokCredentialsStore.load()
-            if let expiresAt = credentials.expiresAt, expiresAt <= now {
+            // An expired OIDC bearer with a refresh token is renewed on the
+            // next fetch, so it is healthy; only one that cannot be renewed
+            // is reported as expired.
+            if credentials.isExpired(at: now), !credentials.canRefresh {
                 return PrimaryProviderRouteHealth(
                     route: route,
                     status: .failed,
