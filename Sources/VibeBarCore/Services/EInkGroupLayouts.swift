@@ -278,6 +278,14 @@ public enum EInkGroupLayouts {
 
     /// The ledger a group template continues its list in: the single-panel
     /// ledger, with its percentages held inside their rows.
+    /// The rows a single-screen ledger really draws: a landscape ledger of
+    /// long names holds fewer slots than its capacity.
+    static func fittedLedgerCount(_ rows: [EInkQuotaRow], pane: EInkRect, snapshot: EInkDataSnapshot,
+                                  options: EInkSlideOptions) -> Int {
+        guard !rows.isEmpty, !shape(pane).isPortrait else { return rows.count }
+        return min(rows.count, EInkPresets.ledgerRowCount(rows, frame: local(pane), snapshot: snapshot, options: options))
+    }
+
     static func ledger(_ rows: [EInkQuotaRow], _ snapshot: EInkDataSnapshot, pane: EInkRect,
                        options: EInkSlideOptions) -> EInkNode {
         if rows.isEmpty { return emptyPane(local(pane), options: options, snapshot: snapshot) }
@@ -299,14 +307,23 @@ public enum EInkGroupLayouts {
         let hero = panes[0]
         let heroes = Array(rows.prefix(heroCapacity(hero)))
         let listPanes = Array(panes.dropFirst())
-        let shares = distribute(Array(rows.dropFirst(heroes.count)), capacities: listPanes.map(listCapacity))
+        let listRows = Array(rows.dropFirst(heroes.count))
+        let capacities = listPanes.map(listCapacity)
         var children = [
             placed(heroPane(heroes, snapshot, frame: local(hero), options: options, calendar: calendar), in: hero)
         ]
-        for (pane, share) in zip(listPanes, shares) {
-            var paneSlide = EInkSlide(kind: .preset(.quotaLedger))
-            paneSlide.options = chromeOptions(options, pane: pane, panes: listPanes)
-            children.append(placed(ledger(share, snapshot, pane: pane, options: paneSlide.options), in: pane))
+        var start = 0
+        for (index, pane) in listPanes.enumerated() {
+            let paneOptions = chromeOptions(options, pane: pane, panes: listPanes)
+            let following = capacities[(index + 1)...].reduce(0, +)
+            var take = paneShare(listRows.count - start, capacity: capacities[index], following: following,
+                                 panesLeft: listPanes.count - index)
+            if take > 0 {
+                take = fittedLedgerCount(Array(listRows[start..<(start + take)]), pane: pane, snapshot: snapshot, options: paneOptions)
+            }
+            let share = Array(listRows[start..<(start + take)])
+            start += take
+            children.append(placed(ledger(share, snapshot, pane: pane, options: paneOptions), in: pane))
         }
         return canvas(children, frame: frame)
     }
@@ -468,7 +485,17 @@ public enum EInkGroupLayouts {
         var start = 0
         for (index, run) in runs.enumerated() {
             let following = capacities[(index + 1)...].reduce(0, +)
-            let take = paneShare(rows.count - start, capacity: capacities[index], following: following, panesLeft: runs.count - index)
+            var take = paneShare(rows.count - start, capacity: capacities[index], following: following, panesLeft: runs.count - index)
+            // A run of long names draws fewer rows than its share; the ones
+            // it would drop belong to the next run, not to nowhere.
+            if take > 0 {
+                let candidate = Array(rows[start..<(start + take)])
+                let drawn = run.count == 2
+                    ? widePairFit(candidate, snapshot, left: run[0], right: run[1], options: options, panes: panes).fitted.count
+                    : fittedLedgerCount(candidate, pane: run[0], snapshot: snapshot,
+                                        options: chromeOptions(options, pane: run[0], panes: panes))
+                take = max(0, min(take, drawn))
+            }
             let share = Array(rows[start..<(start + take)])
             start += take
             if run.count == 2 {
@@ -485,22 +512,35 @@ public enum EInkGroupLayouts {
         return canvas(children, frame: frame)
     }
 
-    /// One ledger read across two screens.
-    ///
-    /// Both halves are laid out on the same rows — the same header height,
-    /// the same footer height (the left screen reserves what the right one
-    /// prints), the same slot heights — so a row that starts with a name on
-    /// the left panel ends with its bar at exactly the same height on the
-    /// right one.
-    static func widePair(
+    /// Everything about a wide pair that decides how many rows fit: the
+    /// chrome both screens reserve, the wrapped names, and the slot heights.
+    /// Computed before a run's share is cut, so a run advances by the rows
+    /// it draws — never by a nominal share it then trims.
+    struct WidePairFit {
+        var leftOptions: EInkSlideOptions
+        var rightOptions: EInkSlideOptions
+        var headers: (left: EInkNode?, right: EInkNode?)
+        var headerAtBottom: Bool
+        var footer: EInkNode?
+        var footerHeight: Int
+        var leftContent: Int
+        var rightContent: Int
+        var styles: [EInkSlotLabelStyle]
+        var logoWidth: Int
+        var percentWidth: Int
+        var nameWidth: Int
+        var names: [[String]]
+        var fitted: (count: Int, unit: Int)
+    }
+
+    static func widePairFit(
         _ rows: [EInkQuotaRow],
         _ snapshot: EInkDataSnapshot,
         left: EInkRect,
         right: EInkRect,
         options: EInkSlideOptions,
-        panes: [EInkRect],
-        calendar: Calendar
-    ) -> (left: EInkNode, right: EInkNode) {
+        panes: [EInkRect]
+    ) -> WidePairFit {
         let gap = 4
         let pixel = EInkPresets.pixel
         let bold = EInkPresets.pixelBold
@@ -557,7 +597,48 @@ public enum EInkGroupLayouts {
             preferred: options.compact ? 1_000 : 18,
             minimum: 13
         )
+        return WidePairFit(
+            leftOptions: leftOptions, rightOptions: rightOptions, headers: headers, headerAtBottom: headerAtBottom,
+            footer: footer, footerHeight: footerHeight, leftContent: leftContent, rightContent: rightContent,
+            styles: styles, logoWidth: logoWidth, percentWidth: percentWidth, nameWidth: nameWidth,
+            names: names, fitted: fitted
+        )
+    }
+
+    /// One ledger read across two screens.
+    ///
+    /// Both halves are laid out on the same rows — the same header height,
+    /// the same footer height (the left screen reserves what the right one
+    /// prints), the same slot heights — so a row that starts with a name on
+    /// the left panel ends with its bar at exactly the same height on the
+    /// right one.
+    static func widePair(
+        _ rows: [EInkQuotaRow],
+        _ snapshot: EInkDataSnapshot,
+        left: EInkRect,
+        right: EInkRect,
+        options: EInkSlideOptions,
+        panes: [EInkRect],
+        calendar: Calendar
+    ) -> (left: EInkNode, right: EInkNode) {
+        let gap = 4
+        let pixel = EInkPresets.pixel
+        let bold = EInkPresets.pixelBold
+        let fit = widePairFit(rows, snapshot, left: left, right: right, options: options, panes: panes)
+        let rightOptions = fit.rightOptions
+        let headers = fit.headers
+        let headerAtBottom = fit.headerAtBottom
+        let footer = fit.footer
+        let footerHeight = fit.footerHeight
+        let rightContent = fit.rightContent
+        let styles = fit.styles
+        let logoWidth = fit.logoWidth
+        let percentWidth = fit.percentWidth
+        let nameWidth = fit.nameWidth
+        let names = fit.names
+        let fitted = fit.fitted
         let unit = fitted.unit
+        _ = rightOptions
 
         // The right screen: the bar, the countdown and the verdict.
         let countdownWidth = max(

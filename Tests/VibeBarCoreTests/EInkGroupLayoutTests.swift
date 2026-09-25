@@ -392,6 +392,58 @@ final class EInkGroupLayoutTests: XCTestCase {
         }
     }
 
+    /// Two wide-ledger runs (a 2 × 2 of landscape screens) with names that
+    /// wrap: the first pair draws fewer rows than its share, and the rows it
+    /// cannot draw go to the second pair — in order, none skipped.
+    func testWideLedgerRunsAdvanceByTheRowsTheyDraw() throws {
+        let grid = Arrangement(
+            name: "grid",
+            group: EInkScreenGroup(id: "g", screens: [
+                .init(deviceID: "tl"), .init(deviceID: "tr", x: 296),
+                .init(deviceID: "bl", y: 152), .init(deviceID: "br", x: 296, y: 152),
+            ]),
+            devices: ["tl", "tr", "bl", "br"].map { EInkDeviceConfig(deviceID: $0) }
+        )
+        var snapshot = snapshot(.long)
+        // Names long enough that every one wraps to two lines: four of them
+        // no longer fit a screen's height, so the first pair must hand rows on.
+        let base = snapshot.quota.map { row -> EInkQuotaRow in
+            var copy = row
+            copy.windowTitle = row.windowTitle + " for the whole organisation account"
+            return copy
+        }
+        // Twelve rows fill both pairs' nominal shares of six; distinct
+        // percentages keep every row nameable.
+        snapshot.quota = base + base.prefix(5).enumerated().map { index, row in
+            var copy = row
+            copy.fieldID = row.fieldID + ".second"
+            copy.providerDisplayName = row.providerDisplayName + " Two"
+            copy.remainingPercent = 20 + index
+            return copy
+        }
+        let page = try pages(grid, slide(.wideLedger, snapshot, names: .long), snapshot)[0]
+        // The left screen of a pair prints each row's percentage in 14 px
+        // sans; the fixture's percentages are distinct, so they name the rows.
+        let byPercent = Dictionary(uniqueKeysWithValues: snapshot.quota.map { ("\($0.remainingPercent)%", $0.fieldID) })
+        func drawn(_ id: String) -> [String] {
+            let boxes: [EInkDrawBox] = (page[id] ?? nil) ?? []
+            let ordered = boxes.sorted { $0.frame.y < $1.frame.y }
+            var fields: [String] = []
+            for box in ordered {
+                guard case let .text(words, font, _) = box.content, font == .sans(size: 14, bold: true),
+                      let field = byPercent[words] else { continue }
+                fields.append(field)
+            }
+            return fields
+        }
+        let order = drawn("tl") + drawn("bl")
+        let expected = snapshot.quota.map(\.fieldID)
+        XCTAssertFalse(order.isEmpty)
+        XCTAssertLessThan(drawn("tl").count, 6, "the wrapped names hold fewer rows than the nominal share")
+        XCTAssertEqual(order, Array(expected.prefix(order.count)), "runs continue the selection in order, without gaps")
+        XCTAssertEqual(Set(order).count, order.count, "no bucket is drawn twice")
+    }
+
     /// Taking a combined page apart hands each screen a template its own
     /// picker can name.
     func testSeparatingAGroupTemplateLeavesEachScreenALedger() {
