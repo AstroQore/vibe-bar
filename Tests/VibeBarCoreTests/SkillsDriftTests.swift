@@ -293,4 +293,25 @@ final class SkillsDriftTests: XCTestCase {
         XCTAssertEqual(reloaded?.isLocallyModified, false)
         XCTAssertEqual(reloaded?.apps[.grok]?.method, .copy)
     }
+
+    func testAcceptingRefusesATreeWithoutSkillMD() async throws {
+        let home = try SkillTestHome()
+        let outside = try home.makeSkillDirectory(
+            at: home.url.appendingPathComponent("elsewhere/gamma"),
+            name: "gamma"
+        )
+        let service = SkillsService(homeDirectory: home.path)
+        let installed = try await service.installLocal(from: outside, name: "gamma")
+        try FileManager.default.removeItem(at: home.ssot.appendingPathComponent("gamma/SKILL.md"))
+
+        let modified = await service.installedSkills().first { $0.id == installed.id }
+        XCTAssertEqual(modified?.isLocallyModified, true)
+        do {
+            _ = try await service.acceptLocalChanges(installed.id)
+            XCTFail("a tree without SKILL.md must not become the baseline")
+        } catch {}
+        let still = await service.installedSkills().first { $0.id == installed.id }
+        XCTAssertEqual(still?.contentHash, installed.contentHash)
+        XCTAssertEqual(still?.isLocallyModified, true)
+    }
 }

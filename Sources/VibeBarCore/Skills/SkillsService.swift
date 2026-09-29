@@ -225,6 +225,12 @@ public actor SkillsService {
         guard SkillFileSystem.kind(of: directory) == .directory else {
             throw SkillError.sourceDirectoryMissing(skill.directory)
         }
+        // An edit that removed SKILL.md left a tree no harness can load;
+        // recording it as the baseline would clear the warning over a broken
+        // skill.
+        guard SkillTreeScanner.isSkillDirectory(directory) else {
+            throw SkillError.missingSkillMD(skill.directory)
+        }
         let stamp = try SkillDirectoryHasher.metadataStamp(directory: directory)
         let hash = try SkillDirectoryHasher.hash(directory: directory)
         skill.contentHash = hash
