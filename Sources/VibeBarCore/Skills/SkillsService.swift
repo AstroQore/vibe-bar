@@ -52,6 +52,10 @@ public actor SkillsService {
     /// Full content hashes computed on behalf of the reload path. Tests read it
     /// to prove an unchanged tree is not re-read; nothing else should.
     private(set) var reloadRehashCount = 0
+    /// Every copy of a skill outside the shared library; see
+    /// `SkillsService+Copies.swift`. Owns its own stamp-keyed cache, so the
+    /// two-second reload never rehashes an unchanged tree.
+    let copyScanner: SkillCopyScanner
 
     public init(
         homeDirectory: String = RealHomeDirectory.path,
@@ -63,13 +67,16 @@ public actor SkillsService {
         self.harnessConfig = SkillHarnessConfigManager(homeDirectory: homeDirectory)
         self.backups = SkillBackupManager(homeDirectory: homeDirectory)
         self.fetcher = fetcher
+        self.copyScanner = SkillCopyScanner(homeDirectory: homeDirectory)
     }
 
     deinit {
         if let discoveryStaging { try? FileManager.default.removeItem(at: discoveryStaging) }
     }
 
-    public func installedSkills() async -> [Skill] {
+    /// The registry reconciled against the disk. `installedSkills()` (in
+    /// `SkillsService+Copies.swift`) adds the transient copies on top.
+    func reconciledInstalledSkills() async -> [Skill] {
         let storeSnapshot = await store.snapshot()
         let snapshots = storeSnapshot.skills
         let nativeStates: [SkillAppTarget: [String: SkillHarnessConfigManager.NativeState]] = [

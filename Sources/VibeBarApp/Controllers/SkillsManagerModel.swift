@@ -29,11 +29,18 @@ final class SkillsManagerModel: ObservableObject {
         static func install(_ id: SkillID) -> String { "install:\(id.rawValue)" }
         static func searchRow(_ id: String) -> String { "search-row:\(id)" }
         static func backup(_ name: String) -> String { "backup:\(name)" }
+        static func copy(_ copy: SkillCopy) -> String { "copy:\(copy.id)" }
     }
 
     // MARK: - Installed skills
 
     @Published private(set) var skills: [Skill] = []
+    /// Harness built-ins with no installed counterpart, from the same scan
+    /// that attaches `Skill.otherCopies`.
+    @Published private(set) var builtIns: [SkillCopy] = []
+    /// Mirrors `AppSettings.skillsShowBuiltIn` so the page re-renders on a
+    /// flip; written back only from the toolbar toggle, never per reload.
+    @Published private(set) var showsBuiltIn: Bool
     @Published var searchText = ""
     @Published private(set) var updateStates: [SkillID: SkillUpdateState] = [:]
     @Published private(set) var busy: Set<String> = []
@@ -85,6 +92,7 @@ final class SkillsManagerModel: ObservableObject {
         self.settingsStore = settingsStore
         self.service = service
         self.searchClient = searchClient
+        self.showsBuiltIn = settingsStore.settings.skillsShowBuiltIn
     }
 
     // MARK: - Derived
@@ -101,6 +109,26 @@ final class SkillsManagerModel: ObservableObject {
         }
     }
 
+    /// Built-in rows under the current search; empty while the toggle hides
+    /// them. Matches name, description, and the harness name, so "codex"
+    /// narrows to Codex's bundled skills.
+    var filteredBuiltIns: [SkillCopy] {
+        guard showsBuiltIn else { return [] }
+        let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return builtIns }
+        return builtIns.filter { copy in
+            copy.name.localizedCaseInsensitiveContains(needle)
+                || (copy.description?.localizedCaseInsensitiveContains(needle) ?? false)
+                || (copy.location.app?.displayName.localizedCaseInsensitiveContains(needle) ?? false)
+        }
+    }
+
+    func setShowsBuiltIn(_ shows: Bool) {
+        guard shows != showsBuiltIn else { return }
+        showsBuiltIn = shows
+        settingsStore.settings.skillsShowBuiltIn = shows
+    }
+
     func installedCount(for app: SkillAppTarget) -> Int {
         skills.reduce(into: 0) { total, skill in
             if skill.isEnabled(for: app) { total += 1 }
@@ -111,11 +139,22 @@ final class SkillsManagerModel: ObservableObject {
     /// ones it discovers through a shared or compatibility root. This is the
     /// header-pill number — counting only `.enabled` made Cursor claim three
     /// skills while it could see nearly a hundred.
+    ///
+    /// A harness's own built-ins count for it too — it loads them whether or
+    /// not they are listed — so this reads the whole inventory: standalone
+    /// built-ins plus built-in copies attached to installed skills,
+    /// independent of the show-built-in toggle and the search, like the
+    /// installed half.
     func visibleCount(for app: SkillAppTarget) -> Int {
-        skills.count {
+        let installed = skills.count {
             let state = $0.activationState(for: app)
             return state == .enabled || state == .coupled
         }
+        let standalone = builtIns.count { $0.location == .builtIn(app) }
+        let attached = skills.reduce(into: 0) { total, skill in
+            total += skill.otherCopies.count { $0.location == .builtIn(app) }
+        }
+        return installed + standalone + attached
     }
 
     func nativeDisabledCount(for app: SkillAppTarget) -> Int {
@@ -292,6 +331,26 @@ final class SkillsManagerModel: ObservableObject {
             let updated = try await service.update(id)
             updateStates[id] = nil
             toast = L10n.Workbench.Skills.Toast.updated(skill: updated.name)
+        }
+    }
+
+    // MARK: - Copies
+
+    /// Makes `copy`'s content the shared copy of `skill`. The service backs
+    /// the shared copy up first; the confirmation lives in the row.
+    func replaceSharedCopy(skill: Skill, with copy: SkillCopy) {
+        let id = skill.id
+        perform(BusyKey.skill(id)) { [self] in
+            let replaced = try await service.replaceSharedCopy(id, with: copy)
+            toast = L10n.Workbench.Skills.Toast.replacedShared(skill: replaced.name)
+        }
+    }
+
+    /// Installs a built-in into the shared library with no harness enabled.
+    func copyToShared(_ copy: SkillCopy) {
+        perform(BusyKey.copy(copy)) { [self] in
+            let installed = try await service.copyToShared(copy)
+            toast = L10n.Workbench.Skills.Toast.copiedToShared(skill: installed.name)
         }
     }
 
@@ -600,10 +659,11 @@ final class SkillsManagerModel: ObservableObject {
     }
 
     private func reloadSkills() async {
-        let latest = await service.installedSkills()
-        guard latest != skills else { return }
-        skills = latest
-        let modified = latest.count { $0.isLocallyModified }
+        let latest = await service.inventory()
+        if latest.builtIns != builtIns { builtIns = latest.builtIns }
+        guard latest.installed != skills else { return }
+        skills = latest.installed
+        let modified = latest.installed.count { $0.isLocallyModified }
         if modified != locallyModifiedCount { locallyModifiedCount = modified }
     }
 

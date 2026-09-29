@@ -61,15 +61,57 @@ public enum SkillAppCatalog {
                 .map { skillsDirectory(for: $0, homeDirectory: homeDirectory) }
     }
 
+    /// Home-relative folders where a harness keeps the skills it ships with.
+    ///
+    /// Each row is an on-disk convention the harness itself documents or
+    /// marks, never a guess:
+    /// - Codex installs its bundled skills under `~/.codex/skills/.system`
+    ///   and drops a `.codex-system-skills.marker` beside them.
+    /// - Grok Build's skills guide says bundled skills are cached under
+    ///   `~/.grok/bundled/skills/` and never written into `~/.grok/skills/`.
+    /// - Cursor syncs its own skills into `~/.cursor/skills-cursor` and lists
+    ///   them in `.cursor-managed-skills-manifest.json` there.
+    ///
+    /// These folders belong to the harness's updater. Vibe Bar reads them to
+    /// show every copy of a skill and never writes into them — see
+    /// `isWriteAllowed`, which refuses them even where one sits inside an
+    /// app skills root (Codex's `.system`).
+    public static func builtInRelativePaths(for app: SkillAppTarget) -> [String] {
+        switch app {
+        case .codex: return [".codex/skills/.system"]
+        case .grok: return [".grok/bundled/skills"]
+        case .cursor: return [".cursor/skills-cursor"]
+        case .claude, .gemini, .hermes, .opencode, .antigravity, .muse, .mistralVibe: return []
+        }
+    }
+
+    public static func builtInSkillRoots(
+        for app: SkillAppTarget,
+        homeDirectory: String = RealHomeDirectory.path
+    ) -> [URL] {
+        builtInRelativePaths(for: app).map { url(homeDirectory: homeDirectory, relativePath: $0) }
+    }
+
     /// Lexical containment check on standardized paths. Deliberately does not
     /// resolve symlinks: the caller has already lstat-ed the entry, and
     /// resolving here would let a symlinked app dir vouch for a path outside
     /// the allowed roots.
+    ///
+    /// A harness's built-in folder is refused even when it sits inside an
+    /// allowed root: `~/.codex/skills/.system` is under `~/.codex/skills`,
+    /// and its contents are Codex's to replace on update, not ours.
     public static func isWriteAllowed(
         _ url: URL,
         homeDirectory: String = RealHomeDirectory.path
     ) -> Bool {
         let candidate = url.standardizedFileURL.path
+        let insideBuiltIn = SkillAppTarget.allCases.contains { app in
+            builtInSkillRoots(for: app, homeDirectory: homeDirectory).contains { root in
+                let rootPath = root.standardizedFileURL.path
+                return candidate == rootPath || candidate.hasPrefix(rootPath + "/")
+            }
+        }
+        guard !insideBuiltIn else { return false }
         return allowedWriteRoots(homeDirectory: homeDirectory).contains { root in
             let rootPath = root.standardizedFileURL.path
             return candidate == rootPath || candidate.hasPrefix(rootPath + "/")

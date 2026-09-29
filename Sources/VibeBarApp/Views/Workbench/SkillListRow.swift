@@ -287,10 +287,15 @@ struct SkillListRow: View {
     let onUpdate: () -> Void
     let onAcceptLocalChanges: () -> Void
     let onUninstall: () -> Void
+    /// Makes one of `skill.otherCopies` the shared copy. Confirmed here, not
+    /// in the copies popover, so the dialog is not torn down with it.
+    var onReplaceShared: (SkillCopy) -> Void = { _ in }
 
     @State private var confirmingUninstall = false
     @State private var isHovering = false
     @State private var showingWiring = false
+    @State private var showingCopies = false
+    @State private var pendingReplacement: SkillCopy?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -357,6 +362,9 @@ struct SkillListRow: View {
                 }
                 if updateState?.updateAvailable == true {
                     updateBadge
+                }
+                if !skill.otherCopies.isEmpty {
+                    copiesBadge
                 }
             }
             if let description = skill.description, !description.isEmpty {
@@ -457,6 +465,52 @@ struct SkillListRow: View {
             .padding(.vertical, 1)
             .background(Capsule().fill(Color.accentColor.opacity(0.14)))
             .overlay(Capsule().stroke(Color.accentColor.opacity(0.45), lineWidth: 0.7))
+    }
+
+    private var copiesBadge: some View {
+        Button {
+            showingCopies = true
+        } label: {
+            Text(L10n.Workbench.Skills.Badge.copies(count: skill.otherCopies.count))
+                .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
+                .tracking(0.4)
+                .foregroundStyle(Color.accentColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                .overlay(Capsule().stroke(Color.accentColor.opacity(0.45), lineWidth: 0.7))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.vibeBar)
+        .help(L10n.Workbench.Skills.Badge.copiesHelp)
+        .popover(isPresented: $showingCopies, arrowEdge: .bottom) {
+            SkillCopiesPopover(skill: skill, density: density) { copy in
+                showingCopies = false
+                // Let the popover finish closing first: a dialog raised in
+                // the same transaction can be dismissed along with it.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(200))
+                    pendingReplacement = copy
+                }
+            }
+            .vibeBarNoInitialFocus()
+        }
+        .confirmationDialog(
+            L10n.Workbench.Skills.Copies.replaceConfirmTitle(skill: skill.name),
+            isPresented: Binding(
+                get: { pendingReplacement != nil },
+                set: { if !$0 { pendingReplacement = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingReplacement
+        ) { copy in
+            Button(L10n.Workbench.Skills.Copies.replaceShared, role: .destructive) {
+                onReplaceShared(copy)
+            }
+            Button(L10n.Common.cancel, role: .cancel) {}
+        } message: { _ in
+            Text(L10n.Workbench.Skills.Copies.replaceConfirmMessage)
+        }
     }
 
     private var overflowMenu: some View {

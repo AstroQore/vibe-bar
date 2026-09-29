@@ -270,6 +270,14 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         guard let localContentHash, let contentHash else { return false }
         return localContentHash != contentHash
     }
+    /// Every other copy of this skill on the Mac — real directories in a
+    /// harness folder and harness built-ins with the same name — attached by
+    /// `SkillsService.installedSkills()`. Transient like the native state:
+    /// it describes the disk right now and is never written to `skills.json`.
+    public var otherCopies: [SkillCopy] = []
+    /// The shared copy's live metadata, attached alongside `otherCopies` and
+    /// only when there is something to compare it with.
+    public var sharedCopy: SkillCopy?
 
     public init(
         id: SkillID,
@@ -395,6 +403,7 @@ public enum SkillError: Error, Equatable, Sendable {
     case nativeSkillsGloballyDisabled(SkillAppTarget)
     case nativeSkillDisabledByPattern(SkillAppTarget)
     case projectionUnsupported(SkillAppTarget)
+    case copyOutsideScannedRoots(String)
 }
 
 extension SkillError: LocalizedError {
@@ -434,6 +443,8 @@ extension SkillError: LocalizedError {
             return "A pattern in \(app.displayName)'s disabled skills list also matches this skill. Edit that pattern in its configuration to enable it."
         case let .projectionUnsupported(app):
             return "\(app.displayName) reads skills from ~/.agents/skills itself; Vibe Bar never writes into its own skills folder."
+        case let .copyOutsideScannedRoots(path):
+            return "\(path) is not a skill copy Vibe Bar recognizes."
         }
     }
 }

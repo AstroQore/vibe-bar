@@ -43,16 +43,32 @@ public enum SkillDirectoryHasher {
     /// never reads file payloads; callers can reuse a previously verified
     /// content hash while this stamp is unchanged.
     public static func metadataStamp(directory: URL) throws -> String {
+        try treeMetadata(directory: directory).stamp
+    }
+
+    /// The metadata stamp plus the newest modification time seen during the
+    /// same walk. The copies view shows "changed <date>" per copy, and a
+    /// second walk just for that date would double the polling cost.
+    public struct TreeMetadata: Hashable, Sendable {
+        public let stamp: String
+        /// `nil` for a tree with no hashed entries.
+        public let newestModification: Date?
+    }
+
+    public static func treeMetadata(directory: URL) throws -> TreeMetadata {
         var entries: [(path: String, url: URL, isSymlink: Bool)] = []
         try collect(directory: directory, relativePath: "", into: &entries)
         entries.sort { $0.path.utf8.lexicographicallyPrecedes($1.path.utf8) }
 
         var hasher = SHA256()
         let separator = Data([0])
+        var newest: Date?
         for entry in entries {
             let attributes = try FileManager.default.attributesOfItem(atPath: entry.url.path)
             let size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
-            let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+            let modifiedDate = attributes[.modificationDate] as? Date
+            if let modifiedDate, newest.map({ modifiedDate > $0 }) ?? true { newest = modifiedDate }
+            let modified = modifiedDate?.timeIntervalSince1970 ?? 0
             let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
             let target = entry.isSymlink
                 ? (try? FileManager.default.destinationOfSymbolicLink(atPath: entry.url.path)) ?? ""
@@ -61,7 +77,10 @@ public enum SkillDirectoryHasher {
             hasher.update(data: Data(record.utf8))
             hasher.update(data: separator)
         }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return TreeMetadata(
+            stamp: hasher.finalize().map { String(format: "%02x", $0) }.joined(),
+            newestModification: newest
+        )
     }
 
     private static func collect(
