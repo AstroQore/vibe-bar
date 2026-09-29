@@ -357,14 +357,19 @@ public actor SkillsService {
         for scanned in report.adopted {
             var skill = scanned
             skill.apps = skill.apps.filter { allowed.contains($0.key) }
-            if let existing = await store.skill(with: skill.id) {
-                var merged = existing
-                merged.name = skill.name
-                merged.description = skill.description
-                merged.directory = skill.directory
-                merged.repoBranch = skill.repoBranch
-                merged.contentHash = skill.contentHash
-                merged.updatedAt = skill.updatedAt
+            // Provenance can move under a directory — another installer
+            // rewrote `.skill-lock.json` — and the scan then reports the same
+            // directory under a new id. That is still this row: carry its
+            // state forward under the new id instead of recording a twin.
+            let byID = await store.skill(with: skill.id)
+            let byDirectory = byID == nil ? await store.skill(directory: skill.directory) : nil
+            if let existing = byID ?? byDirectory {
+                // The scanned row wins on identity and metadata; the stored
+                // row contributes the materializations the scan did not
+                // cover and the original install time.
+                var merged = skill
+                merged.installedAt = existing.installedAt
+                merged.apps = existing.apps
                 for (app, materialization) in skill.apps { merged.apps[app] = materialization }
                 skill = merged
             }

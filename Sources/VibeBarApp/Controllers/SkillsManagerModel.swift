@@ -262,7 +262,7 @@ final class SkillsManagerModel: ObservableObject {
     func checkForUpdates() {
         perform(BusyKey.updates) { [self] in
             let states = await service.checkForUpdates()
-            updateStates = Dictionary(uniqueKeysWithValues: states.map { ($0.id, $0) })
+            updateStates = Dictionary(states.map { ($0.id, $0) }, uniquingKeysWith: { current, _ in current })
             let available = states.count { $0.updateAvailable }
             toast = available == 0
                 ? L10n.Workbench.Skills.Toast.allUpToDate

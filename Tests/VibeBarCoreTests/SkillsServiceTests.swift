@@ -315,6 +315,36 @@ final class SkillsServiceTests: XCTestCase {
         XCTAssertEqual(merged.first?.projectedApps, [.claude, .cursor])
     }
 
+    /// The lark CLI rewrote `.skill-lock.json` from a GitHub source to a
+    /// `well-known` one; the scan then reported every lark skill under a
+    /// `local:` id next to the `larksuite/cli:` row already on file, and the
+    /// page crashed on the twin. Provenance moves; the row does not double.
+    func testImportAdoptedMigratesARowWhoseProvenanceChanged() async throws {
+        let home = try SkillTestHome()
+        try home.makeSSOTSkill("alpha")
+        try home.makeAbsoluteSymlink("alpha", in: .claude, toSSOT: "alpha")
+        let service = SkillsService(homeDirectory: home.path)
+        var repoRow = Skill(
+            id: .repo(owner: "acme", repo: "skills", directory: "alpha"),
+            name: "alpha",
+            directory: "alpha",
+            installedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        repoRow.apps[.hermes] = SkillMaterialization(method: .symlink, adopted: true)
+        try await SkillsStore(homeDirectory: home.path).upsert(repoRow)
+
+        let report = service.scanForImport()
+        XCTAssertEqual(report.adopted.map(\.id), [.local(directory: "alpha")])
+        _ = try await service.importAdopted(report, apps: [.claude])
+
+        let rows = await SkillsStore(homeDirectory: home.path).all()
+        XCTAssertEqual(rows.map(\.id), [.local(directory: "alpha")])
+        XCTAssertEqual(Set((rows.first?.apps ?? [:]).keys), [.claude, .hermes])
+        // The page load that used to trap now lists one skill.
+        let listed = await service.installedSkills()
+        XCTAssertEqual(listed.map(\.directory), ["alpha"])
+    }
+
     func testAdoptUnmanagedCopiesIntoTheSSOTThenMaterializes() async throws {
         let home = try SkillTestHome()
         let foreign = try home.makeSkillDirectory(

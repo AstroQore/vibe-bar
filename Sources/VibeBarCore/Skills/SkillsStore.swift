@@ -56,7 +56,7 @@ public actor SkillsStore {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             self.schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
             let entries = try c.decodeIfPresent([LossySkill].self, forKey: .skills) ?? []
-            self.skills = entries.compactMap(\.skill)
+            self.skills = SkillsStore.deduplicatedByDirectory(entries.compactMap(\.skill))
             // Absent means "never configured" and seeds the defaults; an empty
             // array means the user cleared the list and is left empty.
             self.discoverRepos = try c.decodeIfPresent([String].self, forKey: .discoverRepos)
@@ -145,12 +145,28 @@ public actor SkillsStore {
         all().first { $0.directory == directory }
     }
 
+    /// Writes `skill`, replacing the row with the same id — or, when the
+    /// skill's provenance changed (a lock file rewritten by another installer
+    /// turned `owner/repo:x` into `local:x`), the row holding the same
+    /// directory. One directory is one row: `installedSkills()` keys native
+    /// state by directory and every app-side link is named after it, so a
+    /// second row for the same directory is never a second skill. App
+    /// materializations the displaced row knew and the new one does not are
+    /// carried over rather than dropped.
     public func upsert(_ skill: Skill) throws {
         var storage = loaded()
+        var next = skill
+        let displaced = storage.skills.filter { $0.id != skill.id && $0.directory == skill.directory }
+        for old in displaced {
+            for (app, materialization) in old.apps where next.apps[app] == nil {
+                next.apps[app] = materialization
+            }
+        }
+        storage.skills.removeAll { $0.id != skill.id && $0.directory == skill.directory }
         if let index = storage.skills.firstIndex(where: { $0.id == skill.id }) {
-            storage.skills[index] = skill
+            storage.skills[index] = next
         } else {
-            storage.skills.append(skill)
+            storage.skills.append(next)
         }
         try save(storage)
     }
@@ -206,10 +222,41 @@ public actor SkillsStore {
     private func save(_ storage: Storage) throws {
         var next = storage
         next.schemaVersion = Self.currentSchemaVersion
+        next.skills = Self.deduplicatedByDirectory(next.skills)
         next.skills.sort { $0.directory.utf8.lexicographicallyPrecedes($1.directory.utf8) }
         try VibeBarLocalStore.writeJSON(next, to: fileURL, base: baseDirectory)
         cache = next
         mutationRevision &+= 1
+    }
+
+    /// Collapses rows that share a directory, keeping the most recently
+    /// touched one and folding the others' app materializations into it.
+    ///
+    /// Older builds appended a fresh `local:` row when an import scan
+    /// reported a directory under a different id than the one on file, and
+    /// the resulting pair crashed every page load. The file is healed here so
+    /// that reading it is enough; the next save writes the collapsed form.
+    static func deduplicatedByDirectory(_ skills: [Skill]) -> [Skill] {
+        var byDirectory: [String: Skill] = [:]
+        var order: [String] = []
+        for skill in skills {
+            guard let existing = byDirectory[skill.directory] else {
+                byDirectory[skill.directory] = skill
+                order.append(skill.directory)
+                continue
+            }
+            let (winner, loser) = touched(skill) > touched(existing) ? (skill, existing) : (existing, skill)
+            var merged = winner
+            for (app, materialization) in loser.apps where merged.apps[app] == nil {
+                merged.apps[app] = materialization
+            }
+            byDirectory[skill.directory] = merged
+        }
+        return order.compactMap { byDirectory[$0] }
+    }
+
+    private static func touched(_ skill: Skill) -> Date {
+        max(skill.updatedAt ?? .distantPast, skill.installedAt)
     }
 
     private static func load(from url: URL) -> Storage {
