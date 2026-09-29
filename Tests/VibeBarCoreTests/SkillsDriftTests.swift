@@ -330,11 +330,13 @@ final class SkillsDriftTests: XCTestCase {
         let accepted = try await service.acceptLocalChanges(installed.id)
         XCTAssertEqual(accepted.description, "second")
 
-        try home.write("---\nname: renamed\ndescription: third\n---\n# delta\n", to: skillMD)
-        do {
-            _ = try await service.acceptLocalChanges(installed.id)
-            XCTFail("a renamed frontmatter must not be accepted over name-keyed native state")
-        } catch {}
+        for renamed in ["renamed", "Delta"] {
+            try home.write("---\nname: \(renamed)\ndescription: third\n---\n# delta\n", to: skillMD)
+            do {
+                _ = try await service.acceptLocalChanges(installed.id)
+                XCTFail("a renamed frontmatter must not be accepted over name-keyed native state")
+            } catch {}
+        }
         let still = await service.installedSkills().first { $0.id == installed.id }
         XCTAssertEqual(still?.name, "delta")
         XCTAssertEqual(still?.isLocallyModified, true)

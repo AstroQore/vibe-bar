@@ -231,15 +231,16 @@ public actor SkillsService {
         guard SkillTreeScanner.isSkillDirectory(directory) else {
             throw SkillError.missingSkillMD(skill.directory)
         }
-        // Native activation is keyed by name in several harnesses, so a
-        // rename in the frontmatter is refused rather than silently carried
-        // over an entry written for the old name; the description is plain
-        // display text and simply follows the file.
+        // Native activation is keyed by name in several harnesses (Codex
+        // compares it exactly), so any rename in the frontmatter — even a
+        // change of case — is refused rather than silently carried over an
+        // entry written for the old name; the description is plain display
+        // text and simply follows the file.
         let frontmatter = SkillFrontmatterParser.parse(
             contentsOf: directory.appendingPathComponent("SKILL.md")
         )
         let name = frontmatter.name ?? skill.directory
-        guard name.caseInsensitiveCompare(skill.name) == .orderedSame else {
+        guard name == skill.name else {
             throw SkillError.directoryConflict(name)
         }
         let stamp = try SkillDirectoryHasher.metadataStamp(directory: directory)
