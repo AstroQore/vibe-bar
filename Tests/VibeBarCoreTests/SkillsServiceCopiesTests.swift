@@ -243,17 +243,25 @@ final class SkillsServiceCopiesTests: XCTestCase {
         let after = await service.skill(with: skill.id)
         XCTAssertEqual(after?.name, "alpha")
 
-        // A difference in case only is the same name and is accepted.
+        // Codex matches its name blocks exactly, so a case-only respelling
+        // is a different name too.
         try home.makeSkillDirectory(
             at: codexSystem(home).appendingPathComponent("alpha"),
             name: "ALPHA",
             extraFiles: ["ref.md": "bundled"]
         )
         let reloaded = await service.installedSkills()
-        let sameName = try XCTUnwrap(reloaded.first?.otherCopies.first)
-        let replaced = try await service.replaceSharedCopy(skill.id, with: sameName)
-        XCTAssertEqual(replaced.name, "ALPHA")
-        XCTAssertEqual(home.contents(of: home.ssot.appendingPathComponent("alpha/ref.md")), "bundled")
+        let respelled = try XCTUnwrap(reloaded.first?.otherCopies.first)
+        do {
+            try await service.replaceSharedCopy(skill.id, with: respelled)
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertEqual(error as? SkillError, .directoryConflict("ALPHA"))
+        }
+        XCTAssertEqual(home.contents(of: home.ssot.appendingPathComponent("alpha/ref.md")), "shared")
+        XCTAssertEqual(service.listBackups().count, 0)
+        let unchanged = await service.skill(with: skill.id)
+        XCTAssertEqual(unchanged?.name, "alpha")
     }
 
     func testCopyToSharedInstallsABuiltInWithNoAppsEnabled() async throws {

@@ -75,13 +75,15 @@ extension SkillsService {
         // per-skill switch by name. Adopting a copy that calls itself
         // something else would silently re-point those entries — re-enable
         // a skill the user turned off, or apply an unrelated one — so only a
-        // copy of the same name may replace the shared one. The name is read
-        // from disk, not taken from `copy`. `directoryConflict` is the
-        // closest existing error: another skill occupies this name's slot.
+        // copy of the same name may replace the shared one — exactly the
+        // same: Codex matches its `[[skills.config]]` name blocks by exact
+        // string, so even a case-only respelling would orphan one. The name
+        // is read from disk, not taken from `copy`. `directoryConflict` is
+        // the closest existing error: another skill occupies this name's slot.
         let copyName = SkillFrontmatterParser.parse(
             contentsOf: source.appendingPathComponent("SKILL.md")
         ).name ?? copy.directoryName
-        guard copyName.lowercased() == existing.name.lowercased() else {
+        guard copyName == existing.name else {
             throw SkillError.directoryConflict(copyName)
         }
 
@@ -97,8 +99,8 @@ extension SkillsService {
             contentsOf: destination.appendingPathComponent("SKILL.md")
         )
         var skill = existing
-        // Same name up to case (checked above); keep the new spelling.
-        skill.name = frontmatter.name ?? existing.name
+        // Identical by the check above; the registry name never changes here.
+        skill.name = existing.name
         skill.description = frontmatter.description
         skill.contentHash = try SkillDirectoryHasher.hash(directory: destination)
         skill.updatedAt = Date()

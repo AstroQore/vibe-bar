@@ -136,14 +136,21 @@ final class SkillsManagerModel: ObservableObject {
     /// header-pill number — counting only `.enabled` made Cursor claim three
     /// skills while it could see nearly a hundred.
     ///
-    /// Standalone built-in rows count for their own harness too — it loads
-    /// them — following the show-built-in toggle and the search, like the
-    /// rows themselves.
+    /// A harness's own built-ins count for it too — it loads them whether or
+    /// not they are listed — so this reads the whole inventory: standalone
+    /// built-ins plus built-in copies attached to installed skills,
+    /// independent of the show-built-in toggle and the search, like the
+    /// installed half.
     func visibleCount(for app: SkillAppTarget) -> Int {
-        skills.count {
+        let installed = skills.count {
             let state = $0.activationState(for: app)
             return state == .enabled || state == .coupled
-        } + filteredBuiltIns.count { $0.location.app == app }
+        }
+        let standalone = builtIns.count { $0.location == .builtIn(app) }
+        let attached = skills.reduce(into: 0) { total, skill in
+            total += skill.otherCopies.count { $0.location == .builtIn(app) }
+        }
+        return installed + standalone + attached
     }
 
     func nativeDisabledCount(for app: SkillAppTarget) -> Int {

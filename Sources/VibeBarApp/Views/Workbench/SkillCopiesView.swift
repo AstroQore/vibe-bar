@@ -109,8 +109,7 @@ struct SkillCopiesPopover: View {
                 }
                 // A differently named copy would re-point the name-keyed
                 // native switches; the service refuses it, so never offer it.
-                if hasShared, !copy.sameAsShared,
-                   copy.name.lowercased() == skill.name.lowercased() {
+                if hasShared, !copy.sameAsShared, copy.name == skill.name {
                     Button(L10n.Workbench.Skills.Copies.replaceShared) {
                         onReplace(copy)
                     }
