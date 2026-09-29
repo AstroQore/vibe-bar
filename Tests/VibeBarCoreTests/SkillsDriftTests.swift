@@ -314,4 +314,29 @@ final class SkillsDriftTests: XCTestCase {
         XCTAssertEqual(still?.contentHash, installed.contentHash)
         XCTAssertEqual(still?.isLocallyModified, true)
     }
+
+    func testAcceptingFollowsTheDescriptionButRefusesARename() async throws {
+        let home = try SkillTestHome()
+        let outside = try home.makeSkillDirectory(
+            at: home.url.appendingPathComponent("elsewhere/delta"),
+            name: "delta",
+            description: "first"
+        )
+        let service = SkillsService(homeDirectory: home.path)
+        let installed = try await service.installLocal(from: outside, name: "delta")
+        let skillMD = home.ssot.appendingPathComponent("delta/SKILL.md")
+
+        try home.write("---\nname: delta\ndescription: second\n---\n# delta\n", to: skillMD)
+        let accepted = try await service.acceptLocalChanges(installed.id)
+        XCTAssertEqual(accepted.description, "second")
+
+        try home.write("---\nname: renamed\ndescription: third\n---\n# delta\n", to: skillMD)
+        do {
+            _ = try await service.acceptLocalChanges(installed.id)
+            XCTFail("a renamed frontmatter must not be accepted over name-keyed native state")
+        } catch {}
+        let still = await service.installedSkills().first { $0.id == installed.id }
+        XCTAssertEqual(still?.name, "delta")
+        XCTAssertEqual(still?.isLocallyModified, true)
+    }
 }
