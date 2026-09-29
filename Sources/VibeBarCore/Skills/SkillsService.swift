@@ -37,11 +37,21 @@ public actor SkillsService {
     /// call that produced it; it is replaced on the next discovery pass and can
     /// be dropped explicitly once the user closes the browser.
     var discoveryStaging: URL?
-    private struct CopyVerification: Sendable {
+    /// A content hash together with the metadata stamp it was computed
+    /// under. While the stamp is unchanged the hash is reused, which is what
+    /// keeps the 2-second reload at stat level.
+    private struct DirectoryVerification: Sendable {
         let metadataStamp: String
         let contentHash: String
     }
-    private var copyVerificationCache: [String: CopyVerification] = [:]
+    /// Keyed by the app-side copy's standardized path.
+    private var copyVerificationCache: [String: DirectoryVerification] = [:]
+    /// Keyed by the SSOT directory's standardized path. Separate from the copy
+    /// cache so each can be evicted against its own set of live paths.
+    private var ssotVerificationCache: [String: DirectoryVerification] = [:]
+    /// Full content hashes computed on behalf of the reload path. Tests read it
+    /// to prove an unchanged tree is not re-read; nothing else should.
+    private(set) var reloadRehashCount = 0
 
     public init(
         homeDirectory: String = RealHomeDirectory.path,
@@ -72,18 +82,39 @@ public actor SkillsService {
         ]
         var result: [Skill] = []
         var liveCopyKeys: Set<String> = []
+        var liveSSOTKeys: Set<String> = []
         var reconciledApps: [SkillID: [SkillAppTarget: SkillMaterialization]] = [:]
+        var hashBackfills: [SkillID: String] = [:]
         result.reserveCapacity(snapshots.count)
         for snapshot in snapshots {
             var reconciled = snapshot
+            reconciled.localContentHash = nil
             let recordedApps = snapshot.apps
+            // Edits made to the shared copy outside Vibe Bar — by hand, by
+            // another installer, by an agent — only show up by comparing the
+            // tree against the hash recorded when Vibe Bar last wrote it.
+            if SkillPathValidator.isValid(snapshot.directory) {
+                let ssot = ssotDirectory(for: snapshot.directory)
+                let key = ssot.standardizedFileURL.path
+                liveSSOTKeys.insert(key)
+                let local = verifiedHash(at: ssot, key: key, cache: &ssotVerificationCache)
+                reconciled.localContentHash = local
+                // A row from an older build has no recorded hash, so there is
+                // no baseline to call an edit against. Today's tree becomes
+                // the baseline; reporting it as modified would flag every
+                // such row at once for changes nobody can name.
+                if snapshot.contentHash == nil, let local {
+                    reconciled.contentHash = local
+                    hashBackfills[snapshot.id] = local
+                }
+            }
             for (app, recorded) in recordedApps {
                 let currentCopyHash: String?
                 if recorded.method == .copy {
                     let destination = engine.destination(for: snapshot.directory, app: app)
                     let key = destination.standardizedFileURL.path
                     liveCopyKeys.insert(key)
-                    currentCopyHash = verifiedCopyHash(at: destination, key: key)
+                    currentCopyHash = verifiedHash(at: destination, key: key, cache: &copyVerificationCache)
                 } else {
                     currentCopyHash = nil
                 }
@@ -106,9 +137,10 @@ public actor SkillsService {
                 }
             }
             guard reconciled.apps != recordedApps else {
-                // Native state is intentionally transient and does not make
-                // `apps` differ. Return the enriched value even when no
-                // registry reconciliation needs to be persisted.
+                // Native state and the live content hash are intentionally
+                // transient and do not make `apps` differ. Return the
+                // enriched value even when no registry reconciliation needs
+                // to be persisted.
                 result.append(reconciled)
                 continue
             }
@@ -116,32 +148,96 @@ public actor SkillsService {
             result.append(reconciled)
         }
         copyVerificationCache = copyVerificationCache.filter { liveCopyKeys.contains($0.key) }
-        guard !reconciledApps.isEmpty else { return result }
+        ssotVerificationCache = ssotVerificationCache.filter { liveSSOTKeys.contains($0.key) }
+        guard !reconciledApps.isEmpty || !hashBackfills.isEmpty else { return result }
         do {
-            return try await store.applyReconciliation(
+            let persisted = try await store.applyReconciliation(
                 expectedRevision: storeSnapshot.revision,
-                appsBySkill: reconciledApps
+                appsBySkill: reconciledApps,
+                contentHashBackfills: hashBackfills
             )
+            return Self.carryingTransientState(from: result, onto: persisted)
         } catch {
             SafeLog.warn("Persisting reconciled skill state failed.")
             return result
         }
     }
 
-    private func verifiedCopyHash(at directory: URL, key: String) -> String? {
+    /// The store hands back rows as decoded, without anything derived on this
+    /// pass. Dropping that for the one poll that also persisted something
+    /// would blink every badge off for two seconds. Matched by directory —
+    /// the registry's own key — and `isLocallyModified` is recomputed against
+    /// the persisted `contentHash`, so a stale proposal the store refused
+    /// still reads correctly.
+    private static func carryingTransientState(from live: [Skill], onto persisted: [Skill]) -> [Skill] {
+        let byDirectory = Dictionary(live.map { ($0.directory, $0) }, uniquingKeysWith: { first, _ in first })
+        return persisted.map { row in
+            guard let derived = byDirectory[row.directory] else { return row }
+            var enriched = row
+            enriched.nativeDisabledApps = derived.nativeDisabledApps
+            enriched.nativeStateUnknownApps = derived.nativeStateUnknownApps
+            enriched.localContentHash = derived.localContentHash
+            return enriched
+        }
+    }
+
+    /// Content hash of `directory`, reusing the cached one while its metadata
+    /// stamp is unchanged. The stamp is taken *before* the hash, so an edit
+    /// racing the hash leaves a stamp that no longer matches and is re-read
+    /// on the next pass rather than cached as current.
+    private func verifiedHash(
+        at directory: URL,
+        key: String,
+        cache: inout [String: DirectoryVerification]
+    ) -> String? {
         guard let stamp = try? SkillDirectoryHasher.metadataStamp(directory: directory) else {
-            copyVerificationCache[key] = nil
+            cache[key] = nil
             return nil
         }
-        if let cached = copyVerificationCache[key], cached.metadataStamp == stamp {
+        if let cached = cache[key], cached.metadataStamp == stamp {
             return cached.contentHash
         }
+        reloadRehashCount += 1
         guard let hash = try? SkillDirectoryHasher.hash(directory: directory) else {
-            copyVerificationCache[key] = nil
+            cache[key] = nil
             return nil
         }
-        copyVerificationCache[key] = CopyVerification(metadataStamp: stamp, contentHash: hash)
+        cache[key] = DirectoryVerification(metadataStamp: stamp, contentHash: hash)
         return hash
+    }
+
+    /// Records the shared copy's current contents as the known state, clearing
+    /// the modified badge. The user is vouching for edits made outside Vibe
+    /// Bar, so this is a full re-read, never the stamp-cached hash: a
+    /// same-size edit that preserved mtime and inode would otherwise be
+    /// accepted as the content it replaced.
+    @discardableResult
+    public func acceptLocalChanges(_ id: SkillID) async throws -> Skill {
+        guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
+        try SkillPathValidator.validate(directoryName: skill.directory)
+        let directory = ssotDirectory(for: skill.directory)
+        var isDirectory: ObjCBool = false
+        guard
+            FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory),
+            isDirectory.boolValue
+        else {
+            throw SkillError.sourceDirectoryMissing(skill.directory)
+        }
+        let stamp = try SkillDirectoryHasher.metadataStamp(directory: directory)
+        let hash = try SkillDirectoryHasher.hash(directory: directory)
+        skill.contentHash = hash
+        skill.updatedAt = Date()
+        try await store.upsert(skill)
+        // Seeded only after the write landed, so a failed upsert cannot leave
+        // the cache vouching for a baseline the registry never recorded.
+        ssotVerificationCache[directory.standardizedFileURL.path] = DirectoryVerification(
+            metadataStamp: stamp,
+            contentHash: hash
+        )
+        // Transient, so set on the returned value only: the store keeps rows
+        // as they would decode from disk.
+        skill.localContentHash = hash
+        return skill
     }
 
     /// Applies the native half of a pending install selection.

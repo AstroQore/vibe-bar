@@ -37,6 +37,10 @@ final class SkillsManagerModel: ObservableObject {
     @Published var searchText = ""
     @Published private(set) var updateStates: [SkillID: SkillUpdateState] = [:]
     @Published private(set) var busy: Set<String> = []
+    /// Rows whose shared copy was edited outside Vibe Bar. Kept alongside
+    /// `skills` and recomputed only when that list changes, so the header
+    /// caption never walks the rows on a render.
+    @Published private(set) var locallyModifiedCount = 0
     @Published var toast: String?
 
     // MARK: - Sheets
@@ -267,6 +271,18 @@ final class SkillsManagerModel: ObservableObject {
             toast = available == 0
                 ? L10n.Workbench.Skills.Toast.allUpToDate
                 : L10n.Workbench.Skills.Toast.updatesAvailable(count: available)
+        }
+    }
+
+    /// Makes the shared copy's current contents the recorded baseline. The
+    /// cached update state was measured against the old baseline, so it is
+    /// dropped rather than left to claim a comparison nobody ran.
+    func acceptLocalChanges(_ skill: Skill) {
+        let id = skill.id
+        perform(BusyKey.skill(id)) { [self] in
+            let accepted = try await service.acceptLocalChanges(id)
+            updateStates[id] = nil
+            toast = L10n.Workbench.Skills.Toast.acceptedLocalChanges(skill: accepted.name)
         }
     }
 
@@ -585,7 +601,10 @@ final class SkillsManagerModel: ObservableObject {
 
     private func reloadSkills() async {
         let latest = await service.installedSkills()
-        if latest != skills { skills = latest }
+        guard latest != skills else { return }
+        skills = latest
+        let modified = latest.count { $0.isLocallyModified }
+        if modified != locallyModifiedCount { locallyModifiedCount = modified }
     }
 
     /// `scanForImport` and `listBackups` are `nonisolated` on the service —
