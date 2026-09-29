@@ -296,8 +296,15 @@ struct SkillsManagerPage: View {
     private var countSummary: String {
         let total = model.skills.count
         let shown = model.filteredSkills.count
-        if shown == total { return L10n.Workbench.Skills.countTotal(count: total) }
-        return L10n.Workbench.Skills.countFiltered(shown: shown, total: total)
+        let counts = shown == total
+            ? L10n.Workbench.Skills.countTotal(count: total)
+            : L10n.Workbench.Skills.countFiltered(shown: shown, total: total)
+        // Each part is a complete count in its own right, listed with the
+        // same " · " the app-count tooltips use — not a clause spliced into
+        // the other's sentence.
+        let modified = model.locallyModifiedCount
+        guard modified > 0 else { return counts }
+        return counts + " · " + L10n.Workbench.Skills.modifiedCount(count: modified)
     }
 
     // MARK: - List
@@ -326,6 +333,7 @@ struct SkillsManagerPage: View {
                                 model.setActivation(skill: skill, app: $0, action: $1)
                             },
                             onUpdate: { model.updateSkill(skill) },
+                            onAcceptLocalChanges: { model.acceptLocalChanges(skill) },
                             onUninstall: { model.uninstall(skill) }
                         )
                     }

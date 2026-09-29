@@ -257,6 +257,19 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
     /// `skills.json`.
     public var nativeDisabledApps: Set<SkillAppTarget>
     public var nativeStateUnknownApps: Set<SkillAppTarget>
+    /// Hash of the shared copy as it is on disk right now, derived on reload
+    /// and omitted from `skills.json`. `nil` when the directory could not be
+    /// read — which says nothing about whether it was edited.
+    public var localContentHash: String?
+
+    /// The shared copy's files no longer match what Vibe Bar recorded at
+    /// install, adoption, update, or the last accept. Both hashes have to be
+    /// known: a row without a recorded hash is back-filled rather than
+    /// reported, and an unreadable directory is not evidence of an edit.
+    public var isLocallyModified: Bool {
+        guard let localContentHash, let contentHash else { return false }
+        return localContentHash != contentHash
+    }
 
     public init(
         id: SkillID,
@@ -269,7 +282,8 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         updatedAt: Date? = nil,
         apps: [SkillAppTarget: SkillMaterialization] = [:],
         nativeDisabledApps: Set<SkillAppTarget> = [],
-        nativeStateUnknownApps: Set<SkillAppTarget> = []
+        nativeStateUnknownApps: Set<SkillAppTarget> = [],
+        localContentHash: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -282,6 +296,7 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         self.apps = apps
         self.nativeDisabledApps = nativeDisabledApps
         self.nativeStateUnknownApps = nativeStateUnknownApps
+        self.localContentHash = localContentHash
     }
 
     public var enabledApps: [SkillAppTarget] {
@@ -343,6 +358,7 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         self.apps = apps
         self.nativeDisabledApps = []
         self.nativeStateUnknownApps = []
+        self.localContentHash = nil
     }
 
     public func encode(to encoder: Encoder) throws {
