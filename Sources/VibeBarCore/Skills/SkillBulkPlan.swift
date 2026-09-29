@@ -21,6 +21,8 @@ public enum SkillBulkDirection: String, Hashable, Sendable {
 /// one lose the projection, and a harness that discovers the shared root with
 /// no switch at all (Cursor) cannot be turned off per skill — those rows are
 /// reported as unreachable instead of being "changed" into the same state.
+/// So is a row AntiGravity reads through the Gemini CLI folder as well as its
+/// own: unlinking the direct copy leaves it discovered.
 public struct SkillBulkPlan: Hashable, Sendable {
     public struct Step: Hashable, Sendable {
         public let id: SkillID
@@ -52,18 +54,20 @@ public struct SkillBulkPlan: Hashable, Sendable {
     public let alreadyInState: Int
     public let skippedUnknown: Int
     public let unreachable: Int
+    /// Rows the user asked to change: every row not already in the target
+    /// state, whether or not a step reaches it. What `refreshed` re-reads.
+    public let requestedIDs: Set<SkillID>
 
     public init(app: SkillAppTarget, direction: SkillBulkDirection, skills: [Skill]) {
         var steps: [Step] = []
         var already = 0
         var unknown = 0
         var unreachable = 0
+        var requested: Set<SkillID> = []
         for skill in skills {
-            switch Self.resolve(
-                state: skill.activationState(for: app),
-                app: app,
-                direction: direction
-            ) {
+            let resolution = Self.resolve(skill: skill, app: app, direction: direction)
+            if resolution != .alreadyInState { requested.insert(skill.id) }
+            switch resolution {
             case let .apply(action):
                 steps.append(Step(id: skill.id, name: skill.name, action: action))
             case .alreadyInState: already += 1
@@ -77,9 +81,19 @@ public struct SkillBulkPlan: Hashable, Sendable {
         self.alreadyInState = already
         self.skippedUnknown = unknown
         self.unreachable = unreachable
+        self.requestedIDs = requested
     }
 
     public var isEmpty: Bool { steps.isEmpty }
+
+    /// Rows that will not reach the requested state and that the user is told
+    /// about as failures: nothing on disk changes for them, but the change
+    /// they asked for did not happen either.
+    public var skippedCount: Int { skippedUnknown + unreachable }
+
+    /// Whether confirming this plan would change or report anything. False
+    /// only when every row is already in the requested state.
+    public var needsConfirmation: Bool { !steps.isEmpty || skippedCount > 0 }
 
     /// Every row the plan looked at, acted on or not.
     public var consideredCount: Int {
@@ -87,27 +101,31 @@ public struct SkillBulkPlan: Hashable, Sendable {
     }
 
     /// The same plan recomputed against the registry as it is now, limited to
-    /// the rows this one would have changed.
+    /// the rows this one was asked to change.
     ///
     /// A confirmation dialog can sit open across several filesystem reloads;
     /// a row switched by hand in the meantime must not be switched again from
     /// a stale reading, and a row uninstalled in the meantime simply drops.
     public func refreshed(against skills: [Skill]) -> SkillBulkPlan {
-        let ids = Set(steps.map(\.id))
-        return SkillBulkPlan(
+        SkillBulkPlan(
             app: app,
             direction: direction,
-            skills: skills.filter { ids.contains($0.id) }
+            skills: skills.filter { requestedIDs.contains($0.id) }
         )
     }
 
     /// The explicit action that moves one row toward `direction`, or why the
     /// row is skipped.
+    ///
+    /// Takes the whole skill rather than its effective state: a direct
+    /// AntiGravity projection reads as `.enabled` even when the Gemini folder
+    /// would keep it discovered, and only the skill's projections say so.
     public static func resolve(
-        state: SkillActivationState,
+        skill: Skill,
         app: SkillAppTarget,
         direction: SkillBulkDirection
     ) -> Resolution {
+        let state = skill.activationState(for: app)
         if state == .unknown { return .unknown }
         switch direction {
         case .enable:
@@ -131,9 +149,11 @@ public struct SkillBulkPlan: Hashable, Sendable {
             case .enabled, .coupled:
                 if app.supportsNativeSkillActivation { return .apply(.disableInHarness) }
                 // Removing the projection only turns the skill off where the
-                // harness has no other way to see it. A coupled row or a
-                // shared-root harness keeps discovering it afterwards.
-                if state == .coupled || app.discoversSharedSkillRoot { return .unreachable }
+                // harness has no other way to see it: a shared root, or the
+                // Gemini folder AntiGravity also reads, keeps it discovered.
+                if state == .coupled || skill.isDiscoveredWithoutProjection(for: app) {
+                    return .unreachable
+                }
                 return .apply(.removeProjection)
             case .unknown: return .unknown
             }
@@ -147,8 +167,13 @@ public struct SkillBulkPlan: Hashable, Sendable {
     /// would only interleave read-modify-write cycles on the same files. A
     /// failed row is counted and the loop moves on — one unreadable skill
     /// must not strand the rest of a hundred-row change halfway.
+    ///
+    /// `apply` returns whether the row actually changed. `false` is the
+    /// service leaving something in place on purpose — a copy the user has
+    /// edited since it was made — and counts as a failure: the harness still
+    /// sees the skill, whatever the loop did.
     public func run(
-        apply: (Step) async throws -> Void,
+        apply: (Step) async throws -> Bool,
         progress: (_ done: Int, _ total: Int) async -> Void = { _, _ in }
     ) async -> SkillBulkOutcome {
         var succeeded = 0
@@ -163,8 +188,11 @@ public struct SkillBulkPlan: Hashable, Sendable {
             }
             await progress(index, total)
             do {
-                try await apply(step)
-                succeeded += 1
+                if try await apply(step) {
+                    succeeded += 1
+                } else {
+                    failed += 1
+                }
             } catch is CancellationError {
                 cancelled = true
                 break
@@ -177,6 +205,7 @@ public struct SkillBulkPlan: Hashable, Sendable {
         return SkillBulkOutcome(
             succeeded: succeeded,
             failed: failed,
+            skipped: skippedCount,
             lastError: lastError,
             wasCancelled: cancelled
         )
@@ -186,15 +215,30 @@ public struct SkillBulkPlan: Hashable, Sendable {
 /// What a finished bulk run did.
 public struct SkillBulkOutcome: Hashable, Sendable {
     public let succeeded: Int
+    /// Steps that threw or were left in place by the service.
     public let failed: Int
+    /// Rows the plan could not act on: unknown state or no reachable switch.
+    public let skipped: Int
     /// The last failure's message, for a log line; the toast reports counts.
     public let lastError: String?
     public let wasCancelled: Bool
 
-    public init(succeeded: Int, failed: Int, lastError: String? = nil, wasCancelled: Bool = false) {
+    public init(
+        succeeded: Int,
+        failed: Int,
+        skipped: Int = 0,
+        lastError: String? = nil,
+        wasCancelled: Bool = false
+    ) {
         self.succeeded = succeeded
         self.failed = failed
+        self.skipped = skipped
         self.lastError = lastError
         self.wasCancelled = wasCancelled
     }
+
+    /// Every requested row that did not end in the requested state — what
+    /// the summary reports as failed, since there is no separate "skipped"
+    /// wording to tell the two apart.
+    public var notChanged: Int { failed + skipped }
 }

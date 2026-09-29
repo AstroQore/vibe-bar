@@ -305,6 +305,7 @@ final class SkillsManagerModel: ObservableObject {
         let service = self.service
         let outcome = await plan.run(
             apply: { step in
+                // `false` is a managed copy the user edited, left in place.
                 try await service.setActivation(
                     step.id,
                     app: app,
@@ -319,12 +320,12 @@ final class SkillsManagerModel: ObservableObject {
         await reloadSkills()
         bulkSkillIDs = []
         busy.remove(BusyKey.bulk)
-        toast = outcome.failed == 0
+        toast = outcome.notChanged == 0
             ? L10n.Workbench.Skills.Toast.bulkDone(app: app.displayName, succeeded: outcome.succeeded)
             : L10n.Workbench.Skills.Toast.bulkPartial(
                 app: app.displayName,
                 succeeded: outcome.succeeded,
-                failed: outcome.failed
+                failed: outcome.notChanged
             )
     }
 

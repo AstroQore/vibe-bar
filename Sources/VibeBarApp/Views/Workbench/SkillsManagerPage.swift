@@ -321,11 +321,13 @@ struct SkillsManagerPage: View {
         )
     }
 
-    /// Nothing to change is answered straight away; asking the user to
-    /// confirm "0 skills" would be a dialog with no decision in it.
+    /// Rows that cannot be changed still go through the dialog: its title
+    /// quotes how many will actually change, so the "failed" count in the
+    /// summary is never a surprise. Only a filter whose every row is already
+    /// in the requested state is answered straight away.
     private func requestBulk(app: SkillAppTarget, direction: SkillBulkDirection) {
         let plan = model.bulkPlan(app: app, direction: direction)
-        if plan.isEmpty {
+        if !plan.needsConfirmation {
             model.toast = L10n.Workbench.Skills.Toast.bulkDone(app: app.displayName, succeeded: 0)
         } else {
             pendingBulk = plan
