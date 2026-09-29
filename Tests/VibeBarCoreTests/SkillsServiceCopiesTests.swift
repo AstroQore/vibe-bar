@@ -218,6 +218,44 @@ final class SkillsServiceCopiesTests: XCTestCase {
         XCTAssertEqual(service.listBackups().count, 0)
     }
 
+    func testReplaceSharedCopyRefusesACopyWithAnotherName() async throws {
+        let home = try SkillTestHome()
+        let (service, skill) = try await installAlpha(in: home)
+        // Same directory, different frontmatter name: name-keyed native
+        // switches would be re-pointed, so the swap is refused up front.
+        try home.makeSkillDirectory(
+            at: codexSystem(home).appendingPathComponent("alpha"),
+            name: "alpha-renamed",
+            extraFiles: ["ref.md": "bundled"]
+        )
+        let installed = await service.installedSkills()
+        let copy = try XCTUnwrap(installed.first?.otherCopies.first)
+        XCTAssertEqual(copy.name, "alpha-renamed")
+
+        do {
+            try await service.replaceSharedCopy(skill.id, with: copy)
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertEqual(error as? SkillError, .directoryConflict("alpha-renamed"))
+        }
+        XCTAssertEqual(home.contents(of: home.ssot.appendingPathComponent("alpha/ref.md")), "shared")
+        XCTAssertEqual(service.listBackups().count, 0)
+        let after = await service.skill(with: skill.id)
+        XCTAssertEqual(after?.name, "alpha")
+
+        // A difference in case only is the same name and is accepted.
+        try home.makeSkillDirectory(
+            at: codexSystem(home).appendingPathComponent("alpha"),
+            name: "ALPHA",
+            extraFiles: ["ref.md": "bundled"]
+        )
+        let reloaded = await service.installedSkills()
+        let sameName = try XCTUnwrap(reloaded.first?.otherCopies.first)
+        let replaced = try await service.replaceSharedCopy(skill.id, with: sameName)
+        XCTAssertEqual(replaced.name, "ALPHA")
+        XCTAssertEqual(home.contents(of: home.ssot.appendingPathComponent("alpha/ref.md")), "bundled")
+    }
+
     func testCopyToSharedInstallsABuiltInWithNoAppsEnabled() async throws {
         let home = try SkillTestHome()
         let service = SkillsService(homeDirectory: home.path)

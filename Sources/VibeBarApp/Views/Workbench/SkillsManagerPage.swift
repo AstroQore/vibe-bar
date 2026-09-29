@@ -320,7 +320,9 @@ struct SkillsManagerPage: View {
         let installed = shown == total
             ? L10n.Workbench.Skills.countTotal(count: total)
             : L10n.Workbench.Skills.countFiltered(shown: shown, total: total)
-        let builtIns = model.showsBuiltIn ? model.builtIns.count : 0
+        // What the list shows: already empty while the toggle hides them,
+        // and narrowed by the search like the installed count.
+        let builtIns = model.filteredBuiltIns.count
         guard builtIns > 0 else { return installed }
         return installed + " · " + L10n.Workbench.Skills.builtInCount(count: builtIns)
     }

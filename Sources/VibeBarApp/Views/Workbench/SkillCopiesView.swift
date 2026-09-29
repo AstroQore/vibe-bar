@@ -107,7 +107,10 @@ struct SkillCopiesPopover: View {
                     .foregroundStyle(copy.sameAsShared ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
                     .fixedSize(horizontal: false, vertical: true)
                 }
-                if hasShared, !copy.sameAsShared {
+                // A differently named copy would re-point the name-keyed
+                // native switches; the service refuses it, so never offer it.
+                if hasShared, !copy.sameAsShared,
+                   copy.name.lowercased() == skill.name.lowercased() {
                     Button(L10n.Workbench.Skills.Copies.replaceShared) {
                         onReplace(copy)
                     }

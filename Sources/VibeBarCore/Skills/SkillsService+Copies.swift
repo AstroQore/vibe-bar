@@ -71,6 +71,19 @@ extension SkillsService {
     public func replaceSharedCopy(_ id: SkillID, with copy: SkillCopy) async throws -> Skill {
         guard let existing = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
         let source = try validatedCopySource(copy)
+        // Claude, Gemini CLI, Grok Build, and Mistral Vibe key their
+        // per-skill switch by name. Adopting a copy that calls itself
+        // something else would silently re-point those entries — re-enable
+        // a skill the user turned off, or apply an unrelated one — so only a
+        // copy of the same name may replace the shared one. The name is read
+        // from disk, not taken from `copy`. `directoryConflict` is the
+        // closest existing error: another skill occupies this name's slot.
+        let copyName = SkillFrontmatterParser.parse(
+            contentsOf: source.appendingPathComponent("SKILL.md")
+        ).name ?? copy.directoryName
+        guard copyName.lowercased() == existing.name.lowercased() else {
+            throw SkillError.directoryConflict(copyName)
+        }
 
         try backups.createBackup(of: existing.directory, skill: existing)
 
@@ -84,7 +97,8 @@ extension SkillsService {
             contentsOf: destination.appendingPathComponent("SKILL.md")
         )
         var skill = existing
-        skill.name = frontmatter.name ?? existing.directory
+        // Same name up to case (checked above); keep the new spelling.
+        skill.name = frontmatter.name ?? existing.name
         skill.description = frontmatter.description
         skill.contentHash = try SkillDirectoryHasher.hash(directory: destination)
         skill.updatedAt = Date()
