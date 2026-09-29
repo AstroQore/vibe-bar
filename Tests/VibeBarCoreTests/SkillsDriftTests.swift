@@ -243,4 +243,54 @@ final class SkillsDriftTests: XCTestCase {
         XCTAssertNil(alpha.apps[.claude], "The reconciliation landed")
         XCTAssertTrue(alpha.isLocallyModified, "The badge does not blink off on a persisting poll")
     }
+
+    func testASymlinkedSharedCopyIsNeverHashedOrAccepted() async throws {
+        let home = try SkillTestHome()
+        let outside = try home.makeSkillDirectory(
+            at: home.url.appendingPathComponent("elsewhere/alpha"),
+            name: "alpha"
+        )
+        let service = SkillsService(homeDirectory: home.path)
+        let skill = try await service.installLocal(from: outside, name: "alpha")
+        let shared = home.ssot.appendingPathComponent("alpha")
+        try FileManager.default.removeItem(at: shared)
+        try FileManager.default.createSymbolicLink(at: shared, withDestinationURL: outside)
+
+        let before = await service.reloadRehashCount
+        let listed = await service.installedSkills()
+        let after = await service.reloadRehashCount
+        XCTAssertEqual(after, before)
+        XCTAssertNil(listed.first?.localContentHash)
+        XCTAssertEqual(listed.first?.isLocallyModified, false)
+        do {
+            _ = try await service.acceptLocalChanges(skill.id)
+            XCTFail("a link where the shared copy should be must not be accepted")
+        } catch {}
+    }
+
+    func testAcceptingLocalChangesRecopiesManagedCopies() async throws {
+        let home = try SkillTestHome()
+        let outside = try home.makeSkillDirectory(
+            at: home.url.appendingPathComponent("elsewhere/beta"),
+            name: "beta"
+        )
+        let service = SkillsService(homeDirectory: home.path)
+        let installed = try await service.installLocal(from: outside, name: "beta")
+        _ = try await service.setEnabled(installed.id, app: .grok, enabled: true, method: .copy)
+        let projected = home.appDirectory(.grok).appendingPathComponent("beta")
+        try home.write("# edited in the shared copy", to: home.ssot.appendingPathComponent("beta/SKILL.md"))
+
+        let modified = await service.installedSkills().first { $0.id == installed.id }
+        XCTAssertEqual(modified?.isLocallyModified, true)
+        let accepted = try await service.acceptLocalChanges(installed.id)
+
+        XCTAssertEqual(
+            home.contents(of: projected.appendingPathComponent("SKILL.md")),
+            "# edited in the shared copy"
+        )
+        XCTAssertEqual(accepted.apps[.grok]?.contentHashAtCopy, accepted.contentHash)
+        let reloaded = await service.installedSkills().first { $0.id == installed.id }
+        XCTAssertEqual(reloaded?.isLocallyModified, false)
+        XCTAssertEqual(reloaded?.apps[.grok]?.method, .copy)
+    }
 }

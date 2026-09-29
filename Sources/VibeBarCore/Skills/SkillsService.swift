@@ -93,8 +93,12 @@ public actor SkillsService {
             // Edits made to the shared copy outside Vibe Bar — by hand, by
             // another installer, by an agent — only show up by comparing the
             // tree against the hash recorded when Vibe Bar last wrote it.
-            if SkillPathValidator.isValid(snapshot.directory) {
-                let ssot = ssotDirectory(for: snapshot.directory)
+            // lstat first: another installer may have swapped the directory
+            // for a link, and hashing through it would read a tree nobody
+            // registered. A link is not a shared copy and is never hashed.
+            if SkillPathValidator.isValid(snapshot.directory),
+               case let ssot = ssotDirectory(for: snapshot.directory),
+               SkillFileSystem.kind(of: ssot) == .directory {
                 let key = ssot.standardizedFileURL.path
                 liveSSOTKeys.insert(key)
                 let local = verifiedHash(at: ssot, key: key, cache: &ssotVerificationCache)
@@ -216,17 +220,27 @@ public actor SkillsService {
         guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
         try SkillPathValidator.validate(directoryName: skill.directory)
         let directory = ssotDirectory(for: skill.directory)
-        var isDirectory: ObjCBool = false
-        guard
-            FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory),
-            isDirectory.boolValue
-        else {
+        // lstat, not stat: a link where the shared copy should be is not a
+        // copy the user can vouch for.
+        guard SkillFileSystem.kind(of: directory) == .directory else {
             throw SkillError.sourceDirectoryMissing(skill.directory)
         }
         let stamp = try SkillDirectoryHasher.metadataStamp(directory: directory)
         let hash = try SkillDirectoryHasher.hash(directory: directory)
         skill.contentHash = hash
         skill.updatedAt = Date()
+        // A harness holding a managed *copy* would otherwise keep the old
+        // content while the badge cleared: the accepted tree is what every
+        // projection must now show, exactly as an update re-copies it.
+        for (app, materialization) in skill.apps
+        where app.supportsProjection && materialization.method == .copy {
+            skill.apps[app] = try engine.materialize(
+                skillDirectoryName: skill.directory,
+                into: app,
+                method: .copy,
+                recorded: materialization
+            )
+        }
         try await store.upsert(skill)
         // Seeded only after the write landed, so a failed upsert cannot leave
         // the cache vouching for a baseline the registry never recorded.
