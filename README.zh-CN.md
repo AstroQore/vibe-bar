@@ -168,6 +168,11 @@ AntiGravity、Grok Build、Cursor 和 Muse Code。每一行会把 harness 的真
 显示链环，而不会假装成“已关闭”。右键 harness 圆点可以选择原生启停或移除投影。
 从 ZIP 安装、认领某个 CLI 已有的 Skill、从仓库发现更多，替换前先备份。
 
+Workbench 的**资源库**也会显示其他工具放入共享目录的技能，包括指向仓库的链接，
+并展示来源和可读取它的 Agent。**MCP 服务器**页可编辑原生配置并共享到选定的
+Agent；**AGENTS.md** 页可查看、编辑共享指令源及其链接。修改前检查文件版本和
+管理权，并保留本地备份。支持范围见[资源库说明](docs/agent-library.md)。
+
 ![Skills：每个 Skill 一行，每个 harness 一个开关，以及安装、导入和发现操作](docs/screenshots/workbench-skills-light.png)
 
 <details>
@@ -463,6 +468,9 @@ Vibe Bar 没有遥测管线，也没有托管的明文分析后端。本地与�
 - Skills 管理器只写 `~/.agents/skills/`、六个受管 harness 的 skills 根目录，以及
   Codex/Claude/Gemini/Grok/Muse Code/Mistral Vibe 用户配置里明确的 Skill 启停字段；每次配置 patch 都先备份到
   `~/.vibebar/skill_backups/`。
+- 资源库只修改选定的原生 MCP 配置条目、全局指令文件或自己创建的链接，保留无关
+  字段，并将仅当前用户可读的备份放在 `~/.vibebar/agent_library/`。读取清单不写入
+  配置，也不启动 MCP 服务器；外链技能的源目录继续由原工具管理。
 - Vibe Bar 自己的 Cookie 与服务商密钥保存在一个带版本的 Keychain Vault 里，而不是
   每个密钥一条、各自弹窗的 Keychain 条目。
 - 墨水屏是唯一会把你的配额或用量数字发到别处的功能，而且只在你填入 key 并打开它
@@ -478,7 +486,7 @@ Vibe Bar 没有遥测管线，也没有托管的明文分析后端。本地与�
 
 Vibe Bar 有意**不启用 App Sandbox**：浏览器 Cookie 导入和本地 AntiGravity Language
 Server 探测需要沙盒禁止的能力。应用开源，只读取需要的服务商输入；写入范围限定在
-`~/.vibebar/`、Keychain Vault 和上面明确列出的 Skills allowlist；外发的内容就是上面
+`~/.vibebar/`、Keychain Vault 和上面明确列出的 Skills 和资源库 allowlist；外发的内容就是上面
 那份逐条列出的清单。完整取舍见
 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox)。
 

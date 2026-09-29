@@ -56,6 +56,7 @@ public actor SkillsService {
     /// `SkillsService+Copies.swift`. Owns its own stamp-keyed cache, so the
     /// two-second reload never rehashes an unchanged tree.
     let copyScanner: SkillCopyScanner
+    let sharedDiscoveryScanner: SharedSkillDiscoveryScanner
 
     public init(
         homeDirectory: String = RealHomeDirectory.path,
@@ -68,6 +69,7 @@ public actor SkillsService {
         self.backups = SkillBackupManager(homeDirectory: homeDirectory)
         self.fetcher = fetcher
         self.copyScanner = SkillCopyScanner(homeDirectory: homeDirectory)
+        self.sharedDiscoveryScanner = SharedSkillDiscoveryScanner(homeDirectory: homeDirectory)
     }
 
     deinit {

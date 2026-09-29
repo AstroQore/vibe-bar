@@ -8,10 +8,13 @@ public struct SkillsInventory: Sendable, Hashable {
     /// sorted by name. Built-ins that do match are in that skill's
     /// `otherCopies` instead, so nothing is listed twice.
     public let builtIns: [SkillCopy]
+    /// Present on disk but not owned by the registry; listing is read-only.
+    public let discoveredShared: [SharedSkillDiscovery]
 
-    public init(installed: [Skill], builtIns: [SkillCopy]) {
+    public init(installed: [Skill], builtIns: [SkillCopy], discoveredShared: [SharedSkillDiscovery] = []) {
         self.installed = installed
         self.builtIns = builtIns
+        self.discoveredShared = discoveredShared
     }
 }
 
@@ -35,7 +38,42 @@ extension SkillsService {
     /// One pass for the page's reload: the reconciled registry with copies
     /// attached, plus the standalone built-ins.
     public func inventory() async -> SkillsInventory {
-        attachCopies(to: await reconciledInstalledSkills()).inventory
+        let inventory = attachCopies(to: await reconciledInstalledSkills()).inventory
+        // A registry record cannot vouch for ownership after another tool
+        // replaces its shared directory with an external link. Keep the
+        // record intact, but expose that live entry through the read-only row.
+        let managed = inventory.installed.filter {
+            SkillFileSystem.kind(of: ssotDirectory(for: $0.directory)) != .symlink
+        }
+        var discovered = sharedDiscoveryScanner.scan(excludingDirectories: Set(managed.map(\.directory)))
+        let candidates = discovered.filter { $0.state == .ready }.map {
+            Skill(id: .local(directory: $0.directoryName), name: $0.name, directory: $0.directoryName, installedAt: .distantPast)
+        }
+        let native: [SkillAppTarget: [String: SkillHarnessConfigManager.NativeState]] = [
+            .codex: harnessConfig.codexStates(for: candidates), .claude: harnessConfig.claudeStates(for: candidates),
+            .gemini: harnessConfig.geminiStates(for: candidates), .grok: harnessConfig.grokStates(for: candidates),
+            .muse: harnessConfig.museStates(for: candidates), .mistralVibe: harnessConfig.mistralVibeStates(for: candidates)
+        ]
+        for index in discovered.indices where discovered[index].state == .ready {
+            let entry = discovered[index]
+            for app in SkillAppTarget.managedHarnesses {
+                let projection = SkillAppCatalog.skillsDirectory(for: app, homeDirectory: homeDirectory).appendingPathComponent(entry.directoryName)
+                let pointsHere = SkillFileSystem.kind(of: projection) == .symlink
+                    && projection.resolvingSymlinksInPath().standardizedFileURL.path == entry.resolvedURL?.path
+                guard app.discoversSharedSkillRoot || pointsHere else { continue }
+                if pointsHere { discovered[index].projectedTo.insert(app) }
+                switch native[app]?[entry.directoryName] ?? .enabled {
+                case .enabled: discovered[index].agents[app] = .available
+                case .disabled: discovered[index].agents[app] = .disabled
+                case .unknown: discovered[index].agents[app] = .unknown
+                }
+            }
+        }
+        return .init(installed: managed, builtIns: inventory.builtIns, discoveredShared: discovered)
+    }
+
+    public func previewSharedSkill(_ entry: SharedSkillDiscovery) throws -> String {
+        try sharedDiscoveryScanner.preview(entry)
     }
 
     /// Every copy on the Mac, shared ones included, keyed by lower-cased
@@ -239,5 +277,32 @@ extension SkillsService {
         case let .appFolder(app): return 1 + index(app)
         case let .builtIn(app): return 100 + index(app)
         }
+    }
+}
+
+/// The header and row visibility use the same disk-derived availability;
+/// discovered entries contribute to counts without becoming bulk-write targets.
+public struct SkillsInventoryCounts: Equatable, Sendable {
+    public let visible: Int
+    public let enabled: Int
+    public let nativeDisabled: Int
+    public let coupled: Int
+}
+
+extension SkillsInventory {
+    public func counts(for app: SkillAppTarget) -> SkillsInventoryCounts {
+        let discoveredAvailable = discoveredShared.filter { $0.agents[app] == .available }
+        let enabled = installed.count { $0.isEnabled(for: app) }
+            + discoveredAvailable.count { $0.projectedTo.contains(app) }
+        let coupled = installed.count { $0.activationState(for: app) == .coupled }
+            + (app.discoversSharedSkillRoot ? discoveredAvailable.count { !$0.projectedTo.contains(app) } : 0)
+        let visible = installed.count {
+            $0.activationState(for: app) == .enabled || $0.activationState(for: app) == .coupled
+        } + builtIns.count { $0.location == .builtIn(app) }
+            + installed.reduce(0) { $0 + $1.otherCopies.count { $0.location == .builtIn(app) } }
+            + discoveredAvailable.count
+        let disabled = installed.count { $0.activationState(for: app) == .disabledInHarness }
+            + discoveredShared.count { $0.agents[app] == .disabled }
+        return .init(visible: visible, enabled: enabled, nativeDisabled: disabled, coupled: coupled)
     }
 }

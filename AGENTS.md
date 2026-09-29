@@ -459,7 +459,8 @@ adapter's provider roots, a target that is itself a symlink is refused,
 and the session file is re-parsed immediately before removal so a stale
 summary cannot delete a different session. Vibe Bar never edits the
 *contents* of a session file, never deletes a credential file at all, and
-no other code path may remove anything outside `~/.vibebar/`.
+Other removal operations are limited to the explicitly documented resource
+manager allowlists in § 7.
 
 **Four providers are listed and readable but never deletable**, because
 another app owns the store and removing from underneath it corrupts
@@ -893,6 +894,29 @@ capture against § 8 before committing it — a screenshot is source content.
   discovery, SSOT copy, and materialization the Workbench uses. An agent
   can therefore reach no path a user could not, and the gate on it is a
   settings toggle, not a second implementation.
+- **The resource Library manages selected MCP entries and global instruction
+  files through `AgentLibraryService`.** Its MCP write targets are
+  `~/.codex/config.toml`, `~/.claude.json`, `~/.cursor/mcp.json`,
+  `~/.gemini/settings.json`, and `~/.grok/config.toml`. Instruction targets
+  are `~/.agents/AGENTS.md`, `~/.codex/AGENTS.md`,
+  `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`; Codex's override is
+  inspected to explain precedence. The Library inventories these locations
+  without writing them. Explicit edits and selected-target sharing re-read
+  revisions, preserve unrelated configuration, and make private backups under
+  `~/.vibebar/agent_library/`. MCP discovery and sharing do not start servers
+  or make network requests. Inventory excludes credential values; only an
+  explicit single-server edit reads the editable definition into the form.
+  A shared MCP target is updated only while its content still matches the
+  Library's ownership receipt. Instruction links are removed only with a
+  matching receipt, restoring the previous file. Foreign links and conflicting
+  definitions remain under their existing owner. See
+  `docs/agent-library-core.md` for the precise format and path boundaries.
+
+  Shared skills discovered on disk are a separate, read-only inventory.
+  Valid external links expose their logical path, resolved source, metadata,
+  and preview; opening the page does not adopt them or permit updating or
+  deleting their source tree. Managed skill mutations retain the Skills
+  manager's allowlist and ownership checks above.
 - **E-ink displays are the one path that writes off this Mac.** Every
   other feature reads the network and writes the local disk; this one
   sends the user's numbers *out* — the panel has no local API, so every
