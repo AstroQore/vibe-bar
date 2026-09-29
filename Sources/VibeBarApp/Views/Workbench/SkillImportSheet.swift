@@ -173,10 +173,60 @@ struct SkillImportSheet: View {
             Text(L10n.Workbench.Skills.Import.needsAdoptionDetail)
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
+            unmanagedBulkControls(report)
             ForEach(report.unmanagedDirectories, id: \.directoryName) { entry in
                 unmanagedRow(entry)
             }
         }
+    }
+
+    private func unmanagedBulkControls(_ report: SkillImportReport) -> some View {
+        let entries = report.unmanagedDirectories
+        let firstChecked = entries.first { adopting[$0.directoryName] != nil }
+        return HStack(spacing: 6) {
+            smallButton(L10n.Workbench.Skills.Import.selectAllRows) {
+                // Rows already checked keep whatever the user picked for
+                // them; only the unchecked ones take the default set.
+                for entry in entries where adopting[entry.directoryName] == nil {
+                    adopting[entry.directoryName] = initialSelection(for: entry)
+                }
+            }
+            .disabled(adopting.count == entries.count)
+            smallButton(L10n.Workbench.Skills.Import.selectNoRows) {
+                adopting = [:]
+            }
+            .disabled(adopting.isEmpty)
+            Spacer(minLength: 8)
+            smallButton(L10n.Workbench.Skills.Import.applyToAllRows) {
+                guard let firstChecked,
+                      let selection = adopting[firstChecked.directoryName]
+                else { return }
+                for entry in entries where adopting[entry.directoryName] != nil {
+                    adopting[entry.directoryName] = SkillAdoptionSelection.copy(
+                        selection, onto: entry.foundIn
+                    )
+                }
+            }
+            .disabled(adopting.count < 2)
+        }
+    }
+
+    /// Same look as the discovery sheet's in-card actions: bordered, one
+    /// step below the section text.
+    private func smallButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
+                .frame(minHeight: 22)
+        }
+        .buttonStyle(.bordered)
+    }
+
+    /// What a row starts with when its checkbox is turned on: the user's
+    /// default harnesses plus the apps the scan found the directory in —
+    /// adopting a folder always keeps it where it was.
+    private func initialSelection(for entry: UnmanagedSkillDirectory) -> Set<SkillAppTarget> {
+        SkillAdoptionSelection.seed(foundIn: entry.foundIn, defaults: model.defaultApps)
     }
 
     private func unmanagedRow(_ entry: UnmanagedSkillDirectory) -> some View {
@@ -185,7 +235,7 @@ struct SkillImportSheet: View {
             Toggle(isOn: Binding(
                 get: { opted },
                 set: { isOn in
-                    adopting[entry.directoryName] = isOn ? Set(entry.foundIn) : nil
+                    adopting[entry.directoryName] = isOn ? initialSelection(for: entry) : nil
                 }
             )) {
                 VStack(alignment: .leading, spacing: 2) {

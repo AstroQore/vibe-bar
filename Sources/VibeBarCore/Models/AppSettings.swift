@@ -125,6 +125,22 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// `~/.vibebar/skills.json` next to the registry it describes.
     public var skillsSyncMethod: SkillSyncMethod
 
+    /// Harnesses a new install, discovery pick, or adoption starts with
+    /// selected, in the order the user switched them on.
+    ///
+    /// Empty by default: getting a skill onto the machine and switching it on
+    /// for every agent CLI are two decisions, and only the user can say the
+    /// second one should be automatic. Unknown raw values from a newer build
+    /// are dropped on decode rather than costing the whole list, and so are
+    /// retired harnesses (Hermes, OpenCode) that still decode but that no
+    /// toggle row offers: a default the UI cannot untick would keep writing
+    /// links into an app directory nobody manages any more.
+    public var skillsDefaultApps: [SkillAppTarget] {
+        didSet {
+            let normalized = Self.normalizedSkillsDefaultApps(skillsDefaultApps)
+            if normalized != skillsDefaultApps { skillsDefaultApps = normalized }
+        }
+    }
     /// Whether the Skills page lists the skills a harness ships in its own
     /// built-in folder (Codex's `.system`, Grok's bundled skills, …) after
     /// the installed ones. On by default so they are discoverable; the
@@ -397,6 +413,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         preferredTerminal: PreferredTerminal = .terminal,
         sessionBodyIndexingEnabled: Bool = true,
         skillsSyncMethod: SkillSyncMethod = .auto,
+        skillsDefaultApps: [SkillAppTarget] = [],
         skillsShowBuiltIn: Bool = true,
         mcpServer: MCPServerSettings = .default
     ) {
@@ -454,8 +471,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.preferredTerminal = preferredTerminal
         self.sessionBodyIndexingEnabled = sessionBodyIndexingEnabled
         self.skillsSyncMethod = skillsSyncMethod
+        self.skillsDefaultApps = Self.normalizedSkillsDefaultApps(skillsDefaultApps)
         self.skillsShowBuiltIn = skillsShowBuiltIn
         self.mcpServer = mcpServer
+    }
+
+    /// Managed harnesses only, first occurrence wins: a hand-edited file
+    /// listing a harness twice reads as one selection rather than a list the
+    /// UI can only half toggle.
+    static func normalizedSkillsDefaultApps(_ apps: [SkillAppTarget]) -> [SkillAppTarget] {
+        var seen: Set<SkillAppTarget> = []
+        return apps.filter {
+            SkillAppTarget.managedHarnesses.contains($0) && seen.insert($0).inserted
+        }
     }
 
     /// Drops unnamed presets, collapses names that differ only by case (the
@@ -539,6 +567,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case preferredTerminal
         case sessionBodyIndexingEnabled
         case skillsSyncMethod
+        case skillsDefaultApps
         case skillsShowBuiltIn
         case mcpServer
     }
@@ -764,6 +793,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.skillsSyncMethod =
             (try? c.decodeIfPresent(SkillSyncMethod.self, forKey: .skillsSyncMethod))
             ?? Self.default.skillsSyncMethod
+        // Raw strings first: one harness this build does not know must not
+        // turn the rest of the selection into a decode failure.
+        self.skillsDefaultApps = Self.normalizedSkillsDefaultApps(
+            ((try? c.decodeIfPresent([String].self, forKey: .skillsDefaultApps)) ?? nil)?
+                .compactMap(SkillAppTarget.init(rawValue:))
+                ?? Self.default.skillsDefaultApps
+        )
         self.skillsShowBuiltIn =
             (try? c.decodeIfPresent(Bool.self, forKey: .skillsShowBuiltIn))
             ?? Self.default.skillsShowBuiltIn
@@ -838,6 +874,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(preferredTerminal, forKey: .preferredTerminal)
         try c.encode(sessionBodyIndexingEnabled, forKey: .sessionBodyIndexingEnabled)
         try c.encode(skillsSyncMethod, forKey: .skillsSyncMethod)
+        try c.encode(skillsDefaultApps, forKey: .skillsDefaultApps)
         try c.encode(skillsShowBuiltIn, forKey: .skillsShowBuiltIn)
         try c.encode(mcpServer, forKey: .mcpServer)
     }
