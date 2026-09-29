@@ -25,14 +25,14 @@ public enum ChatGPTChatWindow {
 ///
 /// The live table is published in the `AstroQore/vibebar-quota-limits`
 /// repository (`limits.json`) and refreshed by `QuotaLimitsCatalog`, so a
-/// changed allowance needs no app release. `ChatGPTChatProAllowances.bundled`
-/// is the floor that answers until then.
+/// changed allowance needs no app release. A plan without verified rows
+/// has no assumed total.
 ///
 /// Source: "GPT-5.6 and GPT-6 Pro in ChatGPT", help.openai.com article
-/// 20001354, first read 2026-09-07 and re-verified 2026-09-23 (unchanged).
-/// The article names only GPT-6 Pro and GPT-5.6 Sol Pro, so the older Pro
-/// slugs the picker still lists (`gpt-5-5-pro`, `o3-pro`) are charged to no
-/// allowance. The service reports no count for these models —
+/// 20001354, re-verified 2026-09-30: it no longer publishes numeric caps.
+/// New and grandfathered Pro $200 subscriptions also have different
+/// allowances, so a plan name alone cannot recover the former totals.
+/// The service reports no count for these models —
 /// `conversation/init` names a model only once it is exhausted — so the
 /// count comes from the saved history and the total from this table. Work
 /// and Codex have their own rules and are never charged here.
@@ -65,7 +65,7 @@ public enum ChatGPTChatProAllowances {
     public static let proModelsName = "Pro Models"
 
     /// The allowances for a plan: the published table's rows for it when
-    /// it has any, else the bundled ones. Reads only the in-memory snapshot
+    /// it has any, else no assumed allowance. Reads only the in-memory snapshot
     /// `QuotaLimitsCatalog` keeps, never the network.
     public static func allowances(plan: String?,
                                   table: QuotaLimitsCatalog.Table? = QuotaLimitsCatalog.snapshot()) -> [ChatGPTChatProAllowance] {
@@ -74,24 +74,12 @@ public enum ChatGPTChatProAllowances {
         return bundled(plan: plan)
     }
 
-    /// The table as shipped in this build, and the fallback for any plan the
-    /// published one has no rows for. `plan_type` as `/backend-api/wham/usage`
-    /// reports it: `pro` is the $200 plan and `prolite` the $100 one. Plans
-    /// without Pro models get nothing; so does an unrecognized plan, rather
-    /// than a guessed total.
+    /// No numeric Pro allowance is bundled. OpenAI withdrew the published
+    /// caps on 2026-09-30, and the same `pro` plan can represent subscriptions
+    /// with different allowances. Only newly verified remote rows may supply
+    /// a total; absent rows do not imply a full allowance.
     public static func bundled(plan: String?) -> [ChatGPTChatProAllowance] {
-        switch plan?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "pro":
-            return [
-                ChatGPTChatProAllowance(id: "gpt6_pro_weekly", group: gpt6ProName, title: "Weekly", models: [gpt6Pro], limit: 200, windowSeconds: week),
-                ChatGPTChatProAllowance(id: "sol_pro_daily", group: solProName, title: "Daily", models: [solPro], limit: 170, windowSeconds: day),
-                ChatGPTChatProAllowance(id: "pro_daily", group: proModelsName, title: "Daily", models: [gpt6Pro, solPro], limit: 200, windowSeconds: day)
-            ]
-        case "prolite":
-            return [ChatGPTChatProAllowance(id: "pro_weekly", group: proModelsName, title: "Weekly", models: [gpt6Pro, solPro], limit: 50, windowSeconds: week)]
-        default:
-            return []
-        }
+        []
     }
 }
 
@@ -240,7 +228,7 @@ extension ChatGPTChatParser {
                                   limits: [ChatGPTChatModelLimit], complete: Bool, now: Date) -> [QuotaBucket] {
         let unique = Dictionary(turns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }).values
         let limited = Dictionary(limits.map { ($0.model, $0) }, uniquingKeysWith: { first, _ in first })
-        return allowances.map { allowance in
+        let buckets = allowances.map { allowance in
             let start = now.addingTimeInterval(-TimeInterval(allowance.windowSeconds))
             let used = unique.filter { allowance.models.contains($0.model) && $0.createdAt > start && $0.createdAt <= now }.count
             let exhausted = allowance.models.allSatisfy { limited[$0] != nil }
@@ -266,6 +254,27 @@ extension ChatGPTChatParser {
                                usedPercent: quantity.usedPercent ?? 0, resetAt: resetAt,
                                rawWindowSeconds: allowance.windowSeconds, groupTitle: allowance.group,
                                quantity: quantity, hasRollingReset: rolling)
+        }
+        // A service-reported throttle is useful even when its total or
+        // window is unknown. A shared allowance cannot stand in for an
+        // individual model's throttle, so only a model-specific row makes
+        // this additional signal redundant.
+        let unmeteredLimits = limited.values.filter { limit in
+            !allowances.contains { $0.models == [limit.model] }
+        }.sorted { $0.model < $1.model }
+        return buckets + unmeteredLimits.map { limit in
+            let title: String
+            switch limit.model {
+            case ChatGPTChatProAllowances.gpt6Pro: title = ChatGPTChatProAllowances.gpt6ProName
+            case ChatGPTChatProAllowances.solPro: title = ChatGPTChatProAllowances.solProName
+            default: title = limit.model
+            }
+            // Zero remaining is authoritative. Keep the required numeric
+            // placeholder at the exhausted edge; without a total,
+            // `hasPercentage` remains false and no ratio is displayed.
+            return QuotaBucket(id: "model_limit_" + limit.model, title: title, shortLabel: title,
+                               usedPercent: 100, resetAt: limit.resetsAt,
+                               quantity: QuotaQuantity(remaining: 0))
         }
     }
 

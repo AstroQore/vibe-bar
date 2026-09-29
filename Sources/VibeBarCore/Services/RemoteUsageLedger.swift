@@ -677,7 +677,7 @@ public actor RemoteUsageLedger {
                 inputTokens: row.input + row.cacheRead,
                 cachedInputTokens: row.cacheRead,
                 outputTokens: row.output,
-                isFast: row.serviceTier == "fast"
+                serviceTier: row.serviceTier
             ) ?? 0
         case "claude":
             return CostUsagePricing.claudeCostUSD(

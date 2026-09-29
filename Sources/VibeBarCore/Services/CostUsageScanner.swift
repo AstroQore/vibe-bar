@@ -72,10 +72,9 @@ public enum CostUsageScanner {
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/archived_sessions")
         ]
         let files = roots.flatMap { collectJSONL(under: $0) }
-        // Codex bills the whole install at one service tier; it isn't
-        // stamped on each token event, so resolve it once and apply it
-        // to every codex event in this scan (mirrors ccusage).
-        let codexFastTier = codexFastServiceTier(homeDirectory: homeDirectory)
+        // Older rollouts omit the tier. The current config is an estimate
+        // for those requests; explicit per-request/turn metadata wins.
+        let configuredTier = codexServiceTier(homeDirectory: homeDirectory)
         var aggregator = CostAggregator(tool: .codex, now: now)
         var cache = CostUsageScanCacheStore.shared.checkout(
             homeDirectory: homeDirectory, tool: .codex, retentionDays: retentionDays
@@ -101,7 +100,7 @@ public enum CostUsageScanner {
                     priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
                     for event in retained {
                         let optionalCost = costUSDIfPriceable(
-                            tool: .codex, event: event, pricing: pricing, codexFastTier: codexFastTier
+                            tool: .codex, event: event, pricing: pricing
                         )
                         let cost = optionalCost ?? 0
                         if eventSink != nil {
@@ -119,6 +118,16 @@ public enum CostUsageScanner {
             let outcome: (priced: [PricedUsageEvent], didRead: Bool) = autoreleasepool {
                 let (raw, originator, projectPath, didRead) = parseCodexFile(file: file)
                 let harness = codexHarness(originator: originator)
+                // An active rollout is reparsed whenever it grows. Keep the
+                // previously assigned costing tier for matching requests;
+                // changing today's config must not rewrite that history.
+                var oldTiers: [CodexCostingKey: [String?]] = [:]
+                for event in cache.entries[CostUsageScanCache.entryKey(for: file.path)]?.events ?? [] {
+                    oldTiers[CodexCostingKey(date: event.date, model: event.model,
+                                            input: event.input, output: event.output, cache: event.cache), default: []]
+                        .append(event.serviceTier)
+                }
+                var oldTierOffsets: [CodexCostingKey: Int] = [:]
                 // Delta from one snapshot to the next is what was used in that interval.
                 var previous: CodexEvent.Totals? = nil
                 var parsed: [CostUsageScanCache.ParsedEvent] = []
@@ -137,13 +146,20 @@ public enum CostUsageScanner {
                     }
                     previous = event.totals
                     if delta.isEmpty { continue }
-                    let optionalCost = pricing.codexEntry(for: event.model).map {
+                    let key = CodexCostingKey(date: event.date, model: event.model,
+                                             input: max(0, delta.input - delta.cached),
+                                             output: delta.output, cache: delta.cached)
+                    let offset = oldTierOffsets[key, default: 0]
+                    let oldTier = oldTiers[key].flatMap { offset < $0.count ? $0[offset] : nil }
+                    oldTierOffsets[key] = offset + 1
+                    let serviceTier = event.serviceTier ?? oldTier ?? configuredTier ?? "default"
+                    let optionalCost = pricing.codexEntry(for: event.model, serviceTier: serviceTier).flatMap {
                         CostUsagePricing.codexCostUSD(
                             pricing: $0,
                             inputTokens: delta.input,
                             cachedInputTokens: delta.cached,
                             outputTokens: delta.output,
-                            isFast: codexFastTier
+                            serviceTier: serviceTier
                         )
                     }
                     let cost = optionalCost ?? 0
@@ -153,6 +169,7 @@ public enum CostUsageScanner {
                         input: max(0, delta.input - delta.cached),
                         output: delta.output,
                         cache: delta.cached,
+                        serviceTier: serviceTier,
                         harness: harness,
                         projectPath: projectPath
                     )
@@ -187,6 +204,14 @@ public enum CostUsageScanner {
         return aggregator.snapshot(jsonlFilesFound: files.count)
     }
 
+    private struct CodexCostingKey: Hashable {
+        let date: Date
+        let model: String
+        let input: Int
+        let output: Int
+        let cache: Int
+    }
+
     private struct CodexEvent {
         struct Totals {
             let input: Int
@@ -197,6 +222,7 @@ public enum CostUsageScanner {
         let date: Date
         let model: String
         let totals: Totals
+        let serviceTier: String?
     }
 
     /// Returns the file's token events plus its `session_meta` originator,
@@ -208,6 +234,7 @@ public enum CostUsageScanner {
         var originator: String?
         var projectPath: String?
         var currentModel = "gpt-5"
+        var currentTier: String?
         var runningTotals = CodexEvent.Totals(input: 0, cached: 0, output: 0)
         let didRead = forEachJSONLLine(in: file) { lineData in
             // Every line allocates a `JSONSerialization` object graph of
@@ -218,6 +245,7 @@ public enum CostUsageScanner {
                 guard !lineData.isEmpty else { return }
                 guard lineData.contains(asciiSequence: "token_count") ||
                         lineData.contains(asciiSequence: "model") ||
+                        lineData.contains(asciiSequence: "service_tier") ||
                         lineData.contains(asciiSequence: "originator") else { return }
                 guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else { return }
 
@@ -228,6 +256,9 @@ public enum CostUsageScanner {
                     projectPath = UsageProjectIdentity.normalizedPath(payload["cwd"] as? String)
                 }
                 if let payload = obj["payload"] as? [String: Any] {
+                    if obj["type"] as? String == "turn_context" {
+                        currentTier = CostUsagePricing.normalizedCodexServiceTier(payload["service_tier"] as? String)
+                    }
                     if let m = payload["model"] as? String { currentModel = m }
                     if let info = payload["info"] as? [String: Any],
                        let m = info["model"] as? String ?? info["model_name"] as? String {
@@ -260,7 +291,10 @@ public enum CostUsageScanner {
                     return
                 }
                 let timestamp = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
-                events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals))
+                let tier = CostUsagePricing.normalizedCodexServiceTier(
+                    info["service_tier"] as? String ?? payload["service_tier"] as? String ?? obj["service_tier"] as? String
+                ) ?? currentTier
+                events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals, serviceTier: tier))
             }
         }
         return didRead ? (events, originator, projectPath, true) : ([], originator, projectPath, false)
@@ -2061,28 +2095,44 @@ public enum CostUsageScanner {
         return events.filter { $0.date >= cutoff }
     }
 
-    /// Whether this Codex install is configured for the "fast" /
-    /// "priority" service tier. Codex doesn't stamp the tier on each
-    /// token event, so — like ccusage — we read it once from
-    /// `~/.codex/config.toml` and apply it to every codex event in the
-    /// scan. The flat scan for any `service_tier = "fast" | "priority"`
-    /// line mirrors Codex's own precedence-free reading of the key.
+    /// Compatibility helper for existing callers. Ultrafast has a separate
+    /// rate card and must never be collapsed into the Fast boolean.
     static func codexFastServiceTier(homeDirectory: String) -> Bool {
+        let tier = codexServiceTier(homeDirectory: homeDirectory)
+        return tier == "fast" || tier == "priority"
+    }
+
+    /// Top-level config, with the selected profile taking precedence.
+    /// Unselected profiles and nested provider tables do not change billing.
+    static func codexServiceTier(homeDirectory: String) -> String? {
         let url = URL(fileURLWithPath: homeDirectory)
             .appendingPathComponent(".codex/config.toml")
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return false }
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        var section = ""
+        var rootTier: String?
+        var profile: String?
+        var profileTiers: [String: String] = [:]
         for rawLine in content.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
             // Drop trailing `# comment`, then split on the first `=`.
             let setting = rawLine.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
+                .trimmingCharacters(in: .whitespaces)
+            if setting.hasPrefix("["), setting.hasSuffix("]") {
+                section = String(setting.dropFirst().dropLast())
+                continue
+            }
             guard let eq = setting.firstIndex(of: "=") else { continue }
             let key = setting[..<eq].trimmingCharacters(in: .whitespaces)
-            guard key == "service_tier" else { continue }
             let value = setting[setting.index(after: eq)...]
                 .trimmingCharacters(in: .whitespaces)
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-            if value == "fast" || value == "priority" { return true }
+            if section.isEmpty, key == "profile" { profile = value }
+            guard key == "service_tier", let tier = CostUsagePricing.normalizedCodexServiceTier(value) else { continue }
+            if section.isEmpty { rootTier = tier }
+            else if section.hasPrefix("profiles.") {
+                profileTiers[String(section.dropFirst("profiles.".count)).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))] = tier
+            }
         }
-        return false
+        return profile.flatMap { profileTiers[$0] } ?? rootTier
     }
 
     /// A per-event `"fast"`/`"priority"` tier (Claude `usage.speed` /
@@ -2095,11 +2145,10 @@ public enum CostUsageScanner {
     private static func costUSD(
         tool: ToolType,
         event: CostUsageScanCache.ParsedEvent,
-        pricing: CostPricingContext,
-        codexFastTier: Bool = false
+        pricing: CostPricingContext
     ) -> Double {
         costUSDIfPriceable(
-            tool: tool, event: event, pricing: pricing, codexFastTier: codexFastTier
+            tool: tool, event: event, pricing: pricing
         ) ?? 0
     }
 
@@ -2113,18 +2162,17 @@ public enum CostUsageScanner {
     private static func costUSDIfPriceable(
         tool: ToolType,
         event: CostUsageScanCache.ParsedEvent,
-        pricing: CostPricingContext,
-        codexFastTier: Bool = false
+        pricing: CostPricingContext
     ) -> Double? {
         switch tool {
         case .codex:
-            guard let entry = pricing.codexEntry(for: event.model) else { return nil }
+            guard let entry = pricing.codexEntry(for: event.model, serviceTier: event.serviceTier) else { return nil }
             return CostUsagePricing.codexCostUSD(
                 pricing: entry,
                 inputTokens: event.input + event.cache,
                 cachedInputTokens: event.cache,
                 outputTokens: event.output,
-                isFast: codexFastTier
+                serviceTier: event.serviceTier
             )
         case .claude:
             guard let entry = pricing.claudeEntry(for: event.model) else { return nil }

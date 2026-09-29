@@ -13,7 +13,7 @@ import Foundation
 /// would either lose fidelity or force every model to model the union
 /// of every other provider's quirks.
 public struct PricingDataSet: Codable, Sendable, Equatable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     /// Hard cap on a cached / bundled `PricingDataSet` so a corrupt
     /// file can't blow up the loader. The multi-source cache is filtered to
     /// the provider families Vibe Bar scans; 2 MB leaves headroom for catalog
@@ -135,9 +135,12 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
         public let cacheReadAboveThreshold: Double?
         public let cacheCreationAboveThreshold: Double?
         /// Multiplier applied to the whole cost when the request ran on
-        /// the "fast"/"priority" Codex service tier (resolved once per
-        /// scan from `~/.codex/config.toml`). `nil` means no premium (×1).
+        /// the "fast"/"priority" Codex costing tier. `nil` retains the
+        /// legacy no-premium behavior (×1).
         public let fastMultiplier: Double?
+        /// API-equivalent rates for `service_tier = "ultrafast"`. These
+        /// are independent of subscription quota multipliers.
+        public let ultrafast: CodexRates?
         public let displayLabel: String?
 
         public init(
@@ -151,6 +154,7 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
             cacheReadAboveThreshold: Double? = nil,
             cacheCreationAboveThreshold: Double? = nil,
             fastMultiplier: Double? = nil,
+            ultrafast: CodexRates? = nil,
             displayLabel: String? = nil
         ) {
             self.input = input
@@ -163,7 +167,31 @@ public struct PricingDataSet: Codable, Sendable, Equatable {
             self.cacheReadAboveThreshold = cacheReadAboveThreshold
             self.cacheCreationAboveThreshold = cacheCreationAboveThreshold
             self.fastMultiplier = fastMultiplier
+            self.ultrafast = ultrafast
             self.displayLabel = displayLabel
+        }
+    }
+
+    public struct CodexRates: Codable, Sendable, Equatable {
+        public let input: Double
+        public let output: Double
+        public let cacheRead: Double?
+        public let cacheCreation: Double?
+        public let thresholdTokens: Int?
+        public let inputAboveThreshold: Double?
+        public let outputAboveThreshold: Double?
+        public let cacheReadAboveThreshold: Double?
+        public let cacheCreationAboveThreshold: Double?
+
+        public init(input: Double, output: Double, cacheRead: Double? = nil,
+                    cacheCreation: Double? = nil, thresholdTokens: Int? = nil,
+                    inputAboveThreshold: Double? = nil, outputAboveThreshold: Double? = nil,
+                    cacheReadAboveThreshold: Double? = nil, cacheCreationAboveThreshold: Double? = nil) {
+            self.input = input; self.output = output; self.cacheRead = cacheRead
+            self.cacheCreation = cacheCreation; self.thresholdTokens = thresholdTokens
+            self.inputAboveThreshold = inputAboveThreshold; self.outputAboveThreshold = outputAboveThreshold
+            self.cacheReadAboveThreshold = cacheReadAboveThreshold
+            self.cacheCreationAboveThreshold = cacheCreationAboveThreshold
         }
     }
 

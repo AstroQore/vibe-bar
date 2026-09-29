@@ -265,6 +265,20 @@ private struct EffectivePricingRowView: View {
                 price(row.cacheWritePerMillion, columns.cacheWrite)
             }
 
+            if let ultrafast = row.ultrafast {
+                HStack(alignment: .firstTextBaseline, spacing: PricingColumns.spacing) {
+                    Color.clear.frame(width: columns.provider.width, height: 1)
+                    Text("Ultrafast")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .frame(width: columns.model.width, alignment: .leading)
+                    price(ultrafast.inputPerMillion, columns.input)
+                    price(ultrafast.outputPerMillion, columns.output)
+                    price(ultrafast.cacheReadPerMillion, columns.cacheRead)
+                    price(ultrafast.cacheWritePerMillion, columns.cacheWrite)
+                }
+                .help(ultrafastDetail(ultrafast))
+            }
+
             if let detail = advancedDetail {
                 HStack(spacing: 6) {
                     if isLocalOverride {
@@ -320,6 +334,17 @@ private struct EffectivePricingRowView: View {
             parts.append("Fast tier ×\(multiplier.formatted(.number.precision(.fractionLength(0...2)).locale(AppLocale.current)))")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func ultrafastDetail(_ tier: EffectiveModelPricingTier) -> String {
+        guard let threshold = tier.thresholdTokens else { return "Ultrafast" }
+        let rates: [String] = [
+            tier.inputAboveThresholdPerMillion.map { "input \(Self.formatPrice($0))" },
+            tier.outputAboveThresholdPerMillion.map { "output \(Self.formatPrice($0))" },
+            tier.cacheReadAboveThresholdPerMillion.map { "cache read \(Self.formatPrice($0))" },
+            tier.cacheWriteAboveThresholdPerMillion.map { "cache write \(Self.formatPrice($0))" }
+        ].compactMap { $0 }
+        return "Ultrafast · Above \(threshold.formatted(.number.notation(.compactName).locale(AppLocale.current))) tokens: " + rates.joined(separator: " · ")
     }
 
     private static func formatPrice(_ value: Double) -> String {

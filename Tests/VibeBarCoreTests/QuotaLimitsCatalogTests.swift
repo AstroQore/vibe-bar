@@ -108,29 +108,39 @@ final class QuotaLimitsCatalogTests: XCTestCase {
     }
 
     private func document(_ rows: [[String: Any]], schemaVersion: Int = 1) throws -> Data {
-        try JSONSerialization.data(withJSONObject: ["schemaVersion": schemaVersion, "updatedAt": "2026-09-23", "allowances": rows])
+        try JSONSerialization.data(withJSONObject: ["schemaVersion": schemaVersion, "updatedAt": "2026-09-30", "allowances": rows])
     }
 
     private func row(provider: String = "chatgptChat", plan: String = "pro", id: String = "extra_daily",
                      models: Any = ["gpt-6-pro"], limit: Any = 10, window: Any = 86_400,
-                     unit: String = "messages", group: Any = "Extra", title: Any = "Daily") -> [String: Any] {
+                     unit: String = "messages", group: Any = "Extra", title: Any = "Daily",
+                     verifiedAt: Any = "2026-09-30") -> [String: Any] {
         ["provider": provider, "plan": plan, "id": id, "group": group, "title": title, "models": models,
          "limit": limit, "unit": unit, "windowSeconds": window,
-         "source": "https://example.com/limits", "verifiedAt": "2026-09-23"]
+         "source": "https://example.com/limits", "verifiedAt": verifiedAt]
     }
 
-    func testThePublishedDocumentDecodesToTheBundledTable() throws {
+    func testTheFormerPublishedDocumentIsValidButHasNoCurrentAllowances() throws {
         let table = try XCTUnwrap(QuotaLimitsCatalog.parse(Data(Self.published.utf8)))
         XCTAssertEqual(table.updatedAt, "2026-09-23")
-        XCTAssertEqual(table.rowCount, 4)
-        XCTAssertEqual(Set(table.chatGPTChat.keys), ["pro", "prolite"])
-        for plan in ["pro", "prolite"] {
-            XCTAssertEqual(table.chatGPTChat[plan], ChatGPTChatProAllowances.bundled(plan: plan),
-                           "the published \(plan) rows are the bundled floor today")
-            XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: plan, table: table),
-                           ChatGPTChatProAllowances.bundled(plan: plan))
+        XCTAssertEqual(table.rowCount, 0)
+        XCTAssertTrue(table.chatGPTChat.isEmpty)
+        for plan in ["pro", "prolite", "pro500"] {
+            XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: plan, table: table).isEmpty)
         }
         XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "plus", table: table).isEmpty)
+    }
+
+    func testEachRowNeedsVerificationAfterTheAllowanceChange() throws {
+        var missing = row(id: "missing_verification")
+        missing.removeValue(forKey: "verifiedAt")
+        let rows = [row(id: "old", verifiedAt: "2026-09-29"), missing,
+                    row(id: "null", verifiedAt: NSNull()), row(id: "malformed", verifiedAt: "September 30, 2026"),
+                    row(id: "invalid_date", verifiedAt: "2026-09-31"),
+                    row(id: "current"), row(id: "later", verifiedAt: "2026-10-01")]
+        let table = try XCTUnwrap(QuotaLimitsCatalog.parse(document(rows)))
+        XCTAssertEqual(table.updatedAt, "2026-09-30", "a document date cannot reverify its old rows")
+        XCTAssertEqual(table.chatGPTChat["pro"]?.map(\.id), ["current", "later"])
     }
 
     func testRowsForUnknownProvidersAndMalformedRowsAreSkippedAlone() throws {
@@ -163,15 +173,14 @@ final class QuotaLimitsCatalogTests: XCTestCase {
         XCTAssertEqual(table.chatGPTChat["pro"]?.first?.limit, 10, "the first row for an id wins")
     }
 
-    func testABadDocumentFallsBackToTheBundledTable() throws {
+    func testABadOrEmptyDocumentDoesNotInventAllowances() throws {
         for bad in [Data("not json".utf8), Data("[]".utf8), try document([row()], schemaVersion: 2),
                     Data(#"{"schemaVersion":1,"allowances":{}}"#.utf8), Data(#"{"allowances":[]}"#.utf8), Data()] {
             XCTAssertNil(QuotaLimitsCatalog.parse(bad))
         }
         XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "pro", table: nil),
                        ChatGPTChatProAllowances.bundled(plan: "pro"))
-        // A plan the published table has no rows for keeps the bundled ones;
-        // a plan it does have rows for takes them, whatever the case.
+        // Only the explicitly verified plan gets a total.
         let table = try XCTUnwrap(QuotaLimitsCatalog.parse(document([row(plan: "prolite", id: "pro_weekly", limit: 60, window: 604_800)])))
         XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "ProLite", table: table).map(\.limit), [60])
         XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "pro", table: table),
@@ -182,22 +191,19 @@ final class QuotaLimitsCatalogTests: XCTestCase {
     }
 
     func testAFetchedTableIsCachedAndTheCacheServesOffline() async throws {
-        var published = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(Self.published.utf8)) as? [String: Any])
-        var rows = published["allowances"] as! [[String: Any]]
-        rows[0]["limit"] = 250
-        published["allowances"] = rows
-        let changed = try JSONSerialization.data(withJSONObject: published)
+        // A synthetic newly verified publication, not a claim about a live plan.
+        let changed = try document([row(limit: 10)])
         StubURLProtocol.responder = { request in
             XCTAssertEqual(request.url, QuotaLimitsCatalog.remoteURL)
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, changed)
         }
         let first = await QuotaLimitsCatalog.refresh(homeDirectory: home.path, session: session())
         XCTAssertEqual(first, .fetched)
-        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 250,
+        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 10,
                        "adopted in memory at once")
         let status = QuotaLimitsCatalog.loadStatus(homeDirectory: home.path)
         XCTAssertEqual(status.outcome, .fetched)
-        XCTAssertEqual(status.rowCount, 4)
+        XCTAssertEqual(status.rowCount, 1)
         let again = await QuotaLimitsCatalog.refresh(homeDirectory: home.path, session: session())
         XCTAssertEqual(again, .unchanged)
         let lastGood = QuotaLimitsCatalog.loadStatus(homeDirectory: home.path).lastSuccessAt
@@ -209,7 +215,7 @@ final class QuotaLimitsCatalogTests: XCTestCase {
         XCTAssertEqual(offline, .networkFailure)
         QuotaLimitsCatalog.resetSnapshot()
         let reloaded = QuotaLimitsCatalog.snapshot(homeDirectory: home.path)
-        XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "pro", table: reloaded).first?.limit, 250)
+        XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "pro", table: reloaded).first?.limit, 10)
         XCTAssertEqual(QuotaLimitsCatalog.loadStatus(homeDirectory: home.path).lastSuccessAt, lastGood,
                        "a failed attempt keeps the last success")
 
@@ -230,10 +236,41 @@ final class QuotaLimitsCatalogTests: XCTestCase {
         }
         let missing = await QuotaLimitsCatalog.refresh(homeDirectory: home.path, session: session())
         XCTAssertEqual(missing, .networkFailure)
-        XCTAssertEqual(QuotaLimitsCatalog.loadCache(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 250)
-        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 250)
+        XCTAssertEqual(QuotaLimitsCatalog.loadCache(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 10)
+        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 10)
         let attributes = try FileManager.default.attributesOfItem(atPath: QuotaLimitsCatalog.cacheURL(homeDirectory: home.path).path)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+    }
+
+    func testAnOldCacheAndPublicationCannotRestoreWithdrawnTotals() async throws {
+        let old = Data(Self.published.utf8)
+        let cache = QuotaLimitsCatalog.cacheURL(homeDirectory: home.path)
+        try FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try old.write(to: cache)
+        QuotaLimitsCatalog.resetSnapshot()
+        let cached = try XCTUnwrap(QuotaLimitsCatalog.snapshot(homeDirectory: home.path))
+        XCTAssertEqual(cached.rowCount, 0)
+        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "pro", table: cached).isEmpty)
+
+        // An old valid publication replaces an in-memory table with an
+        // empty one. It is not an invalid fetch that keeps a former total.
+        let previous = try XCTUnwrap(QuotaLimitsCatalog.parse(document([row(limit: 10)])))
+        QuotaLimitsCatalog.resetSnapshot(to: previous, loaded: true)
+        StubURLProtocol.responder = { request in
+            (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, old)
+        }
+        let outcome = await QuotaLimitsCatalog.refresh(homeDirectory: home.path, session: session())
+        XCTAssertEqual(outcome, .unchanged)
+        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.rowCount, 0)
+        XCTAssertEqual(QuotaLimitsCatalog.loadStatus(homeDirectory: home.path).rowCount, 0)
+
+        StubURLProtocol.responder = nil
+        let offline = await QuotaLimitsCatalog.refresh(homeDirectory: home.path, session: session())
+        XCTAssertEqual(offline, .networkFailure)
+        QuotaLimitsCatalog.resetSnapshot()
+        let reloaded = QuotaLimitsCatalog.snapshot(homeDirectory: home.path)
+        XCTAssertEqual(reloaded?.rowCount, 0)
+        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "pro", table: reloaded).isEmpty)
     }
 
     func testOnlyHTTPSIsFetched() async {

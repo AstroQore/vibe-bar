@@ -56,17 +56,26 @@ percentage at all draws a still, dashed track.
 The service reports no count for GPT-6 Pro or GPT-5.6 Sol Pro. Its
 `conversation/init` reply names a model only once it is exhausted
 (`model_limits`: `model_slug`, `resets_after`, `using_default_model_slug`),
-and `/backend-api/models` carries no allowance fields. What OpenAI publishes
-is the total per plan, in "GPT-5.6 and GPT-6 Pro in ChatGPT" (help article
-20001354, re-verified 2026-09-23). Vibe Bar reads those totals from the public
+and `/backend-api/models` carries no allowance fields. As of 2026-09-30,
+OpenAI's [GPT-5.6 and GPT-6 Pro in ChatGPT](https://help.openai.com/en/articles/20001354)
+article describes daily and weekly allowance structures without numeric
+totals. [About ChatGPT Pro tiers](https://help.openai.com/en/articles/9793128-about-chatgpt-pro-tiers)
+also distinguishes new and grandfathered Pro $200 subscriptions, whose
+allowances differ. A plan name alone cannot identify a total, and Vibe Bar
+ships no fixed Pro-model caps.
+
+Vibe Bar can read newly verified totals from the public
 [AstroQore/vibebar-quota-limits](https://github.com/AstroQore/vibebar-quota-limits)
 repository (`limits.json`, described by `schema.json`), so a changed allowance
 reaches the app without a release. The table is fetched alongside the pricing
 catalogs, on the same interval; the last valid copy is kept in
 `~/.vibebar/quota_limits.json` and used offline. A row for an unknown provider
-or with a malformed field is skipped, a document with another `schemaVersion`
-is ignored, and a plan with no usable rows uses the table built into the app,
-which today matches the published one:
+or with a malformed field is skipped, and a document with another
+`schemaVersion` is ignored. Each Chat Pro row must carry a valid `verifiedAt`
+date of 2026-09-30 or later. Older rows are skipped in both downloads and
+caches. A valid document whose rows are all outdated becomes an empty table,
+so adopting it cannot restore an earlier total through the last-good fallback.
+A plan with no usable rows has no assumed allowance.
 
 Every Chat bucket is grouped the way Codex's Spark lanes are: the thing
 being metered is the group header — Image Generation, Deep Research,
@@ -74,13 +83,9 @@ GPT-6 Astra Pro, GPT-5.6 Sol Pro, Pro Models — and its window (Daily,
 Weekly, Monthly) is the row. A feature whose window is not known yet keeps
 the feature name as its row and has no group.
 
-| Plan | GPT-6 Astra Pro | GPT-5.6 Sol Pro |
-| --- | --- | --- |
-| Pro $200 (`pro`) | 200 messages per week | 170 per day; both models together 200 per day |
-| Pro $100 (`prolite`) | one shared allowance of 50 messages per week | |
-
 "Sync saved Chat history across devices" in OpenAI settings is the switch,
-on by default. The reader lists the account's saved conversations
+on by default. When a verified allowance supplies a counting window, the
+reader lists the account's saved conversations
 newest first, stops at the first one not updated inside the last week, skips
 Work rows (`conversation_origin` `tpp` or `flora`) and temporary chats, and
 fetches only conversations whose revision changed, at most 24 per refresh
@@ -98,10 +103,17 @@ While part of the window is unread — the budget ran out, a fetch failed, or
 the list was cut short — the row shows the count and "history sync is
 incomplete" instead of a percentage. A throttled model overrides the count
 with the service's own exhausted state and reset time; a shared allowance
-is treated as exhausted only when every model it covers is.
+is treated as exhausted only when every model it covers is. An individual
+model's throttle also remains visible when only a shared allowance is known.
 
-Plans the published table does not cover — today anything other than `pro`
-and `prolite` — get no Pro buckets. Temporary chats, deleted conversations and turns
+Without a verified total, the client still shows any service-reported model
+throttle with zero remaining messages and the reset time it was given. Its
+total, used count and window stay unknown, so the row has no percentage,
+forecast or inferred rolling reset. An empty `model_limits` list supplies no
+full-quota claim. Saved history is not read when there is no verified window
+to count against.
+
+Temporary chats, deleted conversations and turns
 whose answer never finished are not counted; the settings pane reports the
 excluded Work conversations and unclassified turns.
 
@@ -109,10 +121,12 @@ excluded Work conversations and unclassified turns.
 
 Settings > System > Subscription name format controls plan labels across
 providers. The five formats show the product and tier with or without the
-multiplier, the tier alone, or the multiplier alone. For example: ChatGPT Pro
-20x, ChatGPT Pro, Pro, Pro 20x, and 20x. A plan without a multiplier keeps its
-tier name in the last format; custom labels take precedence. This is a display
-choice and never changes the account or plan used by quota learning.
+multiplier, the tier alone, or the multiplier alone. ChatGPT's price tier is
+part of its plan name: Pro 200 stays Pro 200 in every compact format, and
+full names read ChatGPT Pro 200. Plans with a published multiplier still
+support the five formats (Claude Max 20x, Claude Max, Max, Max 20x, and 20x).
+Custom labels take precedence. This is a display choice and never changes
+the account or plan used by quota learning.
 
 ## Reset records
 

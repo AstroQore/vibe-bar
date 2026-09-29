@@ -778,6 +778,12 @@ public struct MCPPricingRowDTO: Codable, Equatable, Sendable {
     public let cacheReadPerMillion: Double?
     public let cacheWritePerMillion: Double?
     public let thresholdTokens: Int?
+    public let inputAboveThresholdPerMillion: Double?
+    public let outputAboveThresholdPerMillion: Double?
+    public let cacheReadAboveThresholdPerMillion: Double?
+    public let cacheWriteAboveThresholdPerMillion: Double?
+    public let fastMultiplier: Double?
+    public let ultrafast: MCPPricingTierDTO?
 
     public init(row: EffectiveModelPricingRow) {
         self.provider = row.provider.rawValue
@@ -790,6 +796,34 @@ public struct MCPPricingRowDTO: Codable, Equatable, Sendable {
         self.cacheReadPerMillion = row.cacheReadPerMillion
         self.cacheWritePerMillion = row.cacheWritePerMillion
         self.thresholdTokens = row.thresholdTokens
+        self.inputAboveThresholdPerMillion = row.inputAboveThresholdPerMillion
+        self.outputAboveThresholdPerMillion = row.outputAboveThresholdPerMillion
+        self.cacheReadAboveThresholdPerMillion = row.cacheReadAboveThresholdPerMillion
+        self.cacheWriteAboveThresholdPerMillion = row.cacheWriteAboveThresholdPerMillion
+        self.fastMultiplier = row.fastMultiplier
+        self.ultrafast = row.ultrafast.map(MCPPricingTierDTO.init)
+    }
+}
+
+public struct MCPPricingTierDTO: Codable, Equatable, Sendable {
+    public let inputPerMillion: Double
+    public let outputPerMillion: Double
+    public let cacheReadPerMillion: Double?
+    public let cacheWritePerMillion: Double?
+    public let thresholdTokens: Int?
+    public let inputAboveThresholdPerMillion: Double?
+    public let outputAboveThresholdPerMillion: Double?
+    public let cacheReadAboveThresholdPerMillion: Double?
+    public let cacheWriteAboveThresholdPerMillion: Double?
+
+    public init(tier: EffectiveModelPricingTier) {
+        inputPerMillion = tier.inputPerMillion; outputPerMillion = tier.outputPerMillion
+        cacheReadPerMillion = tier.cacheReadPerMillion; cacheWritePerMillion = tier.cacheWritePerMillion
+        thresholdTokens = tier.thresholdTokens
+        inputAboveThresholdPerMillion = tier.inputAboveThresholdPerMillion
+        outputAboveThresholdPerMillion = tier.outputAboveThresholdPerMillion
+        cacheReadAboveThresholdPerMillion = tier.cacheReadAboveThresholdPerMillion
+        cacheWriteAboveThresholdPerMillion = tier.cacheWriteAboveThresholdPerMillion
     }
 }
 

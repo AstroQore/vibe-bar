@@ -39,9 +39,10 @@ public enum ModelsDevPricingTransformer {
         let output: Double
         let cacheRead: Double?
         let cacheWrite: Double?
+        let tiers: [RawTier]?
 
         enum CodingKeys: String, CodingKey {
-            case input, output
+            case input, output, tiers
             case cacheRead = "cache_read"
             case cacheWrite = "cache_write"
         }
@@ -102,7 +103,8 @@ public enum ModelsDevPricingTransformer {
                         outputAboveThreshold: tier.map { perToken($0.output) },
                         cacheReadAboveThreshold: tier?.cacheRead.map(perToken),
                         cacheCreationAboveThreshold: tier?.cacheWrite.map(perToken),
-                        fastMultiplier: fastMultiplier
+                        fastMultiplier: fastMultiplier,
+                        ultrafast: model.experimental?.modes?["ultrafast"]?.cost.map(codexRates)
                     )
                 case "anthropic" where id.hasPrefix("claude-"):
                     claude[id] = .init(
@@ -232,6 +234,17 @@ public enum ModelsDevPricingTransformer {
         guard let fast else { return nil }
         let ratio = base.output > 0 ? fast.output / base.output : fast.input / base.input
         return ratio.isFinite && ratio > 0 ? ratio : nil
+    }
+
+    private static func codexRates(_ cost: RawRates) -> PricingDataSet.CodexRates {
+        let tier = cost.tiers?.min(by: { $0.tier.size < $1.tier.size })
+        return .init(input: perToken(cost.input), output: perToken(cost.output),
+                     cacheRead: cost.cacheRead.map(perToken), cacheCreation: cost.cacheWrite.map(perToken),
+                     thresholdTokens: tier?.tier.size,
+                     inputAboveThreshold: tier.map { perToken($0.input) },
+                     outputAboveThreshold: tier.map { perToken($0.output) },
+                     cacheReadAboveThreshold: tier?.cacheRead.map(perToken),
+                     cacheCreationAboveThreshold: tier?.cacheWrite.map(perToken))
     }
 
     private static func perToken(_ perMillion: Double) -> Double {

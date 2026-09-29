@@ -82,6 +82,7 @@ enum PricingDataSetMerger {
             cacheCreationAboveThreshold: high.cacheCreationAboveThreshold
                 ?? (canFillTier ? low.cacheCreationAboveThreshold : nil),
             fastMultiplier: high.fastMultiplier ?? low.fastMultiplier,
+            ultrafast: high.ultrafast ?? low.ultrafast,
             displayLabel: high.displayLabel ?? low.displayLabel
         )
     }
