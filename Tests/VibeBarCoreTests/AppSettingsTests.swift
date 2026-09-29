@@ -330,6 +330,18 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(mixed.skillsDefaultApps, [.codex, .grok])
         XCTAssertEqual(mixed.displayMode, .used)
 
+        // Retired harnesses still decode as SkillAppTarget but no toggle row
+        // offers them, so they cannot be defaults — neither from a file nor
+        // from a direct assignment.
+        let retired = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"used","skillsDefaultApps":["hermes","claude","opencode"]}"#.utf8)
+        )
+        XCTAssertEqual(retired.skillsDefaultApps, [.claude])
+        var assigned = AppSettings.default
+        assigned.skillsDefaultApps = [.opencode, .gemini, .hermes, .gemini]
+        XCTAssertEqual(assigned.skillsDefaultApps, [.gemini])
+
         let wrongType = try JSONDecoder().decode(
             AppSettings.self,
             from: Data(#"{"displayMode":"used","skillsDefaultApps":"codex"}"#.utf8)

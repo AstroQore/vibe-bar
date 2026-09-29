@@ -201,8 +201,10 @@ struct SkillImportSheet: View {
                 guard let firstChecked,
                       let selection = adopting[firstChecked.directoryName]
                 else { return }
-                for directory in adopting.keys {
-                    adopting[directory] = selection
+                for entry in entries where adopting[entry.directoryName] != nil {
+                    adopting[entry.directoryName] = SkillAdoptionSelection.copy(
+                        selection, onto: entry.foundIn
+                    )
                 }
             }
             .disabled(adopting.count < 2)
@@ -221,11 +223,10 @@ struct SkillImportSheet: View {
     }
 
     /// What a row starts with when its checkbox is turned on: the user's
-    /// default harnesses when they have set any, otherwise the apps the scan
-    /// found the directory in — adopting a folder keeps it where it was.
+    /// default harnesses plus the apps the scan found the directory in —
+    /// adopting a folder always keeps it where it was.
     private func initialSelection(for entry: UnmanagedSkillDirectory) -> Set<SkillAppTarget> {
-        let defaults = model.defaultApps
-        return defaults.isEmpty ? Set(entry.foundIn) : Set(defaults)
+        SkillAdoptionSelection.seed(foundIn: entry.foundIn, defaults: model.defaultApps)
     }
 
     private func unmanagedRow(_ entry: UnmanagedSkillDirectory) -> some View {

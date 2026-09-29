@@ -131,8 +131,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Empty by default: getting a skill onto the machine and switching it on
     /// for every agent CLI are two decisions, and only the user can say the
     /// second one should be automatic. Unknown raw values from a newer build
-    /// are dropped on decode rather than costing the whole list.
-    public var skillsDefaultApps: [SkillAppTarget]
+    /// are dropped on decode rather than costing the whole list, and so are
+    /// retired harnesses (Hermes, OpenCode) that still decode but that no
+    /// toggle row offers: a default the UI cannot untick would keep writing
+    /// links into an app directory nobody manages any more.
+    public var skillsDefaultApps: [SkillAppTarget] {
+        didSet {
+            let normalized = Self.normalizedSkillsDefaultApps(skillsDefaultApps)
+            if normalized != skillsDefaultApps { skillsDefaultApps = normalized }
+        }
+    }
 
     /// The local MCP server: whether it listens, and whether agents reaching it
     /// may ask for a quota refresh.
@@ -461,11 +469,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mcpServer = mcpServer
     }
 
-    /// First occurrence wins, so a hand-edited file listing a harness twice
-    /// reads as one selection rather than a list the UI can only half toggle.
+    /// Managed harnesses only, first occurrence wins: a hand-edited file
+    /// listing a harness twice reads as one selection rather than a list the
+    /// UI can only half toggle.
     static func normalizedSkillsDefaultApps(_ apps: [SkillAppTarget]) -> [SkillAppTarget] {
         var seen: Set<SkillAppTarget> = []
-        return apps.filter { seen.insert($0).inserted }
+        return apps.filter {
+            SkillAppTarget.managedHarnesses.contains($0) && seen.insert($0).inserted
+        }
     }
 
     /// Drops unnamed presets, collapses names that differ only by case (the
