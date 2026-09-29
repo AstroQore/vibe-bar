@@ -141,6 +141,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
             if normalized != skillsDefaultApps { skillsDefaultApps = normalized }
         }
     }
+    /// Whether the Skills page lists the skills a harness ships in its own
+    /// built-in folder (Codex's `.system`, Grok's bundled skills, …) after
+    /// the installed ones. On by default so they are discoverable; the
+    /// toolbar toggle is for people who only want their own skills listed.
+    public var skillsShowBuiltIn: Bool
 
     /// The local MCP server: whether it listens, and whether agents reaching it
     /// may ask for a quota refresh.
@@ -409,6 +414,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         sessionBodyIndexingEnabled: Bool = true,
         skillsSyncMethod: SkillSyncMethod = .auto,
         skillsDefaultApps: [SkillAppTarget] = [],
+        skillsShowBuiltIn: Bool = true,
         mcpServer: MCPServerSettings = .default
     ) {
         self.displayMode = displayMode
@@ -466,6 +472,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.sessionBodyIndexingEnabled = sessionBodyIndexingEnabled
         self.skillsSyncMethod = skillsSyncMethod
         self.skillsDefaultApps = Self.normalizedSkillsDefaultApps(skillsDefaultApps)
+        self.skillsShowBuiltIn = skillsShowBuiltIn
         self.mcpServer = mcpServer
     }
 
@@ -561,6 +568,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case sessionBodyIndexingEnabled
         case skillsSyncMethod
         case skillsDefaultApps
+        case skillsShowBuiltIn
         case mcpServer
     }
 
@@ -792,6 +800,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 .compactMap(SkillAppTarget.init(rawValue:))
                 ?? Self.default.skillsDefaultApps
         )
+        self.skillsShowBuiltIn =
+            (try? c.decodeIfPresent(Bool.self, forKey: .skillsShowBuiltIn))
+            ?? Self.default.skillsShowBuiltIn
         // A settings file written before the MCP server existed enables it,
         // which is the point: the one-line client setup only works if the
         // socket is already there when the agent first looks.
@@ -864,6 +875,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(sessionBodyIndexingEnabled, forKey: .sessionBodyIndexingEnabled)
         try c.encode(skillsSyncMethod, forKey: .skillsSyncMethod)
         try c.encode(skillsDefaultApps, forKey: .skillsDefaultApps)
+        try c.encode(skillsShowBuiltIn, forKey: .skillsShowBuiltIn)
         try c.encode(mcpServer, forKey: .mcpServer)
     }
 

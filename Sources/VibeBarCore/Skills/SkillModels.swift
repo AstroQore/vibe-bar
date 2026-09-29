@@ -257,6 +257,27 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
     /// `skills.json`.
     public var nativeDisabledApps: Set<SkillAppTarget>
     public var nativeStateUnknownApps: Set<SkillAppTarget>
+    /// Hash of the shared copy as it is on disk right now, derived on reload
+    /// and omitted from `skills.json`. `nil` when the directory could not be
+    /// read — which says nothing about whether it was edited.
+    public var localContentHash: String?
+
+    /// The shared copy's files no longer match what Vibe Bar recorded at
+    /// install, adoption, update, or the last accept. Both hashes have to be
+    /// known: a row without a recorded hash is back-filled rather than
+    /// reported, and an unreadable directory is not evidence of an edit.
+    public var isLocallyModified: Bool {
+        guard let localContentHash, let contentHash else { return false }
+        return localContentHash != contentHash
+    }
+    /// Every other copy of this skill on the Mac — real directories in a
+    /// harness folder and harness built-ins with the same name — attached by
+    /// `SkillsService.installedSkills()`. Transient like the native state:
+    /// it describes the disk right now and is never written to `skills.json`.
+    public var otherCopies: [SkillCopy] = []
+    /// The shared copy's live metadata, attached alongside `otherCopies` and
+    /// only when there is something to compare it with.
+    public var sharedCopy: SkillCopy?
 
     public init(
         id: SkillID,
@@ -269,7 +290,8 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         updatedAt: Date? = nil,
         apps: [SkillAppTarget: SkillMaterialization] = [:],
         nativeDisabledApps: Set<SkillAppTarget> = [],
-        nativeStateUnknownApps: Set<SkillAppTarget> = []
+        nativeStateUnknownApps: Set<SkillAppTarget> = [],
+        localContentHash: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -282,6 +304,7 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         self.apps = apps
         self.nativeDisabledApps = nativeDisabledApps
         self.nativeStateUnknownApps = nativeStateUnknownApps
+        self.localContentHash = localContentHash
     }
 
     public var enabledApps: [SkillAppTarget] {
@@ -353,6 +376,7 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         self.apps = apps
         self.nativeDisabledApps = []
         self.nativeStateUnknownApps = []
+        self.localContentHash = nil
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -389,6 +413,7 @@ public enum SkillError: Error, Equatable, Sendable {
     case nativeSkillsGloballyDisabled(SkillAppTarget)
     case nativeSkillDisabledByPattern(SkillAppTarget)
     case projectionUnsupported(SkillAppTarget)
+    case copyOutsideScannedRoots(String)
 }
 
 extension SkillError: LocalizedError {
@@ -428,6 +453,8 @@ extension SkillError: LocalizedError {
             return "A pattern in \(app.displayName)'s disabled skills list also matches this skill. Edit that pattern in its configuration to enable it."
         case let .projectionUnsupported(app):
             return "\(app.displayName) reads skills from ~/.agents/skills itself; Vibe Bar never writes into its own skills folder."
+        case let .copyOutsideScannedRoots(path):
+            return "\(path) is not a skill copy Vibe Bar recognizes."
         }
     }
 }

@@ -175,17 +175,25 @@ public actor SkillsStore {
     /// poll's snapshot — even an ABA write of an equal materialization — makes
     /// the whole proposal stale; the caller gets current rows and retries from
     /// fresh disk evidence on its next pass.
+    ///
+    /// `contentHashBackfills` records the shared copy's hash for rows an older
+    /// build left without one. It only ever fills a gap: a row that gained a
+    /// hash by any other route keeps it.
     public func applyReconciliation(
         expectedRevision: UInt64,
-        appsBySkill: [SkillID: [SkillAppTarget: SkillMaterialization]]
+        appsBySkill: [SkillID: [SkillAppTarget: SkillMaterialization]],
+        contentHashBackfills: [SkillID: String] = [:]
     ) throws -> [Skill] {
         var storage = loaded()
         guard mutationRevision == expectedRevision else { return storage.skills }
         for index in storage.skills.indices {
             let id = storage.skills[index].id
             if let apps = appsBySkill[id] { storage.skills[index].apps = apps }
+            if storage.skills[index].contentHash == nil, let hash = contentHashBackfills[id] {
+                storage.skills[index].contentHash = hash
+            }
         }
-        guard !appsBySkill.isEmpty else { return storage.skills }
+        guard !appsBySkill.isEmpty || !contentHashBackfills.isEmpty else { return storage.skills }
         try save(storage)
         return storage.skills
     }

@@ -349,6 +349,25 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(wrongType.skillsDefaultApps, [])
     }
 
+    func testSkillsShowBuiltInDefaultsOnAndRoundTrips() throws {
+        // On by default so harness built-ins are discoverable; a settings
+        // file from before the toggle existed decodes to that default.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertTrue(legacy.skillsShowBuiltIn)
+        XCTAssertTrue(AppSettings.default.skillsShowBuiltIn)
+
+        var settings = AppSettings.default
+        settings.skillsShowBuiltIn = false
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self,
+            from: try JSONEncoder().encode(settings)
+        )
+        XCTAssertFalse(decoded.skillsShowBuiltIn)
+    }
+
     func testMCPSkillInstallDefaultsToOnAndRoundTrips() throws {
         // A settings file written before `skills.install` existed must decode
         // to the same "on" the feature ships with, not to a switch the user
