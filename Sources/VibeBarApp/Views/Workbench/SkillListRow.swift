@@ -285,6 +285,7 @@ struct SkillListRow: View {
     let isBusy: Bool
     let onSetActivation: (SkillAppTarget, SkillActivationAction) -> Void
     let onUpdate: () -> Void
+    let onAcceptLocalChanges: () -> Void
     let onUninstall: () -> Void
     /// Makes one of `skill.otherCopies` the shared copy. Confirmed here, not
     /// in the copies popover, so the dialog is not torn down with it.
@@ -356,6 +357,9 @@ struct SkillListRow: View {
                     .lineLimit(1)
                 sourceBadge
                 nativeStateBadge
+                if skill.isLocallyModified {
+                    modifiedBadge
+                }
                 if updateState?.updateAvailable == true {
                     updateBadge
                 }
@@ -429,7 +433,30 @@ struct SkillListRow: View {
             )
     }
 
+    /// Orange like the native-off capsule: the row is fine to use, but what
+    /// is on disk is no longer what Vibe Bar installed.
+    private var modifiedBadge: some View {
+        Text(L10n.Workbench.Skills.Badge.modified)
+            .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.orange.opacity(0.12)))
+            .help(L10n.Workbench.Skills.Badge.modifiedHelp)
+    }
+
+    @ViewBuilder
     private var updateBadge: some View {
+        // Updating replaces the shared copy wholesale; when that copy carries
+        // edits, say so before the click rather than after.
+        if skill.isLocallyModified {
+            updateCapsule.help(L10n.Workbench.Skills.Badge.updateHelpModified)
+        } else {
+            updateCapsule
+        }
+    }
+
+    private var updateCapsule: some View {
         Text(L10n.Workbench.Skills.Badge.update)
             .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
             .tracking(0.4)
@@ -506,6 +533,11 @@ struct SkillListRow: View {
                 systemImage: "arrow.down.circle"
             ) { onUpdate() }
                 .disabled(!skill.id.isRepositoryBacked)
+            Button(
+                L10n.Workbench.Skills.menuAcceptLocalChanges,
+                systemImage: "checkmark.seal"
+            ) { onAcceptLocalChanges() }
+                .disabled(!skill.isLocallyModified)
             Divider()
             Button(L10n.Workbench.Skills.menuUninstall, systemImage: "trash", role: .destructive) {
                 confirmingUninstall = true
