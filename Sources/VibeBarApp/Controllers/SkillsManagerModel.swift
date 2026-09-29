@@ -24,6 +24,7 @@ final class SkillsManagerModel: ObservableObject {
         static let search = "search"
         static let importing = "import"
         static let zip = "zip"
+        static let bulk = "bulk"
 
         static func skill(_ id: SkillID) -> String { "skill:\(id.rawValue)" }
         static func install(_ id: SkillID) -> String { "install:\(id.rawValue)" }
@@ -38,6 +39,9 @@ final class SkillsManagerModel: ObservableObject {
     @Published private(set) var updateStates: [SkillID: SkillUpdateState] = [:]
     @Published private(set) var busy: Set<String> = []
     @Published var toast: String?
+    /// Rows a running bulk change still owns. Their toggles read as busy so a
+    /// hand click cannot race the loop on the same skill.
+    @Published private(set) var bulkSkillIDs: Set<SkillID> = []
 
     // MARK: - Sheets
 
@@ -132,7 +136,33 @@ final class SkillsManagerModel: ObservableObject {
 
     func isBusy(_ key: String) -> Bool { busy.contains(key) }
 
-    func isBusy(skill: Skill) -> Bool { busy.contains(BusyKey.skill(skill.id)) }
+    func isBusy(skill: Skill) -> Bool {
+        busy.contains(BusyKey.skill(skill.id)) || bulkSkillIDs.contains(skill.id)
+    }
+
+    // MARK: - Default harness selection
+
+    /// Harnesses the install, discovery, and adoption sheets start with.
+    var defaultApps: [SkillAppTarget] { settingsStore.settings.skillsDefaultApps }
+
+    func isDefaultApp(_ app: SkillAppTarget) -> Bool {
+        settingsStore.settings.skillsDefaultApps.contains(app)
+    }
+
+    /// One settings write per menu pick — never on a render or a tick. The
+    /// explicit `objectWillChange` is what re-renders the capsule menus: the
+    /// value lives in `SettingsStore`, which this model does not republish.
+    func setDefaultApp(_ app: SkillAppTarget, isOn: Bool) {
+        guard isOn != isDefaultApp(app) else { return }
+        objectWillChange.send()
+        var apps = settingsStore.settings.skillsDefaultApps
+        if isOn {
+            apps.append(app)
+        } else {
+            apps.removeAll { $0 == app }
+        }
+        settingsStore.settings.skillsDefaultApps = apps
+    }
 
     // MARK: - Lifecycle
 
@@ -242,6 +272,67 @@ final class SkillsManagerModel: ObservableObject {
                 )
             }
         }
+    }
+
+    // MARK: - Bulk actions
+
+    /// What switching `app` toward `direction` would do to the rows the
+    /// current filter shows. Computed on a menu pick, not in `body`.
+    func bulkPlan(app: SkillAppTarget, direction: SkillBulkDirection) -> SkillBulkPlan {
+        SkillBulkPlan(app: app, direction: direction, skills: filteredSkills)
+    }
+
+    func startBulk(_ plan: SkillBulkPlan) {
+        Task { await applyBulk(plan) }
+    }
+
+    /// Runs a confirmed bulk change row by row through the same
+    /// `setActivation` the per-skill toggles use, so a bulk enable writes
+    /// exactly what a hundred single clicks would have.
+    ///
+    /// Plain `async` rather than routed through `perform`: the loop reports
+    /// progress into the toast as it goes and settles its own summary, where
+    /// `perform` would replace both with a single error.
+    func applyBulk(_ confirmed: SkillBulkPlan) async {
+        guard !busy.contains(BusyKey.bulk) else { return }
+        busy.insert(BusyKey.bulk)
+        // The dialog may have sat open across several reloads; act on the
+        // registry as it is now, not on the reading the count was quoted from.
+        let plan = confirmed.refreshed(against: skills)
+        bulkSkillIDs = Set(plan.steps.map(\.id))
+        let method = settingsStore.settings.skillsSyncMethod
+        let app = plan.app
+        let service = self.service
+        let outcome = await plan.run(
+            apply: { step in
+                try await service.setActivation(
+                    step.id,
+                    app: app,
+                    action: step.action,
+                    method: method
+                )
+            },
+            progress: { [weak self] done, total in
+                self?.showBulkProgress(app: app, done: done, total: total)
+            }
+        )
+        await reloadSkills()
+        bulkSkillIDs = []
+        busy.remove(BusyKey.bulk)
+        toast = outcome.failed == 0
+            ? L10n.Workbench.Skills.Toast.bulkDone(app: app.displayName, succeeded: outcome.succeeded)
+            : L10n.Workbench.Skills.Toast.bulkPartial(
+                app: app.displayName,
+                succeeded: outcome.succeeded,
+                failed: outcome.failed
+            )
+    }
+
+    private func showBulkProgress(app: SkillAppTarget, done: Int, total: Int) {
+        toast = [
+            app.displayName,
+            L10n.Quota.History.curvesSome(shown: done, total: total),
+        ].joined(separator: " · ")
     }
 
     func uninstall(_ skill: Skill) {

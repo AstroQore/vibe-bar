@@ -16,11 +16,18 @@ struct SkillDiscoverSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var repoDraft = ""
     @State private var query = ""
-    /// Apps a row installs into when it has not been touched. Empty by
-    /// design: installing is about getting the skill onto the machine, and
-    /// silently switching it on for every managed harness is not that.
-    @State private var defaultApps: Set<SkillAppTarget> = []
+    /// Apps a row installs into when it has not been touched. Starts from
+    /// the harnesses the user marked "pre-select" on the Skills page, which
+    /// is empty until they do: installing is about getting the skill onto the
+    /// machine, and switching it on everywhere is a choice only they make.
+    @State private var defaultApps: Set<SkillAppTarget>
     @State private var overrides: [String: Set<SkillAppTarget>] = [:]
+
+    init(density: Theme.Density, model: SkillsManagerModel) {
+        self.density = density
+        self.model = model
+        _defaultApps = State(initialValue: Set(model.defaultApps))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

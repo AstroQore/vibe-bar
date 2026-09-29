@@ -16,6 +16,10 @@ struct SkillsManagerPage: View {
     @State private var showsZipImporter = false
     @State private var toastDismissal: Task<Void, Never>?
     @State private var showingSyncExplainer = false
+    /// The bulk change waiting on its confirmation dialog. Planned when the
+    /// menu item is picked so the title quotes the count the loop will act
+    /// on; the model re-reads the registry before running it.
+    @State private var pendingBulk: SkillBulkPlan?
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
@@ -72,6 +76,23 @@ struct SkillsManagerPage: View {
             SkillBackupsSheet(density: density, model: model)
                 .vibeBarNoInitialFocus()
                 .vibeBarSystemControlFocus()
+        }
+        .confirmationDialog(
+            pendingBulk.map(bulkConfirmTitle) ?? "",
+            isPresented: Binding(
+                get: { pendingBulk != nil },
+                set: { if !$0 { pendingBulk = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingBulk
+        ) { plan in
+            Button(L10n.Workbench.Skills.Bulk.apply) {
+                model.startBulk(plan)
+                pendingBulk = nil
+            }
+            Button(L10n.Common.cancel, role: .cancel) { pendingBulk = nil }
+        } message: { _ in
+            Text(L10n.Workbench.Skills.Bulk.confirmMessage)
         }
     }
 
@@ -233,6 +254,7 @@ struct SkillsManagerPage: View {
                 .overlay(Capsule().stroke(app.accent.opacity(count == 0 ? 0.16 : 0.45), lineWidth: 0.8))
                 .opacity(count == 0 ? 0.5 : 1)
                 .saturation(count == 0 ? 0.2 : 1)
+                .contentShape(Capsule())
                 .help(appCountHelp(
                     app: app,
                     count: count,
@@ -240,6 +262,11 @@ struct SkillsManagerPage: View {
                     coupled: coupled,
                     nativeDisabled: nativeDisabled
                 ))
+                // Right-click only: a left-click `Menu` would restyle the
+                // capsule into a pop-up button, and the pill reads as a count
+                // first. The tooltip's second line says the menu is there.
+                .contextMenu { bulkMenu(for: app) }
+                .disabled(isBulkRunning)
                 .accessibilityLabel(
                     L10n.Workbench.Skills.appSeesCount(app: app.displayName, count: count)
                 )
@@ -268,6 +295,56 @@ struct SkillsManagerPage: View {
         }
     }
 
+    private var isBulkRunning: Bool {
+        model.isBusy(SkillsManagerModel.BusyKey.bulk)
+    }
+
+    /// Kept to labels and one `contains` lookup: the menu is built with the
+    /// capsule on every render, so the plans — and even whether the filter
+    /// shows anything — are only worked out on a pick.
+    @ViewBuilder
+    private func bulkMenu(for app: SkillAppTarget) -> some View {
+        let name = app.displayName
+        Button(L10n.Workbench.Skills.Bulk.enableForShown(app: name)) {
+            requestBulk(app: app, direction: .enable)
+        }
+        Button(L10n.Workbench.Skills.Bulk.disableForShown(app: name)) {
+            requestBulk(app: app, direction: .disable)
+        }
+        Divider()
+        Toggle(
+            L10n.Workbench.Skills.Bulk.useAsDefault,
+            isOn: Binding(
+                get: { model.isDefaultApp(app) },
+                set: { model.setDefaultApp(app, isOn: $0) }
+            )
+        )
+    }
+
+    /// Nothing to change is answered straight away; asking the user to
+    /// confirm "0 skills" would be a dialog with no decision in it.
+    private func requestBulk(app: SkillAppTarget, direction: SkillBulkDirection) {
+        let plan = model.bulkPlan(app: app, direction: direction)
+        if plan.isEmpty {
+            model.toast = L10n.Workbench.Skills.Toast.bulkDone(app: app.displayName, succeeded: 0)
+        } else {
+            pendingBulk = plan
+        }
+    }
+
+    private func bulkConfirmTitle(_ plan: SkillBulkPlan) -> String {
+        switch plan.direction {
+        case .enable:
+            L10n.Workbench.Skills.Bulk.confirmEnableTitle(
+                app: plan.app.displayName, count: plan.steps.count
+            )
+        case .disable:
+            L10n.Workbench.Skills.Bulk.confirmDisableTitle(
+                app: plan.app.displayName, count: plan.steps.count
+            )
+        }
+    }
+
     private func appCountHelp(
         app: SkillAppTarget,
         count: Int,
@@ -290,7 +367,10 @@ struct SkillsManagerPage: View {
         if nativeDisabled > 0 {
             help += " · " + L10n.Workbench.Skills.appCountNativeDisabled(count: nativeDisabled)
         }
-        return help
+        // Its own line rather than another " · " clause: the count answers
+        // "what does this harness see", the second line says what a
+        // right-click does about it.
+        return [help, L10n.Workbench.Skills.Bulk.defaultHelp].joined(separator: "\n")
     }
 
     private var countSummary: String {

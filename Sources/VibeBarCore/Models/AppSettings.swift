@@ -125,6 +125,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// `~/.vibebar/skills.json` next to the registry it describes.
     public var skillsSyncMethod: SkillSyncMethod
 
+    /// Harnesses a new install, discovery pick, or adoption starts with
+    /// selected, in the order the user switched them on.
+    ///
+    /// Empty by default: getting a skill onto the machine and switching it on
+    /// for every agent CLI are two decisions, and only the user can say the
+    /// second one should be automatic. Unknown raw values from a newer build
+    /// are dropped on decode rather than costing the whole list.
+    public var skillsDefaultApps: [SkillAppTarget]
+
     /// The local MCP server: whether it listens, and whether agents reaching it
     /// may ask for a quota refresh.
     public var mcpServer: MCPServerSettings
@@ -391,6 +400,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         preferredTerminal: PreferredTerminal = .terminal,
         sessionBodyIndexingEnabled: Bool = true,
         skillsSyncMethod: SkillSyncMethod = .auto,
+        skillsDefaultApps: [SkillAppTarget] = [],
         mcpServer: MCPServerSettings = .default
     ) {
         self.displayMode = displayMode
@@ -447,7 +457,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.preferredTerminal = preferredTerminal
         self.sessionBodyIndexingEnabled = sessionBodyIndexingEnabled
         self.skillsSyncMethod = skillsSyncMethod
+        self.skillsDefaultApps = Self.normalizedSkillsDefaultApps(skillsDefaultApps)
         self.mcpServer = mcpServer
+    }
+
+    /// First occurrence wins, so a hand-edited file listing a harness twice
+    /// reads as one selection rather than a list the UI can only half toggle.
+    static func normalizedSkillsDefaultApps(_ apps: [SkillAppTarget]) -> [SkillAppTarget] {
+        var seen: Set<SkillAppTarget> = []
+        return apps.filter { seen.insert($0).inserted }
     }
 
     /// Drops unnamed presets, collapses names that differ only by case (the
@@ -531,6 +549,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case preferredTerminal
         case sessionBodyIndexingEnabled
         case skillsSyncMethod
+        case skillsDefaultApps
         case mcpServer
     }
 
@@ -755,6 +774,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.skillsSyncMethod =
             (try? c.decodeIfPresent(SkillSyncMethod.self, forKey: .skillsSyncMethod))
             ?? Self.default.skillsSyncMethod
+        // Raw strings first: one harness this build does not know must not
+        // turn the rest of the selection into a decode failure.
+        self.skillsDefaultApps = Self.normalizedSkillsDefaultApps(
+            ((try? c.decodeIfPresent([String].self, forKey: .skillsDefaultApps)) ?? nil)?
+                .compactMap(SkillAppTarget.init(rawValue:))
+                ?? Self.default.skillsDefaultApps
+        )
         // A settings file written before the MCP server existed enables it,
         // which is the point: the one-line client setup only works if the
         // socket is already there when the agent first looks.
@@ -826,6 +852,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(preferredTerminal, forKey: .preferredTerminal)
         try c.encode(sessionBodyIndexingEnabled, forKey: .sessionBodyIndexingEnabled)
         try c.encode(skillsSyncMethod, forKey: .skillsSyncMethod)
+        try c.encode(skillsDefaultApps, forKey: .skillsDefaultApps)
         try c.encode(mcpServer, forKey: .mcpServer)
     }
 

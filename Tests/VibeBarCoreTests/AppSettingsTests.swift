@@ -303,6 +303,40 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(unknown.displayMode, .used)
     }
 
+    func testSkillsDefaultAppsDefaultsToEmptyAndRoundTrips() throws {
+        // Empty is the promise: a settings file from before the bulk menu
+        // existed must not start switching new installs on anywhere.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertEqual(legacy.skillsDefaultApps, [])
+        XCTAssertEqual(AppSettings.default.skillsDefaultApps, [])
+
+        var settings = AppSettings.default
+        settings.skillsDefaultApps = [.claude, .codex]
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.skillsDefaultApps, [.claude, .codex])
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["skillsDefaultApps"] as? [String], ["claude", "codex"])
+
+        // A harness a newer build added is dropped, not the whole list; a
+        // duplicate collapses to one entry; a wrong type falls back to empty.
+        let mixed = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"used","skillsDefaultApps":["codex","futureHarness","codex","grok"]}"#.utf8)
+        )
+        XCTAssertEqual(mixed.skillsDefaultApps, [.codex, .grok])
+        XCTAssertEqual(mixed.displayMode, .used)
+
+        let wrongType = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"used","skillsDefaultApps":"codex"}"#.utf8)
+        )
+        XCTAssertEqual(wrongType.skillsDefaultApps, [])
+    }
+
     func testMCPSkillInstallDefaultsToOnAndRoundTrips() throws {
         // A settings file written before `skills.install` existed must decode
         // to the same "on" the feature ships with, not to a switch the user
