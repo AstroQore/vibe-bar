@@ -303,6 +303,52 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(unknown.displayMode, .used)
     }
 
+    func testSkillsDefaultAppsDefaultsToEmptyAndRoundTrips() throws {
+        // Empty is the promise: a settings file from before the bulk menu
+        // existed must not start switching new installs on anywhere.
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"remaining"}"#.utf8)
+        )
+        XCTAssertEqual(legacy.skillsDefaultApps, [])
+        XCTAssertEqual(AppSettings.default.skillsDefaultApps, [])
+
+        var settings = AppSettings.default
+        settings.skillsDefaultApps = [.claude, .codex]
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.skillsDefaultApps, [.claude, .codex])
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["skillsDefaultApps"] as? [String], ["claude", "codex"])
+
+        // A harness a newer build added is dropped, not the whole list; a
+        // duplicate collapses to one entry; a wrong type falls back to empty.
+        let mixed = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"used","skillsDefaultApps":["codex","futureHarness","codex","grok"]}"#.utf8)
+        )
+        XCTAssertEqual(mixed.skillsDefaultApps, [.codex, .grok])
+        XCTAssertEqual(mixed.displayMode, .used)
+
+        // Retired harnesses still decode as SkillAppTarget but no toggle row
+        // offers them, so they cannot be defaults — neither from a file nor
+        // from a direct assignment.
+        let retired = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"used","skillsDefaultApps":["hermes","claude","opencode"]}"#.utf8)
+        )
+        XCTAssertEqual(retired.skillsDefaultApps, [.claude])
+        var assigned = AppSettings.default
+        assigned.skillsDefaultApps = [.opencode, .gemini, .hermes, .gemini]
+        XCTAssertEqual(assigned.skillsDefaultApps, [.gemini])
+
+        let wrongType = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"displayMode":"used","skillsDefaultApps":"codex"}"#.utf8)
+        )
+        XCTAssertEqual(wrongType.skillsDefaultApps, [])
+    }
+
     func testSkillsShowBuiltInDefaultsOnAndRoundTrips() throws {
         // On by default so harness built-ins are discoverable; a settings
         // file from before the toggle existed decodes to that default.

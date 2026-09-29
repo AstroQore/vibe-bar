@@ -328,11 +328,21 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         apps[app] != nil
     }
 
+    /// Whether `app` would still discover this skill with its own projection
+    /// gone: through the shared root it scans, or — for AntiGravity — through
+    /// the Gemini CLI folder it reads for compatibility.
+    ///
+    /// `activationState` reports a direct projection as `.enabled` and so
+    /// hides this second route; anything that removes a projection to turn a
+    /// skill off has to ask here whether that can work at all.
+    public func isDiscoveredWithoutProjection(for app: SkillAppTarget) -> Bool {
+        app.discoversSharedSkillRoot || (app == .antigravity && isProjected(for: .gemini))
+    }
+
     public func activationState(for app: SkillAppTarget) -> SkillActivationState {
         let projected = isProjected(for: app)
         let shared = app.discoversSharedSkillRoot
-        let antigravityCoupled = app == .antigravity && isProjected(for: .gemini)
-        guard projected || shared || antigravityCoupled else { return .notProjected }
+        guard projected || isDiscoveredWithoutProjection(for: app) else { return .notProjected }
         if nativeStateUnknownApps.contains(app) { return .unknown }
         if nativeDisabledApps.contains(app) { return .disabledInHarness }
         if projected { return .enabled }
