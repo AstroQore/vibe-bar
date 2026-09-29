@@ -125,6 +125,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// `~/.vibebar/skills.json` next to the registry it describes.
     public var skillsSyncMethod: SkillSyncMethod
 
+    /// Whether the Skills page lists the skills a harness ships in its own
+    /// built-in folder (Codex's `.system`, Grok's bundled skills, …) after
+    /// the installed ones. On by default so they are discoverable; the
+    /// toolbar toggle is for people who only want their own skills listed.
+    public var skillsShowBuiltIn: Bool
+
     /// The local MCP server: whether it listens, and whether agents reaching it
     /// may ask for a quota refresh.
     public var mcpServer: MCPServerSettings
@@ -391,6 +397,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         preferredTerminal: PreferredTerminal = .terminal,
         sessionBodyIndexingEnabled: Bool = true,
         skillsSyncMethod: SkillSyncMethod = .auto,
+        skillsShowBuiltIn: Bool = true,
         mcpServer: MCPServerSettings = .default
     ) {
         self.displayMode = displayMode
@@ -447,6 +454,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.preferredTerminal = preferredTerminal
         self.sessionBodyIndexingEnabled = sessionBodyIndexingEnabled
         self.skillsSyncMethod = skillsSyncMethod
+        self.skillsShowBuiltIn = skillsShowBuiltIn
         self.mcpServer = mcpServer
     }
 
@@ -531,6 +539,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case preferredTerminal
         case sessionBodyIndexingEnabled
         case skillsSyncMethod
+        case skillsShowBuiltIn
         case mcpServer
     }
 
@@ -755,6 +764,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.skillsSyncMethod =
             (try? c.decodeIfPresent(SkillSyncMethod.self, forKey: .skillsSyncMethod))
             ?? Self.default.skillsSyncMethod
+        self.skillsShowBuiltIn =
+            (try? c.decodeIfPresent(Bool.self, forKey: .skillsShowBuiltIn))
+            ?? Self.default.skillsShowBuiltIn
         // A settings file written before the MCP server existed enables it,
         // which is the point: the one-line client setup only works if the
         // socket is already there when the agent first looks.
@@ -826,6 +838,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(preferredTerminal, forKey: .preferredTerminal)
         try c.encode(sessionBodyIndexingEnabled, forKey: .sessionBodyIndexingEnabled)
         try c.encode(skillsSyncMethod, forKey: .skillsSyncMethod)
+        try c.encode(skillsShowBuiltIn, forKey: .skillsShowBuiltIn)
         try c.encode(mcpServer, forKey: .mcpServer)
     }
 

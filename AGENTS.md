@@ -857,7 +857,13 @@ capture against § 8 before committing it — a screenshot is source content.
   content hash still matches — so a folder the user authored or edited
   is left in place. Vibe Bar reads `~/.agents/.skill-lock.json` for
   provenance and never writes it, and pre-uninstall snapshots stay under
-  `~/.vibebar/skill_backups/`.
+  `~/.vibebar/skill_backups/`. The harness built-in folders listed in
+  `SkillAppCatalog.builtInRelativePaths` (Codex `~/.codex/skills/.system`,
+  Grok `~/.grok/bundled/skills`, Cursor `~/.cursor/skills-cursor`) are read
+  by `SkillCopyScanner` to show every copy of a skill and are never written:
+  `SkillAppCatalog.isWriteAllowed` refuses them even where one sits inside
+  an allowlisted root, and a copy found there only ever flows *into* the
+  SSOT (`SkillsService.replaceSharedCopy` / `copyToShared`, backup first).
 
   Projection is not activation. Codex, Gemini CLI, Grok Build, Cursor, Muse
   Code and Mistral Vibe all discover `~/.agents/skills` directly; AntiGravity also discovers the Gemini

@@ -167,6 +167,10 @@ struct SkillsManagerPage: View {
             }
             .buttonStyle(.vibeBar(cornerRadius: 11))
 
+            if !model.builtIns.isEmpty {
+                builtInToggle
+            }
+
             Button {
                 model.presentBackupsSheet()
             } label: {
@@ -192,6 +196,23 @@ struct SkillsManagerPage: View {
             .buttonStyle(.vibeBar(cornerRadius: 11))
             .help(L10n.Workbench.Skills.discoverHelp)
         }
+    }
+
+    /// Only offered when this Mac has built-ins to show, so the toolbar of
+    /// someone without any is unchanged. Writes the setting on click only.
+    private var builtInToggle: some View {
+        Button {
+            model.setShowsBuiltIn(!model.showsBuiltIn)
+        } label: {
+            buttonLabel(
+                systemImage: model.showsBuiltIn ? "checkmark.square" : "square",
+                title: L10n.Workbench.Skills.filterBuiltIn,
+                busy: false
+            )
+            .porcelainToolbarButton()
+        }
+        .buttonStyle(.vibeBar(cornerRadius: 11))
+        .accessibilityAddTraits(model.showsBuiltIn ? [.isSelected] : [])
     }
 
     private func buttonLabel(systemImage: String, title: String, busy: Bool) -> some View {
@@ -296,17 +317,23 @@ struct SkillsManagerPage: View {
     private var countSummary: String {
         let total = model.skills.count
         let shown = model.filteredSkills.count
-        if shown == total { return L10n.Workbench.Skills.countTotal(count: total) }
-        return L10n.Workbench.Skills.countFiltered(shown: shown, total: total)
+        let installed = shown == total
+            ? L10n.Workbench.Skills.countTotal(count: total)
+            : L10n.Workbench.Skills.countFiltered(shown: shown, total: total)
+        let builtIns = model.showsBuiltIn ? model.builtIns.count : 0
+        guard builtIns > 0 else { return installed }
+        return installed + " · " + L10n.Workbench.Skills.builtInCount(count: builtIns)
     }
 
     // MARK: - List
 
     @ViewBuilder
     private var skillList: some View {
-        if model.skills.isEmpty {
+        let installed = model.filteredSkills
+        let builtIns = model.filteredBuiltIns
+        if model.skills.isEmpty && (!model.showsBuiltIn || model.builtIns.isEmpty) {
             emptyCard
-        } else if model.filteredSkills.isEmpty {
+        } else if installed.isEmpty && builtIns.isEmpty {
             CardShell(density: density, alignment: .center) {
                 Text(L10n.Workbench.Skills.noMatch(query: model.searchText))
                     .font(.system(size: density.subtitleFontSize))
@@ -316,7 +343,7 @@ struct SkillsManagerPage: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(model.filteredSkills) { skill in
+                    ForEach(installed) { skill in
                         SkillListRow(
                             density: density,
                             skill: skill,
@@ -326,7 +353,19 @@ struct SkillsManagerPage: View {
                                 model.setActivation(skill: skill, app: $0, action: $1)
                             },
                             onUpdate: { model.updateSkill(skill) },
-                            onUninstall: { model.uninstall(skill) }
+                            onUninstall: { model.uninstall(skill) },
+                            onReplaceShared: { model.replaceSharedCopy(skill: skill, with: $0) }
+                        )
+                    }
+                    // Built-ins trail the installed rows: they are the
+                    // harnesses' own, read-only, and the list is about the
+                    // shared library first.
+                    ForEach(builtIns) { copy in
+                        SkillBuiltInRow(
+                            density: density,
+                            copy: copy,
+                            isBusy: model.isBusy(SkillsManagerModel.BusyKey.copy(copy)),
+                            onCopyToShared: { model.copyToShared(copy) }
                         )
                     }
                 }
