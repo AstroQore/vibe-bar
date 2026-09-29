@@ -51,10 +51,11 @@ struct SkillsManagerPage: View {
             switch result {
             case let .success(urls):
                 guard let url = urls.first else { return }
-                // Installed into the shared directory only. An archive can
-                // hold several skills, and switching all of them on for every
-                // agent CLI is not what picking a file asked for.
-                model.installZip(url: url, apps: [])
+                // An archive can hold several skills, and switching all of
+                // them on for every agent CLI is not what picking a file
+                // asked for — but the harnesses the user marked as the
+                // default for new installs are exactly that ask.
+                model.installZip(url: url, apps: model.defaultApps)
             case let .failure(error):
                 model.toast = error.localizedDescription
             }
