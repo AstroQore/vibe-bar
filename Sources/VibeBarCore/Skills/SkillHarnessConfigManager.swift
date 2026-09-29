@@ -15,6 +15,11 @@ struct SkillHarnessConfigManager: Sendable {
         case unknown
     }
 
+    /// The registry keys skills by directory. Two rows sharing one directory
+    /// is a registry defect the store now heals on load, but this layer must
+    /// never turn a stale file into a trap: the first row wins, quietly.
+    static func firstState(_ current: NativeState, _: NativeState) -> NativeState { current }
+
     let homeDirectory: String
 
     init(homeDirectory: String) {
@@ -26,15 +31,15 @@ struct SkillHarnessConfigManager: Sendable {
         guard !skills.isEmpty else { return [:] }
         let config = resolvedConfigTarget(codexConfigURL)
         guard FileManager.default.fileExists(atPath: config.path) else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+            return Dictionary(skills.map { ($0.directory, .enabled) }, uniquingKeysWith: Self.firstState)
         }
         guard let data = try? Data(contentsOf: config),
               let text = String(data: data, encoding: .utf8)
         else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+            return Dictionary(skills.map { ($0.directory, .unknown) }, uniquingKeysWith: Self.firstState)
         }
         let blocks = Self.codexSkillBlocks(in: text)
-        return Dictionary(uniqueKeysWithValues: skills.map { skill in
+        return Dictionary(skills.map { skill in
             let candidates = candidateSkillPaths(directoryName: skill.directory)
             let matching = blocks.filter { block in
                 guard (block.path != nil) != (block.name != nil) else { return false }
@@ -52,7 +57,7 @@ struct SkillHarnessConfigManager: Sendable {
                 state = enabled ? .enabled : .disabled
             }
             return (skill.directory, state)
-        })
+        }, uniquingKeysWith: Self.firstState)
     }
 
     func claudeStates(for skills: [Skill]) -> [String: NativeState] {
@@ -84,17 +89,17 @@ struct SkillHarnessConfigManager: Sendable {
 
     func grokStates(for skills: [Skill]) -> [String: NativeState] {
         guard FileManager.default.fileExists(atPath: grokConfigURL.path) else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+            return Dictionary(skills.map { ($0.directory, .enabled) }, uniquingKeysWith: Self.firstState)
         }
         guard let data = try? Data(contentsOf: grokConfigURL),
               let text = String(data: data, encoding: .utf8),
               let disabled = Self.grokDisabledNames(in: text)
         else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+            return Dictionary(skills.map { ($0.directory, .unknown) }, uniquingKeysWith: Self.firstState)
         }
-        return Dictionary(uniqueKeysWithValues: skills.map {
+        return Dictionary(skills.map {
             ($0.directory, disabled.contains($0.name.lowercased()) ? .disabled : .enabled)
-        })
+        }, uniquingKeysWith: Self.firstState)
     }
 
     /// Muse Code keeps one activation per discovered `SKILL.md`, keyed by the
@@ -105,16 +110,16 @@ struct SkillHarnessConfigManager: Sendable {
         guard !skills.isEmpty else { return [:] }
         let target = resolvedConfigTarget(museSettingsURL)
         guard FileManager.default.fileExists(atPath: target.path) else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+            return Dictionary(skills.map { ($0.directory, .enabled) }, uniquingKeysWith: Self.firstState)
         }
         guard let data = try? Data(contentsOf: target),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               Self.museSchemaIsKnown(root),
               let activations = Self.museUserActivations(in: root)
         else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+            return Dictionary(skills.map { ($0.directory, .unknown) }, uniquingKeysWith: Self.firstState)
         }
-        return Dictionary(uniqueKeysWithValues: skills.map { skill in
+        return Dictionary(skills.map { skill in
             let keys = museActivationKeys(directoryName: skill.directory)
             let values = activations.filter { keys.contains($0.key) }.map(\.value)
             let state: NativeState
@@ -126,7 +131,7 @@ struct SkillHarnessConfigManager: Sendable {
                 state = values.contains("off") ? .disabled : .enabled
             }
             return (skill.directory, state)
-        })
+        }, uniquingKeysWith: Self.firstState)
     }
 
     /// Mistral Vibe filters skills by name with two top-level lists in
@@ -137,16 +142,16 @@ struct SkillHarnessConfigManager: Sendable {
         guard !skills.isEmpty else { return [:] }
         let target = resolvedConfigTarget(mistralVibeConfigURL)
         guard FileManager.default.fileExists(atPath: target.path) else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+            return Dictionary(skills.map { ($0.directory, .enabled) }, uniquingKeysWith: Self.firstState)
         }
         guard let data = try? Data(contentsOf: target),
               let text = String(data: data, encoding: .utf8),
               let enabledList = Self.topLevelTOMLStringArray("enabled_skills", in: text),
               let disabledList = Self.topLevelTOMLStringArray("disabled_skills", in: text)
         else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+            return Dictionary(skills.map { ($0.directory, .unknown) }, uniquingKeysWith: Self.firstState)
         }
-        return Dictionary(uniqueKeysWithValues: skills.map { skill in
+        return Dictionary(skills.map { skill in
             let name = skill.name
             let state: NativeState
             if let enabledList = enabledList.list, !enabledList.isEmpty {
@@ -157,7 +162,7 @@ struct SkillHarnessConfigManager: Sendable {
                 state = .enabled
             }
             return (skill.directory, state)
-        })
+        }, uniquingKeysWith: Self.firstState)
     }
 
     func setNativeEnabled(
@@ -233,17 +238,17 @@ struct SkillHarnessConfigManager: Sendable {
         disabledNames: ([String: Any]) -> Set<String>
     ) -> [String: NativeState] {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .enabled) })
+            return Dictionary(skills.map { ($0.directory, .enabled) }, uniquingKeysWith: Self.firstState)
         }
         guard let data = try? Data(contentsOf: url),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            return Dictionary(uniqueKeysWithValues: skills.map { ($0.directory, .unknown) })
+            return Dictionary(skills.map { ($0.directory, .unknown) }, uniquingKeysWith: Self.firstState)
         }
         let disabled = disabledNames(root)
-        return Dictionary(uniqueKeysWithValues: skills.map {
+        return Dictionary(skills.map {
             ($0.directory, disabled.contains($0.name.lowercased()) ? .disabled : .enabled)
-        })
+        }, uniquingKeysWith: Self.firstState)
     }
 
     private func setClaudeEnabled(_ enabled: Bool, name: String) throws {
@@ -578,7 +583,14 @@ struct SkillHarnessConfigManager: Sendable {
     static func topLevelTOMLStringArray(_ key: String, in text: String) -> TOMLStringArray? {
         let lines = text.components(separatedBy: "\n")
         let end = firstTOMLTableLine(in: lines) ?? lines.count
-        guard let start = (0..<end).first(where: { index in
+        return tomlStringArray(key, in: lines, lines: 0..<end)
+    }
+
+    /// Same contract as `topLevelTOMLStringArray`, scoped to `range` — the
+    /// body of one table when the caller has already located it.
+    static func tomlStringArray(_ key: String, in lines: [String], lines range: Range<Int>) -> TOMLStringArray? {
+        let end = range.upperBound
+        guard let start = range.first(where: { index in
             let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
             guard trimmed.hasPrefix(key) else { return false }
             let rest = trimmed.dropFirst(key.count).trimmingCharacters(in: .whitespaces)
@@ -672,16 +684,17 @@ struct SkillHarnessConfigManager: Sendable {
         else { throw SkillError.nativeConfigUnreadable(.grok) }
         var lines = original.components(separatedBy: "\n")
         let table = Self.grokSkillsTable(in: lines)
-        var disabled = table.flatMap { Self.grokDisabledNames(in: lines, table: $0) } ?? []
-        guard table == nil || Self.grokDisabledNames(in: lines, table: table!) != nil else {
-            throw SkillError.nativeConfigUnreadable(.grok)
+        var disabled: Set<String> = []
+        if let table {
+            guard let parsed = table.disabled else { throw SkillError.nativeConfigUnreadable(.grok) }
+            disabled = parsed
         }
         disabled.remove(name.lowercased())
         if !enabled { disabled.insert(name.lowercased()) }
         let assignment = "disabled = [" + disabled.sorted().map { "\"\(Self.escapeTOML($0))\"" }.joined(separator: ", ") + "]"
         if let table {
-            if let line = table.disabledLine {
-                lines[line] = assignment
+            if let range = table.disabledLines {
+                lines.replaceSubrange(range, with: [assignment])
             } else {
                 lines.insert(assignment, at: table.endLine)
             }
@@ -849,8 +862,14 @@ struct SkillHarnessConfigManager: Sendable {
     }
 
     private struct GrokSkillsTable {
+        /// Line the next table starts on (or line count): where a missing
+        /// `disabled` assignment is inserted.
         let endLine: Int
-        let disabledLine: Int?
+        /// Lines of the `disabled = [...]` assignment. Grok Build writes the
+        /// array one name per line, so this regularly spans several lines.
+        let disabledLines: Range<Int>?
+        /// `nil` when `disabled` exists but is not an array of basic strings.
+        let disabled: Set<String>?
     }
 
     private static func grokSkillsTable(in lines: [String]) -> GrokSkillsTable? {
@@ -861,33 +880,20 @@ struct SkillHarnessConfigManager: Sendable {
             let line = lines[$0].trimmingCharacters(in: .whitespacesAndNewlines)
             return line.hasPrefix("[")
         }) ?? lines.count
-        let disabled = ((start + 1)..<end).first(where: {
-            let line = lines[$0].trimmingCharacters(in: .whitespacesAndNewlines)
-            return line.hasPrefix("disabled") && line.contains("=")
-        })
-        return GrokSkillsTable(endLine: end, disabledLine: disabled)
+        guard let parsed = tomlStringArray("disabled", in: lines, lines: (start + 1)..<end) else {
+            return GrokSkillsTable(endLine: end, disabledLines: nil, disabled: nil)
+        }
+        return GrokSkillsTable(
+            endLine: end,
+            disabledLines: parsed.lineRange,
+            disabled: Set((parsed.list ?? []).map { $0.lowercased() })
+        )
     }
 
     private static func grokDisabledNames(in text: String) -> Set<String>? {
         let lines = text.components(separatedBy: "\n")
         guard let table = grokSkillsTable(in: lines) else { return [] }
-        return grokDisabledNames(in: lines, table: table)
-    }
-
-    private static func grokDisabledNames(
-        in lines: [String],
-        table: GrokSkillsTable
-    ) -> Set<String>? {
-        guard let lineIndex = table.disabledLine else { return [] }
-        let line = lines[lineIndex]
-        guard let equal = line.firstIndex(of: "=") else { return nil }
-        let raw = line[line.index(after: equal)...]
-            .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = raw.data(using: .utf8),
-              let names = try? JSONSerialization.jsonObject(with: data) as? [String]
-        else { return nil }
-        return Set(names.map { $0.lowercased() })
+        return table.disabled
     }
 
     private static func escapeTOML(_ raw: String) -> String {

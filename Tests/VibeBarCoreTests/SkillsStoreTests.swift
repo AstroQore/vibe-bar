@@ -77,6 +77,65 @@ final class SkillsStoreTests: XCTestCase {
         XCTAssertTrue(empty.isEmpty)
     }
 
+    func testTwoRowsForOneDirectoryCollapseOnLoad() async throws {
+        let home = try SkillTestHome()
+        let url = VibeBarLocalStore.skillsStoreURL(homeDirectory: home.path)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        // An older build appended a `local:` twin when the lock file stopped
+        // naming the GitHub source; the newer row carries the current hash.
+        let json = """
+        {"schemaVersion":1,"skills":[
+          {"id":"acme/skills:alpha","name":"alpha","directory":"alpha",
+           "installedAt":1000,"updatedAt":2000,"contentHash":"old",
+           "apps":{"claude":{"method":"symlink","adopted":true},"hermes":{"method":"symlink","adopted":true}}},
+          {"id":"local:alpha","name":"alpha","directory":"alpha",
+           "installedAt":1000,"updatedAt":3000,"contentHash":"new",
+           "apps":{"codex":{"method":"symlink","adopted":true}}},
+          {"id":"local:beta","name":"beta","directory":"beta","installedAt":1000}
+        ]}
+        """
+        try Data(json.utf8).write(to: url)
+
+        let store = SkillsStore(homeDirectory: home.path)
+        let loaded = await store.all()
+        XCTAssertEqual(loaded.map(\.directory), ["alpha", "beta"])
+        let alpha = try XCTUnwrap(loaded.first)
+        XCTAssertEqual(alpha.id, .local(directory: "alpha"))
+        XCTAssertEqual(alpha.contentHash, "new")
+        // The displaced row's materializations are folded in, not lost.
+        XCTAssertEqual(Set(alpha.apps.keys), [.claude, .codex, .hermes])
+
+        // The healed form reaches disk on the next write.
+        try await store.upsert(makeSkill(.local(directory: "gamma")))
+        let reloaded = await SkillsStore(homeDirectory: home.path).all()
+        XCTAssertEqual(reloaded.map(\.id.rawValue), ["local:alpha", "local:beta", "local:gamma"])
+    }
+
+    func testUpsertUnderANewIDReplacesTheRowHoldingTheDirectory() async throws {
+        let home = try SkillTestHome()
+        let store = SkillsStore(homeDirectory: home.path)
+        let repo = makeSkill(
+            .repo(owner: "acme", repo: "skills", directory: "alpha"),
+            apps: [.claude: SkillMaterialization(method: .symlink, adopted: true)]
+        )
+        try await store.upsert(repo)
+
+        let local = makeSkill(
+            .local(directory: "alpha"),
+            apps: [.codex: SkillMaterialization(method: .symlink, adopted: true)]
+        )
+        try await store.upsert(local)
+
+        let rows = await store.all()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.id, .local(directory: "alpha"))
+        XCTAssertEqual(Set((rows.first?.apps ?? [:]).keys), [.claude, .codex])
+        let repoRow = await store.skill(with: repo.id)
+        XCTAssertNil(repoRow)
+    }
+
     func testUnknownAppKeysAndUndecodableEntriesAreDropped() async throws {
         let home = try SkillTestHome()
         let json = """
