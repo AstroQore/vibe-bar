@@ -69,9 +69,13 @@ on the verification date:
 | Portkey | Astra, Sol and Luna | Absent | Existing Standard parser; other channels supply optional context/premium fields |
 | AstroQore supplement | Supplementary coverage | Absent in the checked document | Reads an optional `pricing.ultrafast` card and preserves inherited cards |
 
-Settings' effective price table displays the independent Ultrafast rates
-under the model. `pricing.effective` exposes the same card as a camelCase
-`ultrafast` object, including long-context prices. Rates describe an
+Settings' effective price table groups Standard, Fast and Ultrafast under
+one model in a dedicated service-tier column. It includes only published
+tiers, derives Fast rates from the model's API-price multiplier, and shows
+each tier's long-context prices in its help text. Model counts, filtering
+and usage aggregation retain the model identity. `pricing.effective` keeps
+the same model row with `fastMultiplier` and a camelCase `ultrafast` object,
+including long-context prices. Rates describe an
 API-equivalent local estimate; they do not claim the amount charged to a
 subscription.
 

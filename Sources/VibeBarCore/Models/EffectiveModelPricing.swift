@@ -1,6 +1,6 @@
 import Foundation
 
-/// One row from the fully resolved runtime price table. Rates are converted to
+/// One model from the fully resolved runtime price table. Rates are converted to
 /// the Settings unit (USD per one million tokens) at this boundary so the UI
 /// never needs to know the stored per-token representation.
 public struct EffectiveModelPricingRow: Sendable, Equatable, Identifiable {
@@ -26,6 +26,23 @@ public struct EffectiveModelPricingRow: Sendable, Equatable, Identifiable {
     public var tool: ToolType { provider.tool }
     public var companyName: String { tool.vendorName }
     public var subProviderName: String { tool.productName }
+
+    /// Service tiers share this model's identity. Only explicitly supplied
+    /// tier pricing adds a tier; the calculator's default Fast factor of one does not.
+    public var serviceTiers: [EffectiveModelPricingServiceTier] {
+        var tiers = [EffectiveModelPricingServiceTier(
+            id: .standard, rates: .init(row: self, multiplier: 1)
+        )]
+        if let multiplier = fastMultiplier, multiplier.isFinite, multiplier > 0 {
+            tiers.append(.init(id: .fast, rates: .init(row: self, multiplier: multiplier)))
+        }
+        if let ultrafast {
+            tiers.append(.init(id: .ultrafast, rates: .init(
+                ultrafast: ultrafast, fallbackThreshold: thresholdTokens
+            )))
+        }
+        return tiers
+    }
 
     public init(
         provider: PricingProviderFamily,
@@ -60,6 +77,15 @@ public struct EffectiveModelPricingRow: Sendable, Equatable, Identifiable {
     }
 }
 
+public struct EffectiveModelPricingServiceTier: Sendable, Equatable, Identifiable {
+    public enum ID: String, Sendable, Hashable {
+        case standard, fast, ultrafast
+    }
+
+    public let id: ID
+    public let rates: EffectiveModelPricingTier
+}
+
 /// Independent tier rates, in the same Settings unit as the standard row.
 public struct EffectiveModelPricingTier: Codable, Sendable, Equatable {
     public let inputPerMillion: Double
@@ -82,6 +108,32 @@ public struct EffectiveModelPricingTier: Codable, Sendable, Equatable {
         outputAboveThresholdPerMillion = rates.outputAboveThreshold.map { $0 * million }
         cacheReadAboveThresholdPerMillion = rates.cacheReadAboveThreshold.map { $0 * million }
         cacheWriteAboveThresholdPerMillion = rates.cacheCreationAboveThreshold.map { $0 * million }
+    }
+
+    init(row: EffectiveModelPricingRow, multiplier: Double) {
+        inputPerMillion = row.inputPerMillion * multiplier
+        outputPerMillion = row.outputPerMillion * multiplier
+        cacheReadPerMillion = row.cacheReadPerMillion.map { $0 * multiplier }
+        cacheWritePerMillion = row.cacheWritePerMillion.map { $0 * multiplier }
+        thresholdTokens = row.thresholdTokens
+        inputAboveThresholdPerMillion = row.inputAboveThresholdPerMillion.map { $0 * multiplier }
+        outputAboveThresholdPerMillion = row.outputAboveThresholdPerMillion.map { $0 * multiplier }
+        cacheReadAboveThresholdPerMillion = row.cacheReadAboveThresholdPerMillion.map { $0 * multiplier }
+        cacheWriteAboveThresholdPerMillion = row.cacheWriteAboveThresholdPerMillion.map { $0 * multiplier }
+    }
+
+    init(ultrafast: Self, fallbackThreshold: Int?) {
+        inputPerMillion = ultrafast.inputPerMillion
+        outputPerMillion = ultrafast.outputPerMillion
+        cacheReadPerMillion = ultrafast.cacheReadPerMillion
+        cacheWritePerMillion = ultrafast.cacheWritePerMillion
+        // Match the calculator's context boundary without filling unknown
+        // Ultrafast prices from the Standard card.
+        thresholdTokens = ultrafast.thresholdTokens ?? fallbackThreshold
+        inputAboveThresholdPerMillion = ultrafast.inputAboveThresholdPerMillion
+        outputAboveThresholdPerMillion = ultrafast.outputAboveThresholdPerMillion
+        cacheReadAboveThresholdPerMillion = ultrafast.cacheReadAboveThresholdPerMillion
+        cacheWriteAboveThresholdPerMillion = ultrafast.cacheWriteAboveThresholdPerMillion
     }
 
     var perTokenRates: PricingDataSet.CodexRates {

@@ -67,6 +67,7 @@ struct EffectivePricingCatalogView: View {
                         }
                     }
                     .frame(width: columns.tableWidth, alignment: .topLeading)
+                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
             .frame(height: 420)
@@ -176,12 +177,15 @@ private struct PricingColumns {
     static let spacing: CGFloat = 8
     static let horizontalInset: CGFloat = 10
 
-    static let minimumProviderWidth: CGFloat = 210
-    static let minimumModelWidth: CGFloat = 300
-    static let priceWidth: CGFloat = 96
+    static let minimumProviderWidth: CGFloat = 170
+    static let minimumModelWidth: CGFloat = 220
+    static let serviceTierWidth: CGFloat = 108
+    static let priceWidth: CGFloat = 90
+    static let columnGaps: CGFloat = 6
 
     let provider: PricingColumn
     let model: PricingColumn
+    let serviceTier = PricingColumn(L10n.Settings.Pricing.serviceTier, Self.serviceTierWidth)
     let input = PricingColumn("Input / 1M", Self.priceWidth, .trailing)
     let output = PricingColumn("Output / 1M", Self.priceWidth, .trailing)
     let cacheRead = PricingColumn("Cache read", Self.priceWidth, .trailing)
@@ -190,7 +194,7 @@ private struct PricingColumns {
     init(tableWidth: CGFloat) {
         let contentWidth = max(
             Self.minimumContentWidth,
-            tableWidth - Self.horizontalInset * 2 - Self.spacing * 5
+            tableWidth - Self.horizontalInset * 2 - Self.spacing * Self.columnGaps
         )
         let extra = contentWidth - Self.minimumContentWidth
         provider = PricingColumn(
@@ -200,19 +204,19 @@ private struct PricingColumns {
         model = PricingColumn("Model", Self.minimumModelWidth + extra * 0.58)
     }
 
-    var all: [PricingColumn] { [provider, model, input, output, cacheRead, cacheWrite] }
+    var all: [PricingColumn] { [provider, model, serviceTier, input, output, cacheRead, cacheWrite] }
 
-    /// Where the MODEL column starts. The threshold / override footnote under
+    /// Where the MODEL column starts. The override footnote under
     /// a row hangs off this rather than a hand-tuned inset, so it stays on the
     /// grid when a column width changes.
     var detailInset: CGFloat { provider.width + Self.spacing }
 
     /// Narrower than this and the trailing price column clips, so the scroll
     /// surface never proposes less.
-    static let minimumContentWidth = minimumProviderWidth + minimumModelWidth + priceWidth * 4
+    static let minimumContentWidth = minimumProviderWidth + minimumModelWidth + serviceTierWidth + priceWidth * 4
 
     var tableWidth: CGFloat {
-        all.reduce(Self.horizontalInset * 2 + Self.spacing * 5) { $0 + $1.width }
+        all.reduce(Self.horizontalInset * 2 + Self.spacing * Self.columnGaps) { $0 + $1.width }
     }
 }
 
@@ -223,76 +227,36 @@ private struct EffectivePricingRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // `.firstTextBaseline`, not the default centre: PROVIDER and
-            // MODEL are two-line cells, and centring made each single-line
-            // price float to their midpoint instead of sitting on the line
-            // the header labels.
-            HStack(alignment: .firstTextBaseline, spacing: PricingColumns.spacing) {
-                HStack(spacing: 6) {
-                    ToolBrandIconView(tool: row.tool, size: 13)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(row.companyName)
-                            .font(.system(size: 10, weight: .semibold))
-                        Text(row.subProviderName)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(
-                    width: columns.provider.width,
-                    alignment: columns.provider.frameAlignment
-                )
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(row.displayLabel ?? row.model)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .lineLimit(1)
-                    if row.displayLabel != nil {
-                        Text(row.model)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(
-                    width: columns.model.width,
-                    alignment: columns.model.frameAlignment
-                )
-
-                price(row.inputPerMillion, columns.input)
-                price(row.outputPerMillion, columns.output)
-                price(row.cacheReadPerMillion, columns.cacheRead)
-                price(row.cacheWritePerMillion, columns.cacheWrite)
-            }
-
-            if let ultrafast = row.ultrafast {
+            ForEach(row.serviceTiers) { tier in
                 HStack(alignment: .firstTextBaseline, spacing: PricingColumns.spacing) {
-                    Color.clear.frame(width: columns.provider.width, height: 1)
-                    Text("Ultrafast")
-                        .font(.system(size: 10.5, weight: .medium))
-                        .frame(width: columns.model.width, alignment: .leading)
-                    price(ultrafast.inputPerMillion, columns.input)
-                    price(ultrafast.outputPerMillion, columns.output)
-                    price(ultrafast.cacheReadPerMillion, columns.cacheRead)
-                    price(ultrafast.cacheWritePerMillion, columns.cacheWrite)
+                    if tier.id == .standard {
+                        providerCell
+                        modelCell
+                    } else {
+                        Color.clear.frame(width: columns.provider.width, height: 1)
+                        Color.clear.frame(width: columns.model.width, height: 1)
+                    }
+
+                    HStack(spacing: 4) {
+                        Text(tierName(tier.id))
+                            .font(.system(size: 10.5, weight: .medium))
+                        if tier.rates.thresholdTokens != nil {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .frame(width: columns.serviceTier.width, alignment: columns.serviceTier.frameAlignment)
+
+                    price(tier.rates.inputPerMillion, columns.input)
+                    price(tier.rates.outputPerMillion, columns.output)
+                    price(tier.rates.cacheReadPerMillion, columns.cacheRead)
+                    price(tier.rates.cacheWritePerMillion, columns.cacheWrite)
                 }
-                .help(ultrafastDetail(ultrafast))
+                .help(tierDetail(tier))
             }
 
-            if let detail = advancedDetail {
-                HStack(spacing: 6) {
-                    if isLocalOverride {
-                        Text("LOCAL OVERRIDE")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.blue)
-                    }
-                    Text(detail)
-                        .font(.system(size: 8.5, design: .rounded))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                .padding(.leading, columns.detailInset)
-            } else if isLocalOverride {
+            if isLocalOverride {
                 Text("LOCAL OVERRIDE")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.blue)
@@ -303,6 +267,35 @@ private struct EffectivePricingRowView: View {
         .padding(.vertical, 7)
     }
 
+    private var providerCell: some View {
+        HStack(spacing: 6) {
+            ToolBrandIconView(tool: row.tool, size: 13)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.companyName)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(row.subProviderName)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: columns.provider.width, alignment: columns.provider.frameAlignment)
+    }
+
+    private var modelCell: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(row.displayLabel ?? row.model)
+                .font(.system(size: 10.5, weight: .medium))
+                .lineLimit(1)
+            if row.displayLabel != nil {
+                Text(row.model)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: columns.model.width, alignment: columns.model.frameAlignment)
+    }
+
     private func price(_ value: Double?, _ column: PricingColumn) -> some View {
         Text(value.map(Self.formatPrice) ?? "—")
             .font(.system(size: 9.5, weight: .medium, design: .rounded).monospacedDigit())
@@ -311,39 +304,24 @@ private struct EffectivePricingRowView: View {
             .frame(width: column.width, alignment: column.frameAlignment)
     }
 
-    private var advancedDetail: String? {
-        var parts: [String] = []
-        if let threshold = row.thresholdTokens {
-            var rates: [String] = []
-            if let value = row.inputAboveThresholdPerMillion {
-                rates.append("input \(Self.formatPrice(value))")
-            }
-            if let value = row.outputAboveThresholdPerMillion {
-                rates.append("output \(Self.formatPrice(value))")
-            }
-            if let value = row.cacheReadAboveThresholdPerMillion {
-                rates.append("cache read \(Self.formatPrice(value))")
-            }
-            if let value = row.cacheWriteAboveThresholdPerMillion {
-                rates.append("cache write \(Self.formatPrice(value))")
-            }
-            let suffix = rates.isEmpty ? "" : ": " + rates.joined(separator: " · ")
-            parts.append("Above \(threshold.formatted(.number.notation(.compactName).locale(AppLocale.current))) tokens\(suffix)")
+    private func tierName(_ tier: EffectiveModelPricingServiceTier.ID) -> String {
+        switch tier {
+        case .standard: L10n.Settings.Pricing.standardTier
+        case .fast: "Fast"
+        case .ultrafast: "Ultrafast"
         }
-        if let multiplier = row.fastMultiplier, multiplier != 1 {
-            parts.append("Fast tier ×\(multiplier.formatted(.number.precision(.fractionLength(0...2)).locale(AppLocale.current)))")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    private func ultrafastDetail(_ tier: EffectiveModelPricingTier) -> String {
-        guard let threshold = tier.thresholdTokens else { return "Ultrafast" }
-        return L10n.Settings.Pricing.ultrafastContextRates(
-            threshold: threshold.formatted(.number.notation(.compactName).locale(AppLocale.current)),
-            input: tier.inputAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
-            output: tier.outputAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
-            cacheRead: tier.cacheReadAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
-            cacheWrite: tier.cacheWriteAboveThresholdPerMillion.map(Self.formatPrice) ?? "—"
+    private func tierDetail(_ tier: EffectiveModelPricingServiceTier) -> String {
+        let rates = tier.rates
+        guard let threshold = rates.thresholdTokens else { return tierName(tier.id) }
+        return L10n.Settings.Pricing.tierContextRates(
+            tier: tierName(tier.id),
+            threshold: threshold.formatted(.number.locale(AppLocale.current)),
+            input: rates.inputAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
+            output: rates.outputAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
+            cacheRead: rates.cacheReadAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
+            cacheWrite: rates.cacheWriteAboveThresholdPerMillion.map(Self.formatPrice) ?? "—"
         )
     }
 
