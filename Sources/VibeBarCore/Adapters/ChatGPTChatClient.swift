@@ -207,7 +207,8 @@ public struct ChatGPTChatClient: Sendable {
         ])
         let data = try await transport.request(path: "/backend-api/conversation/init", method: "POST", bearer: token, body: body)
         let samples = try ChatGPTChatParser.samples(data, now: now)
-        guard !samples.isEmpty else { throw QuotaError.parseFailure("ChatGPT Chat returned no supported feature allowances.") }
+        let limits = settings.trackProModels ? ChatGPTChatParser.modelLimits(data, now: now) : []
+        guard !samples.isEmpty || !limits.isEmpty else { throw QuotaError.parseFailure("ChatGPT Chat returned no supported allowances.") }
         try Task.checkCancellation()
         let identity = ChatGPTChatParser.identity(userID + ":" + (account.accountId ?? "personal"))
         let quantities = try await store.observe(localAccount: account.id, identity: identity,
@@ -240,14 +241,18 @@ public struct ChatGPTChatClient: Sendable {
         // when the plan is one that has Pro models. The same `init` reply
         // names any model that is exhausted right now.
         let allowances = ChatGPTChatProAllowances.allowances(plan: plan)
-        if settings.trackProModels, !allowances.isEmpty {
-            let history = await ChatGPTChatHistoryReader(transport: transport, store: historyStore)
-                .read(bearer: token, identity: identity, now: now)
-            try Task.checkCancellation()
-            summary.history = history.summary
-            buckets += ChatGPTChatParser.proBuckets(allowances: allowances, turns: history.turns,
-                                                   limits: ChatGPTChatParser.modelLimits(data, now: now),
-                                                   complete: history.summary.complete, now: now)
+        if settings.trackProModels {
+            if allowances.isEmpty {
+                buckets += ChatGPTChatParser.proBuckets(allowances: [], turns: [], limits: limits,
+                                                       complete: false, now: now)
+            } else {
+                let history = await ChatGPTChatHistoryReader(transport: transport, store: historyStore)
+                    .read(bearer: token, identity: identity, now: now)
+                try Task.checkCancellation()
+                summary.history = history.summary
+                buckets += ChatGPTChatParser.proBuckets(allowances: allowances, turns: history.turns,
+                                                       limits: limits, complete: history.summary.complete, now: now)
+            }
         }
         return AccountQuota(accountId: account.id, tool: .chatgptChat, buckets: buckets,
                             plan: plan, email: email, queriedAt: now, chatGPTChat: summary)

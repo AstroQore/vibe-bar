@@ -6,10 +6,11 @@ import os
 /// an app release: `AstroQore/vibebar-quota-limits`, `limits.json` (its
 /// `schema.json` sits beside it).
 ///
-/// Today it carries the ChatGPT Chat Pro-model allowances. The table in
-/// `ChatGPTChatProAllowances.bundled(plan:)` stays in the binary as the
-/// floor: it answers until a valid remote table has been fetched, and for
-/// any plan the remote table has no usable rows for.
+/// Today it carries the ChatGPT Chat Pro-model allowances. Only rows
+/// verified after the latest allowance change may supply totals for plans
+/// this schema can identify unambiguously. Pro $200 rows remain unusable
+/// until both the catalog and account lookup carry a cohort discriminator.
+/// This build contains no numeric fallback.
 ///
 /// Refresh is best-effort and off the quota path. The pricing loop calls
 /// `refresh()` on its own cadence; a validated document is written to
@@ -25,6 +26,10 @@ public enum QuotaLimitsCatalog {
     public static let maxFetchBytes = 256 * 1024
     public static let defaultRequestTimeout: TimeInterval = 15
     public static let supportedSchemaVersion = 1
+    /// OpenAI removed numeric Pro-model caps and introduced different
+    /// allowances for new and grandfathered Pro $200 subscriptions.
+    /// A previously verified row must be verified again after that change.
+    static let minimumChatGPTChatVerifiedAt = "2026-09-30"
     /// More rows than any provider's plans could need is a broken document.
     static let maxRows = 256
 
@@ -69,12 +74,24 @@ public enum QuotaLimitsCatalog {
         var plans: [String: [ChatGPTChatProAllowance]] = [:]
         for case let row as [String: Any] in rows {
             guard row["provider"] as? String == "chatgptChat",
+                  isCurrentChatGPTChatVerification(row["verifiedAt"]),
                   let plan = normalizedPlan(row["plan"] as? String),
+                  !isAmbiguousChatGPTChatPlan(plan),
                   let allowance = chatGPTChatAllowance(row),
                   !(plans[plan]?.contains { $0.id == allowance.id } ?? false) else { continue }
             plans[plan, default: []].append(allowance)
         }
         return Table(updatedAt: root["updatedAt"] as? String, chatGPTChat: plans)
+    }
+
+    private static func isCurrentChatGPTChatVerification(_ value: Any?) -> Bool {
+        guard let date = value as? String,
+              date.range(of: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", options: .regularExpression) != nil,
+              date >= minimumChatGPTChatVerifiedAt else { return false }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        guard let parsed = formatter.date(from: date) else { return false }
+        return formatter.string(from: parsed) == date
     }
 
     private static func chatGPTChatAllowance(_ row: [String: Any]) -> ChatGPTChatProAllowance? {
@@ -105,6 +122,18 @@ public enum QuotaLimitsCatalog {
         guard let plan = plan?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !plan.isEmpty else { return nil }
         return plan
+    }
+
+    /// Freshness cannot distinguish new and grandfathered Pro $200
+    /// subscriptions: both report `pro`. Cohort words in a plan alias or an
+    /// extra schema field are not an account discriminator this build reads.
+    /// Keep this gate on consumption too, since callers can construct a Table.
+    static func isAmbiguousChatGPTChatPlan(_ plan: String) -> Bool {
+        let identity = plan
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .filter { !["new", "legacy", "grandfathered"].contains(String($0)) }
+            .joined()
+        return ["pro", "pro20x", "pro200", "chatgptpro200"].contains(identity)
     }
 
     // MARK: - Snapshot

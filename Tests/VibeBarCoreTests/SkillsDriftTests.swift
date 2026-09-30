@@ -260,8 +260,11 @@ final class SkillsDriftTests: XCTestCase {
         let listed = await service.installedSkills()
         let after = await service.reloadRehashCount
         XCTAssertEqual(after, before)
-        XCTAssertNil(listed.first?.localContentHash)
-        XCTAssertEqual(listed.first?.isLocallyModified, false)
+        XCTAssertTrue(listed.isEmpty, "An external link is not a managed skill")
+        let inventory = await service.inventory()
+        let discovered = try XCTUnwrap(inventory.discoveredShared.first { $0.directoryName == "alpha" })
+        XCTAssertTrue(discovered.isSymlink)
+        XCTAssertEqual(discovered.state, .ready)
         do {
             _ = try await service.acceptLocalChanges(skill.id)
             XCTFail("a link where the shared copy should be must not be accepted")

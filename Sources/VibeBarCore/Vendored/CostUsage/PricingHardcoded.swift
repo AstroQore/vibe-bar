@@ -23,8 +23,8 @@ enum PricingHardcoded {
     // day's cost could legitimately *decrease* and stale higher values
     // must be discarded.
     static let fallback: PricingDataSet = PricingDataSet(
-        schemaVersion: 1,
-        updatedAt: "2026-06-08",
+        schemaVersion: PricingDataSet.currentSchemaVersion,
+        updatedAt: "2026-09-30",
         calculationVersion: 5,
         providers: PricingDataSet.Providers(
             codex: codex,
@@ -61,7 +61,27 @@ enum PricingHardcoded {
             "gpt-5.4-nano":        .init(input: 2e-7,    output: 1.25e-6, cacheRead: 2e-8),
             "gpt-5.4-pro":         .init(input: 3e-5,    output: 1.8e-4,  cacheRead: nil),
             "gpt-5.5":             .init(input: 5e-6,    output: 3e-5,    cacheRead: 5e-7, fastMultiplier: 2.5),
-            "gpt-5.5-pro":         .init(input: 3e-5,    output: 1.8e-4,  cacheRead: nil)
+            "gpt-5.5-pro":         .init(input: 3e-5,    output: 1.8e-4,  cacheRead: nil),
+            "gpt-6-sol":           .init(input: 2e-6, output: 10e-6, cacheRead: 0.2e-6, cacheCreation: 2.5e-6,
+                                        thresholdTokens: 272_000, inputAboveThreshold: 4e-6,
+                                        outputAboveThreshold: 15e-6, cacheReadAboveThreshold: 0.4e-6,
+                                        cacheCreationAboveThreshold: 5e-6, fastMultiplier: 2),
+            "gpt-6.1-sol":         .init(input: 2e-6, output: 10e-6, cacheRead: 0.1e-6, cacheCreation: 2.5e-6,
+                                        thresholdTokens: 272_000, inputAboveThreshold: 4e-6,
+                                        outputAboveThreshold: 15e-6, cacheReadAboveThreshold: 0.2e-6,
+                                        cacheCreationAboveThreshold: 5e-6, fastMultiplier: 2),
+            "gpt-6-luna":          .init(input: 0.1e-6, output: 0.5e-6, cacheRead: 0.01e-6, cacheCreation: 0.125e-6,
+                                        thresholdTokens: 272_000, inputAboveThreshold: 0.2e-6,
+                                        outputAboveThreshold: 0.75e-6, cacheReadAboveThreshold: 0.02e-6,
+                                        cacheCreationAboveThreshold: 0.25e-6, fastMultiplier: 2),
+            "gpt-6-astra":         .init(input: 10e-6, output: 50e-6, cacheRead: 1e-6, cacheCreation: 12.5e-6,
+                                        thresholdTokens: 272_000, inputAboveThreshold: 20e-6,
+                                        outputAboveThreshold: 75e-6, cacheReadAboveThreshold: 2e-6,
+                                        cacheCreationAboveThreshold: 25e-6, fastMultiplier: 2,
+                                        ultrafast: .init(input: 60e-6, output: 300e-6, cacheRead: 6e-6, cacheCreation: 75e-6,
+                                                         thresholdTokens: 272_000, inputAboveThreshold: 120e-6,
+                                                         outputAboveThreshold: 450e-6, cacheReadAboveThreshold: 12e-6,
+                                                         cacheCreationAboveThreshold: 150e-6))
         ]
     )
 

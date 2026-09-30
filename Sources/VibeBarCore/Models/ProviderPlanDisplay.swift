@@ -99,13 +99,16 @@ public enum ProviderPlanDisplay {
         }
     }
 
-    /// OpenAI's API distinguishes the $200 plan as pro and $100 as prolite.
+    /// Keep the legacy $200 `pro` and $100 `prolite` identities readable
+    /// alongside explicit price-tier ids. A multiplier no longer names a plan.
     /// Keep that mapping local to OpenAI; other providers also use "pro".
     public static func openAIPlanName(_ rawPlan: String?) -> String? {
         guard let raw = trimmed(rawPlan) else { return nil }
         switch raw.lowercased().filter({ $0.isLetter || $0.isNumber }) {
-        case "pro", "pro20x": return "Pro 20x"
-        case "prolite", "pro5x": return "Pro 5x"
+        case "pro", "pro20x", "pro200", "chatgptpro200": return "Pro 200"
+        case "prolite", "pro5x", "pro100", "chatgptpro100": return "Pro 100"
+        case "pro500", "chatgptpro500": return "Pro 500"
+        case "promax": return "Pro Max"
         default: return codexDisplayName(raw)
         }
     }

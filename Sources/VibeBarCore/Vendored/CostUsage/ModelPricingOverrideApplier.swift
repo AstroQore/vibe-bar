@@ -44,6 +44,7 @@ enum ModelPricingOverrideApplier {
                 cacheReadAboveThreshold: override.cacheReadAboveThresholdPerMillion.map(perToken),
                 cacheCreationAboveThreshold: override.cacheWriteAboveThresholdPerMillion.map(perToken),
                 fastMultiplier: override.fastMultiplier,
+                ultrafast: override.ultrafast?.perTokenRates,
                 displayLabel: override.displayLabel
             )])
         case .claude:

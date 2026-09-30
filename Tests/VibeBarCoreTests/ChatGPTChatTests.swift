@@ -3,6 +3,22 @@ import XCTest
 
 final class ChatGPTChatTests: XCTestCase {
     private let base = Date(timeIntervalSince1970: 1_800_000_000)
+    /// Synthetic totals for counting tests, independent of any live plan.
+    private let proFixtures = [
+        ChatGPTChatProAllowance(id: "gpt6_pro_weekly", group: "GPT-6 Astra Pro", title: "Weekly", models: ["gpt-6-pro"], limit: 20, windowSeconds: 7 * 86_400),
+        ChatGPTChatProAllowance(id: "sol_pro_daily", group: "GPT-5.6 Sol Pro", title: "Daily", models: ["gpt-5-6-pro"], limit: 17, windowSeconds: 86_400),
+        ChatGPTChatProAllowance(id: "pro_daily", group: "Pro Models", title: "Daily", models: ["gpt-6-pro", "gpt-5-6-pro"], limit: 20, windowSeconds: 86_400)
+    ]
+
+    override func setUp() {
+        super.setUp()
+        QuotaLimitsCatalog.resetSnapshot(to: .init(updatedAt: nil, chatGPTChat: [:]), loaded: true)
+    }
+
+    override func tearDown() {
+        QuotaLimitsCatalog.resetSnapshot()
+        super.tearDown()
+    }
     private func sample(_ remaining: Int, at: TimeInterval, reset: TimeInterval?) -> ChatGPTChatAllowanceSample {
         .init(id: "image_gen", remaining: remaining, resetAt: reset.map { base.addingTimeInterval($0) }, observedAt: base.addingTimeInterval(at))
     }
@@ -272,15 +288,18 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertFalse(ChatGPTChatRequestPolicy.allows(path: "/backend-api/models", method: "GET"))
 
         // Asked to count Pro messages, the same client walks the saved list
-        // and gets the plan's shared weekly allowance, complete at zero.
+        // against an explicitly supplied synthetic shared allowance.
+        let fixture = ChatGPTChatProAllowance(id: "pro_weekly", group: "Pro Models", title: "Weekly",
+            models: ["gpt-6-pro", "gpt-5-6-pro"], limit: 10, windowSeconds: 7 * 86_400)
+        QuotaLimitsCatalog.resetSnapshot(to: .init(updatedAt: nil, chatGPTChat: ["prolite": [fixture]]), loaded: true)
         let settings = ChatGPTChatSettings()
         XCTAssertTrue(settings.trackProModels, "counting Pro messages is the default")
         let counted = try await client.fetch(account: AccountIdentity(id: "local", tool: .chatgptChat, source: .webCookie), settings: settings, now: base)
         XCTAssertEqual(counted.buckets.map(\.id), ["image_gen", "deep_research", "pro_weekly"])
         let pro = try XCTUnwrap(counted.buckets.last)
         XCTAssertEqual(pro.quantity?.used, 0)
-        XCTAssertEqual(pro.quantity?.remaining, 50)
-        XCTAssertEqual(pro.quantity?.limit, 50)
+        XCTAssertEqual(pro.quantity?.remaining, 10)
+        XCTAssertEqual(pro.quantity?.limit, 10)
         XCTAssertTrue(pro.hasPercentage)
         XCTAssertEqual(pro.rawWindowSeconds, 7 * 86_400)
         XCTAssertEqual(pro.groupTitle, "Pro Models")
@@ -288,6 +307,52 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertEqual(counted.chatGPTChat?.history?.complete, true)
         let later = await transport.calls
         XCTAssertEqual(later.filter { $0.hasPrefix("/backend-api/conversations?") }.count, 2)
+    }
+
+    func testClientWithoutPublishedTotalsKeepsFeaturesAndDoesNotInventFullProBuckets() async throws {
+        for plan in ["pro", "prolite", "pro500"] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let transport = ChatFixtureTransport(plan: plan)
+            let client = ChatGPTChatClient(transport: transport,
+                store: ChatGPTChatAllowanceStore(url: directory.appendingPathComponent("learning.json")),
+                historyStore: ChatGPTChatHistoryStore(url: directory.appendingPathComponent("history.json")))
+            let quota = try await client.fetch(account: .init(id: "local", tool: .chatgptChat, source: .webCookie),
+                                               settings: ChatGPTChatSettings(), now: base)
+            XCTAssertEqual(quota.buckets.map(\.id), ["image_gen", "deep_research"], plan)
+            XCTAssertEqual(quota.buckets.map { $0.quantity?.remaining }, [998, 250])
+            XCTAssertNil(quota.chatGPTChat?.history)
+            let calls = await transport.calls
+            XCTAssertFalse(calls.contains { $0.hasPrefix("/backend-api/conversations?") }, "no known window to count")
+        }
+    }
+
+    func testClientWithoutPublishedTotalsKeepsServiceExhaustionAndReset() async throws {
+        for includeFeatures in [true, false] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let transport = ChatFixtureTransport(plan: "pro", exhaustedModel: "gpt-6-pro", includeFeatures: includeFeatures)
+            let client = ChatGPTChatClient(transport: transport,
+                store: ChatGPTChatAllowanceStore(url: directory.appendingPathComponent("learning.json")),
+                historyStore: ChatGPTChatHistoryStore(url: directory.appendingPathComponent("history.json")))
+            let quota = try await client.fetch(account: .init(id: "local", tool: .chatgptChat, source: .webCookie),
+                                               settings: ChatGPTChatSettings(), now: base)
+            let exhausted = try XCTUnwrap(quota.buckets.last)
+            XCTAssertEqual(exhausted.id, "gpt6_pro_weekly")
+            XCTAssertEqual(exhausted.title, "GPT-6 Astra Pro")
+            XCTAssertEqual(exhausted.quantity?.remaining, 0)
+            XCTAssertNil(exhausted.quantity?.used)
+            XCTAssertNil(exhausted.quantity?.limit)
+            XCTAssertNil(exhausted.rawWindowSeconds, "a reset deadline is not the allowance's window")
+            XCTAssertEqual(exhausted.resetAt, base.addingTimeInterval(3_600))
+            XCTAssertFalse(exhausted.hasPercentage)
+            XCTAssertEqual(exhausted.remainingPercent, 0, "an exhausted signal must never look like full remaining quota")
+            XCTAssertFalse(exhausted.supportsForecast)
+            XCTAssertFalse(exhausted.hasRollingReset)
+            XCTAssertNil(quota.chatGPTChat?.history)
+            let calls = await transport.calls
+            XCTAssertFalse(calls.contains { $0.hasPrefix("/backend-api/conversations?") })
+        }
     }
 
     // MARK: - Pro models
@@ -394,24 +459,24 @@ final class ChatGPTChatTests: XCTestCase {
         }
     }
 
-    func testProAllowancesFollowThePublishedPlanTable() {
-        let pro = ChatGPTChatProAllowances.allowances(plan: "pro", table: nil)
-        XCTAssertEqual(pro.map(\.id), ["gpt6_pro_weekly", "sol_pro_daily", "pro_daily"])
-        XCTAssertEqual(pro.map(\.group), ["GPT-6 Astra Pro", "GPT-5.6 Sol Pro", "Pro Models"])
-        XCTAssertEqual(pro.map(\.title), ["Weekly", "Daily", "Daily"])
-        XCTAssertEqual(pro.map(\.limit), [200, 170, 200])
-        XCTAssertEqual(pro.map(\.windowSeconds), [7 * 86_400, 86_400, 86_400])
-        XCTAssertEqual(pro[0].models, ["gpt-6-pro"])
-        XCTAssertEqual(pro[1].models, ["gpt-5-6-pro"])
-        XCTAssertEqual(pro[2].models, ["gpt-6-pro", "gpt-5-6-pro"])
-        let lite = ChatGPTChatProAllowances.allowances(plan: "prolite", table: nil)
-        XCTAssertEqual(lite.map(\.id), ["pro_weekly"])
-        XCTAssertEqual(lite.first?.limit, 50)
-        XCTAssertEqual(lite.first?.models, ["gpt-6-pro", "gpt-5-6-pro"])
-        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "plus", table: nil).isEmpty)
+    func testProAllowancesRequireAPublishedTableAndNeverGuessFromPlanNames() {
+        for plan in ["pro", "prolite", "pro500", "pro_500", "plus", "business"] {
+            XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: plan, table: nil).isEmpty, plan)
+            XCTAssertTrue(ChatGPTChatProAllowances.bundled(plan: plan).isEmpty, plan)
+        }
         XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: nil, table: nil).isEmpty)
+        let table = QuotaLimitsCatalog.Table(updatedAt: nil, chatGPTChat: ["prolite": proFixtures])
+        XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "ProLite", table: table), proFixtures)
+        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "pro500", table: table).isEmpty)
         let ids = Set(MenuBarFieldCatalog.chatGPTChatFields.map(\.bucketId))
-        for allowance in pro + lite { XCTAssertTrue(ids.contains(allowance.id), allowance.id) }
+        for allowance in proFixtures { XCTAssertTrue(ids.contains(allowance.id), allowance.id) }
+    }
+
+    func testAnInMemoryTableCannotBypassThePro200CohortGate() {
+        for plan in ["pro", "pro20x", "pro200", "pro_200", "ChatGPT Pro 200", "pro_new", "pro_legacy"] {
+            let table = QuotaLimitsCatalog.Table(updatedAt: "2026-10-01", chatGPTChat: [plan.lowercased(): proFixtures])
+            XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: plan, table: table).isEmpty, plan)
+        }
     }
 
     func testProBucketsCountATrailingWindowAndHonourServiceThrottles() {
@@ -424,17 +489,17 @@ final class ChatGPTChatTests: XCTestCase {
             turn("gpt-5-6-pro", ago: 600), turn("gpt-5-6-pro", ago: 7_200), turn("gpt-5-6-pro", ago: 2 * 86_400),
             turn("gpt-5-6-thinking", ago: 60)
         ] + [turn("gpt-5-6-pro", ago: 600)]
-        let pro = ChatGPTChatProAllowances.bundled(plan: "pro")
+        let pro = proFixtures
         let buckets = ChatGPTChatParser.proBuckets(allowances: pro, turns: turns, limits: [], complete: true, now: base)
         XCTAssertEqual(buckets.map(\.id), ["gpt6_pro_weekly", "sol_pro_daily", "pro_daily"])
         XCTAssertEqual(buckets.map(\.groupTitle), ["GPT-6 Astra Pro", "GPT-5.6 Sol Pro", "Pro Models"],
                        "the model is the group header, the window the row, as Codex's Spark lanes are drawn")
         XCTAssertEqual(buckets.map(\.title), ["Weekly", "Daily", "Daily"])
         XCTAssertEqual(buckets[0].quantity?.used, 3)
-        XCTAssertEqual(buckets[0].quantity?.remaining, 197)
-        XCTAssertEqual(buckets[0].usedPercent, 1.5)
+        XCTAssertEqual(buckets[0].quantity?.remaining, 17)
+        XCTAssertEqual(buckets[0].usedPercent, 15)
         XCTAssertEqual(buckets[1].quantity?.used, 2, "a duplicate turn id counts once")
-        XCTAssertEqual(buckets[1].quantity?.remaining, 168)
+        XCTAssertEqual(buckets[1].quantity?.remaining, 15)
         XCTAssertEqual(buckets[2].quantity?.used, 3)
         // The reset is when the count next falls: the oldest message inside
         // the window, plus the window.
@@ -461,7 +526,7 @@ final class ChatGPTChatTests: XCTestCase {
         let reset = base.addingTimeInterval(5 * 3_600)
         let oneLimited = ChatGPTChatParser.proBuckets(allowances: pro, turns: turns,
             limits: [ChatGPTChatModelLimit(model: "gpt-6-pro", resetsAt: reset, fallbackModel: "gpt-5-6-thinking")], complete: false, now: base)
-        XCTAssertEqual(oneLimited[0].quantity?.used, 200)
+        XCTAssertEqual(oneLimited[0].quantity?.used, 20)
         XCTAssertEqual(oneLimited[0].quantity?.remaining, 0)
         XCTAssertEqual(oneLimited[0].usedPercent, 100)
         XCTAssertEqual(oneLimited[0].resetAt, reset)
@@ -478,6 +543,62 @@ final class ChatGPTChatTests: XCTestCase {
         ], complete: true, now: base)
         XCTAssertEqual(bothLimited[2].quantity?.remaining, 0)
         XCTAssertEqual(bothLimited[2].resetAt, reset)
+    }
+
+    func testAnUnmeteredModelLimitDoesNotInferATotalOrWindow() throws {
+        let limits = [ChatGPTChatModelLimit(model: "gpt-6-pro", resetsAt: nil, fallbackModel: nil)]
+        let turns = [ChatGPTChatTurn(id: "observed", createdAt: base, model: "gpt-6-pro")]
+        let bucket = try XCTUnwrap(ChatGPTChatParser.proBuckets(allowances: [], turns: turns,
+            limits: limits, complete: true, now: base).first)
+        XCTAssertEqual(bucket.quantity?.remaining, 0)
+        XCTAssertNil(bucket.quantity?.limit)
+        XCTAssertNil(bucket.quantity?.usedPercent)
+        XCTAssertNil(bucket.resetAt)
+        XCTAssertNil(bucket.rawWindowSeconds)
+        XCTAssertFalse(bucket.hasPercentage)
+        XCTAssertTrue(ChatGPTChatParser.proBuckets(allowances: [], turns: turns, limits: [],
+            complete: true, now: base).isEmpty, "no throttle is not evidence of full quota")
+
+        let shared = ChatGPTChatProAllowance(id: "pro_weekly", group: "Pro Models", title: "Weekly",
+            models: ["gpt-6-pro", "gpt-5-6-pro"], limit: 10, windowSeconds: 7 * 86_400)
+        let buckets = ChatGPTChatParser.proBuckets(allowances: [shared], turns: turns,
+            limits: limits, complete: true, now: base)
+        XCTAssertEqual(buckets.map(\.id), ["pro_weekly", "gpt6_pro_weekly"],
+                       "one exhausted model must stay visible even when its shared allowance is not exhausted")
+        XCTAssertEqual(buckets[0].quantity?.remaining, 9)
+        XCTAssertFalse(buckets[1].hasPercentage)
+    }
+
+    func testKnownModelThrottlesMatchExistingFieldSelectionsWithoutInferringWindows() throws {
+        let reset = base.addingTimeInterval(3_600)
+        let cases = [("gpt-6-pro", "gpt6_pro_weekly", "GPT-6 Astra Pro", "chatgptChat.gpt6_pro"),
+                     ("gpt-5-6-pro", "sol_pro_daily", "GPT-5.6 Sol Pro", "chatgptChat.sol_pro")]
+        let buckets = ChatGPTChatParser.proBuckets(allowances: [], turns: [],
+            limits: cases.map { .init(model: $0.0, resetsAt: reset, fallbackModel: nil) },
+            complete: true, now: base)
+        let quota = AccountQuota(accountId: "fixture", tool: .chatgptChat, buckets: buckets, queriedAt: base)
+        var registry = QuotaFieldRegistry()
+        XCTAssertFalse(registry.record(tool: .chatgptChat, buckets: buckets, now: base), "stable fields need no dynamic duplicate")
+        let selectedIds = cases.map { "chatgptChat." + $0.1 }
+        XCTAssertEqual(MenuBarFieldCatalog.migratedFieldIds(selectedIds), selectedIds)
+        for (_, id, title, group) in cases {
+            let field = try XCTUnwrap(MenuBarFieldCatalog.field(id: "chatgptChat." + id, registry: registry))
+            let bucket = try XCTUnwrap(quota.bucket(id: field.bucketId))
+            XCTAssertTrue(MenuBarFieldCatalog.isBranchStyleField(field))
+            XCTAssertEqual(MenuBarFieldCatalog.namingGroupKey(for: field), group)
+            XCTAssertEqual(bucket.groupTitle, title)
+            XCTAssertEqual(bucket.title, title, "an unknown window keeps the model's name")
+            XCTAssertEqual(bucket.resetAt, reset)
+            XCTAssertEqual(bucket.quantity?.remaining, 0)
+            XCTAssertNil(bucket.quantity?.limit)
+            XCTAssertNil(bucket.quantity?.used)
+            XCTAssertNil(bucket.rawWindowSeconds, "historic field suffixes supply no daily or weekly window")
+            XCTAssertFalse(bucket.hasPercentage)
+            XCTAssertFalse(bucket.hasRollingReset)
+            XCTAssertNil(UsagePace.compute(bucket: bucket, now: base))
+            XCTAssertNil(QuotaPaceForecast.compute(bucket: bucket, observations: [], cycles: [], now: base))
+            XCTAssertNil(MCPQuotaBucketDTO(bucket: bucket, forecast: nil).windowSeconds)
+        }
     }
 
     func testRequestPolicyAdmitsOnlyTheHistoryReadsTheCounterMakes() {
@@ -605,23 +726,33 @@ private actor ChatFixtureTransport: ChatGPTChatTransport {
     nonisolated static let base = Date(timeIntervalSince1970: 1_800_000_000)
     nonisolated static let iso = ISO8601DateFormatter()
     private(set) var calls: [String] = []
+    private let plan: String
+    private let exhaustedModel: String?
+    private let includeFeatures: Bool
+    init(plan: String = "prolite", exhaustedModel: String? = nil, includeFeatures: Bool = true) {
+        self.plan = plan
+        self.exhaustedModel = exhaustedModel
+        self.includeFeatures = includeFeatures
+    }
     func request(path: String, method: String, bearer: String?, body: Data?) async throws -> Data {
         calls.append(path)
         if path.hasPrefix("/backend-api/conversations?") { return Data(#"{"items":[],"total":0,"limit":50,"offset":0}"#.utf8) }
         switch path {
         case "/api/auth/session": return Data(#"{"accessToken":"synthetic-token","user":{"id":"synthetic-user"}}"#.utf8)
-        case "/backend-api/wham/usage": return Data(#"{"plan_type":"prolite"}"#.utf8)
+        case "/backend-api/wham/usage": return try JSONSerialization.data(withJSONObject: ["plan_type": plan])
         case "/backend-api/conversation/init":
             // `reset_after` as the service sends it: a whole window from now
             // on an allowance nothing has been spent from.
             let day = ChatFixtureTransport.iso.string(from: ChatFixtureTransport.base.addingTimeInterval(86_400 - 120))
             let month = ChatFixtureTransport.iso.string(from: ChatFixtureTransport.base.addingTimeInterval(30 * 86_400 - 3_600))
-            return Data("""
-            {"limits_progress":[
-              {"feature_name":"image_gen","remaining":998,"reset_after":"\(day)"},
-              {"feature_name":"deep_research","remaining":250,"reset_after":"\(month)"}
-            ]}
-            """.utf8)
+            let features: [[String: Any]] = includeFeatures ? [
+                ["feature_name": "image_gen", "remaining": 998, "reset_after": day],
+                ["feature_name": "deep_research", "remaining": 250, "reset_after": month]
+            ] : []
+            let modelLimits = exhaustedModel.map { model in
+                [["model_slug": model, "resets_after": ChatFixtureTransport.iso.string(from: ChatFixtureTransport.base.addingTimeInterval(3_600))]]
+            } ?? []
+            return try JSONSerialization.data(withJSONObject: ["limits_progress": features, "model_limits": modelLimits])
         default: throw QuotaError.parseFailure("Unexpected endpoint")
         }
     }

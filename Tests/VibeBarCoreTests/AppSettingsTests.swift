@@ -1113,7 +1113,7 @@ final class AppSettingsTests: XCTestCase {
         let settings = AppSettings.default
 
         XCTAssertNil(settings.planBadgeLabel(for: .codex))
-        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite"), "ChatGPT Pro 5x")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite"), "ChatGPT Pro 100")
         XCTAssertEqual(settings.planBadgeLabel(for: .codex, accountPlan: "self_serve_business_usage_based"), "ChatGPT Self Serve Business Usage Based")
         XCTAssertEqual(settings.planBadgeLabel(for: .claude, quotaPlan: "default_claude_max_20x"), "Claude Max 20x")
         XCTAssertEqual(settings.planBadgeLabel(for: .claude, accountPlan: "Claude Pro Account"), "Claude Pro")
@@ -1136,8 +1136,8 @@ final class AppSettingsTests: XCTestCase {
     func testSubscriptionFormatKeepsCustomLabelAndQuotaPlanPrecedence() {
         var settings = AppSettings.default
         settings.subscriptionNameFormat = .multiplier
-        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite", accountPlan: "pro"), "5x")
-        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: " ", accountPlan: "pro"), "20x")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "prolite", accountPlan: "pro"), "Pro 100")
+        XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: " ", accountPlan: "pro"), "Pro 200")
         settings.setProviderPlanLabel("My subscription", for: .codex)
         XCTAssertEqual(settings.planBadgeLabel(for: .codex, quotaPlan: "pro"), "My subscription")
     }
