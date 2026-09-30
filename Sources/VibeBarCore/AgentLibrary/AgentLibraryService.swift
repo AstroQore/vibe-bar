@@ -6,7 +6,17 @@ public actor AgentLibraryService {
     let files: AgentLibraryFiles
     var mcpReceiptRevision: String?
     var instructionReceiptRevision: String?
-    public init(homeDirectory: URL) throws { files = try AgentLibraryFiles(homeDirectory: homeDirectory) }
+    let beforeMCPReceiptWrite: (@Sendable (URL) throws -> Void)?
+    public init(homeDirectory: URL) throws {
+        files = try AgentLibraryFiles(homeDirectory: homeDirectory)
+        beforeMCPReceiptWrite = nil
+    }
+    /// Internal filesystem-failure injection; application callers cannot
+    /// replace the receipt writer or bypass its revision checks.
+    init(homeDirectory: URL, beforeMCPReceiptWrite: @escaping @Sendable (URL) throws -> Void) throws {
+        files = try AgentLibraryFiles(homeDirectory: homeDirectory)
+        self.beforeMCPReceiptWrite = beforeMCPReceiptWrite
+    }
 
     public func mcpInventory() -> AgentMCPInventory {
         let receipts = try? mcpReceipts()
@@ -59,6 +69,14 @@ public actor AgentLibraryService {
 
     public func saveMCPDefinition(target: AgentLibraryTarget, definition: AgentMCPDefinition,
                                   expectedRevision: String, replaceExisting: Bool = false) throws -> AgentLibraryMutationResult {
+        try writeMCPDefinition(target: target, definition: definition, expectedRevision: expectedRevision,
+                               replaceExisting: replaceExisting)
+    }
+
+    /// Every native write first withdraws the old incoming permission. Only
+    /// shareMCPDefinition publishes a new receipt after a successful write.
+    func writeMCPDefinition(target: AgentLibraryTarget, definition: AgentMCPDefinition,
+                            expectedRevision: String, replaceExisting: Bool) throws -> AgentLibraryMutationResult {
         if let error = Self.validationError(definition, target: target) { throw error }
         let document = try mcpFile(target, expectedRevision: expectedRevision)
         let old = document.entries[definition.name]
@@ -68,6 +86,8 @@ public actor AgentLibraryService {
             guard replaceExisting else { throw AgentLibraryError.sameNameConflict }
         }
         let data = try document.replacing(definition.name, fields: desired)
+        _ = try files.prepareWrite(target.mcpRelativePath, data: data, expectedRevision: expectedRevision)
+        try revokeMCPReceipts(target: target, name: definition.name)
         let backup = try files.write(target.mcpRelativePath, data: data, expectedRevision: expectedRevision)
         return .init(changed: [target], backups: [backup])
     }
@@ -76,6 +96,8 @@ public actor AgentLibraryService {
         let document = try mcpFile(target, expectedRevision: expectedRevision)
         let actualName = try Self.lookup(name, target: target, entries: document.entries)
         let data = try document.replacing(actualName, fields: nil)
+        _ = try files.prepareWrite(target.mcpRelativePath, data: data, expectedRevision: expectedRevision)
+        try revokeMCPReceipts(target: target, name: actualName)
         let backup = try files.write(target.mcpRelativePath, data: data, expectedRevision: expectedRevision)
         return .init(changed: [target], backups: [backup])
     }
@@ -84,7 +106,6 @@ public actor AgentLibraryService {
                                    targets: [AgentLibraryTarget: String]) throws -> AgentLibraryMutationResult {
         let sourceDocument = try readMCPDefinition(target: source, name: name, expectedRevision: sourceRevision)
         let name = sourceDocument.definition.name
-        var receipts = try mcpReceipts()
         if let error = Self.validationError(sourceDocument.definition, target: source) { throw error }
         var result = AgentLibraryMutationResult()
         for target in AgentLibraryTarget.allCases where targets[target] != nil {
@@ -100,19 +121,22 @@ public actor AgentLibraryService {
                         result.unchanged.append(target)
                         continue
                     }
-                    let receipt = receipts[Self.operationToken(target: target, name: name)]
+                    let receipt = try mcpReceipts()[Self.operationToken(target: target, name: name)]
                     guard receipt?.source == source, receipt?.fingerprint == Self.definitionFingerprint(old) else {
                         throw AgentLibraryError.sameNameConflict
                     }
                     replaceExisting = true
                 }
-                let change = try saveMCPDefinition(target: target, definition: sourceDocument.definition,
-                                                   expectedRevision: targets[target]!, replaceExisting: replaceExisting)
+                let change = try writeMCPDefinition(target: target, definition: sourceDocument.definition,
+                                                    expectedRevision: targets[target]!, replaceExisting: replaceExisting)
                 result.changed += change.changed; result.unchanged += change.unchanged
                 result.backups += change.backups
                 let written = try mcpFile(target)
                 guard let fields = written.entries[name] else { throw AgentLibraryError.ioFailure }
                 let token = Self.operationToken(target: target, name: name)
+                // Never re-publish a pre-revocation local snapshot: direct
+                // edits/deletes and other selected writes may withdraw keys.
+                var receipts = try mcpReceipts()
                 receipts[token] = .init(source: source, target: target, name: name,
                                         fingerprint: Self.definitionFingerprint(fields))
                 try saveMCPReceipts(receipts)
@@ -123,6 +147,17 @@ public actor AgentLibraryService {
 
     public func restoreBackup(id: String, expectedRevision: String) throws -> AgentLibraryMutationResult {
         let record = try files.backup(id)
+        _ = try files.prepareRestore(record, expectedRevision: expectedRevision)
+        if let target = AgentLibraryTarget.allCases.first(where: { $0.mcpRelativePath == record.relativePath }) {
+            // Restoring a whole native config withdraws all incoming
+            // permissions for this target, even if some values coincide.
+            try revokeMCPReceipts(target: target)
+        } else if let target = AgentLibraryTarget.allCases.first(where: { $0.instructionRelativePath == record.relativePath }) {
+            // This entry point replaces a projection leaf, unlike an
+            // instruction edit through a link that only updates its source.
+            var receipts = try instructionReceipts()
+            if receipts.removeValue(forKey: target.rawValue) != nil { try saveInstructionReceipts(receipts) }
+        }
         let backup = try files.restore(record, expectedRevision: expectedRevision)
         let target = AgentLibraryTarget.allCases.first {
             $0.mcpRelativePath == record.relativePath || $0.instructionRelativePath == record.relativePath

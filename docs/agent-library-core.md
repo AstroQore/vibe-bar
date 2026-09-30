@@ -90,6 +90,24 @@ still matches the last owned write fingerprint. A user or another tool's
 change withdraws that permission. A pre-existing equal definition is reused
 without claiming ownership.
 
+An actual direct MCP edit or deletion persistently revokes the incoming
+receipt for the selected target/name before changing its native configuration.
+Recreating the definition or returning to its former values does not restore
+that permission. Editing a source keeps the outgoing receipts for its other
+destinations, so unchanged Library-owned copies can still be updated.
+A whole-config backup restore conservatively revokes every incoming MCP
+receipt for that target; other targets and their native files stay intact.
+Restoring an instruction projection leaf similarly withdraws its own receipt,
+without withdrawing permissions for other leaves or shared-source edits.
+
+Invalid input, conflicts and stale revisions fail before revocation. If
+revocation cannot be persisted, the native mutation is aborted. If a later
+backup, revision check or native write fails, the withdrawn permission stays
+withdrawn and the operation reports failure; it does not roll back over a
+concurrent native-file change. Shared writes use the same withdrawal order
+and publish new ownership only after a successful native write, using freshly
+read receipts rather than resurrecting an earlier snapshot.
+
 MCP projection receipts store source, target, name and content fingerprint
 under `.vibebar/agent_library/mcp_projections.json`; they contain no command,
 environment or header payload. Conversion uses native fields: Codex

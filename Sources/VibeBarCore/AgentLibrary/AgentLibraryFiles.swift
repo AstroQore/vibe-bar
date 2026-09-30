@@ -94,10 +94,17 @@ struct AgentLibraryFiles: Sendable {
         guard result.revision == revision else { throw AgentLibraryError.staleRevision }
         return result
     }
-    func write(_ relative: String, data: Data, expectedRevision: String, allowInstructionLink: Bool = false) throws -> AgentLibraryBackup {
+    func prepareWrite(_ relative: String, data: Data, expectedRevision: String,
+                      allowInstructionLink: Bool = false) throws -> AgentLibraryFileSnapshot {
         guard data.count <= Self.maximumBytes else { throw AgentLibraryError.oversizedFile }
         let before = try guarded(relative, revision: expectedRevision)
         if before.isSymlink && !allowInstructionLink { throw AgentLibraryError.unsafePath }
+        _ = try self.relative(before.resolved)
+        return before
+    }
+    func write(_ relative: String, data: Data, expectedRevision: String, allowInstructionLink: Bool = false) throws -> AgentLibraryBackup {
+        let before = try prepareWrite(relative, data: data, expectedRevision: expectedRevision,
+                                      allowInstructionLink: allowInstructionLink)
         let destination = try self.relative(before.resolved)
         let backup = try backupFile(destination)
         _ = try guarded(relative, revision: expectedRevision)
@@ -142,8 +149,21 @@ struct AgentLibraryFiles: Sendable {
         }
         return record
     }
-    func restore(_ record: AgentLibraryBackupRecord, expectedRevision: String) throws -> AgentLibraryBackup {
+    func prepareRestore(_ record: AgentLibraryBackupRecord, expectedRevision: String) throws -> AgentLibraryFileSnapshot {
         let before = try guarded(record.relativePath, revision: expectedRevision)
+        switch record.kind {
+        case "file":
+            guard let data = record.data else { throw AgentLibraryError.invalidBackup }
+            guard data.count <= Self.maximumBytes else { throw AgentLibraryError.oversizedFile }
+        case "symlink":
+            guard record.link != nil else { throw AgentLibraryError.invalidBackup }
+        case "missing": break
+        default: throw AgentLibraryError.invalidBackup
+        }
+        return before
+    }
+    func restore(_ record: AgentLibraryBackupRecord, expectedRevision: String) throws -> AgentLibraryBackup {
+        let before = try prepareRestore(record, expectedRevision: expectedRevision)
         let safetyCopy = try backupFile(record.relativePath)
         _ = try guarded(record.relativePath, revision: expectedRevision)
         let target = try url(record.relativePath)

@@ -459,4 +459,195 @@ final class AgentLibraryTests: XCTestCase {
                                                           sourceRevision: revision(.codex), targets: [.claude: "missing"])
         XCTAssertEqual(result.problems.first?.code, AgentLibraryError.unsupportedConversion.code)
     }
+
+    private func ownedMCPFixture() async throws {
+        try write(".claude.json", #"{"mcpServers":{"shared":{"type":"stdio","command":"first"},"keep":{"type":"stdio","command":"keep"}}}"#)
+        for name in ["shared", "keep"] {
+            _ = try await service.shareMCPDefinition(source: .claude, name: name,
+                sourceRevision: revision(.claude), targets: [.cursor: revision(.cursor), .gemini: revision(.gemini)])
+        }
+    }
+    private func changeCommand(_ command: String, target: AgentLibraryTarget, name: String = "shared") async throws -> AgentLibraryMutationResult {
+        let rev = try await revision(target)
+        var definition = try await service.readMCPDefinition(target: target, name: name, expectedRevision: rev).definition
+        definition.command = command
+        return try await service.saveMCPDefinition(target: target, definition: definition,
+                                                   expectedRevision: rev, replaceExisting: true)
+    }
+    private func receiptIdentities() throws -> [String: String] {
+        let data = Data(try text(".vibebar/agent_library/mcp_projections.json").utf8)
+        return try JSONDecoder().decode([String: AgentMCPProjectionReceipt].self, from: data).mapValues {
+            $0.source.rawValue + ":" + $0.target.rawValue + ":" + $0.name + ":" + $0.fingerprint
+        }
+    }
+    private func owned(_ name: String = "shared", target: AgentLibraryTarget) async -> Bool {
+        let inventory = await service.mcpInventory()
+        return inventory.definitions.first { $0.target == target && $0.name == name }?.projectionOwned == true
+    }
+
+    func testDeletingAndRecreatingIdenticalMCPDoesNotRestoreOwnership() async throws {
+        try await ownedMCPFixture()
+        let original = try text(".cursor/mcp.json")
+        let otherReceipts = try receiptIdentities().filter { $0.key != AgentLibraryService.operationToken(target: .cursor, name: "shared") }
+        _ = try await service.deleteMCPDefinition(target: .cursor, name: "shared", expectedRevision: revision(.cursor))
+        XCTAssertEqual(try receiptIdentities(), otherReceipts)
+        try write(".cursor/mcp.json", original)
+        _ = try await changeCommand("source-changed", target: .claude)
+        let result = try await service.shareMCPDefinition(source: .claude, name: "shared",
+            sourceRevision: revision(.claude), targets: [.cursor: revision(.cursor)])
+        XCTAssertEqual(result.problems.first?.code, AgentLibraryError.sameNameConflict.code)
+        XCTAssertTrue(result.changed.isEmpty)
+        XCTAssertEqual(try text(".cursor/mcp.json"), original)
+        let ownership = await owned(target: .cursor)
+        let keeper = await owned("keep", target: .cursor)
+        let unaffected = await owned(target: .gemini)
+        XCTAssertFalse(ownership)
+        XCTAssertTrue(keeper)
+        XCTAssertTrue(unaffected)
+    }
+
+    func testDirectMCPEditThenReturningToOldValuesDoesNotRestoreOwnership() async throws {
+        try await ownedMCPFixture()
+        _ = try await changeCommand("user-edited", target: .cursor)
+        _ = try await changeCommand("first", target: .cursor)
+        let original = try text(".cursor/mcp.json")
+        _ = try await changeCommand("new-source", target: .claude)
+        let result = try await service.shareMCPDefinition(source: .claude, name: "shared",
+            sourceRevision: revision(.claude), targets: [.cursor: revision(.cursor), .gemini: revision(.gemini)])
+        XCTAssertEqual(result.problems.first?.code, AgentLibraryError.sameNameConflict.code)
+        XCTAssertEqual(result.changed, [.gemini], "editing the source keeps other owned destinations updateable")
+        XCTAssertEqual(try text(".cursor/mcp.json"), original)
+        let ownership = await owned(target: .cursor)
+        let keeper = await owned("keep", target: .cursor)
+        XCTAssertFalse(ownership)
+        XCTAssertTrue(keeper)
+    }
+
+    func testWholeConfigRestoreRevokesOnlyThatTargetsMCPReceipts() async throws {
+        try await ownedMCPFixture()
+        let original = try text(".cursor/mcp.json")
+        let gemini = try text(".gemini/settings.json")
+        let otherReceipts = try receiptIdentities().filter { !$0.value.contains(":cursor:") }
+        let edit = try await changeCommand("user-edit", target: .cursor)
+        let backup = try XCTUnwrap(edit.backups.first)
+        _ = try await service.restoreBackup(id: backup.id, expectedRevision: revision(.cursor))
+        XCTAssertEqual(try text(".cursor/mcp.json"), original)
+        XCTAssertEqual(try text(".gemini/settings.json"), gemini)
+        XCTAssertEqual(try receiptIdentities(), otherReceipts)
+        _ = try await changeCommand("source-changed", target: .claude)
+        let result = try await service.shareMCPDefinition(source: .claude, name: "shared",
+            sourceRevision: revision(.claude), targets: [.cursor: revision(.cursor)])
+        XCTAssertEqual(result.problems.first?.code, AgentLibraryError.sameNameConflict.code)
+        let keeper = await owned("keep", target: .cursor)
+        let unaffected = await owned("keep", target: .gemini)
+        XCTAssertFalse(keeper, "a whole-file restore conservatively withdraws every incoming permission for that target")
+        XCTAssertTrue(unaffected)
+    }
+
+    func testRejectedMutationsLeaveOwnershipReceiptsUntouched() async throws {
+        try await ownedMCPFixture()
+        let rev = try await revision(.cursor)
+        let before = try text(".vibebar/agent_library/mcp_projections.json")
+        await expect(.sameNameConflict) {
+            _ = try await self.service.saveMCPDefinition(target: .cursor, definition: .init(name: "shared", command: "conflict"),
+                                                         expectedRevision: rev)
+        }
+        await expect(.invalidDefinition) {
+            _ = try await self.service.saveMCPDefinition(target: .cursor, definition: .init(name: "shared", command: ""),
+                                                         expectedRevision: rev, replaceExisting: true)
+        }
+        try write(".cursor/mcp.json", text(".cursor/mcp.json") + "\n")
+        await expect(.staleRevision) {
+            _ = try await self.service.deleteMCPDefinition(target: .cursor, name: "shared", expectedRevision: rev)
+        }
+        let files = try AgentLibraryFiles(homeDirectory: home)
+        let backup = try files.backupFile(".cursor/mcp.json")
+        await expect(.staleRevision) {
+            _ = try await self.service.restoreBackup(id: backup.id, expectedRevision: rev)
+        }
+        let malformed = AgentLibraryBackupRecord(id: backup.id, relativePath: ".cursor/mcp.json",
+                                                 kind: "file", data: nil, link: nil, createdAt: Date())
+        try JSONEncoder().encode(malformed).write(to: files.storageURL("backups/" + backup.id + ".json"))
+        let current = try await revision(.cursor)
+        await expect(.invalidBackup) {
+            _ = try await self.service.restoreBackup(id: backup.id, expectedRevision: current)
+        }
+        XCTAssertEqual(try text(".vibebar/agent_library/mcp_projections.json"), before)
+    }
+
+    func testReceiptPublicationFailureAbortsBeforeNativeDeletion() async throws {
+        try await ownedMCPFixture()
+        let original = try text(".cursor/mcp.json")
+        let receiptText = try text(".vibebar/agent_library/mcp_projections.json")
+        let rev = try await revision(.cursor)
+        let failing = try AgentLibraryService(homeDirectory: home, beforeMCPReceiptWrite: { url in
+            try FileManager.default.moveItem(at: url, to: url.appendingPathExtension("saved"))
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+        })
+        await expect(.ioFailure) {
+            _ = try await failing.deleteMCPDefinition(target: .cursor, name: "shared", expectedRevision: rev)
+        }
+        XCTAssertEqual(try text(".cursor/mcp.json"), original)
+        XCTAssertEqual(try text(".vibebar/agent_library/mcp_projections.json.saved"), receiptText)
+    }
+
+    func testBackupFailureAfterRevocationDoesNotClaimNativeSuccessOrRevivePermission() async throws {
+        try await ownedMCPFixture()
+        let original = try text(".cursor/mcp.json")
+        let before = try receiptIdentities()
+        let backups = home.appendingPathComponent(".vibebar/agent_library/backups")
+        try FileManager.default.moveItem(at: backups, to: backups.appendingPathExtension("saved"))
+        try Data("blocked synthetic directory".utf8).write(to: backups)
+        let rev = try await revision(.cursor)
+        await expect(.unsafePath) {
+            _ = try await self.service.deleteMCPDefinition(target: .cursor, name: "shared", expectedRevision: rev)
+        }
+        XCTAssertEqual(try text(".cursor/mcp.json"), original)
+        let key = AgentLibraryService.operationToken(target: .cursor, name: "shared")
+        XCTAssertEqual(try receiptIdentities(), before.filter { $0.key != key })
+        let ownership = await owned(target: .cursor)
+        XCTAssertFalse(ownership)
+    }
+
+    func testConcurrentNativeChangeAfterRevocationIsNotRolledBack() async throws {
+        try await ownedMCPFixture()
+        let target = home.appendingPathComponent(".cursor/mcp.json")
+        var root = try JSONDecoder().decode([String: AgentLibraryValue].self, from: Data(text(".cursor/mcp.json").utf8))
+        var entries = try XCTUnwrap(root["mcpServers"]?.object)
+        var definition = try XCTUnwrap(entries["shared"]?.object)
+        definition["command"] = .string("concurrent-user-change")
+        entries["shared"] = .object(definition)
+        root["mcpServers"] = .object(entries)
+        let concurrentData = try JSONEncoder().encode(root)
+        let rev = try await revision(.cursor)
+        let racing = try AgentLibraryService(homeDirectory: home, beforeMCPReceiptWrite: { _ in
+            try concurrentData.write(to: target)
+        })
+        await expect(.staleRevision) {
+            _ = try await racing.deleteMCPDefinition(target: .cursor, name: "shared", expectedRevision: rev)
+        }
+        XCTAssertEqual(try Data(contentsOf: target), concurrentData)
+        let ownership = await owned(target: .cursor)
+        let keeper = await owned("keep", target: .cursor)
+        XCTAssertFalse(ownership)
+        XCTAssertTrue(keeper)
+    }
+
+    func testPublicInstructionLeafRestoreDoesNotReclaimUsersRecreatedLink() async throws {
+        try write(".agents/AGENTS.md", "shared rules")
+        let projected = try await service.linkCanonicalInstructions(targets: [.claude: "missing", .gemini: "missing"])
+        let backup = try XCTUnwrap(projected.backups.first { $0.relativePath == ".claude/CLAUDE.md" })
+        _ = try await service.restoreBackup(id: backup.id, expectedRevision: instruction("claude").revision)
+        let files = try AgentLibraryFiles(homeDirectory: home)
+        try FileManager.default.createSymbolicLink(at: files.url(".claude/CLAUDE.md"),
+                                                    withDestinationURL: files.url(".agents/AGENTS.md"))
+        let recreated = try await instruction("claude")
+        let unaffected = try await instruction("gemini")
+        XCTAssertFalse(recreated.projectionOwned)
+        XCTAssertTrue(unaffected.projectionOwned)
+        await expect(.notOwnedProjection) {
+            _ = try await self.service.removeInstructionProjection(target: .claude, expectedRevision: recreated.revision)
+        }
+        XCTAssertEqual(try text(".agents/AGENTS.md"), "shared rules")
+    }
 }
