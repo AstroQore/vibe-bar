@@ -338,13 +338,13 @@ private struct EffectivePricingRowView: View {
 
     private func ultrafastDetail(_ tier: EffectiveModelPricingTier) -> String {
         guard let threshold = tier.thresholdTokens else { return "Ultrafast" }
-        let rates: [String] = [
-            tier.inputAboveThresholdPerMillion.map { "input \(Self.formatPrice($0))" },
-            tier.outputAboveThresholdPerMillion.map { "output \(Self.formatPrice($0))" },
-            tier.cacheReadAboveThresholdPerMillion.map { "cache read \(Self.formatPrice($0))" },
-            tier.cacheWriteAboveThresholdPerMillion.map { "cache write \(Self.formatPrice($0))" }
-        ].compactMap { $0 }
-        return "Ultrafast · Above \(threshold.formatted(.number.notation(.compactName).locale(AppLocale.current))) tokens: " + rates.joined(separator: " · ")
+        return L10n.Settings.Pricing.ultrafastContextRates(
+            threshold: threshold.formatted(.number.notation(.compactName).locale(AppLocale.current)),
+            input: tier.inputAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
+            output: tier.outputAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
+            cacheRead: tier.cacheReadAboveThresholdPerMillion.map(Self.formatPrice) ?? "—",
+            cacheWrite: tier.cacheWriteAboveThresholdPerMillion.map(Self.formatPrice) ?? "—"
+        )
     }
 
     private static func formatPrice(_ value: Double) -> String {

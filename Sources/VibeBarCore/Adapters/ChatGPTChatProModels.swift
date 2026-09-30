@@ -69,15 +69,17 @@ public enum ChatGPTChatProAllowances {
     /// `QuotaLimitsCatalog` keeps, never the network.
     public static func allowances(plan: String?,
                                   table: QuotaLimitsCatalog.Table? = QuotaLimitsCatalog.snapshot()) -> [ChatGPTChatProAllowance] {
-        guard let plan = QuotaLimitsCatalog.normalizedPlan(plan) else { return [] }
+        guard let plan = QuotaLimitsCatalog.normalizedPlan(plan),
+              !QuotaLimitsCatalog.isAmbiguousChatGPTChatPlan(plan) else { return [] }
         if let rows = table?.chatGPTChat[plan], !rows.isEmpty { return rows }
         return bundled(plan: plan)
     }
 
     /// No numeric Pro allowance is bundled. OpenAI withdrew the published
     /// caps on 2026-09-30, and the same `pro` plan can represent subscriptions
-    /// with different allowances. Only newly verified remote rows may supply
-    /// a total; absent rows do not imply a full allowance.
+    /// with different allowances. Newly verified remote rows may supply a
+    /// total only for an unambiguous plan; absent rows do not imply a full
+    /// allowance.
     public static func bundled(plan: String?) -> [ChatGPTChatProAllowance] {
         []
     }
@@ -263,17 +265,26 @@ extension ChatGPTChatParser {
             !allowances.contains { $0.models == [limit.model] }
         }.sorted { $0.model < $1.model }
         return buckets + unmeteredLimits.map { limit in
+            let id: String
             let title: String
             switch limit.model {
-            case ChatGPTChatProAllowances.gpt6Pro: title = ChatGPTChatProAllowances.gpt6ProName
-            case ChatGPTChatProAllowances.solPro: title = ChatGPTChatProAllowances.solProName
-            default: title = limit.model
+            case ChatGPTChatProAllowances.gpt6Pro:
+                id = "gpt6_pro_weekly"
+                title = ChatGPTChatProAllowances.gpt6ProName
+            case ChatGPTChatProAllowances.solPro:
+                id = "sol_pro_daily"
+                title = ChatGPTChatProAllowances.solProName
+            default:
+                id = "model_limit_" + limit.model
+                title = limit.model
             }
+            // Preserve existing model-field selections. The historic ID's
+            // suffix is an identity, never evidence of a counting window.
             // Zero remaining is authoritative. Keep the required numeric
             // placeholder at the exhausted edge; without a total,
             // `hasPercentage` remains false and no ratio is displayed.
-            return QuotaBucket(id: "model_limit_" + limit.model, title: title, shortLabel: title,
-                               usedPercent: 100, resetAt: limit.resetsAt,
+            return QuotaBucket(id: id, title: title, shortLabel: title,
+                               usedPercent: 100, resetAt: limit.resetsAt, groupTitle: title,
                                quantity: QuotaQuantity(remaining: 0))
         }
     }

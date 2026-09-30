@@ -338,7 +338,7 @@ final class ChatGPTChatTests: XCTestCase {
             let quota = try await client.fetch(account: .init(id: "local", tool: .chatgptChat, source: .webCookie),
                                                settings: ChatGPTChatSettings(), now: base)
             let exhausted = try XCTUnwrap(quota.buckets.last)
-            XCTAssertEqual(exhausted.id, "model_limit_gpt-6-pro")
+            XCTAssertEqual(exhausted.id, "gpt6_pro_weekly")
             XCTAssertEqual(exhausted.title, "GPT-6 Astra Pro")
             XCTAssertEqual(exhausted.quantity?.remaining, 0)
             XCTAssertNil(exhausted.quantity?.used)
@@ -465,11 +465,18 @@ final class ChatGPTChatTests: XCTestCase {
             XCTAssertTrue(ChatGPTChatProAllowances.bundled(plan: plan).isEmpty, plan)
         }
         XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: nil, table: nil).isEmpty)
-        let table = QuotaLimitsCatalog.Table(updatedAt: nil, chatGPTChat: ["pro": proFixtures])
-        XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "Pro", table: table), proFixtures)
+        let table = QuotaLimitsCatalog.Table(updatedAt: nil, chatGPTChat: ["prolite": proFixtures])
+        XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "ProLite", table: table), proFixtures)
         XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "pro500", table: table).isEmpty)
         let ids = Set(MenuBarFieldCatalog.chatGPTChatFields.map(\.bucketId))
         for allowance in proFixtures { XCTAssertTrue(ids.contains(allowance.id), allowance.id) }
+    }
+
+    func testAnInMemoryTableCannotBypassThePro200CohortGate() {
+        for plan in ["pro", "pro20x", "pro200", "pro_200", "ChatGPT Pro 200", "pro_new", "pro_legacy"] {
+            let table = QuotaLimitsCatalog.Table(updatedAt: "2026-10-01", chatGPTChat: [plan.lowercased(): proFixtures])
+            XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: plan, table: table).isEmpty, plan)
+        }
     }
 
     func testProBucketsCountATrailingWindowAndHonourServiceThrottles() {
@@ -556,10 +563,42 @@ final class ChatGPTChatTests: XCTestCase {
             models: ["gpt-6-pro", "gpt-5-6-pro"], limit: 10, windowSeconds: 7 * 86_400)
         let buckets = ChatGPTChatParser.proBuckets(allowances: [shared], turns: turns,
             limits: limits, complete: true, now: base)
-        XCTAssertEqual(buckets.map(\.id), ["pro_weekly", "model_limit_gpt-6-pro"],
+        XCTAssertEqual(buckets.map(\.id), ["pro_weekly", "gpt6_pro_weekly"],
                        "one exhausted model must stay visible even when its shared allowance is not exhausted")
         XCTAssertEqual(buckets[0].quantity?.remaining, 9)
         XCTAssertFalse(buckets[1].hasPercentage)
+    }
+
+    func testKnownModelThrottlesMatchExistingFieldSelectionsWithoutInferringWindows() throws {
+        let reset = base.addingTimeInterval(3_600)
+        let cases = [("gpt-6-pro", "gpt6_pro_weekly", "GPT-6 Astra Pro", "chatgptChat.gpt6_pro"),
+                     ("gpt-5-6-pro", "sol_pro_daily", "GPT-5.6 Sol Pro", "chatgptChat.sol_pro")]
+        let buckets = ChatGPTChatParser.proBuckets(allowances: [], turns: [],
+            limits: cases.map { .init(model: $0.0, resetsAt: reset, fallbackModel: nil) },
+            complete: true, now: base)
+        let quota = AccountQuota(accountId: "fixture", tool: .chatgptChat, buckets: buckets, queriedAt: base)
+        var registry = QuotaFieldRegistry()
+        XCTAssertFalse(registry.record(tool: .chatgptChat, buckets: buckets, now: base), "stable fields need no dynamic duplicate")
+        let selectedIds = cases.map { "chatgptChat." + $0.1 }
+        XCTAssertEqual(MenuBarFieldCatalog.migratedFieldIds(selectedIds), selectedIds)
+        for (_, id, title, group) in cases {
+            let field = try XCTUnwrap(MenuBarFieldCatalog.field(id: "chatgptChat." + id, registry: registry))
+            let bucket = try XCTUnwrap(quota.bucket(id: field.bucketId))
+            XCTAssertTrue(MenuBarFieldCatalog.isBranchStyleField(field))
+            XCTAssertEqual(MenuBarFieldCatalog.namingGroupKey(for: field), group)
+            XCTAssertEqual(bucket.groupTitle, title)
+            XCTAssertEqual(bucket.title, title, "an unknown window keeps the model's name")
+            XCTAssertEqual(bucket.resetAt, reset)
+            XCTAssertEqual(bucket.quantity?.remaining, 0)
+            XCTAssertNil(bucket.quantity?.limit)
+            XCTAssertNil(bucket.quantity?.used)
+            XCTAssertNil(bucket.rawWindowSeconds, "historic field suffixes supply no daily or weekly window")
+            XCTAssertFalse(bucket.hasPercentage)
+            XCTAssertFalse(bucket.hasRollingReset)
+            XCTAssertNil(UsagePace.compute(bucket: bucket, now: base))
+            XCTAssertNil(QuotaPaceForecast.compute(bucket: bucket, observations: [], cycles: [], now: base))
+            XCTAssertNil(MCPQuotaBucketDTO(bucket: bucket, forecast: nil).windowSeconds)
+        }
     }
 
     func testRequestPolicyAdmitsOnlyTheHistoryReadsTheCounterMakes() {

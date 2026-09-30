@@ -111,7 +111,7 @@ final class QuotaLimitsCatalogTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: ["schemaVersion": schemaVersion, "updatedAt": "2026-09-30", "allowances": rows])
     }
 
-    private func row(provider: String = "chatgptChat", plan: String = "pro", id: String = "extra_daily",
+    private func row(provider: String = "chatgptChat", plan: String = "prolite", id: String = "extra_daily",
                      models: Any = ["gpt-6-pro"], limit: Any = 10, window: Any = 86_400,
                      unit: String = "messages", group: Any = "Extra", title: Any = "Daily",
                      verifiedAt: Any = "2026-09-30") -> [String: Any] {
@@ -140,7 +140,40 @@ final class QuotaLimitsCatalogTests: XCTestCase {
                     row(id: "current"), row(id: "later", verifiedAt: "2026-10-01")]
         let table = try XCTUnwrap(QuotaLimitsCatalog.parse(document(rows)))
         XCTAssertEqual(table.updatedAt, "2026-09-30", "a document date cannot reverify its old rows")
-        XCTAssertEqual(table.chatGPTChat["pro"]?.map(\.id), ["current", "later"])
+        XCTAssertEqual(table.chatGPTChat["prolite"]?.map(\.id), ["current", "later"])
+    }
+
+    func testFreshPro200RowsRemainAmbiguousIncludingAliasesAndUnrecognizedCohortFields() throws {
+        let aliases = ["pro", " Pro ", "pro20x", "pro200", "pro_200", "ChatGPT Pro 200",
+                       "pro_new", "pro_legacy", "new_pro_200", "pro200_grandfathered"]
+        var rows = aliases.enumerated().map { row(plan: $0.element, id: "alias_\($0.offset)") }
+        for cohort in ["new", "grandfathered"] {
+            var claimedCohort = row(plan: "pro", id: "cohort_" + cohort, verifiedAt: "2026-10-01")
+            claimedCohort["cohort"] = cohort
+            claimedCohort["subscriptionCohort"] = cohort
+            rows.append(claimedCohort)
+        }
+        rows += [row(plan: "prolite", id: "lite"), row(plan: "pro100", id: "one_hundred"),
+                 row(plan: "pro500", id: "five_hundred")]
+        let table = try XCTUnwrap(QuotaLimitsCatalog.parse(document(rows)))
+        XCTAssertEqual(table.rowCount, 3, "freshness and unsupported cohort fields do not identify an account's cohort")
+        for plan in aliases {
+            XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: plan, table: table).isEmpty, plan)
+        }
+        for (plan, id) in [("prolite", "lite"), ("pro100", "one_hundred"), ("pro500", "five_hundred")] {
+            XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: plan, table: table).map(\.id), [id])
+        }
+    }
+
+    func testAFreshCachedPro200RowCannotSupplyATotal() throws {
+        let data = try document([row(plan: "pro", verifiedAt: "2026-10-01")])
+        let cache = QuotaLimitsCatalog.cacheURL(homeDirectory: home.path)
+        try FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: cache)
+        QuotaLimitsCatalog.resetSnapshot()
+        let table = try XCTUnwrap(QuotaLimitsCatalog.snapshot(homeDirectory: home.path))
+        XCTAssertEqual(table.rowCount, 0)
+        XCTAssertTrue(ChatGPTChatProAllowances.allowances(plan: "pro", table: table).isEmpty)
     }
 
     func testRowsForUnknownProvidersAndMalformedRowsAreSkippedAlone() throws {
@@ -169,8 +202,8 @@ final class QuotaLimitsCatalogTests: XCTestCase {
         data = try JSONSerialization.data(withJSONObject: root)
         let table = try XCTUnwrap(QuotaLimitsCatalog.parse(data))
         XCTAssertEqual(table.rowCount, 1)
-        XCTAssertEqual(table.chatGPTChat["pro"]?.map(\.id), ["extra_daily"])
-        XCTAssertEqual(table.chatGPTChat["pro"]?.first?.limit, 10, "the first row for an id wins")
+        XCTAssertEqual(table.chatGPTChat["prolite"]?.map(\.id), ["extra_daily"])
+        XCTAssertEqual(table.chatGPTChat["prolite"]?.first?.limit, 10, "the first row for an id wins")
     }
 
     func testABadOrEmptyDocumentDoesNotInventAllowances() throws {
@@ -199,7 +232,7 @@ final class QuotaLimitsCatalogTests: XCTestCase {
         }
         let first = await QuotaLimitsCatalog.refresh(homeDirectory: home.path, session: session())
         XCTAssertEqual(first, .fetched)
-        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 10,
+        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.chatGPTChat["prolite"]?.first?.limit, 10,
                        "adopted in memory at once")
         let status = QuotaLimitsCatalog.loadStatus(homeDirectory: home.path)
         XCTAssertEqual(status.outcome, .fetched)
@@ -215,7 +248,7 @@ final class QuotaLimitsCatalogTests: XCTestCase {
         XCTAssertEqual(offline, .networkFailure)
         QuotaLimitsCatalog.resetSnapshot()
         let reloaded = QuotaLimitsCatalog.snapshot(homeDirectory: home.path)
-        XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "pro", table: reloaded).first?.limit, 10)
+        XCTAssertEqual(ChatGPTChatProAllowances.allowances(plan: "prolite", table: reloaded).first?.limit, 10)
         XCTAssertEqual(QuotaLimitsCatalog.loadStatus(homeDirectory: home.path).lastSuccessAt, lastGood,
                        "a failed attempt keeps the last success")
 
@@ -236,8 +269,8 @@ final class QuotaLimitsCatalogTests: XCTestCase {
         }
         let missing = await QuotaLimitsCatalog.refresh(homeDirectory: home.path, session: session())
         XCTAssertEqual(missing, .networkFailure)
-        XCTAssertEqual(QuotaLimitsCatalog.loadCache(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 10)
-        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.chatGPTChat["pro"]?.first?.limit, 10)
+        XCTAssertEqual(QuotaLimitsCatalog.loadCache(homeDirectory: home.path)?.chatGPTChat["prolite"]?.first?.limit, 10)
+        XCTAssertEqual(QuotaLimitsCatalog.snapshot(homeDirectory: home.path)?.chatGPTChat["prolite"]?.first?.limit, 10)
         let attributes = try FileManager.default.attributesOfItem(atPath: QuotaLimitsCatalog.cacheURL(homeDirectory: home.path).path)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
     }

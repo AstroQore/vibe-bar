@@ -75,7 +75,13 @@ or with a malformed field is skipped, and a document with another
 date of 2026-09-30 or later. Older rows are skipped in both downloads and
 caches. A valid document whose rows are all outdated becomes an empty table,
 so adopting it cannot restore an earlier total through the last-good fallback.
-A plan with no usable rows has no assumed allowance.
+Freshness cannot establish a subscription cohort. Schema 1 and the current
+account lookup identify only a plan, so Pro $200 rows and their known plan
+aliases remain unusable even with a new verification date or an extra cohort
+field. Both paths must carry a reliable cohort discriminator before such rows
+can supply totals. The same refusal applies to directly constructed in-memory
+tables. Other plans may use their own verified rows; a plan with no usable rows
+has no assumed allowance, and the bundled table is empty.
 
 Every Chat bucket is grouped the way Codex's Spark lanes are: the thing
 being metered is the group header — Image Generation, Deep Research,
@@ -111,7 +117,10 @@ throttle with zero remaining messages and the reset time it was given. Its
 total, used count and window stay unknown, so the row has no percentage,
 forecast or inferred rolling reset. An empty `model_limits` list supplies no
 full-quota claim. Saved history is not read when there is no verified window
-to count against.
+to count against. Known Astra and Sol throttles keep the existing selectable
+field IDs, `gpt6_pro_weekly` and `sol_pro_daily`, and their model groups. The
+historical daily and weekly suffixes preserve selection identity and supply no
+window duration.
 
 Temporary chats, deleted conversations and turns
 whose answer never finished are not counted; the settings pane reports the
