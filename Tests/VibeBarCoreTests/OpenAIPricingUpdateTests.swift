@@ -186,10 +186,14 @@ final class OpenAIPricingUpdateTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_790_784_000)
         let oldEvent = UsageLedgerFixtures.event(date: now, model: "gpt-6-astra", input: 1_000, output: 10)
         try await oldLedger.ingest(UsageLedgerFixtures.batch(events: [.init(event: oldEvent, costUSD: 0.0105)]))
+        // Finish the actor's startup maintenance before the fixture writes
+        // through a second connection to simulate a pre-tier database.
+        await oldLedger.optimizeStorage()
         let url = directory.appendingPathComponent("usage_events.sqlite3")
         var database: OpaquePointer?
         XCTAssertEqual(sqlite3_open(url.path, &database), SQLITE_OK)
         defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 5_000)
         XCTAssertEqual(sqlite3_exec(database, "DELETE FROM ledger_meta WHERE key = 'codex_costing_tier_v1'", nil, nil, nil), SQLITE_OK)
         let upgraded = try UsageEventLedger(url: url)
         let event = UsageLedgerFixtures.event(date: now, model: "gpt-6-astra", input: 1_000, output: 10,
