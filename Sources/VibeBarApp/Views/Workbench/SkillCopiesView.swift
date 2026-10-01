@@ -12,11 +12,13 @@ extension SkillCopy.Location {
     }
 }
 
-extension SkillCopy {
+extension SkillVersion {
     /// "Changed 3 days ago" for the last week, "Changed Sep 2, 2026" beyond
     /// it — a relative phrase stops meaning much past a few days. Formatted
-    /// on demand: only an open popover asks.
+    /// on demand, so it follows a language change; a backup's title already
+    /// carries its date, so it has none.
     var changedText: String? {
+        if case .backup = kind { return nil }
         guard let modifiedAt else { return nil }
         let now = Date()
         let date = now.timeIntervalSince(modifiedAt) < 7 * 86_400
@@ -25,134 +27,11 @@ extension SkillCopy {
             : AppLocale.string(modifiedAt, template: "yMMMd")
         return L10n.Workbench.Skills.Copies.changed(date: date)
     }
-
-    func revealInFinder() {
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
 }
 
-/// Every copy of one installed skill, shared copy first.
-///
-/// Everything shown was computed by the service's reload — hashes, the
-/// identical/differs verdict, the shadowing flag — so opening this does no
-/// filesystem work beyond what a Reveal click asks Finder to do.
-struct SkillCopiesPopover: View {
-    let skill: Skill
-    let density: Theme.Density
-    let onReplace: (SkillCopy) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.Workbench.Skills.Copies.title(skill: skill.name))
-                .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
-                .lineLimit(1)
-
-            sharedRow
-
-            Divider().opacity(0.4)
-
-            ForEach(skill.otherCopies) { copy in
-                copyRow(copy)
-            }
-        }
-        .padding(14)
-        .frame(width: 380)
-    }
-
-    private var sharedRow: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "tray.full")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 20, height: 20)
-                .background(Circle().fill(Color.primary.opacity(0.06)))
-            VStack(alignment: .leading, spacing: 2) {
-                header(
-                    title: SkillCopy.Location.shared.label,
-                    reveal: skill.sharedCopy?.url
-                        ?? SkillAppCatalog.ssotDirectory()
-                            .appendingPathComponent(skill.directory, isDirectory: true)
-                )
-                if let changed = skill.sharedCopy?.changedText {
-                    detail(changed, style: .tertiary)
-                }
-            }
-        }
-    }
-
-    private func copyRow(_ copy: SkillCopy) -> some View {
-        let hasShared = skill.sharedCopy != nil
-        return HStack(alignment: .top, spacing: 8) {
-            glyph(for: copy.location)
-            VStack(alignment: .leading, spacing: 2) {
-                header(title: copy.location.label, reveal: copy.url)
-                if !hasShared {
-                    detail(L10n.Workbench.Skills.Copies.noShared, style: .secondary)
-                } else if copy.sameAsShared {
-                    detail(L10n.Workbench.Skills.Copies.identical, style: .secondary)
-                } else {
-                    detail(L10n.Workbench.Skills.Copies.differs, style: .orange)
-                }
-                if let changed = copy.changedText {
-                    detail(changed, style: .tertiary)
-                }
-                if copy.shadowsShared, let app = copy.location.app {
-                    // Orange only when it matters: an identical copy in the
-                    // harness folder hides nothing the user would miss.
-                    Label(
-                        L10n.Workbench.Skills.Copies.shadowsShared(app: app.displayName),
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
-                    .foregroundStyle(copy.sameAsShared ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                // A differently named copy would re-point the name-keyed
-                // native switches; the service refuses it, so never offer it.
-                if hasShared, !copy.sameAsShared, copy.name == skill.name {
-                    Button(L10n.Workbench.Skills.Copies.replaceShared) {
-                        onReplace(copy)
-                    }
-                    .buttonStyle(WorkbenchPillButtonStyle())
-                    .padding(.top, 3)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func glyph(for location: SkillCopy.Location) -> some View {
-        if let app = location.app {
-            SkillAppGlyph(app: app, size: 13)
-                .frame(width: 20, height: 20)
-                .background(Circle().fill(app.accent.opacity(0.10)))
-        }
-    }
-
-    private func header(title: String, reveal url: URL) -> some View {
-        HStack(spacing: 6) {
-            Text(title)
-                .font(.system(size: density.subtitleFontSize, weight: .semibold))
-                .lineLimit(1)
-            Spacer(minLength: 6)
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-            } label: {
-                Image(systemName: "folder")
-                    .font(.system(size: max(9, density.resetCountdownFontSize - 1), weight: .semibold))
-            }
-            .buttonStyle(.vibeBar)
-            .foregroundStyle(.secondary)
-            .help(L10n.Workbench.Skills.menuRevealInFinder)
-            .accessibilityLabel(L10n.Workbench.Skills.menuRevealInFinder)
-        }
-    }
-
-    private func detail(_ text: String, style: some ShapeStyle) -> some View {
-        Text(text)
-            .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
-            .foregroundStyle(style)
-            .fixedSize(horizontal: false, vertical: true)
+extension SkillCopy {
+    func revealInFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }
 

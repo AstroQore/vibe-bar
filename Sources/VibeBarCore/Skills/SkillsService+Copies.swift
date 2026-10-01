@@ -164,6 +164,22 @@ extension SkillsService {
         return try await installLocal(from: source, name: copy.directoryName)
     }
 
+    // MARK: - Versions and differences (read-only)
+
+    /// Every version of `skill` the copies sheet lists, read straight from
+    /// disk. `nonisolated` and synchronous on purpose: it hashes trees the
+    /// two-second reload never touches (managed copies, backups), so the
+    /// caller runs it on a detached task instead of queueing it on the actor
+    /// in front of the reload.
+    public nonisolated func versionInventory(for skill: Skill) -> SkillVersionInventory {
+        SkillVersionScanner.inventory(for: skill, homeDirectory: homeDirectory)
+    }
+
+    /// The folders a comparison may read; see `SkillReadScope`.
+    public nonisolated var readScope: SkillReadScope {
+        SkillReadScope.standard(homeDirectory: homeDirectory)
+    }
+
     // MARK: - Internals
 
     /// Full-content hashes the copy scanner has computed; lets tests prove
