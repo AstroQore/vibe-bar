@@ -122,38 +122,3 @@ struct LibraryResourceEditor: View {
         try? JSONDecoder().decode(type, from: Data(text.utf8))
     }
 }
-
-struct LibraryShareSheet: View {
-    let draft: LibraryShareDraft
-    @ObservedObject var model: AgentLibraryManagerModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var selected: Set<AgentLibraryTarget> = []
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(.headline)
-            ForEach(AgentLibraryTarget.allCases.filter { draft.revisions[$0] != nil }) { target in
-                Toggle(target.libraryDisplayName, isOn: Binding(
-                    get: { selected.contains(target) },
-                    set: { if $0 { selected.insert(target) } else { selected.remove(target) } }
-                ))
-            }
-            LibraryMessage(message: model.message)
-            HStack {
-                Spacer()
-                Button(L10n.Common.cancel) { dismiss() }.disabled(model.isBusy)
-                Button(L10n.Common.save) { model.share(draft, targets: selected) }
-                    .buttonStyle(WorkbenchPillButtonStyle(prominent: true))
-                    .disabled(selected.isEmpty || model.isBusy)
-            }
-        }.padding(20).frame(minWidth: 440)
-            .vibeBarNoInitialFocus().vibeBarSystemControlFocus()
-    }
-
-    private var title: String {
-        switch draft.kind {
-        case .mcp(let row): L10n.Workbench.Library.targets + " · " + row.name
-        case .instructions: L10n.Workbench.Library.linkInstructions
-        }
-    }
-}

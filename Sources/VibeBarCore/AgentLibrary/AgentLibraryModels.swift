@@ -125,6 +125,12 @@ public struct AgentMCPDefinitionSummary: Sendable, Identifiable {
     public let errorCode: String?
     public let projectionOwned: Bool
     public let sharedSourceTarget: AgentLibraryTarget?
+    /// Rows for one server name across targets share this identity. It is
+    /// derived from the real name, so redacted display names cannot merge.
+    public let groupID: String
+    /// Targets this definition cannot be shared into, with the error code the
+    /// share would fail with (transport, name rules, unportable fields).
+    public let unsupportedTargets: [AgentLibraryTarget: String]
 }
 
 public struct AgentMCPInventory: Sendable {
@@ -147,6 +153,13 @@ public struct AgentInstructionSummary: Sendable, Identifiable {
     public let overridePath: String?
     public let projectionOwned: Bool
     public let errorCode: String?
+    /// The leaf link's own text, as written by whoever created it.
+    public let linkDestination: String?
+    /// The agent reads the same file as the shared instructions: its link
+    /// chain ends where the canonical file's does, whoever created the link
+    /// (or the canonical file links to this agent's own file). Sharing is
+    /// recognised by path alone; ownership is still `projectionOwned`.
+    public let sharesCanonical: Bool
 }
 public struct AgentInstructionDocument: Sendable {
     public let id: String

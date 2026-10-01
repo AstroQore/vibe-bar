@@ -30,6 +30,7 @@ final class WorkbenchServices: ObservableObject {
     private var usageStatsStorage: UsageStatsViewModel?
     private var sessionsStorage: SessionManagerModel?
     private var skillsStorage: SkillsManagerModel?
+    private var libraryStorage: AgentLibraryManagerModel?
 
     init(
         usageLedger: UsageEventLedger?,
@@ -67,6 +68,16 @@ final class WorkbenchServices: ObservableObject {
         if let skillsStorage { return skillsStorage }
         let model = SkillsManagerModel(settingsStore: settingsStore, service: skillsService)
         skillsStorage = model
+        return model
+    }
+
+    /// The Library's MCP and AGENTS.md pages share this model, so moving
+    /// between the two sidebar pages keeps the last inventory on screen.
+    /// Building it reads nothing; each page refreshes its own resource.
+    var library: AgentLibraryManagerModel {
+        if let libraryStorage { return libraryStorage }
+        let model = AgentLibraryManagerModel(homeDirectory: RealHomeDirectory.url)
+        libraryStorage = model
         return model
     }
 
