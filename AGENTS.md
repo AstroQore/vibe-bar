@@ -909,7 +909,13 @@ capture against § 8 before committing it — a screenshot is source content.
   A shared MCP target is updated only while its content still matches the
   Library's ownership receipt. Instruction links are removed only with a
   matching receipt, restoring the previous file. Foreign links and conflicting
-  definitions remain under their existing owner. See
+  definitions remain under their existing owner: an instruction link the user
+  made is recognised and shown as shared (`sharesCanonical`, by path identity,
+  without reading through it) but never removed by the Library. In the
+  Workbench, Skills, MCP servers and AGENTS.md are three sidebar rows under a
+  Library heading; MCP and AGENTS.md share one `AgentLibraryManagerModel` in
+  `WorkbenchServices`, and their per-harness share circles reuse the Skills
+  `HarnessToggleCircle`. See
   `docs/agent-library-core.md` for the precise format and path boundaries.
 
   Shared skills discovered on disk are a separate, read-only inventory.

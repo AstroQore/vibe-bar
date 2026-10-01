@@ -55,7 +55,11 @@ public actor AgentLibraryService {
                 sharedWith: peers.map(\.0),
                 matchingTargets: peers.filter { Self.same(definition, $0.2) }.map(\.0),
                 status: error == nil ? .ready : .unsupported, errorCode: error?.code,
-                projectionOwned: owned, sharedSourceTarget: owned ? receipt?.source : nil)
+                projectionOwned: owned, sharedSourceTarget: owned ? receipt?.source : nil,
+                groupID: "mcp-name:" + AgentLibraryFiles.digest(Data(definition.name.utf8)),
+                unsupportedTargets: Dictionary(uniqueKeysWithValues: AgentLibraryTarget.allCases
+                    .filter { $0 != target }
+                    .compactMap { other in Self.shareProblem(definition, to: other).map { (other, $0.code) } }))
         }
         return .init(files: summaries, definitions: definitions)
     }
@@ -258,6 +262,15 @@ public actor AgentLibraryService {
                 return .invalidDefinition
             }
         }
+        return nil
+    }
+    /// Whether `definition` could be written into `target` at all, before
+    /// any revision or same-name check: the capability the share toggle
+    /// shows, from the same validation and conversion the write uses.
+    static func shareProblem(_ definition: AgentMCPDefinition, to target: AgentLibraryTarget) -> AgentLibraryError? {
+        if let error = validationError(definition, target: target) { return error }
+        do { _ = try fields(definition, target: target, existing: nil) }
+        catch { return error as? AgentLibraryError ?? .unsupportedConversion }
         return nil
     }
     static func fields(_ definition: AgentMCPDefinition, target: AgentLibraryTarget,

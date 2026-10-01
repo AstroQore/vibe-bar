@@ -61,6 +61,10 @@ struct UsageTrendChartView: View {
     @State private var hiddenTools: Set<ToolType> = []
     @State private var hoveredDate: Date?
     @State private var chartWindow: ChartTimeWindow?
+    /// The plot area's width, rounded to whole points. Bars and axis labels
+    /// are sized against it; the plot's width never depends on either, so
+    /// measuring it cannot feed back into another layout pass.
+    @State private var plotWidth: CGFloat = 0
 
     /// Floor for the leading axis-label column on both panes. Without a shared
     /// floor the token pane ("3.40M") and the cost pane ("$12") inset their
@@ -69,6 +73,8 @@ struct UsageTrendChartView: View {
     private static let tooltipWidth: CGFloat = 186
     private static let mainMarkBudget = 1_200
     private static let navigatorMarkBudget = 480
+    /// Stand-in until the plot reports its real width on first layout.
+    private static let fallbackPlotWidth: CGFloat = 600
 
     private struct DomainKey: Equatable {
         let bucket: UsageTrendBucket
@@ -90,10 +96,17 @@ struct UsageTrendChartView: View {
     /// search instead.
     private struct RenderPlan {
         var aggregateRendered: [UsageTrendPoint] = []
-        var visibleAggregateCount: Int = 0
         var aggregateByStart: [Date: UsageTrendPoint] = [:]
-        /// Visible bucket starts, ascending — the hover snap works on these.
-        var visibleStarts: [Date] = []
+        /// Visible buckets, ascending — the hover snap works on these.
+        var visibleAnchors: [BucketAnchor] = []
+        /// Where each visible bucket is drawn: the middle of its calendar
+        /// span, so a bar covers the bucket it stands for instead of being
+        /// centred on the boundary with the previous one.
+        var centerByStart: [Date: Date] = [:]
+        var startByCenter: [Date: Date] = [:]
+        /// Axis tick positions (bucket centres), thinned to fit the labels.
+        var axisTicks: [Date] = []
+        var barWidth: CGFloat = ChartBarLayout.minimumWidth
         var providerRenderedByTool: [ToolType: [UsageTrendPoint]] = [:]
         var providerByStart: [ToolType: [Date: UsageTrendPoint]] = [:]
         var navigatorByTool: [ToolType: [UsageTrendPoint]] = [:]
@@ -102,11 +115,17 @@ struct UsageTrendChartView: View {
         var visibleCostTotal: Int64 = 0
     }
 
+    private struct BucketAnchor {
+        let start: Date
+        let center: Date
+    }
+
     private struct PlanKey: Equatable {
         let series: UsageTrendSeries
         let visibleDomain: ClosedRange<Date>
         let hiddenTools: Set<ToolType>
         let metric: UsageChartMetric
+        let plotWidth: CGFloat
     }
 
     /// Reference box so a memo hit/update during `body` never dirties view
@@ -123,7 +142,8 @@ struct UsageTrendChartView: View {
             series: series,
             visibleDomain: visibleDomain,
             hiddenTools: hiddenTools,
-            metric: metric
+            metric: metric,
+            plotWidth: plotWidth > 0 ? plotWidth : Self.fallbackPlotWidth
         )
         if let cached = planCache.plan, planCache.key == key {
             // Adopt the newest key: a reload can return identical points in
@@ -143,9 +163,49 @@ struct UsageTrendChartView: View {
         let visibleDomain = key.visibleDomain
         var plan = RenderPlan()
 
-        let visiblePoints = series.points.filter { visibleDomain.contains($0.bucketStart) }
-        plan.visibleAggregateCount = visiblePoints.count
-        plan.visibleStarts = visiblePoints.map(\.bucketStart)
+        // A bucket is visible when any of it is: the window can cut a bar in
+        // half, and dropping the half that still shows leaves a hole at the
+        // edge. The nominal length is close enough for this test; centres
+        // below use the real calendar span.
+        let bucket = series.bucket
+        let nominal = bucket.nominalSeconds
+        let isVisible: (UsageTrendPoint) -> Bool = { point in
+            point.bucketStart < visibleDomain.upperBound
+                && point.bucketStart.addingTimeInterval(nominal) > visibleDomain.lowerBound
+        }
+        var visiblePoints: [UsageTrendPoint] = []
+        var visibleIndices: [Int] = []
+        for (index, point) in series.points.enumerated() where isVisible(point) {
+            visiblePoints.append(point)
+            visibleIndices.append(index)
+        }
+        plan.visibleAnchors = visiblePoints.map { point in
+            let start = point.bucketStart
+            let end = bucketEnd(after: start, bucket: bucket)
+            return BucketAnchor(start: start, center: start.addingTimeInterval(end.timeIntervalSince(start) / 2))
+        }
+        for anchor in plan.visibleAnchors {
+            plan.centerByStart[anchor.start] = anchor.center
+            plan.startByCenter[anchor.center] = anchor.start
+        }
+
+        // Bars and labels share one pitch: the plot width over the number of
+        // buckets the visible span holds, so zooming the brush widens both.
+        let span = visibleDomain.upperBound.timeIntervalSince(visibleDomain.lowerBound)
+        let slotCount = span / nominal
+        let plotWidth = Double(key.plotWidth)
+        plan.barWidth = CGFloat(ChartBarLayout.barWidth(plotWidth: plotWidth, slotCount: slotCount))
+        let stride = ChartBarLayout.labelStride(
+            slotWidth: ChartBarLayout.slotWidth(plotWidth: plotWidth, slotCount: slotCount),
+            minimumLabelSpacing: bucket.minimumAxisLabelSpacing,
+            steps: bucket.axisLabelSteps
+        )
+        // Strides count from the series start, not the window's, so a tick
+        // stays on its bucket while the brush pans instead of hopping along.
+        plan.axisTicks = zip(visibleIndices, plan.visibleAnchors)
+            .filter { index, _ in index % stride == 0 }
+            .map { $0.1.center }
+
         plan.aggregateRendered = UsageTrendSeriesDownsampling.points(
             visiblePoints,
             limit: max(2, mainMarkBudget / UsageTokenComponent.allCases.count)
@@ -158,7 +218,7 @@ struct UsageTrendChartView: View {
         let visibleProviders = series.providerSeries.filter { !key.hiddenTools.contains($0.tool) }
         let perProvider = max(2, mainMarkBudget / max(1, visibleProviders.count))
         for provider in visibleProviders {
-            let points = provider.points.filter { visibleDomain.contains($0.bucketStart) }
+            let points = provider.points.filter(isVisible)
             plan.providerRenderedByTool[provider.tool] =
                 UsageTrendSeriesDownsampling.points(points, limit: perProvider)
             plan.providerByStart[provider.tool] = Dictionary(
@@ -179,7 +239,7 @@ struct UsageTrendChartView: View {
 
         let accessibilityPoints = key.metric == .tokens
             ? visiblePoints
-            : visibleProviders.flatMap(\.points).filter { visibleDomain.contains($0.bucketStart) }
+            : visibleProviders.flatMap(\.points).filter(isVisible)
         plan.visibleTokensTotal = accessibilityPoints.reduce(Int64(0)) { $0 + $1.totalTokens }
         plan.visibleCostTotal = accessibilityPoints.reduce(Int64(0)) { $0 + $1.costMicros }
         return plan
@@ -257,6 +317,15 @@ struct UsageTrendChartView: View {
             } else {
                 emptyState
             }
+        }
+        // The automatic granularity is chosen for this width: a wide card
+        // earns finer buckets. The card's width is used rather than the
+        // plot's because it does not move with the y-axis labels, which a
+        // bucket change can widen — that would let the choice flip-flop.
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width.rounded()
+        } action: { width in
+            model.trendChartWidth = width
         }
         .onChange(of: domainKey) { _, newValue in
             chartWindow = nil
@@ -452,13 +521,18 @@ struct UsageTrendChartView: View {
     // MARK: - Panes
 
     private var tokenPane: some View {
-        Chart {
-            ForEach(renderedAggregatePoints, id: \.bucketStart) { point in
+        // Resolved once per pass: the marks below look up hundreds of
+        // centres, and each `plan` access re-checks the memo key.
+        let plan = self.plan
+        let bucket = series.bucket
+        return Chart {
+            ForEach(plan.aggregateRendered, id: \.bucketStart) { point in
+                let center = Self.center(of: point.bucketStart, in: plan, bucket: bucket)
                 ForEach(UsageTokenComponent.allCases) { component in
                     BarMark(
-                        x: .value("Time", point.bucketStart),
+                        x: .value("Time", center),
                         y: .value("Tokens", component.value(in: point)),
-                        width: .fixed(tokenBarWidth),
+                        width: .fixed(plan.barWidth),
                         stacking: .standard
                     )
                     .foregroundStyle(component.color.gradient)
@@ -466,14 +540,22 @@ struct UsageTrendChartView: View {
                 }
             }
             if let hoveredDate {
-                RuleMark(x: .value("Time", hoveredDate))
+                RuleMark(x: .value("Time", center(of: hoveredDate)))
                     .foregroundStyle(.secondary.opacity(0.5))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
             }
         }
         .chartLegend(.hidden)
         .chartXScale(domain: visibleDomain)
-        .chartPlotStyle { $0.clipped() }
+        .chartPlotStyle { plot in
+            plot
+                .clipped()
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.width.rounded()
+                } action: { width in
+                    plotWidth = width
+                }
+        }
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                 AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
@@ -486,13 +568,7 @@ struct UsageTrendChartView: View {
                 }
             }
         }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-                AxisGridLine().foregroundStyle(.secondary.opacity(0.10))
-                AxisValueLabel(format: axisFormat)
-                    .font(.system(size: 9))
-            }
-        }
+        .chartXAxis { bucketAxis }
         .chartOverlay { proxy in
             hoverSurface(proxy: proxy) { geometry in
                 if let point = hoveredPoint {
@@ -506,30 +582,50 @@ struct UsageTrendChartView: View {
         .accessibilityValue(chartAccessibilityValue)
     }
 
-    /// Keep sparse daily/weekly bars substantial without turning a dense
-    /// hourly view into a picket fence of overlapping columns.
-    private var tokenBarWidth: CGFloat {
-        max(2, min(22, 360 / CGFloat(max(plan.visibleAggregateCount, 1))))
+    /// Ticks sit on bar centres and are labelled with the bucket they
+    /// stand for (its start), thinned so neighbouring labels never collide.
+    private var bucketAxis: some AxisContent {
+        let startByCenter = plan.startByCenter
+        let format = axisFormat
+        return AxisMarks(values: plan.axisTicks) { value in
+            AxisGridLine().foregroundStyle(.secondary.opacity(0.10))
+            AxisTick(length: 3).foregroundStyle(.secondary.opacity(0.35))
+            AxisValueLabel(centered: false) {
+                if let center = value.as(Date.self) {
+                    Text((startByCenter[center] ?? center).formatted(format))
+                        .font(.system(size: 9))
+                }
+            }
+        }
     }
 
-    private var renderedAggregatePoints: [UsageTrendPoint] {
-        plan.aggregateRendered
+    /// Where a bucket is drawn. Visible buckets come from the plan; anything
+    /// else (a hover racing a window change) falls back to the nominal middle.
+    private func center(of start: Date) -> Date {
+        Self.center(of: start, in: plan, bucket: series.bucket)
+    }
+
+    private static func center(of start: Date, in plan: RenderPlan, bucket: UsageTrendBucket) -> Date {
+        plan.centerByStart[start] ?? start.addingTimeInterval(bucket.nominalSeconds / 2)
     }
 
     private var costPane: some View {
-        Chart {
+        let plan = self.plan
+        let bucket = series.bucket
+        return Chart {
             ForEach(visibleProviders) { provider in
                 let color = Theme.providerAccent(for: provider.tool)
-                ForEach(renderedPoints(for: provider), id: \.bucketStart) { point in
+                ForEach(plan.providerRenderedByTool[provider.tool] ?? [], id: \.bucketStart) { point in
+                    let center = Self.center(of: point.bucketStart, in: plan, bucket: bucket)
                     AreaMark(
-                        x: .value("Time", point.bucketStart),
+                        x: .value("Time", center),
                         y: .value("Cost", costUSD(point)),
                         series: .value("Provider", provider.tool.rawValue)
                     )
                     .interpolationMethod(.linear)
                     .foregroundStyle(areaGradient(color))
                     LineMark(
-                        x: .value("Time", point.bucketStart),
+                        x: .value("Time", center),
                         y: .value("Cost", costUSD(point)),
                         series: .value("Provider", provider.tool.rawValue)
                     )
@@ -539,7 +635,7 @@ struct UsageTrendChartView: View {
                 }
                 if let hoveredDate, let point = providerPoint(for: provider, at: hoveredDate) {
                     PointMark(
-                        x: .value("Time", point.bucketStart),
+                        x: .value("Time", center(of: point.bucketStart)),
                         y: .value("Cost", costUSD(point))
                     )
                     .foregroundStyle(color)
@@ -547,14 +643,22 @@ struct UsageTrendChartView: View {
                 }
             }
             if let hoveredDate {
-                RuleMark(x: .value("Time", hoveredDate))
+                RuleMark(x: .value("Time", center(of: hoveredDate)))
                     .foregroundStyle(.secondary.opacity(0.5))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
             }
         }
         .chartLegend(.hidden)
         .chartXScale(domain: visibleDomain)
-        .chartPlotStyle { $0.clipped() }
+        .chartPlotStyle { plot in
+            plot
+                .clipped()
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.width.rounded()
+                } action: { width in
+                    plotWidth = width
+                }
+        }
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 2)) { value in
                 AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
@@ -567,13 +671,7 @@ struct UsageTrendChartView: View {
                 }
             }
         }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 5)) { _ in
-                AxisGridLine().foregroundStyle(.secondary.opacity(0.10))
-                AxisValueLabel(format: axisFormat)
-                    .font(.system(size: 9))
-            }
-        }
+        .chartXAxis { bucketAxis }
         .chartOverlay { proxy in
             hoverSurface(proxy: proxy) { geometry in
                 if let point = hoveredPoint {
@@ -637,11 +735,11 @@ struct UsageTrendChartView: View {
         // Runs once per pointer move; the starts are ascending, so binary
         // search instead of a scan over every visible bucket.
         ChartSampleSearch.nearest(
-            in: plan.visibleStarts,
+            in: plan.visibleAnchors,
             to: date,
             tolerance: .greatestFiniteMagnitude,
-            time: { $0 }
-        )
+            time: \.center
+        )?.start
     }
 
     private func tooltip(_ point: UsageTrendPoint) -> some View {
@@ -726,7 +824,7 @@ struct UsageTrendChartView: View {
         width: CGFloat
     ) -> CGFloat {
         let plotMinX = proxy.plotFrame.map { geometry[$0].minX } ?? 0
-        let x = (proxy.position(forX: date) ?? 0) + plotMinX
+        let x = (proxy.position(forX: center(of: date)) ?? 0) + plotMinX
         return min(max(0, x - width / 2), max(0, geometry.size.width - width))
     }
 
@@ -747,10 +845,6 @@ struct UsageTrendChartView: View {
         visibleProviders.reduce(Int64(0)) { total, provider in
             total + (providerPoint(for: provider, at: date)?.costMicros ?? 0)
         }
-    }
-
-    private func renderedPoints(for provider: UsageProviderTrendSeries) -> [UsageTrendPoint] {
-        plan.providerRenderedByTool[provider.tool] ?? []
     }
 
     private func navigatorPoints(for provider: UsageProviderTrendSeries) -> [UsageTrendPoint] {
@@ -775,8 +869,12 @@ struct UsageTrendChartView: View {
     }
 
     private func bucketEnd(after start: Date) -> Date {
+        Self.bucketEnd(after: start, bucket: series.bucket)
+    }
+
+    private static func bucketEnd(after start: Date, bucket: UsageTrendBucket) -> Date {
         let calendar = Calendar.current
-        switch series.bucket {
+        switch bucket {
         case .hour:
             return calendar.date(byAdding: .hour, value: 1, to: start)
                 ?? start.addingTimeInterval(3_600)

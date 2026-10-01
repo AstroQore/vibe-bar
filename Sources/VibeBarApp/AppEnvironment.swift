@@ -1083,7 +1083,7 @@ final class AppEnvironment: ObservableObject {
         }
 
         let importTask = Task.detached(priority: userInitiated ? .userInitiated : .utility) {
-            try? GeminiBrowserCookieImporter.importAndStoreFromBrowsers(
+            try? await GeminiBrowserCookieImporter.importValidatedAndStoreFromBrowsers(
                 allowKeychainPrompt: allowKeychainPrompt
             )
         }

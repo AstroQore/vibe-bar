@@ -5,7 +5,12 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
     case usageStats
     case sessionManager
     case resets
+    /// Skills keeps its original raw value, so a stored or requested
+    /// `skillsManager` page — from before the Library was split into three
+    /// sidebar rows — still opens Skills.
     case skillsManager
+    case libraryMCP
+    case libraryInstructions
     case settings
 
     var id: String { rawValue }
@@ -15,7 +20,9 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
         case .usageStats: L10n.Workbench.Page.UsageStats.title
         case .sessionManager: L10n.Workbench.Page.Sessions.title
         case .resets: L10n.Workbench.Page.Resets.title
-        case .skillsManager: L10n.Workbench.Library.title
+        case .skillsManager: L10n.Workbench.Page.Skills.title
+        case .libraryMCP: L10n.Workbench.Library.mcp
+        case .libraryInstructions: L10n.Workbench.Library.instructions
         case .settings: L10n.Popover.Header.settings
         }
     }
@@ -26,6 +33,8 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
         case .sessionManager: "bubble.left.and.text.bubble.right"
         case .resets: "clock.arrow.circlepath"
         case .skillsManager: "puzzlepiece.extension"
+        case .libraryMCP: "server.rack"
+        case .libraryInstructions: "doc.text"
         case .settings: "gearshape"
         }
     }
@@ -37,7 +46,8 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
         case .usageStats: L10n.Workbench.Page.UsageStats.subtitle
         case .sessionManager: L10n.Workbench.Page.Sessions.subtitle
         case .resets: L10n.Workbench.Page.Resets.subtitle
-        case .skillsManager: L10n.Workbench.Library.subtitle
+        case .skillsManager: L10n.Workbench.Page.Skills.subtitle
+        case .libraryMCP, .libraryInstructions: L10n.Workbench.Library.subtitle
         case .settings: L10n.Workbench.Page.Settings.subtitle
         }
     }
@@ -175,7 +185,7 @@ struct WorkbenchRootView: View {
                   let countdown = ResetCountdownFormatter.string(from: next.resetAt, now: Date())
             else { return L10n.Workbench.Status.cachedQuotas }
             return L10n.Workbench.Status.nextRefill(countdown: countdown)
-        case .skillsManager:
+        case .skillsManager, .libraryMCP, .libraryInstructions:
             return L10n.Workbench.Status.sharedLibrary
         case .settings:
             return settingsDestination.title(settings: settingsStore.settings)
@@ -192,6 +202,8 @@ struct WorkbenchRootView: View {
         case .sessionManager: workbench.sessions.refreshIndex()
         case .resets: environment.refreshAll()
         case .skillsManager: workbench.skills.refresh()
+        case .libraryMCP: Task { await workbench.library.refresh(.mcp) }
+        case .libraryInstructions: Task { await workbench.library.refresh(.instructions) }
         case .settings: break
         }
     }
@@ -213,7 +225,11 @@ struct WorkbenchRootView: View {
         case .resets:
             ResetsPage(density: density)
         case .skillsManager:
-            LibraryManagerPage(density: density, skills: workbench.skills, homeDirectory: RealHomeDirectory.url)
+            SkillsManagerPage(density: density, model: workbench.skills)
+        case .libraryMCP:
+            LibraryMCPPage(density: density, model: workbench.library)
+        case .libraryInstructions:
+            LibraryInstructionsPage(density: density, model: workbench.library)
         case .settings:
             SettingsView(density: density, selection: $settingsDestination)
         }
@@ -224,12 +240,17 @@ private struct WorkbenchSidebar: View {
     @Binding var selection: WorkbenchPage?
     @Environment(\.colorScheme) private var colorScheme
     @State private var hoveredPage: WorkbenchPage?
-    private let primaryPages: [WorkbenchPage] = [.usageStats, .sessionManager, .resets, .skillsManager]
+    private let primaryPages: [WorkbenchPage] = [.usageStats, .sessionManager, .resets]
+    private let libraryPages: [WorkbenchPage] = [.skillsManager, .libraryMCP, .libraryInstructions]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(primaryPages) { page in
+                    row(for: page)
+                }
+                sectionHeader(L10n.Workbench.Library.title)
+                ForEach(libraryPages) { page in
                     row(for: page)
                 }
             }
@@ -251,6 +272,19 @@ private struct WorkbenchSidebar: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(WorkbenchPorcelain.sidebarFill(for: colorScheme))
+    }
+
+    /// A quiet group label: the rows under it keep the same shape and
+    /// selection as every other page, so the group reads as a heading and
+    /// not as a fourth kind of control.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 8)
+            .padding(.top, 12)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
     }
 
     @ViewBuilder
@@ -291,7 +325,7 @@ private struct WorkbenchSidebar: View {
         case .usageStats: WorkbenchPorcelain.accent
         case .sessionManager: Color(red: 20 / 255, green: 169 / 255, blue: 124 / 255)
         case .resets: Color(red: 88 / 255, green: 134 / 255, blue: 220 / 255)
-        case .skillsManager: Color(red: 217 / 255, green: 137 / 255, blue: 11 / 255)
+        case .skillsManager, .libraryMCP, .libraryInstructions: Color(red: 217 / 255, green: 137 / 255, blue: 11 / 255)
         case .settings: .secondary
         }
     }

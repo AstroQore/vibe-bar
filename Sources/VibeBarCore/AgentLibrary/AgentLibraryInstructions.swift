@@ -10,16 +10,19 @@ struct AgentInstructionProjectionReceipt: Codable {
 extension AgentLibraryService {
     public func instructionInventory() -> [AgentInstructionSummary] {
         let receipts = try? instructionReceipts()
-        var rows = [instructionSummary(id: "canonical", target: nil,
-                                       relative: AgentLibraryFiles.canonical, receipts: receipts)]
+        let canonicalEnd = files.linkInfo(AgentLibraryFiles.canonical).resolved
+        var rows = [instructionSummary(id: "canonical", target: nil, relative: AgentLibraryFiles.canonical,
+                                       receipts: receipts, canonicalEnd: canonicalEnd)]
         for target in AgentLibraryTarget.allCases {
             if let relative = target.instructionRelativePath {
-                rows.append(instructionSummary(id: target.rawValue, target: target, relative: relative, receipts: receipts))
+                rows.append(instructionSummary(id: target.rawValue, target: target, relative: relative,
+                                               receipts: receipts, canonicalEnd: canonicalEnd))
             } else {
                 rows.append(.init(id: target.rawValue, target: target, path: "", resolvedPath: nil,
                                   revision: "unavailable", status: .unsupported, isSymlink: false,
                                   isCanonical: false, overridePath: nil, projectionOwned: false,
-                                  errorCode: AgentLibraryError.unsupportedTarget.code))
+                                  errorCode: AgentLibraryError.unsupportedTarget.code,
+                                  linkDestination: nil, sharesCanonical: false))
             }
         }
         return rows
@@ -111,7 +114,13 @@ extension AgentLibraryService {
         return path
     }
     func instructionSummary(id: String, target: AgentLibraryTarget?, relative: String,
-                            receipts: [String: AgentInstructionProjectionReceipt]?) -> AgentInstructionSummary {
+                            receipts: [String: AgentInstructionProjectionReceipt]?,
+                            canonicalEnd: String?) -> AgentInstructionSummary {
+        let link = files.linkInfo(relative)
+        // Path identity only. A chain that ends outside the managed files is
+        // still recognised as shared when the canonical file's chain ends at
+        // the same place; reading and writing through it stay refused.
+        let shares = target != nil && canonicalEnd != nil && link.resolved == canonicalEnd
         do {
             let snapshot = try files.snapshot(relative)
             let overrideSnapshot = target == .codex ? (try? files.snapshot(AgentLibraryFiles.codexOverride)) : nil
@@ -123,12 +132,17 @@ extension AgentLibraryService {
                          revision: snapshot.revision, status: snapshot.data == nil ? .missing : .ready,
                          isSymlink: snapshot.isSymlink, isCanonical: id == "canonical",
                          overridePath: hasOverride ? overrideSnapshot?.logical.path : nil,
-                         projectionOwned: owned, errorCode: receipts == nil ? AgentLibraryError.invalidReceipt.code : nil)
+                         projectionOwned: owned, errorCode: receipts == nil ? AgentLibraryError.invalidReceipt.code : nil,
+                         linkDestination: link.destination, sharesCanonical: shares)
         } catch {
+            // Refused for reading, but the link and where it leads are still
+            // shown, so a link into an unmanaged source is visible as one.
             return .init(id: id, target: target, path: files.home.appendingPathComponent(relative).path,
-                         resolvedPath: nil, revision: "unavailable", status: Self.status(error),
-                         isSymlink: false, isCanonical: id == "canonical", overridePath: nil,
-                         projectionOwned: false, errorCode: Self.code(error))
+                         resolvedPath: link.destination == nil ? nil : link.resolved,
+                         revision: "unavailable", status: Self.status(error),
+                         isSymlink: link.destination != nil, isCanonical: id == "canonical", overridePath: nil,
+                         projectionOwned: false, errorCode: Self.code(error),
+                         linkDestination: link.destination, sharesCanonical: shares)
         }
     }
     func instructionReceipts() throws -> [String: AgentInstructionProjectionReceipt] {

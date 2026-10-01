@@ -71,6 +71,34 @@ struct SkillAppGlyph: View {
     }
 }
 
+/// The circle every harness switch draws — Skills' enable bits and the
+/// Library's share toggles — so "lit in this harness's accent" means the
+/// same thing on every page. The caller owns the button, the dimming and the
+/// badge; this owns only the shape.
+struct HarnessToggleCircle<Badge: View>: View {
+    let app: SkillAppTarget
+    let isOn: Bool
+    let isHovered: Bool
+    var diameter: CGFloat = 25
+    var glyphSize: CGFloat = 13
+    @ViewBuilder var badge: Badge
+
+    var body: some View {
+        let accent = app.accent
+        SkillAppGlyph(app: app, size: glyphSize)
+            .frame(width: diameter, height: diameter)
+            .background(
+                Circle().fill(accent.opacity(isOn ? 0.18 : isHovered ? 0.10 : 0.05))
+            )
+            .overlay(
+                Circle().stroke(accent.opacity(isOn ? 0.6 : isHovered ? 0.42 : 0.20), lineWidth: 0.8)
+            )
+            .overlay(alignment: .topTrailing) {
+                badge.offset(x: 2, y: -2)
+            }
+    }
+}
+
 /// One circular brand button per locally manageable core harness.
 ///
 /// Used both as a live control (an installed skill's enable bits) and as a
@@ -144,22 +172,18 @@ struct SkillAppToggleRow: View {
     private func button(for app: SkillAppTarget) -> some View {
         let activation = state(app)
         let on = activation == .enabled
-        let accent = app.accent
         return Button {
             action(app, defaultAction(for: app, state: activation))
         } label: {
-            SkillAppGlyph(app: app, size: glyphSize)
-                .frame(width: diameter, height: diameter)
-                .background(
-                    Circle().fill(accent.opacity(on ? 0.18 : hoveredApp == app ? 0.10 : 0.05))
-                )
-                .overlay(
-                    Circle().stroke(accent.opacity(on ? 0.6 : hoveredApp == app ? 0.42 : 0.20), lineWidth: 0.8)
-                )
-                .overlay(alignment: .topTrailing) {
-                    stateBadge(activation)
-                        .offset(x: 2, y: -2)
-                }
+            HarnessToggleCircle(
+                app: app,
+                isOn: on,
+                isHovered: hoveredApp == app,
+                diameter: diameter,
+                glyphSize: glyphSize
+            ) {
+                stateBadge(activation)
+            }
         }
         .buttonStyle(.vibeBar)
         // An off app has to stay readable — the user is picking from these —

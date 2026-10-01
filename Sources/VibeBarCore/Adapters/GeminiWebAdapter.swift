@@ -42,6 +42,18 @@ struct GeminiWebQuotaFetcher: Sendable {
         self.recipeProvider = recipeProvider
     }
 
+    /// True only when the live endpoint turned `cookieHeader` away as logged
+    /// out. Transport errors and response-shape drift answer false: neither
+    /// says anything about whether the session is alive.
+    static func isSignedOut(cookieHeader: String, session: URLSession = .shared) async -> Bool {
+        do {
+            _ = try await GeminiWebQuotaFetcher(session: session).fetch(cookieHeader: cookieHeader)
+            return false
+        } catch {
+            return (error as? QuotaError) == .needsLogin
+        }
+    }
+
     func fetch(cookieHeader: String, email: String? = nil) async throws -> GeminiWebQuotaSnapshot {
         let trimmed = cookieHeader.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw QuotaError.noCredential }

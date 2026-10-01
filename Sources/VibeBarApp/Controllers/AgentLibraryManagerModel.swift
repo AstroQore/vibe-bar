@@ -3,15 +3,8 @@ import Foundation
 import VibeBarCore
 
 enum LibraryResourceKind: String, CaseIterable, Identifiable {
-    case skills, mcp, instructions
+    case mcp, instructions
     var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .skills: L10n.Workbench.Page.Skills.title
-        case .mcp: L10n.Workbench.Library.mcp
-        case .instructions: L10n.Workbench.Library.instructions
-        }
-    }
 }
 
 struct LibraryEditorDraft: Identifiable {
@@ -30,23 +23,26 @@ struct LibraryEditorDraft: Identifiable {
     var isReadOnly = false
 }
 
-struct LibraryShareDraft: Identifiable {
-    enum Kind { case mcp(AgentMCPDefinitionSummary), instructions }
-    let id = UUID()
-    let kind: Kind
-    let revisions: [AgentLibraryTarget: String]
-}
-
 @MainActor
 final class AgentLibraryManagerModel: ObservableObject {
-    @Published private(set) var mcp: AgentMCPInventory?
-    @Published private(set) var instructions: [AgentInstructionSummary] = []
+    @Published private(set) var mcp: AgentMCPInventory? {
+        didSet { mcpGroups = mcp.map(AgentMCPGroup.groups) ?? [] }
+    }
+    /// Derived once per inventory change, never in a view body.
+    @Published private(set) var mcpGroups: [AgentMCPGroup] = []
+    @Published private(set) var instructions: [AgentInstructionSummary] = [] {
+        didSet { instructionStates = AgentLibraryShareState.instructionStates(instructions) }
+    }
+    @Published private(set) var instructionStates: [AgentLibraryTarget: AgentLibraryShareState] = [:]
     @Published private(set) var isBusy = false
+    /// The circle whose share is being written, as "<resource>|<target>".
+    @Published private(set) var activeToggle: String?
+    /// The last share toggle that failed, with its error code, until the
+    /// next action on the page.
+    @Published private(set) var failedToggle: (key: String, code: String)?
     @Published var message: String?
     @Published var editor: LibraryEditorDraft?
-    @Published var shareDraft: LibraryShareDraft?
     @Published var pendingDelete: AgentMCPDefinitionSummary?
-    @Published var pendingRemoveProjection: AgentInstructionSummary?
     private let serviceResult: Result<AgentLibraryService, Error>
     private var service: AgentLibraryService { get throws { try serviceResult.get() } }
 
@@ -57,7 +53,6 @@ final class AgentLibraryManagerModel: ObservableObject {
     func refresh(_ kind: LibraryResourceKind) async {
         do {
             switch kind {
-            case .skills: break
             case .mcp: mcp = try await service.mcpInventory()
             case .instructions: instructions = try await service.instructionInventory()
             }
@@ -137,50 +132,72 @@ final class AgentLibraryManagerModel: ObservableObject {
         }
     }
 
-    func share(_ draft: LibraryShareDraft, targets: Set<AgentLibraryTarget>) {
-        perform {
-            let result: AgentLibraryMutationResult
-            switch draft.kind {
-            case .mcp(let row):
-                let revisions = draft.revisions.filter { targets.contains($0.key) }
-                result = try await self.service.shareMCPDefinition(source: row.target, name: row.operationName,
-                    sourceRevision: row.revision, targets: revisions)
+    static func toggleKey(id resource: String, _ target: AgentLibraryTarget) -> String {
+        resource + "|" + target.rawValue
+    }
+
+    /// One click on an MCP harness circle. Sharing copies the group's
+    /// primary definition through `shareMCPDefinition`; switching off removes
+    /// only a copy Vibe Bar still owns, and asks first for anything else.
+    func toggleMCP(_ group: AgentMCPGroup, target: AgentLibraryTarget) {
+        guard let state = group.states[target] else { return }
+        let key = Self.toggleKey(id: group.id, target)
+        switch state {
+        case .off:
+            guard let revision = mcp?.files.first(where: { $0.target == target })?.revision else { return }
+            let source = group.primary
+            perform(key: key) {
+                let result = try await self.service.shareMCPDefinition(source: source.target, name: source.operationName,
+                    sourceRevision: source.revision, targets: [target: revision])
                 await self.refresh(.mcp)
-            case .instructions:
-                let revisions = draft.revisions.filter { targets.contains($0.key) }
-                result = try await self.service.linkCanonicalInstructions(targets: revisions)
-                await self.refresh(.instructions)
+                return result
             }
-            self.report(result)
-            if result.problems.isEmpty { self.shareDraft = nil }
+        case .shared(managed: true) where target != group.primary.target:
+            guard let row = group.rows[target] else { return }
+            perform(key: key) {
+                let result = try await self.service.deleteMCPDefinition(target: row.target, name: row.operationName,
+                                                                       expectedRevision: row.revision)
+                await self.refresh(.mcp)
+                return result
+            }
+        case .shared, .linked, .differs:
+            // The user's own definition: removing it is an explicit delete.
+            message = nil
+            pendingDelete = group.rows[target]
+        case .unavailable(let code):
+            message = Self.message(code: code)
         }
     }
 
-    func beginShareMCP(_ row: AgentMCPDefinitionSummary) {
-        message = nil
-        shareDraft = .init(kind: .mcp(row), revisions: Dictionary(uniqueKeysWithValues:
-            (mcp?.files ?? []).filter { $0.target != row.target && ($0.status == .ready || $0.status == .missing) }
-                .map { ($0.target, $0.revision) }))
-    }
-
-    func beginLinkInstructions() {
-        message = nil
-        shareDraft = .init(kind: .instructions, revisions: Dictionary(uniqueKeysWithValues:
-            instructions.compactMap { row -> (AgentLibraryTarget, String)? in
-                guard let target = row.target, row.status == .ready || row.status == .missing else { return nil }
-                return (target, row.revision)
-            }))
-    }
-
-    func removeProjection(_ row: AgentInstructionSummary) {
-        guard let target = row.target else { return }
-        perform {
-            let result = try await self.service.removeInstructionProjection(target: target, expectedRevision: row.revision)
-            self.pendingRemoveProjection = nil
-            self.report(result)
-            await self.refresh(.instructions)
+    /// One click on an instructions harness circle. Linking reuses
+    /// `linkCanonicalInstructions`; only a link Vibe Bar made is removed, and
+    /// a link the user made stays as it is, with the reason shown.
+    func toggleInstruction(_ target: AgentLibraryTarget) {
+        guard let state = instructionStates[target],
+              let row = instructions.first(where: { $0.target == target }) else { return }
+        let key = Self.toggleKey(id: "instructions", target)
+        switch state {
+        case .off, .differs:
+            perform(key: key) {
+                let result = try await self.service.linkCanonicalInstructions(targets: [target: row.revision])
+                await self.refresh(.instructions)
+                return result
+            }
+        case .shared(managed: true):
+            perform(key: key) {
+                let result = try await self.service.removeInstructionProjection(target: target, expectedRevision: row.revision)
+                await self.refresh(.instructions)
+                return result
+            }
+        case .shared(managed: false), .linked:
+            failedToggle = nil
+            message = Self.message(code: AgentLibraryError.notOwnedProjection.code)
+        case .unavailable(let code):
+            failedToggle = nil
+            message = Self.message(code: code)
         }
     }
+
 
     private func report(_ result: AgentLibraryMutationResult) {
         var parts: [String] = []
@@ -203,10 +220,36 @@ final class AgentLibraryManagerModel: ObservableObject {
         guard !isBusy else { return }
         isBusy = true
         message = nil
+        failedToggle = nil
         Task {
             defer { isBusy = false }
             do { try await operation() }
             catch { message = Self.message(for: error) }
+        }
+    }
+
+    /// A share toggle: the same single-flight guard, plus which circle is
+    /// working and, on failure, which one to mark.
+    private func perform(key: String, _ operation: @escaping @MainActor () async throws -> AgentLibraryMutationResult) {
+        guard !isBusy else { return }
+        isBusy = true
+        activeToggle = key
+        message = nil
+        failedToggle = nil
+        Task {
+            defer { isBusy = false; activeToggle = nil }
+            do {
+                let result = try await operation()
+                if let problem = result.problems.first {
+                    failedToggle = (key, problem.code)
+                    report(result)
+                } else {
+                    message = nil
+                }
+            } catch {
+                failedToggle = (key, (error as? AgentLibraryError)?.code ?? AgentLibraryError.ioFailure.code)
+                message = Self.message(for: error)
+            }
         }
     }
 
