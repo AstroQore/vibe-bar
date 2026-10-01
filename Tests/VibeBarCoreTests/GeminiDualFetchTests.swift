@@ -94,6 +94,110 @@ final class GeminiDualFetchTests: XCTestCase {
         }
     }
 
+    /// A signed-out Google session in one browser must not hide the live one
+    /// in the next: the adapter walks every store until one authenticates.
+    func testSignedOutFirstStoreFallsThroughToLiveStore() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let getCookies = LockedStrings()
+        GeminiAdapterStubURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            let cookie = request.value(forHTTPHeaderField: "Cookie") ?? ""
+            if request.httpMethod == "GET" {
+                getCookies.append(cookie)
+                // Only the live session's page carries the XSRF token.
+                let body = cookie.contains("live")
+                    ? #"<script>window.WIZ_global_data={"SNlM0e":"synthetic-xsrf"};</script>"#
+                    : "<html>signed out</html>"
+                return (response, Data(body.utf8))
+            }
+            return (response, Data(#")]}'\n[["wrb.fr","rotated","[]",null]]"#.utf8))
+        }
+
+        let stored = LockedStrings()
+        let fallbackHeaders = LockedStrings()
+        let adapter = GeminiQuotaAdapter(
+            session: session,
+            cookieHeader: { "__Secure-1PSID=synthetic-expired" },
+            browserCookieImporter: {
+                [
+                    .init(header: "__Secure-1PSID=synthetic-stale", sourceLabel: "Safari", cookieCount: 1),
+                    .init(header: "__Secure-1PSID=synthetic-live", sourceLabel: "Chrome (Default)", cookieCount: 1)
+                ]
+            },
+            storeCookieHeader: { stored.append($0) },
+            webFallback: { account, header in
+                fallbackHeaders.append(header)
+                return AccountQuota(
+                    accountId: account.id,
+                    tool: .gemini,
+                    buckets: [],
+                    plan: nil,
+                    email: nil,
+                    queriedAt: Date(),
+                    error: nil
+                )
+            }
+        )
+        let account = AccountIdentity(
+            id: "web-gemini",
+            tool: .gemini,
+            email: nil,
+            alias: nil,
+            plan: nil,
+            accountId: nil,
+            source: .webCookie,
+            allowsWebFallback: false,
+            updatedAt: Date()
+        )
+
+        _ = try await adapter.fetch(for: account)
+        XCTAssertEqual(fallbackHeaders.values, ["__Secure-1PSID=synthetic-live"])
+        XCTAssertEqual(stored.values, ["__Secure-1PSID=synthetic-live"])
+
+        // The stale store was answered once and is set aside: a second
+        // refresh must not spend another request on it.
+        _ = try await adapter.fetch(for: account)
+        XCTAssertEqual(
+            getCookies.values.filter { $0.contains("stale") }.count,
+            1
+        )
+    }
+
+    func testValidatedImportSkipsSignedOutCandidate() async throws {
+        let stored = LockedStrings()
+        let result = try await GeminiBrowserCookieImporter.importValidatedAndStoreFromBrowsers(
+            isSignedOut: { $0.contains("stale") },
+            candidates: {
+                [
+                    .init(header: "stale", sourceLabel: "Safari", cookieCount: 1),
+                    .init(header: "live", sourceLabel: "Chrome (Default)", cookieCount: 1)
+                ]
+            },
+            store: { stored.append($0) }
+        )
+        XCTAssertEqual(result?.sourceLabel, "Chrome (Default)")
+        XCTAssertEqual(stored.values, ["live"])
+    }
+
+    func testValidatedImportKeepsFirstCandidateWhenAllAreSignedOut() async throws {
+        let stored = LockedStrings()
+        let result = try await GeminiBrowserCookieImporter.importValidatedAndStoreFromBrowsers(
+            isSignedOut: { _ in true },
+            candidates: { [.init(header: "a", sourceLabel: "A", cookieCount: 1),
+                           .init(header: "b", sourceLabel: "B", cookieCount: 1)] },
+            store: { stored.append($0) }
+        )
+        XCTAssertEqual(result?.sourceLabel, "A")
+        XCTAssertEqual(stored.values, ["a"])
+    }
+
     func testResponseShapeChangeUsesInjectedWebCalibrationImmediately() async throws {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
@@ -119,7 +223,8 @@ final class GeminiDualFetchTests: XCTestCase {
         let adapter = GeminiQuotaAdapter(
             session: session,
             cookieHeader: { "__Secure-1PSID=synthetic" },
-            browserCookieImporter: { nil },
+            browserCookieImporter: { [] },
+            storeCookieHeader: { _ in },
             webFallback: { account, _ in
                 AccountQuota(
                     accountId: account.id,
@@ -175,4 +280,11 @@ private final class GeminiAdapterStubURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private final class LockedStrings: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+    func append(_ value: String) { lock.lock(); storage.append(value); lock.unlock() }
+    var values: [String] { lock.lock(); defer { lock.unlock() }; return storage }
 }
