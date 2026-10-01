@@ -865,6 +865,13 @@ capture against § 8 before committing it — a screenshot is source content.
   `SkillAppCatalog.isWriteAllowed` refuses them even where one sits inside
   an allowlisted root, and a copy found there only ever flows *into* the
   SSOT (`SkillsService.replaceSharedCopy` / `copyToShared`, backup first).
+  The copies sheet's version list and file/line diff
+  (`SkillVersionScanner`, `SkillContentDiff`) are read-only and read only
+  inside `SkillReadScope` — the SSOT, the app skills folders, the built-in
+  folders and `~/.vibebar/skill_backups/`, compared after resolving
+  symlinks — so a skill entry linked anywhere else is labelled and never
+  opened, and links *inside* a skill are shown as their target string,
+  never followed.
 
   Projection is not activation. Codex, Gemini CLI, Grok Build, Cursor, Muse
   Code and Mistral Vibe all discover `~/.agents/skills` directly; AntiGravity also discovers the Gemini

@@ -311,15 +311,13 @@ struct SkillListRow: View {
     let onUpdate: () -> Void
     let onAcceptLocalChanges: () -> Void
     let onUninstall: () -> Void
-    /// Makes one of `skill.otherCopies` the shared copy. Confirmed here, not
-    /// in the copies popover, so the dialog is not torn down with it.
-    var onReplaceShared: (SkillCopy) -> Void = { _ in }
+    /// Opens the copies and differences sheet: every copy's path and kind,
+    /// and what differs between any two versions.
+    var onShowCopies: () -> Void = {}
 
     @State private var confirmingUninstall = false
     @State private var isHovering = false
     @State private var showingWiring = false
-    @State private var showingCopies = false
-    @State private var pendingReplacement: SkillCopy?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -467,14 +465,20 @@ struct SkillListRow: View {
 
     /// Orange like the native-off capsule: the row is fine to use, but what
     /// is on disk is no longer what Vibe Bar installed.
+    /// A button: the sheet it opens shows what changed, and against the last
+    /// recorded version when a snapshot of it survives.
     private var modifiedBadge: some View {
-        Text(L10n.Workbench.Skills.Badge.modified)
-            .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
-            .foregroundStyle(.orange)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Color.orange.opacity(0.12)))
-            .help(L10n.Workbench.Skills.Badge.modifiedHelp)
+        Button(action: onShowCopies) {
+            Text(L10n.Workbench.Skills.Badge.modified)
+                .font(.system(size: max(9, density.resetCountdownFontSize - 2), weight: .semibold))
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.orange.opacity(0.12)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.vibeBar)
+        .help(L10n.Workbench.Skills.Badge.modifiedHelp)
     }
 
     @ViewBuilder
@@ -500,9 +504,7 @@ struct SkillListRow: View {
     }
 
     private var copiesBadge: some View {
-        Button {
-            showingCopies = true
-        } label: {
+        Button(action: onShowCopies) {
             Text(L10n.Workbench.Skills.Badge.copies(count: skill.otherCopies.count))
                 .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
                 .tracking(0.4)
@@ -515,34 +517,6 @@ struct SkillListRow: View {
         }
         .buttonStyle(.vibeBar)
         .help(L10n.Workbench.Skills.Badge.copiesHelp)
-        .popover(isPresented: $showingCopies, arrowEdge: .bottom) {
-            SkillCopiesPopover(skill: skill, density: density) { copy in
-                showingCopies = false
-                // Let the popover finish closing first: a dialog raised in
-                // the same transaction can be dismissed along with it.
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(200))
-                    pendingReplacement = copy
-                }
-            }
-            .vibeBarNoInitialFocus()
-        }
-        .confirmationDialog(
-            L10n.Workbench.Skills.Copies.replaceConfirmTitle(skill: skill.name),
-            isPresented: Binding(
-                get: { pendingReplacement != nil },
-                set: { if !$0 { pendingReplacement = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: pendingReplacement
-        ) { copy in
-            Button(L10n.Workbench.Skills.Copies.replaceShared, role: .destructive) {
-                onReplaceShared(copy)
-            }
-            Button(L10n.Common.cancel, role: .cancel) {}
-        } message: { _ in
-            Text(L10n.Workbench.Skills.Copies.replaceConfirmMessage)
-        }
     }
 
     private var overflowMenu: some View {
@@ -552,6 +526,9 @@ struct SkillListRow: View {
                 systemImage: "point.3.connected.trianglepath.dotted"
             ) {
                 showingWiring = true
+            }
+            Button(L10n.Workbench.Skills.menuCopiesAndDiff, systemImage: "doc.on.doc") {
+                onShowCopies()
             }
             Button(L10n.Workbench.Skills.menuRevealInFinder, systemImage: "folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([

@@ -121,6 +121,8 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/Workbench/SkillListRow.swift",
     "Sources/VibeBarApp/Views/Workbench/SkillWiringView.swift",
     "Sources/VibeBarApp/Views/Workbench/SkillCopiesView.swift",
+    "Sources/VibeBarApp/Views/Workbench/SkillCopiesSheet.swift",
+    "Sources/VibeBarApp/Controllers/SkillCopiesDetailModel.swift",
     "Sources/VibeBarApp/Views/Workbench/SkillDiscoverSheet.swift",
     "Sources/VibeBarApp/Views/Workbench/SkillImportSheet.swift",
     "Sources/VibeBarApp/Views/Workbench/SkillBackupsSheet.swift",

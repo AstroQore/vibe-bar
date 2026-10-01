@@ -64,6 +64,9 @@ final class SkillsManagerModel: ObservableObject {
     @Published var isImportSheetPresented = false
     @Published var isDiscoverSheetPresented = false
     @Published var isBackupsSheetPresented = false
+    /// The skill whose copies and differences sheet is open. The sheet looks
+    /// the live row up by id on every reload, so it follows the disk.
+    @Published var copiesSheet: SkillCopiesRequest?
 
     @Published private(set) var repoList: [String] = []
     @Published private(set) var discoverResults: [DiscoveredSkill] = []
@@ -406,6 +409,19 @@ final class SkillsManagerModel: ObservableObject {
             let replaced = try await service.replaceSharedCopy(id, with: copy)
             toast = L10n.Workbench.Skills.Toast.replacedShared(skill: replaced.name)
         }
+    }
+
+    func presentCopies(_ skill: Skill) {
+        copiesSheet = SkillCopiesRequest(id: skill.id)
+    }
+
+    /// The live row for an open copies sheet; `nil` once it was uninstalled.
+    func skill(with id: SkillID) -> Skill? {
+        skills.first { $0.id == id }
+    }
+
+    func makeCopiesDetailModel() -> SkillCopiesDetailModel {
+        SkillCopiesDetailModel(service: service)
     }
 
     /// Installs a built-in into the shared library with no harness enabled.
@@ -779,6 +795,10 @@ final class SkillsManagerModel: ObservableObject {
                     || $0.directory.caseInsensitiveCompare(name) == .orderedSame
             }
     }
+}
+
+struct SkillCopiesRequest: Identifiable, Hashable {
+    let id: SkillID
 }
 
 struct SharedSkillPreview: Identifiable {
