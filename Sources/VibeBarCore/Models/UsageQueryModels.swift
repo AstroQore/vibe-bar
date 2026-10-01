@@ -143,13 +143,16 @@ public enum UsageTrendBucket: String, Sendable, Equatable, CaseIterable, Codable
 
     /// The finest bucket whose bars still fit the chart: a week drawn in
     /// seven bars across a wide window is seven bare posts, while the same
-    /// week has a shape at an hour a bar. `pointsPerBar` is the narrowest a
-    /// bar and its gap may get before the chart stops reading as one.
-    /// Falls back to the width-blind rule when no width is known yet.
+    /// week has a shape at six hours a bar. `pointsPerBar` is the narrowest
+    /// a bar and its gap may get before the chart stops reading as one —
+    /// 14 keeps a bar near ten points wide, where a stacked column still
+    /// shows its segments; at 7 a wide week went hourly and drew 168
+    /// six-point slivers. Falls back to the width-blind rule when no width
+    /// is known yet.
     public static func recommended(
         for range: DateInterval,
         chartWidth: Double,
-        pointsPerBar: Double = 7
+        pointsPerBar: Double = 14
     ) -> UsageTrendBucket {
         guard chartWidth > 0 else { return recommended(for: range) }
         let bars = max(24, Int(chartWidth / pointsPerBar))
