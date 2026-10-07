@@ -42,12 +42,25 @@ struct GeminiWebQuotaFetcher: Sendable {
         self.recipeProvider = recipeProvider
     }
 
+    /// Validation of an imported header runs while the user waits on a
+    /// manual import, so it gets a wall-clock bound the shared session does
+    /// not have: a trickling or stalled response fails the probe instead of
+    /// holding the import open.
+    private static let validationSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 20
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        return URLSession(configuration: configuration)
+    }()
+
     /// True only when the live endpoint turned `cookieHeader` away as logged
     /// out. Transport errors and response-shape drift answer false: neither
     /// says anything about whether the session is alive.
-    static func isSignedOut(cookieHeader: String, session: URLSession = .shared) async -> Bool {
+    static func isSignedOut(cookieHeader: String, session: URLSession? = nil) async -> Bool {
         do {
-            _ = try await GeminiWebQuotaFetcher(session: session).fetch(cookieHeader: cookieHeader)
+            _ = try await GeminiWebQuotaFetcher(session: session ?? validationSession).fetch(cookieHeader: cookieHeader)
             return false
         } catch {
             return (error as? QuotaError) == .needsLogin

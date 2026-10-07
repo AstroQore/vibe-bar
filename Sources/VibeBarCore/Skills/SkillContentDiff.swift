@@ -453,7 +453,9 @@ public enum SkillContentDiff {
 
         var facts: SkillFileFacts? {
             switch self {
-            case .absent: SkillContentDiff.facts(of: Data())
+            // A missing side has no facts; only a present empty file is a
+            // zero-byte file.
+            case .absent: nil
             case let .file(data): SkillContentDiff.facts(of: data)
             case let .large(facts): facts
             case .symlink, .unreadable: nil
