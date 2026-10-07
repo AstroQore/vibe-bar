@@ -23,6 +23,11 @@ struct AgentLibraryBackupRecord: Codable {
 /// loops and destinations outside the injected home fail closed.
 struct AgentLibraryFiles: Sendable {
     let home: URL
+    /// Other spellings of the same home directory. `resolvingSymlinksInPath`
+    /// keeps `/var/…` and `/tmp/…` while `realpath` and links written by
+    /// other tools say `/private/var/…`; an absolute link through either
+    /// spelling names the same in-home file and must not read as escaping it.
+    let homeAliases: [String]
     static let canonical = ".agents/AGENTS.md"
     static let codexOverride = ".codex/AGENTS.override.md"
     static let maximumBytes = 4 * 1024 * 1024
@@ -32,6 +37,24 @@ struct AgentLibraryFiles: Sendable {
             throw AgentLibraryError.invalidHome
         }
         home = homeDirectory.standardizedFileURL.resolvingSymlinksInPath()
+        let home = home
+        homeAliases = Set([homeDirectory.standardizedFileURL.path, Self.realPath(home.path)].compactMap { $0 })
+            .filter { $0 != home.path && $0 != "/" }.sorted { $0.count > $1.count }
+    }
+    /// Rewrites a path spelled through a home alias to the canonical `home`
+    /// spelling. Paths outside every spelling of the home are returned as-is
+    /// and still fail the containment checks below.
+    func normalized(_ url: URL) -> URL {
+        let path = url.path
+        for alias in homeAliases where path == alias || path.hasPrefix(alias + "/") {
+            return URL(fileURLWithPath: home.path + path.dropFirst(alias.count))
+        }
+        return url
+    }
+    static func realPath(_ path: String) -> String? {
+        guard let resolved = realpath(path, nil) else { return nil }
+        defer { free(resolved) }
+        return String(cString: resolved)
     }
     var allowed: Set<String> {
         Set([Self.canonical, Self.codexOverride] + AgentLibraryTarget.allCases.map(\.mcpRelativePath)
@@ -45,6 +68,7 @@ struct AgentLibraryFiles: Sendable {
         return home.appendingPathComponent(relative)
     }
     func relative(_ url: URL) throws -> String {
+        let url = normalized(url)
         guard url.path.hasPrefix(home.path + "/") else { throw AgentLibraryError.unsafePath }
         let relative = String(url.path.dropFirst(home.path.count + 1))
         guard allowed.contains(relative) else { throw AgentLibraryError.unsafePath }
@@ -73,8 +97,8 @@ struct AgentLibraryFiles: Sendable {
                     throw AgentLibraryError.ioFailure
                 }
                 links.append(current.path + "=" + destination)
-                current = (destination.hasPrefix("/") ? URL(fileURLWithPath: destination)
-                    : current.deletingLastPathComponent().appendingPathComponent(destination)).standardizedFileURL
+                current = normalized((destination.hasPrefix("/") ? URL(fileURLWithPath: destination)
+                    : current.deletingLastPathComponent().appendingPathComponent(destination)).standardizedFileURL)
                 continue
             }
             guard (info.st_mode & S_IFMT) == S_IFREG else { throw AgentLibraryError.unsafePath }
@@ -88,6 +112,26 @@ struct AgentLibraryFiles: Sendable {
                          revision: Self.digest(identity), isSymlink: !links.isEmpty)
         }
         throw AgentLibraryError.symlinkLoop
+    }
+    /// Display and comparison only: the leaf's own link text and where its
+    /// link chain ends, followed by path without reading or opening any file
+    /// and without the allowlist. A link to a source Vibe Bar does not manage
+    /// is still reported — as a path — so the user can see what is linked,
+    /// while `snapshot` keeps refusing to read or write through it.
+    func linkInfo(_ relative: String) -> (destination: String?, resolved: String?) {
+        guard let logical = try? url(relative) else { return (nil, nil) }
+        let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: logical.path)
+        var current = logical
+        var visited: Set<String> = []
+        for _ in 0..<32 {
+            guard visited.insert(current.path).inserted else { return (destination, nil) }
+            guard let next = try? FileManager.default.destinationOfSymbolicLink(atPath: current.path) else {
+                return (destination, current.path)
+            }
+            current = normalized((next.hasPrefix("/") ? URL(fileURLWithPath: next)
+                : current.deletingLastPathComponent().appendingPathComponent(next)).standardizedFileURL)
+        }
+        return (destination, nil)
     }
     func guarded(_ relative: String, revision: String) throws -> AgentLibraryFileSnapshot {
         let result = try snapshot(relative)

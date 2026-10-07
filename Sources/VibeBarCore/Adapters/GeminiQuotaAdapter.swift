@@ -17,7 +17,8 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
     private let session: URLSession
     private let now: @Sendable () -> Date
     private let cookieHeader: @Sendable () throws -> String
-    private let browserCookieImporter: @Sendable () -> GeminiBrowserCookieImporter.Result?
+    private let browserCookieImporter: @Sendable () -> [GeminiBrowserCookieImporter.Result]
+    private let storeCookieHeader: @Sendable (String) -> Void
     private let webFallback: (@Sendable (AccountIdentity, String) async throws -> AccountQuota)?
     /// Reference type on purpose: the adapter is a value, `QuotaService` keeps
     /// one instance for the process lifetime, and this rate limit is a
@@ -31,11 +32,15 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         cookieHeader: @escaping @Sendable () throws -> String = {
             try GeminiWebCookieStore.readCookieHeader()
         },
-        browserCookieImporter: @escaping @Sendable () -> GeminiBrowserCookieImporter.Result? = {
-            GeminiBrowserCookieImporter.importFromBrowsers(allowKeychainPrompt: false)
+        browserCookieImporter: @escaping @Sendable () -> [GeminiBrowserCookieImporter.Result] = {
+            GeminiBrowserCookieImporter.importCandidatesFromBrowsers(allowKeychainPrompt: false)
+        },
+        storeCookieHeader: @escaping @Sendable (String) -> Void = { header in
+            try? GeminiWebCookieStore.writeCookieHeader(header, source: .browser)
         },
         webFallback: (@Sendable (AccountIdentity, String) async throws -> AccountQuota)? = nil
     ) {
+        self.storeCookieHeader = storeCookieHeader
         self.session = session
         self.now = now
         self.cookieHeader = cookieHeader
@@ -63,21 +68,39 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             // browser once before surfacing a login error; this keeps the
             // source purely gemini.google.com and never falls back to CLI
             // OAuth quota.
-            let imported = browserCookieImporter()
-            if let imported, imported.header != header {
+            //
+            // Every readable store is a candidate, not just the first: a
+            // second browser or an old profile often holds a Google session
+            // that has since been signed out, and it can sort ahead of the
+            // one still in use. A candidate answered `.needsLogin` is set
+            // aside for an hour so a dead store costs one request per hour
+            // rather than one per refresh.
+            let candidates = browserCookieImporter()
+            let currentTime = now()
+            for imported in candidates where imported.header != header {
+                guard !forcedReimportGate.isRejected(
+                    imported.header,
+                    now: currentTime,
+                    interval: Self.forcedReimportInterval
+                ) else { continue }
                 do {
                     let refreshed = try await fetcher.fetch(cookieHeader: imported.header)
-                    try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
+                    storeCookieHeader(imported.header)
                     return quota(from: refreshed, for: account)
                 } catch {
+                    if isRecoverableLoginFailure(error) {
+                        forcedReimportGate.reject(imported.header, now: currentTime)
+                        continue
+                    }
                     if shouldCalibrate(error), let webFallback {
                         let calibrated = try await webFallback(account, imported.header)
-                        try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
+                        storeCookieHeader(imported.header)
                         return calibrated
                     }
                     throw error
                 }
             }
+            let imported = candidates.first { $0.header == header } ?? candidates.first
             // The header-changed short circuit above is the only self-heal
             // there was, and `AppEnvironment` skips its background importer
             // whenever *any* header exists — so an account that started
@@ -95,7 +118,7 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
                    interval: Self.forcedReimportInterval
                ),
                let refreshed = try? await fetcher.fetch(cookieHeader: imported.header) {
-                try? GeminiWebCookieStore.writeCookieHeader(imported.header, source: .browser)
+                storeCookieHeader(imported.header)
                 return quota(from: refreshed, for: account)
             }
             if shouldCalibrate(initialError), let webFallback {
@@ -147,6 +170,25 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
 final class GeminiForcedReimportGate: @unchecked Sendable {
     private let lock = NSLock()
     private var lastForcedAt: [String: Date] = [:]
+    private var rejectedAt: [String: Date] = [:]
+
+    /// Remember that the live endpoint answered this header as logged out.
+    func reject(_ header: String, now: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        rejectedAt[header] = now
+    }
+
+    /// Whether `header` was rejected within `interval`. Expiry matters: the
+    /// same header can be served a logged-out shell transiently.
+    func isRejected(_ header: String, now: Date, interval: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let at = rejectedAt[header] else { return false }
+        if now.timeIntervalSince(at) < interval { return true }
+        rejectedAt.removeValue(forKey: header)
+        return false
+    }
 
     /// Returns true at most once per `interval` per account, recording the
     /// attempt as it does.

@@ -33,7 +33,7 @@ struct WorkbenchPlaceholderPage: View {
             L10n.Workbench.Placeholder.resets
         case .sessionManager:
             L10n.Workbench.Placeholder.sessionManager
-        case .skillsManager:
+        case .skillsManager, .libraryMCP, .libraryInstructions:
             L10n.Workbench.Placeholder.skillsManager
         case .settings:
             L10n.Workbench.Placeholder.settings

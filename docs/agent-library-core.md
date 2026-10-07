@@ -33,12 +33,22 @@ priority override and is never silently replaced.
 These paths are relative to the injected home. Environment overrides,
 project files and other locations are outside this implementation.
 Symlinks may resolve only to known files in the same resource allowlist.
+An absolute link that spells the home another way (`/private/var/…` for
+`/var/…`, as `realpath` and some tools write it) is the same in-home path
+and is normalised before that check; it grants no wider access.
 Instruction links cannot lead to MCP configuration files. Directory links,
 loops, destinations outside the home and arbitrary in-home files are refused.
 
 ## Inventory and explicit editing
 
 `mcpInventory()` returns file status/revision and definition summaries.
+Rows for one server name share a `groupID` (a digest of the real name, so
+redaction cannot merge different servers), and `unsupportedTargets` names the
+targets the definition cannot be shared into, with the code the share would
+fail with, from the same validation and conversion the write uses.
+`AgentMCPGroup.groups` and `AgentLibraryShareState.instructionStates` turn
+an inventory into per-target switch states (shared, linked, differs, off,
+unavailable) for the UI.
 Summaries contain target, transport, redacted descriptive counts, same-name
 peers, equal-content peers and projection ownership. Commands, arguments,
 environment values, endpoints, headers and unknown-field values are absent.
@@ -133,6 +143,15 @@ interpreting the text. Editing a selected valid link edits its displayed
 shared source, affecting every agent that reads that source, while retaining
 the link. Canonical text can be created when its revision is `missing`.
 
+Each instruction summary reports `linkDestination` (the leaf link's own
+text) and `sharesCanonical`: the agent's link chain ends where the canonical
+file's chain ends — absolute or relative, any file name, several hops, or
+the canonical file linking back to the agent's file. This is path identity
+only and is computed without reading either file, so a chain that ends at
+an unmanaged in-home source (for example a notes vault) is still shown as
+shared, with the destination path, while reading and writing through it stay
+refused as `unsafePath`. Recognising a share grants no ownership.
+
 Existing links to the canonical source are reused without acquiring
 ownership. A canonical file already pointing to an agent's own source is
 also reused; a reverse link would create a cycle. Different pre-existing
@@ -141,7 +160,9 @@ text or a different shared-source link remains a conflict.
 New canonical projections receive a private receipt and backup. Only a
 completed owned projection whose destination is unchanged can be revoked.
 Revocation restores the prior file, or removes a leaf originally missing,
-without deleting the shared source. A changed projection is refused.
+without deleting the shared source. A changed projection is refused. A link the user or another tool made is
+reported as shared and stays untouched: removing it from the Library is
+refused with `notOwnedProjection`.
 
 Backups and receipts live under `.vibebar/agent_library`, with private
 directories and `0600` files. Restoration is explicit, revision guarded

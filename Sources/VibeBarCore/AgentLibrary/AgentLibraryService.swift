@@ -55,7 +55,11 @@ public actor AgentLibraryService {
                 sharedWith: peers.map(\.0),
                 matchingTargets: peers.filter { Self.same(definition, $0.2) }.map(\.0),
                 status: error == nil ? .ready : .unsupported, errorCode: error?.code,
-                projectionOwned: owned, sharedSourceTarget: owned ? receipt?.source : nil)
+                projectionOwned: owned, sharedSourceTarget: owned ? receipt?.source : nil,
+                groupID: "mcp-name:" + AgentLibraryFiles.digest(Data(definition.name.utf8)),
+                unsupportedTargets: Dictionary(uniqueKeysWithValues: AgentLibraryTarget.allCases
+                    .filter { $0 != target }
+                    .compactMap { other in Self.shareProblem(definition, to: other).map { (other, $0.code) } }))
         }
         return .init(files: summaries, definitions: definitions)
     }
@@ -100,6 +104,23 @@ public actor AgentLibraryService {
         try revokeMCPReceipts(target: target, name: actualName)
         let backup = try files.write(target.mcpRelativePath, data: data, expectedRevision: expectedRevision)
         return .init(changed: [target], backups: [backup])
+    }
+
+    /// Withdraw a share Vibe Bar made. Unlike `deleteMCPDefinition`, this
+    /// refuses unless the receipt still names the definition as it stands on
+    /// disk: the inventory a toggle was drawn from can go stale when the
+    /// receipts file changes under an unchanged config revision, and a
+    /// one-click withdrawal must not delete a definition the Library no
+    /// longer owns.
+    public func withdrawMCPShare(target: AgentLibraryTarget, name: String, expectedRevision: String) throws -> AgentLibraryMutationResult {
+        let document = try mcpFile(target, expectedRevision: expectedRevision)
+        let actualName = try Self.lookup(name, target: target, entries: document.entries)
+        guard let fields = document.entries[actualName],
+              let receipt = try mcpReceipts()[Self.operationToken(target: target, name: actualName)],
+              receipt.fingerprint == Self.definitionFingerprint(fields) else {
+            throw AgentLibraryError.notOwnedProjection
+        }
+        return try deleteMCPDefinition(target: target, name: actualName, expectedRevision: expectedRevision)
     }
 
     public func shareMCPDefinition(source: AgentLibraryTarget, name: String, sourceRevision: String,
@@ -258,6 +279,15 @@ public actor AgentLibraryService {
                 return .invalidDefinition
             }
         }
+        return nil
+    }
+    /// Whether `definition` could be written into `target` at all, before
+    /// any revision or same-name check: the capability the share toggle
+    /// shows, from the same validation and conversion the write uses.
+    static func shareProblem(_ definition: AgentMCPDefinition, to target: AgentLibraryTarget) -> AgentLibraryError? {
+        if let error = validationError(definition, target: target) { return error }
+        do { _ = try fields(definition, target: target, existing: nil) }
+        catch { return error as? AgentLibraryError ?? .unsupportedConversion }
         return nil
     }
     static func fields(_ definition: AgentMCPDefinition, target: AgentLibraryTarget,

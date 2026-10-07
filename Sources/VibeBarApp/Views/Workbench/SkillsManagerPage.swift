@@ -78,6 +78,11 @@ struct SkillsManagerPage: View {
                 .vibeBarNoInitialFocus()
                 .vibeBarSystemControlFocus()
         }
+        .sheet(item: $model.copiesSheet) { request in
+            SkillCopiesSheet(density: density, skillID: request.id, model: model)
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
+        }
         .sheet(item: $model.sharedPreview) { preview in
             SharedSkillPreviewSheet(preview: preview)
                 .vibeBarNoInitialFocus()
@@ -456,7 +461,7 @@ struct SkillsManagerPage: View {
                             onUpdate: { model.updateSkill(skill) },
                             onAcceptLocalChanges: { model.acceptLocalChanges(skill) },
                             onUninstall: { model.uninstall(skill) },
-                            onReplaceShared: { model.replaceSharedCopy(skill: skill, with: $0) }
+                            onShowCopies: { model.presentCopies(skill) }
                         )
                     }
                     if !discovered.isEmpty {

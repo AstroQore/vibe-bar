@@ -301,6 +301,31 @@ final class AgentLibraryTests: XCTestCase {
                        home.resolvingSymlinksInPath().appendingPathComponent(".agents/AGENTS.md").path)
     }
 
+    func testWithdrawingAShareRequiresAMatchingReceipt() async throws {
+        try write(".claude.json", #"{"mcpServers":{"shared":{"type":"stdio","command":"npx"}}}"#)
+        let sourceRevision = try await revision(.claude)
+        _ = try await service.shareMCPDefinition(source: .claude, name: "shared", sourceRevision: sourceRevision,
+                                                 targets: [.cursor: "missing"])
+        // The receipts file goes away under an unchanged config revision, as
+        // when another app copy rewrites it: the inventory a toggle was drawn
+        // from still says "managed", but the Library no longer owns the copy.
+        let rev = try await revision(.cursor)
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".vibebar/agent_library/mcp_projections.json"))
+        let before = try text(".cursor/mcp.json")
+        await expect(.notOwnedProjection) {
+            _ = try await self.service.withdrawMCPShare(target: .cursor, name: "shared", expectedRevision: rev)
+        }
+        XCTAssertEqual(try text(".cursor/mcp.json"), before)
+
+        // With the receipt intact the same call withdraws the copy.
+        _ = try await service.shareMCPDefinition(source: .claude, name: "shared", sourceRevision: sourceRevision,
+                                                 targets: [.codex: "missing"])
+        let codexRev = try await revision(.codex)
+        _ = try await service.withdrawMCPShare(target: .codex, name: "shared", expectedRevision: codexRev)
+        let inventory = await service.mcpInventory()
+        XCTAssertFalse(inventory.definitions.contains { $0.target == .codex && $0.name == "shared" })
+    }
+
     func testModifiedProjectionCannotBeRevoked() async throws {
         try write(".agents/AGENTS.md", "shared")
         try write(".gemini/GEMINI.md", "other source")
@@ -649,5 +674,232 @@ final class AgentLibraryTests: XCTestCase {
             _ = try await self.service.removeInstructionProjection(target: .claude, expectedRevision: recreated.revision)
         }
         XCTAssertEqual(try text(".agents/AGENTS.md"), "shared rules")
+    }
+
+    // MARK: - Links the user made before Vibe Bar
+
+    func link(_ path: String, to destination: String) throws {
+        let url = home.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: url.path, withDestinationPath: destination)
+    }
+
+    func testAbsoluteAndRelativeUserLinksWithDifferentFileNamesAreRecognisedAsShared() async throws {
+        try write(".agents/AGENTS.md", "rules")
+        let canonical = home.resolvingSymlinksInPath().appendingPathComponent(".agents/AGENTS.md").path
+        try link(".codex/AGENTS.md", to: canonical)          // absolute, same file name
+        try link(".claude/CLAUDE.md", to: canonical)         // absolute, CLAUDE.md -> AGENTS.md
+        try link(".gemini/GEMINI.md", to: "../.agents/AGENTS.md") // relative
+        for id in ["codex", "claude", "gemini"] {
+            let row = try await instruction(id)
+            XCTAssertEqual(row.status, .ready, id)
+            XCTAssertTrue(row.isSymlink, id)
+            XCTAssertTrue(row.sharesCanonical, id)
+            XCTAssertFalse(row.projectionOwned, id)
+            XCTAssertEqual(row.resolvedPath, canonical, id)
+        }
+        let gemini = try await instruction("gemini")
+        XCTAssertEqual(gemini.linkDestination, "../.agents/AGENTS.md")
+        let canonicalRow = try await instruction("canonical")
+        XCTAssertFalse(canonicalRow.sharesCanonical)
+        // Recognising a share claims nothing: turning it off is refused and
+        // the user's links stay exactly as written.
+        for target in [AgentLibraryTarget.codex, .claude, .gemini] {
+            let row = try await instruction(target.rawValue)
+            await expect(.notOwnedProjection) {
+                _ = try await self.service.removeInstructionProjection(target: target, expectedRevision: row.revision)
+            }
+        }
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: home.appendingPathComponent(".claude/CLAUDE.md").path), canonical)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".vibebar").path))
+    }
+
+    func testAbsoluteLinkThroughTheOtherSpellingOfHomeIsInsideHome() async throws {
+        // /var/… and /private/var/… are one directory; a link written by
+        // another tool through `realpath` must not read as leaving the home.
+        let real = try XCTUnwrap(AgentLibraryFiles.realPath(home.path))
+        try XCTSkipIf(real == home.resolvingSymlinksInPath().path, "temporary directory has a single spelling")
+        try write(".agents/AGENTS.md", "rules")
+        try link(".claude/CLAUDE.md", to: real + "/.agents/AGENTS.md")
+        let row = try await instruction("claude")
+        XCTAssertEqual(row.status, .ready)
+        XCTAssertTrue(row.sharesCanonical)
+        let reused = try await service.linkCanonicalInstructions(targets: [.claude: row.revision])
+        XCTAssertEqual(reused.unchanged, [.claude])
+        XCTAssertTrue(reused.problems.isEmpty)
+        // Outside every spelling of the home is still refused.
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".claude/CLAUDE.md"))
+        try link(".claude/CLAUDE.md", to: "/Users/example/elsewhere/AGENTS.md")
+        let outside = try await instruction("claude")
+        XCTAssertEqual(outside.status, .unsafe)
+        XCTAssertFalse(outside.sharesCanonical)
+        XCTAssertEqual(outside.resolvedPath, "/Users/example/elsewhere/AGENTS.md")
+    }
+
+    func testMultiLevelLinkChainAndReverseCanonicalAreShared() async throws {
+        try write(".agents/AGENTS.md", "rules")
+        try link(".codex/AGENTS.md", to: "../.agents/AGENTS.md")
+        try link(".claude/CLAUDE.md", to: "../.codex/AGENTS.md") // claude -> codex -> canonical
+        let claude = try await instruction("claude")
+        XCTAssertTrue(claude.sharesCanonical)
+        XCTAssertEqual(claude.linkDestination, "../.codex/AGENTS.md")
+        XCTAssertEqual(claude.resolvedPath, home.resolvingSymlinksInPath().appendingPathComponent(".agents/AGENTS.md").path)
+        let linked = try await service.linkCanonicalInstructions(targets: [.claude: claude.revision])
+        XCTAssertEqual(linked.unchanged, [.claude])
+
+        // The canonical file itself may be the link, into an agent's file.
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".agents/AGENTS.md"))
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".codex/AGENTS.md"))
+        try write(".codex/AGENTS.md", "codex is the source")
+        try link(".agents/AGENTS.md", to: "../.codex/AGENTS.md")
+        let codex = try await instruction("codex")
+        XCTAssertFalse(codex.isSymlink)
+        XCTAssertTrue(codex.sharesCanonical)
+        let claudeAfter = try await instruction("claude")
+        let geminiAfter = try await instruction("gemini")
+        XCTAssertTrue(claudeAfter.sharesCanonical)
+        XCTAssertFalse(geminiAfter.sharesCanonical)
+    }
+
+    func testLinksIntoAnUnmanagedSourceAreShownButNeverRead() async throws {
+        // An Obsidian-style vault file inside the home but outside the
+        // managed files: the canonical file and an agent both link to it.
+        try write("Vault/rules/AGENTS.md", "vault rules")
+        let vault = home.resolvingSymlinksInPath().appendingPathComponent("Vault/rules/AGENTS.md").path
+        try link(".agents/AGENTS.md", to: vault)
+        try link(".codex/AGENTS.md", to: "../.agents/AGENTS.md")
+        try link(".gemini/GEMINI.md", to: vault)
+        try write(".claude/CLAUDE.md", "own rules")
+        let canonical = try await instruction("canonical")
+        XCTAssertEqual(canonical.status, .unsafe)
+        XCTAssertTrue(canonical.isSymlink)
+        XCTAssertEqual(canonical.resolvedPath, vault)
+        for id in ["codex", "gemini"] {
+            let row = try await instruction(id)
+            XCTAssertEqual(row.status, .unsafe, id)
+            XCTAssertTrue(row.isSymlink, id)
+            XCTAssertTrue(row.sharesCanonical, id)
+            XCTAssertEqual(row.resolvedPath, vault, id)
+            XCTAssertFalse(row.projectionOwned, id)
+        }
+        let claude = try await instruction("claude")
+        XCTAssertFalse(claude.sharesCanonical)
+        XCTAssertEqual(claude.status, .ready)
+        // Nothing is read or written through the unmanaged destination.
+        await expect(.unsafePath) {
+            _ = try await self.service.readInstruction(id: "gemini", expectedRevision: "unavailable")
+        }
+        await expect(.unsafePath) {
+            _ = try await self.service.linkCanonicalInstructions(targets: [.claude: claude.revision])
+        }
+        XCTAssertEqual(try text("Vault/rules/AGENTS.md"), "vault rules")
+        XCTAssertEqual(try text(".claude/CLAUDE.md"), "own rules")
+    }
+
+    func testLinkToADifferentAgentSourceIsNotSharedAndIsAConflict() async throws {
+        try write(".agents/AGENTS.md", "rules")
+        try write(".gemini/GEMINI.md", "gemini rules")
+        try link(".claude/CLAUDE.md", to: "../.gemini/GEMINI.md")
+        let claude = try await instruction("claude")
+        XCTAssertTrue(claude.isSymlink)
+        XCTAssertFalse(claude.sharesCanonical)
+        let result = try await service.linkCanonicalInstructions(targets: [.claude: claude.revision])
+        XCTAssertEqual(result.problems.first?.code, AgentLibraryError.sameNameConflict.code)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: home.appendingPathComponent(".claude/CLAUDE.md").path),
+                       "../.gemini/GEMINI.md")
+    }
+
+    func testOwnedProjectionIsSharedAndStillRemovable() async throws {
+        try write(".agents/AGENTS.md", "rules")
+        _ = try await service.linkCanonicalInstructions(targets: [.gemini: "missing"])
+        let row = try await instruction("gemini")
+        XCTAssertTrue(row.sharesCanonical)
+        XCTAssertTrue(row.projectionOwned)
+        _ = try await service.removeInstructionProjection(target: .gemini, expectedRevision: row.revision)
+        let after = try await instruction("gemini")
+        XCTAssertFalse(after.sharesCanonical)
+        XCTAssertEqual(after.status, .missing)
+    }
+
+    // MARK: - MCP grouping and share capability
+
+    func testMCPRowsForOneNameShareAGroupAndReportUnsupportedTargets() async throws {
+        try write(".claude.json", #"{"mcpServers":{"remote":{"type":"sse","url":"https://example.invalid/sse"},"tool":{"command":"synthetic-tool","args":[]}}}"#)
+        try write(".cursor/mcp.json", #"{"mcpServers":{"tool":{"command":"synthetic-tool","args":[]}}}"#)
+        let inventory = await service.mcpInventory()
+        let tools = inventory.definitions.filter { $0.name == "tool" }
+        XCTAssertEqual(Set(tools.map(\.target)), [.claude, .cursor])
+        XCTAssertEqual(Set(tools.map(\.groupID)).count, 1)
+        let remote = try XCTUnwrap(inventory.definitions.first { $0.name == "remote" })
+        XCTAssertNotEqual(remote.groupID, tools.first?.groupID)
+        // Codex has no SSE transport; the toggle must say so up front.
+        XCTAssertEqual(remote.unsupportedTargets[.codex], AgentLibraryError.unsupportedTransport.code)
+        XCTAssertNil(remote.unsupportedTargets[.gemini])
+        XCTAssertNil(remote.unsupportedTargets[.claude])
+        XCTAssertTrue(tools.allSatisfy { $0.unsupportedTargets.isEmpty })
+    }
+
+    // MARK: - Share switch state
+
+    func testInstructionShareStatesSeparateOwnedUserLinkedDifferentAndOff() async throws {
+        try write(".agents/AGENTS.md", "rules")
+        try link(".codex/AGENTS.md", to: home.resolvingSymlinksInPath().appendingPathComponent(".agents/AGENTS.md").path)
+        _ = try await service.linkCanonicalInstructions(targets: [.gemini: "missing"])
+        try write(".claude/CLAUDE.md", "own rules")
+        var states = AgentLibraryShareState.instructionStates(await service.instructionInventory())
+        XCTAssertEqual(states[.codex], .linked)
+        XCTAssertEqual(states[.gemini], .shared(managed: true))
+        // A regular file with its own text would be refused as a same-name
+        // conflict on link, so it must not draw as an empty target.
+        XCTAssertEqual(states[.claude], .differs)
+        try write(".claude/CLAUDE.md", "rules")
+        states = AgentLibraryShareState.instructionStates(await service.instructionInventory())
+        XCTAssertEqual(states[.claude], .off, "a file that already holds the canonical text can be linked over")
+        XCTAssertNil(states[.cursor])
+        XCTAssertNil(states[.grok])
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".claude/CLAUDE.md"))
+        try link(".claude/CLAUDE.md", to: "../.gemini/GEMINI.md")
+        states = AgentLibraryShareState.instructionStates(await service.instructionInventory())
+        // Through the owned Gemini projection it does reach the shared file.
+        XCTAssertEqual(states[.claude], .linked)
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".claude/CLAUDE.md"))
+        try write(".codex/AGENTS.override.md", "")
+        try link(".claude/CLAUDE.md", to: "../.codex/AGENTS.override.md")
+        states = AgentLibraryShareState.instructionStates(await service.instructionInventory())
+        XCTAssertEqual(states[.claude], .differs)
+    }
+
+    func testInstructionShareStatesWithoutCanonicalAreUnavailable() async throws {
+        let states = AgentLibraryShareState.instructionStates(await service.instructionInventory())
+        XCTAssertEqual(states[.codex], .unavailable(code: AgentLibraryError.missingCanonical.code))
+        XCTAssertEqual(Set(states.keys), [.codex, .claude, .gemini])
+    }
+
+    func testMCPGroupStatesReflectEqualDifferentOwnedAndUnsupportedTargets() async throws {
+        try write(".claude.json", #"{"mcpServers":{"tool":{"command":"synthetic-tool","args":["a"]},"remote":{"type":"sse","url":"https://example.invalid/sse"}}}"#)
+        try write(".cursor/mcp.json", #"{"mcpServers":{"tool":{"command":"synthetic-tool","args":["a"]}}}"#)
+        try write(".grok/config.toml", "[mcp_servers.tool]\ncommand = \"other-tool\"\nargs = []\n")
+        try write(".gemini/settings.json", "{ not json")
+        var groups = AgentMCPGroup.groups(await service.mcpInventory())
+        var tool = try XCTUnwrap(groups.first { $0.name == "tool" })
+        XCTAssertEqual(tool.primary.target, .claude)
+        XCTAssertEqual(tool.states[.claude], .shared(managed: false))
+        XCTAssertEqual(tool.states[.cursor], .shared(managed: false))
+        XCTAssertEqual(tool.states[.grok], .differs)
+        XCTAssertEqual(tool.states[.codex], .off)
+        XCTAssertEqual(tool.states[.gemini], .unavailable(code: AgentLibraryError.invalidDocument.code))
+        let remote = try XCTUnwrap(groups.first { $0.name == "remote" })
+        XCTAssertEqual(remote.states[.codex], .unavailable(code: AgentLibraryError.unsupportedTransport.code))
+
+        // Sharing into Codex through the toggle's path makes an owned copy,
+        // and the group keeps Claude as the source.
+        _ = try await service.shareMCPDefinition(source: .claude, name: tool.primary.operationName,
+                                                 sourceRevision: tool.primary.revision,
+                                                 targets: [.codex: revision(.codex)])
+        groups = AgentMCPGroup.groups(await service.mcpInventory())
+        tool = try XCTUnwrap(groups.first { $0.name == "tool" })
+        XCTAssertEqual(tool.primary.target, .claude)
+        XCTAssertEqual(tool.states[.codex], .shared(managed: true))
+        XCTAssertEqual(tool.states[.cursor], .shared(managed: false))
     }
 }

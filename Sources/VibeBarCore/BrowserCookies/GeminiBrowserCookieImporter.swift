@@ -49,13 +49,37 @@ public enum GeminiBrowserCookieImporter {
         client: BrowserCookieClient = BrowserCookieClient(),
         logger: ((String) -> Void)? = nil
     ) -> Result? {
+        importCandidatesFromBrowsers(
+            allowKeychainPrompt: allowKeychainPrompt,
+            importOrder: importOrder,
+            detection: detection,
+            client: client,
+            logger: logger
+        ).first
+    }
+
+    /// Every distinct Gemini session header the readable browser stores
+    /// hold, in import order. A Mac routinely carries more than one Google
+    /// session — a second browser, an old Chrome profile — and the first
+    /// store in catalogue order is not necessarily the one still signed in,
+    /// so callers that can test a header against the live endpoint walk
+    /// this list instead of trusting `importFromBrowsers`' single answer.
+    public static func importCandidatesFromBrowsers(
+        allowKeychainPrompt: Bool = false,
+        importOrder: BrowserCookieImportOrder = BrowserCookieImportPreference.order,
+        detection: BrowserDetection = BrowserDetection(),
+        client: BrowserCookieClient = BrowserCookieClient(),
+        logger: ((String) -> Void)? = nil
+    ) -> [Result] {
         let candidates = importOrder.cookieImportCandidates(
             using: detection,
             allowKeychainPrompt: allowKeychainPrompt
         )
-        guard !candidates.isEmpty else { return nil }
+        guard !candidates.isEmpty else { return [] }
 
         let query = BrowserCookieQuery(domains: cookieDomains)
+        var results: [Result] = []
+        var seenHeaders: Set<String> = []
 
         for browser in candidates {
             let stores: [BrowserCookieStoreRecords]
@@ -73,16 +97,52 @@ public enum GeminiBrowserCookieImporter {
             }
 
             for store in stores {
-                guard let header = sessionHeader(from: store.records) else { continue }
+                guard let header = sessionHeader(from: store.records),
+                      seenHeaders.insert(header).inserted else { continue }
                 let label = "\(browser.displayName) (\(store.store.profile.name))"
-                return Result(
+                results.append(Result(
                     header: header,
                     sourceLabel: label,
                     cookieCount: store.records.count
-                )
+                ))
             }
         }
-        return nil
+        return results
+    }
+
+    /// True only when gemini.google.com turned `header` away as logged out.
+    public static func liveEndpointReportsSignedOut(_ header: String) async -> Bool {
+        await GeminiWebQuotaFetcher.isSignedOut(cookieHeader: header)
+    }
+
+    /// Manual-import path: store the first candidate the live endpoint
+    /// accepts. `isSignedOut` answers whether a header was turned away as
+    /// logged out; any other outcome (success, network trouble, a rotated
+    /// RPC) leaves the header eligible, because none of those say the
+    /// session is dead. When every candidate is signed out the first one is
+    /// still stored so the account exists and surfaces its login error.
+    public static func importValidatedAndStoreFromBrowsers(
+        allowKeychainPrompt: Bool = false,
+        isSignedOut: @Sendable (String) async -> Bool = { header in
+            await GeminiBrowserCookieImporter.liveEndpointReportsSignedOut(header)
+        },
+        candidates: (@Sendable () -> [Result])? = nil,
+        store: @Sendable (String) throws -> Void = { header in
+            try GeminiWebCookieStore.writeCookieHeader(header, source: .browser)
+        }
+    ) async throws -> Result? {
+        let found = candidates?()
+            ?? importCandidatesFromBrowsers(allowKeychainPrompt: allowKeychainPrompt)
+        guard let first = found.first else { return nil }
+        var chosen = first
+        for candidate in found {
+            if await !isSignedOut(candidate.header) {
+                chosen = candidate
+                break
+            }
+        }
+        try store(chosen.header)
+        return chosen
     }
 
     /// Builds a minimised Cookie header from a flat list of name/value

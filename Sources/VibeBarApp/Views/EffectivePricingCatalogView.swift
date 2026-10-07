@@ -225,35 +225,23 @@ private struct EffectivePricingRowView: View {
     let isLocalOverride: Bool
     let columns: PricingColumns
 
+    /// The provider and model cells span every tier row: they sit beside
+    /// the tier stack rather than inside its first row. Inside it, a
+    /// two-line provider or model cell made the Standard row as tall as
+    /// itself while Fast and Ultrafast stayed one line, so the tier rows
+    /// were spaced unevenly. Aligning on the first baseline keeps the model
+    /// name level with the first tier, and a single-tier row lays out
+    /// exactly as before — its height is still the taller of the two sides.
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(row.serviceTiers) { tier in
-                HStack(alignment: .firstTextBaseline, spacing: PricingColumns.spacing) {
-                    if tier.id == .standard {
-                        providerCell
-                        modelCell
-                    } else {
-                        Color.clear.frame(width: columns.provider.width, height: 1)
-                        Color.clear.frame(width: columns.model.width, height: 1)
+            HStack(alignment: .firstTextBaseline, spacing: PricingColumns.spacing) {
+                providerCell
+                modelCell
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(row.serviceTiers) { tier in
+                        tierRow(tier)
                     }
-
-                    HStack(spacing: 4) {
-                        Text(tierName(tier.id))
-                            .font(.system(size: 10.5, weight: .medium))
-                        if tier.rates.thresholdTokens != nil {
-                            Image(systemName: "info.circle")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .frame(width: columns.serviceTier.width, alignment: columns.serviceTier.frameAlignment)
-
-                    price(tier.rates.inputPerMillion, columns.input)
-                    price(tier.rates.outputPerMillion, columns.output)
-                    price(tier.rates.cacheReadPerMillion, columns.cacheRead)
-                    price(tier.rates.cacheWritePerMillion, columns.cacheWrite)
                 }
-                .help(tierDetail(tier))
             }
 
             if isLocalOverride {
@@ -265,6 +253,27 @@ private struct EffectivePricingRowView: View {
         }
         .padding(.horizontal, PricingColumns.horizontalInset)
         .padding(.vertical, 7)
+    }
+
+    private func tierRow(_ tier: EffectiveModelPricingServiceTier) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: PricingColumns.spacing) {
+            HStack(spacing: 4) {
+                Text(tierName(tier.id))
+                    .font(.system(size: 10.5, weight: .medium))
+                if tier.rates.thresholdTokens != nil {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .frame(width: columns.serviceTier.width, alignment: columns.serviceTier.frameAlignment)
+
+            price(tier.rates.inputPerMillion, columns.input)
+            price(tier.rates.outputPerMillion, columns.output)
+            price(tier.rates.cacheReadPerMillion, columns.cacheRead)
+            price(tier.rates.cacheWritePerMillion, columns.cacheWrite)
+        }
+        .help(tierDetail(tier))
     }
 
     private var providerCell: some View {
