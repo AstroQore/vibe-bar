@@ -849,7 +849,12 @@ final class AgentLibraryTests: XCTestCase {
         var states = AgentLibraryShareState.instructionStates(await service.instructionInventory())
         XCTAssertEqual(states[.codex], .linked)
         XCTAssertEqual(states[.gemini], .shared(managed: true))
-        XCTAssertEqual(states[.claude], .off)
+        // A regular file with its own text would be refused as a same-name
+        // conflict on link, so it must not draw as an empty target.
+        XCTAssertEqual(states[.claude], .differs)
+        try write(".claude/CLAUDE.md", "rules")
+        states = AgentLibraryShareState.instructionStates(await service.instructionInventory())
+        XCTAssertEqual(states[.claude], .off, "a file that already holds the canonical text can be linked over")
         XCTAssertNil(states[.cursor])
         XCTAssertNil(states[.grok])
         try FileManager.default.removeItem(at: home.appendingPathComponent(".claude/CLAUDE.md"))

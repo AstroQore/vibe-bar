@@ -198,6 +198,9 @@ final class SkillCopiesDetailModel: ObservableObject {
             return
         }
         let token = generation
+        // The header already names the new file; the old file's lines must
+        // not stay under it while the read runs.
+        fileDiff = nil
         isDiffing = true
         let scope = service.readScope
         let left = base.readableURL

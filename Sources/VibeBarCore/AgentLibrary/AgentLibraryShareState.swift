@@ -86,8 +86,15 @@ extension AgentLibraryShareState {
                 states[target] = .unavailable(code: canonical?.status == .missing
                     ? AgentLibraryError.missingCanonical.code
                     : canonical?.errorCode ?? AgentLibraryError.missingCanonical.code)
+            } else if row.isSymlink {
+                states[target] = .differs
+            } else if row.status == .ready, row.contentDigest != canonical?.contentDigest {
+                // A regular file whose text is not the canonical text: linking
+                // would be refused as a same-name conflict, so the circle must
+                // not look like an empty target.
+                states[target] = .differs
             } else {
-                states[target] = row.isSymlink ? .differs : .off
+                states[target] = .off
             }
         }
         return states

@@ -160,6 +160,21 @@ public struct AgentInstructionSummary: Sendable, Identifiable {
     /// (or the canonical file links to this agent's own file). Sharing is
     /// recognised by path alone; ownership is still `projectionOwned`.
     public let sharesCanonical: Bool
+    /// Digest of the file's bytes when it could be read; lets the share state
+    /// tell a regular file that already matches the canonical text from one
+    /// that would conflict with it.
+    public let contentDigest: String?
+
+    public init(id: String, target: AgentLibraryTarget?, path: String, resolvedPath: String?, revision: String,
+                status: AgentLibraryFileStatus, isSymlink: Bool, isCanonical: Bool, overridePath: String?,
+                projectionOwned: Bool, errorCode: String?, linkDestination: String?, sharesCanonical: Bool,
+                contentDigest: String? = nil) {
+        self.id = id; self.target = target; self.path = path; self.resolvedPath = resolvedPath
+        self.revision = revision; self.status = status; self.isSymlink = isSymlink; self.isCanonical = isCanonical
+        self.overridePath = overridePath; self.projectionOwned = projectionOwned; self.errorCode = errorCode
+        self.linkDestination = linkDestination; self.sharesCanonical = sharesCanonical
+        self.contentDigest = contentDigest
+    }
 }
 public struct AgentInstructionDocument: Sendable {
     public let id: String

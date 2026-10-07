@@ -391,8 +391,8 @@ public enum SkillContentDiff {
         let leftSide: Side
         let rightSide: Side
         do {
-            leftSide = try side(path: path, root: left.map { try resolve($0, in: scope) })
-            rightSide = try side(path: path, root: right.map { try resolve($0, in: scope) })
+            leftSide = try side(path: path, root: left.map { try resolve($0, in: scope) }, limits: limits)
+            rightSide = try side(path: path, root: right.map { try resolve($0, in: scope) }, limits: limits)
         } catch {
             return .unreadable
         }
@@ -401,16 +401,15 @@ public enum SkillContentDiff {
             return .unreadable
         case (.symlink, _), (_, .symlink):
             return .symlink(left: leftSide.summary, right: rightSide.summary)
+        case (.large, _), (_, .large):
+            return .tooLarge(left: leftSide.facts, right: rightSide.facts)
         default:
             break
         }
         let leftData = leftSide.data
         let rightData = rightSide.data
-        let leftFacts = leftData.map(facts(of:))
-        let rightFacts = rightData.map(facts(of:))
-        if (leftData?.count ?? 0) > limits.maxTextBytes || (rightData?.count ?? 0) > limits.maxTextBytes {
-            return .tooLarge(left: leftFacts, right: rightFacts)
-        }
+        let leftFacts = leftSide.facts
+        let rightFacts = rightSide.facts
         guard let oldLines = leftData.map(textLines) ?? [], let newLines = rightData.map(textLines) ?? [] else {
             return .binary(left: leftFacts, right: rightFacts)
         }
@@ -438,6 +437,9 @@ public enum SkillContentDiff {
     private enum Side {
         case absent
         case file(Data)
+        /// A regular file over the text limit: hashed in a stream, never
+        /// loaded whole.
+        case large(SkillFileFacts)
         case symlink(String)
         case unreadable
 
@@ -445,6 +447,15 @@ public enum SkillContentDiff {
             switch self {
             case .absent: Data()
             case let .file(data): data
+            case .large, .symlink, .unreadable: nil
+            }
+        }
+
+        var facts: SkillFileFacts? {
+            switch self {
+            case .absent: SkillContentDiff.facts(of: Data())
+            case let .file(data): SkillContentDiff.facts(of: data)
+            case let .large(facts): facts
             case .symlink, .unreadable: nil
             }
         }
@@ -454,6 +465,7 @@ public enum SkillContentDiff {
             case .absent, .unreadable: .absent
             case let .symlink(target): .symlink(target: target)
             case let .file(data): .file(SkillContentDiff.facts(of: data))
+            case let .large(facts): .file(facts)
             }
         }
     }
@@ -468,7 +480,7 @@ public enum SkillContentDiff {
     /// Reads `path` under `root` without following any link: every
     /// intermediate component must be a real directory, and the leaf a
     /// regular file or a symlink (whose target string is the content).
-    private static func side(path: String, root: URL?) -> Side {
+    private static func side(path: String, root: URL?, limits: SkillDiffLimits) -> Side {
         guard let root else { return .absent }
         let components = path.split(separator: "/").map(String.init)
         var current = root
@@ -480,7 +492,16 @@ public enum SkillContentDiff {
             case (.missing, _): return .absent
             case (.directory, false): continue
             case (.regularFile, true):
-                guard let data = readRegularFile(current) else { return .unreadable }
+                guard let (handle, size) = openRegularFile(current) else { return .unreadable }
+                defer { try? handle.close() }
+                if size > limits.maxTextBytes {
+                    // Over the text limit: hash in a stream rather than read a
+                    // multi-gigabyte file into memory for a check that would
+                    // only turn it away.
+                    guard let facts = facts(of: handle) else { return .unreadable }
+                    return .large(facts)
+                }
+                guard let data = try? handle.readToEnd() ?? Data() else { return .unreadable }
                 return .file(data)
             case (.symlink, true):
                 return .symlink((try? FileManager.default.destinationOfSymbolicLink(atPath: current.path)) ?? "")
@@ -505,7 +526,7 @@ public enum SkillContentDiff {
     /// before every read, but a link swapped in between that check and the
     /// open would otherwise be followed — possibly out of scope. Validating
     /// the descriptor itself closes that window.
-    private static func openRegularFile(_ url: URL) -> FileHandle? {
+    private static func openRegularFile(_ url: URL) -> (handle: FileHandle, size: Int)? {
         let descriptor = url.withUnsafeFileSystemRepresentation { path -> Int32 in
             guard let path else { return -1 }
             return Darwin.open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
@@ -516,18 +537,16 @@ public enum SkillContentDiff {
             Darwin.close(descriptor)
             return nil
         }
-        return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-    }
-
-    private static func readRegularFile(_ url: URL) -> Data? {
-        guard let handle = openRegularFile(url) else { return nil }
-        defer { try? handle.close() }
-        return try? handle.readToEnd() ?? Data()
+        return (FileHandle(fileDescriptor: descriptor, closeOnDealloc: true), Int(clamping: status.st_size))
     }
 
     private static func facts(of url: URL) -> SkillFileFacts? {
-        guard let handle = openRegularFile(url) else { return nil }
+        guard let (handle, _) = openRegularFile(url) else { return nil }
         defer { try? handle.close() }
+        return facts(of: handle)
+    }
+
+    private static func facts(of handle: FileHandle) -> SkillFileFacts? {
         var hasher = SHA256()
         var size: UInt64 = 0
         while true {

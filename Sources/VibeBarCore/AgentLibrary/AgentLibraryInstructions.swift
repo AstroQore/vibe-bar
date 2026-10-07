@@ -133,7 +133,8 @@ extension AgentLibraryService {
                          isSymlink: snapshot.isSymlink, isCanonical: id == "canonical",
                          overridePath: hasOverride ? overrideSnapshot?.logical.path : nil,
                          projectionOwned: owned, errorCode: receipts == nil ? AgentLibraryError.invalidReceipt.code : nil,
-                         linkDestination: link.destination, sharesCanonical: shares)
+                         linkDestination: link.destination, sharesCanonical: shares,
+                         contentDigest: snapshot.data.map(AgentLibraryFiles.digest))
         } catch {
             // Refused for reading, but the link and where it leads are still
             // shown, so a link into an unmanaged source is visible as one.
