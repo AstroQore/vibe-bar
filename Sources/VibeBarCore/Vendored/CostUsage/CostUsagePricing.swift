@@ -61,6 +61,7 @@ public enum CostUsagePricing {
             }
             return pricing.thresholdTokens == nil
                 && (pricing.fastMultiplier ?? 1.0) == 1.0
+                && pricing.ultrafast == nil
         case .claude:
             let models = dataSet.providers.claude.models
             guard let pricing = models[normalizeClaudeModel(model, models: models)] else {
@@ -186,21 +187,32 @@ public enum CostUsagePricing {
         return codex[normalizeCodexModel(model, models: codex)]?.displayLabel
     }
 
+    /// Snapshot ids need their own published premium rate. Standard model
+    /// normalization must not grant Ultrafast to an undocumented snapshot.
+    static func hasCodexTierRate(model: String, serviceTier: String?, models: [String: PricingDataSet.CodexEntry]) -> Bool {
+        guard normalizedCodexServiceTier(serviceTier) == "ultrafast" else { return true }
+        var key = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if key.hasPrefix("openai/") { key.removeFirst("openai/".count) }
+        return models[key]?.ultrafast != nil
+    }
+
     static func codexCostUSD(
         model: String,
         inputTokens: Int,
         cachedInputTokens: Int,
         outputTokens: Int,
-        isFast: Bool = false
+        isFast: Bool = false,
+        serviceTier: String? = nil
     ) -> Double? {
         let codex = PricingResolver.active.providers.codex.models
+        guard hasCodexTierRate(model: model, serviceTier: serviceTier, models: codex) else { return nil }
         guard let pricing = codex[normalizeCodexModel(model, models: codex)] else { return nil }
         return codexCostUSD(
             pricing: pricing,
             inputTokens: inputTokens,
             cachedInputTokens: cachedInputTokens,
             outputTokens: outputTokens,
-            isFast: isFast
+            serviceTier: serviceTier ?? (isFast ? "fast" : nil)
         )
     }
 
@@ -211,26 +223,63 @@ public enum CostUsagePricing {
         outputTokens: Int,
         isFast: Bool
     ) -> Double {
+        codexCostUSD(pricing: pricing, inputTokens: inputTokens,
+                     cachedInputTokens: cachedInputTokens, outputTokens: outputTokens,
+                     serviceTier: isFast ? "fast" : nil) ?? 0
+    }
+
+    /// An explicit unknown tier, or an unavailable Ultrafast rate, stays
+    /// unpriced rather than silently becoming the cheaper Standard rate.
+    static func codexCostUSD(
+        pricing: PricingDataSet.CodexEntry,
+        inputTokens: Int,
+        cachedInputTokens: Int,
+        outputTokens: Int,
+        serviceTier: String?
+    ) -> Double? {
+        let tier = normalizedCodexServiceTier(serviceTier)
+        let rates: PricingDataSet.CodexRates
+        let multiplier: Double
+        switch tier {
+        case nil, "standard", "default", "auto":
+            rates = codexRates(pricing); multiplier = 1
+        case "fast", "priority":
+            rates = codexRates(pricing); multiplier = fastFactor(true, pricing.fastMultiplier)
+        case "ultrafast":
+            guard let ultrafast = pricing.ultrafast else { return nil }
+            rates = ultrafast; multiplier = 1
+        default: return nil
+        }
         let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
         let nonCached = max(0, inputTokens - cached)
-        let cachedRate = pricing.cacheRead ?? pricing.input
-        let base = tieredCost(
-            tokens: nonCached,
-            base: pricing.input,
-            above: pricing.inputAboveThreshold,
-            threshold: pricing.thresholdTokens
-        ) + tieredCost(
-            tokens: cached,
-            base: cachedRate,
-            above: pricing.cacheReadAboveThreshold ?? pricing.inputAboveThreshold,
-            threshold: pricing.thresholdTokens
-        ) + tieredCost(
-            tokens: outputTokens,
-            base: pricing.output,
-            above: pricing.outputAboveThreshold,
-            threshold: pricing.thresholdTokens
-        )
-        return base * fastFactor(isFast, pricing.fastMultiplier)
+        // OpenAI applies the context tier to the full request, including
+        // output and cached input, when total input exceeds the boundary.
+        let isLong = (rates.thresholdTokens ?? pricing.thresholdTokens).map { inputTokens > $0 } ?? false
+        let inputRate = isLong ? (rates.inputAboveThreshold ?? (tier == "ultrafast" ? nil : rates.input)) : rates.input
+        let outputRate = isLong ? (rates.outputAboveThreshold ?? (tier == "ultrafast" ? nil : rates.output)) : rates.output
+        let cacheRate = isLong ? (rates.cacheReadAboveThreshold ?? (tier == "ultrafast" ? nil : rates.cacheRead)) : rates.cacheRead
+        guard let inputRate, let outputRate,
+              inputRate.isFinite, outputRate.isFinite, inputRate >= 0, outputRate >= 0
+        else { return nil }
+        if tier == "ultrafast", cached > 0, cacheRate == nil { return nil }
+        let cachedRate = cacheRate ?? inputRate
+        guard cachedRate.isFinite, cachedRate >= 0 else { return nil }
+        return (Double(nonCached) * inputRate + Double(cached) * cachedRate
+                + Double(max(0, outputTokens)) * outputRate) * multiplier
+    }
+
+    static func normalizedCodexServiceTier(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private static func codexRates(_ entry: PricingDataSet.CodexEntry) -> PricingDataSet.CodexRates {
+        .init(input: entry.input, output: entry.output, cacheRead: entry.cacheRead,
+              cacheCreation: entry.cacheCreation, thresholdTokens: entry.thresholdTokens,
+              inputAboveThreshold: entry.inputAboveThreshold, outputAboveThreshold: entry.outputAboveThreshold,
+              cacheReadAboveThreshold: entry.cacheReadAboveThreshold,
+              cacheCreationAboveThreshold: entry.cacheCreationAboveThreshold)
     }
 
     // MARK: - Claude
@@ -730,8 +779,9 @@ final class CostPricingContext {
         self.dataSet = dataSet
     }
 
-    func codexEntry(for model: String) -> PricingDataSet.CodexEntry? {
+    func codexEntry(for model: String, serviceTier: String? = nil) -> PricingDataSet.CodexEntry? {
         let models = dataSet.providers.codex.models
+        guard CostUsagePricing.hasCodexTierRate(model: model, serviceTier: serviceTier, models: models) else { return nil }
         if let hit = codexNames[model] { return models[hit] }
         let name = CostUsagePricing.normalizeCodexModel(model, models: models)
         codexNames[model] = name

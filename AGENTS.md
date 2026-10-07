@@ -459,7 +459,8 @@ adapter's provider roots, a target that is itself a symlink is refused,
 and the session file is re-parsed immediately before removal so a stale
 summary cannot delete a different session. Vibe Bar never edits the
 *contents* of a session file, never deletes a credential file at all, and
-no other code path may remove anything outside `~/.vibebar/`.
+Other removal operations are limited to the explicitly documented resource
+manager allowlists in § 7.
 
 **Four providers are listed and readable but never deletable**, because
 another app owns the store and removing from underneath it corrupts
@@ -893,6 +894,29 @@ capture against § 8 before committing it — a screenshot is source content.
   discovery, SSOT copy, and materialization the Workbench uses. An agent
   can therefore reach no path a user could not, and the gate on it is a
   settings toggle, not a second implementation.
+- **The resource Library manages selected MCP entries and global instruction
+  files through `AgentLibraryService`.** Its MCP write targets are
+  `~/.codex/config.toml`, `~/.claude.json`, `~/.cursor/mcp.json`,
+  `~/.gemini/settings.json`, and `~/.grok/config.toml`. Instruction targets
+  are `~/.agents/AGENTS.md`, `~/.codex/AGENTS.md`,
+  `~/.claude/CLAUDE.md`, and `~/.gemini/GEMINI.md`; Codex's override is
+  inspected to explain precedence. The Library inventories these locations
+  without writing them. Explicit edits and selected-target sharing re-read
+  revisions, preserve unrelated configuration, and make private backups under
+  `~/.vibebar/agent_library/`. MCP discovery and sharing do not start servers
+  or make network requests. Inventory excludes credential values; only an
+  explicit single-server edit reads the editable definition into the form.
+  A shared MCP target is updated only while its content still matches the
+  Library's ownership receipt. Instruction links are removed only with a
+  matching receipt, restoring the previous file. Foreign links and conflicting
+  definitions remain under their existing owner. See
+  `docs/agent-library-core.md` for the precise format and path boundaries.
+
+  Shared skills discovered on disk are a separate, read-only inventory.
+  Valid external links expose their logical path, resolved source, metadata,
+  and preview; opening the page does not adopt them or permit updating or
+  deleting their source tree. Managed skill mutations retain the Skills
+  manager's allowlist and ownership checks above.
 - **E-ink displays are the one path that writes off this Mac.** Every
   other feature reads the network and writes the local disk; this one
   sends the user's numbers *out* — the panel has no local API, so every
@@ -1316,8 +1340,9 @@ The GPT-6 Pro and GPT-5.6 Sol Pro allowances have no service count.
 `conversation/init` names a model in `model_limits` only once it is exhausted
 (`model_slug`, `resets_after`, `using_default_model_slug` — the ChatGPT
 client's own schema), and `/backend-api/models` carries no allowance field.
-With `ChatGPTChatSettings.trackProModels` on (the default), the client
-counts the account's saved conversations instead: `ChatGPTChatHistoryReader`
+With `ChatGPTChatSettings.trackProModels` on (the default) and a usable verified
+allowance supplying a counting window, the client counts the account's saved
+conversations instead: `ChatGPTChatHistoryReader`
 walks `/backend-api/conversations` newest first inside a one-week window,
 skips Work rows and temporary chats, fetches only changed revisions (24 per
 refresh, 25 s), and `ChatGPTChatParser.conversation` charges each user turn
@@ -1336,24 +1361,38 @@ and moves the date, and reading that as a completed cycle would fill the
 reset history with cycles nothing ever reset. Every Chat field is
 `isBranchStyleField`, since each carries an L3 group; `shortLabel` stays the
 feature or model name, because the menu bar prints that one and "Daily"
-alone does not say daily what. The published totals per `plan_type` live
-in the public repo `AstroQore/vibebar-quota-limits` (`limits.json`, with
-`schema.json`; `pro`: 200/week GPT-6 Pro, 170/day Sol Pro, 200/day both;
-`prolite`: 50/week shared — help article 20001354, re-verified 2026-09-23).
+alone does not say daily what. OpenAI's help article 20001354 no longer
+publishes numeric Pro-model caps (re-verified 2026-09-30), and new and
+grandfathered Pro $200 subscriptions have different allowances while sharing
+the raw `pro` plan. Vibe Bar bundles no numeric Pro allowance.
+The remote totals live in the public repo `AstroQore/vibebar-quota-limits`
+(`limits.json`, with `schema.json`).
 `QuotaLimitsCatalog` fetches it on the pricing refresh loop
 (`AppEnvironment.refreshPricing`, ≤ 256 KiB, 15 s, HTTPS only), keeps the last
 valid copy in `~/.vibebar/quota_limits.json` (status beside it in
 `quota_limits_status.json`) and an in-memory snapshot loaded from that cache
 once; `ChatGPTChatProAllowances.allowances(plan:)` reads only the snapshot.
-Validation: `schemaVersion` 1 or the whole document is ignored; rows with an
-unknown provider or any malformed field (`limit > 0`, `windowSeconds ≥ 3600`,
-`unit` "messages", slugs passing `ChatGPTChatParser.validModel`) are skipped
-alone. A plan with no usable published rows falls back to
-`ChatGPTChatProAllowances.bundled(plan:)`, the table compiled into the
-binary; other plans get no Pro buckets. Counts are trailing-window
-estimates with no claimed reset; a throttled model overrides its bucket with
-the service's exhausted state and reset. Partial coverage shows the count
-without a percentage. Only hashed ids, times and model slugs are cached, in
+Validation: `schemaVersion` 1 or the whole document is ignored; each row needs
+a valid `verifiedAt` date of 2026-09-30 or later. Rows with an unknown provider
+or any malformed field (`limit > 0`, `windowSeconds ≥ 3600`, `unit` "messages",
+slugs passing `ChatGPTChatParser.validModel`) are skipped alone. Freshness
+cannot identify a subscription cohort: Pro $200 rows and their known plan
+aliases are refused until both the schema and account lookup support a reliable
+cohort discriminator. Adding an unsupported cohort field cannot make a row
+usable. The same gate applies when consuming an in-memory table. Other plans
+may use their own verified rows; a plan with no usable rows has no assumed
+total or window. The bundled table stays empty, and cache reads apply the same
+validation. A valid document with no usable rows replaces the earlier table
+with an empty one.
+Counts against usable totals are trailing-window estimates with a rolling
+reset; a throttled model overrides its bucket with the service's exhausted
+state and reset. With no usable total, service-reported throttles still carry
+zero remaining and the reported reset, with unknown total, used count and
+window, no percentage and no forecast. Known Astra and Sol throttles reuse
+`gpt6_pro_weekly` and `sol_pro_daily` so existing field selections and grouping
+still match; those historical ID suffixes never supply a window duration.
+An empty `model_limits` list makes no full-quota claim. Partial coverage shows
+the count without a percentage. Only hashed ids, times and model slugs are cached, in
 `~/.vibebar/chatgpt_chat_history.json`. `ChatGPTChatRequestPolicy` admits the
 list with paging fields only and single conversations by UUID; nothing else.
 

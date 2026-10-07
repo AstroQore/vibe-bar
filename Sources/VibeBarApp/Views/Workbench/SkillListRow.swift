@@ -413,7 +413,15 @@ struct SkillListRow: View {
     }
 
     private var sourceBadge: some View {
-        Text(skill.id.repositorySlug ?? L10n.Workbench.Skills.sourceLocal)
+        Group {
+            if let slug = skill.id.repositorySlug,
+               slug.range(of: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", options: .regularExpression) != nil,
+               let url = URL(string: "https://github.com/" + slug) {
+                Link(slug, destination: url)
+            } else {
+                Text(skill.id.repositorySlug ?? L10n.Workbench.Skills.sourceLocal)
+            }
+        }
             .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .rounded))
             .foregroundStyle(.secondary)
             .lineLimit(1)

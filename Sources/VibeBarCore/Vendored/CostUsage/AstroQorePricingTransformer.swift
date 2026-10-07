@@ -93,6 +93,7 @@ public enum AstroQorePricingTransformer {
         let cacheWrite: Double?
         let threshold: Threshold?
         let fast: Rates?
+        let ultrafast: Rates?
     }
 
     struct Rates: Decodable {
@@ -100,6 +101,7 @@ public enum AstroQorePricingTransformer {
         let output: Double
         let cacheRead: Double?
         let cacheWrite: Double?
+        let threshold: Threshold?
     }
 
     struct Threshold: Decodable {
@@ -218,6 +220,15 @@ public enum AstroQorePricingTransformer {
                 cacheReadAboveThreshold: price.threshold?.cacheRead.map(perToken),
                 cacheCreationAboveThreshold: price.threshold?.cacheWrite.map(perToken),
                 fastMultiplier: fastMultiplier,
+                ultrafast: price.ultrafast.map { rates in
+                    .init(input: perToken(rates.input), output: perToken(rates.output),
+                          cacheRead: rates.cacheRead.map(perToken), cacheCreation: rates.cacheWrite.map(perToken),
+                          thresholdTokens: rates.threshold?.tokens,
+                          inputAboveThreshold: rates.threshold.map { perToken($0.input) },
+                          outputAboveThreshold: rates.threshold.map { perToken($0.output) },
+                          cacheReadAboveThreshold: rates.threshold?.cacheRead.map(perToken),
+                          cacheCreationAboveThreshold: rates.threshold?.cacheWrite.map(perToken))
+                },
                 displayLabel: model.displayLabel
             )
         case .claude:
@@ -398,6 +409,7 @@ public enum AstroQorePricingTransformer {
             cacheReadAboveThreshold: entry.cacheReadAboveThreshold,
             cacheCreationAboveThreshold: entry.cacheCreationAboveThreshold,
             fastMultiplier: entry.fastMultiplier,
+            ultrafast: entry.ultrafast,
             displayLabel: displayLabel ?? entry.displayLabel
         )
     }

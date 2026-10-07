@@ -192,6 +192,13 @@ choose native enable/disable or projection removal. Install from a ZIP, adopt
 skills a CLI already has, discover more from a repository, and back up before
 anything is replaced.
 
+The Workbench **Library** also shows shared skills added by other tools,
+including links to repository folders, with their source and agent availability.
+Its **MCP servers** tab edits native definitions and shares them with selected
+agents; **AGENTS.md** shows and edits shared instruction sources and their
+links. Changes use revision checks, ownership checks, and local backups.
+See [Agent Library](docs/agent-library.md) for the supported operations.
+
 ![Skills: one row per skill, a toggle per harness, and the install, import and discover actions](docs/screenshots/workbench-skills-light.png)
 
 <details>
@@ -540,6 +547,11 @@ audit metadata only. Derived state stays under:
 - The Skills manager writes to `~/.agents/skills/`, six managed harness skill
   roots, and the narrow native skill fields in Codex/Claude/Gemini/Grok/Muse
   Code/Mistral Vibe user config. Every config patch is backed up under `~/.vibebar/skill_backups/`.
+- The Library writes only the selected MCP entries in its supported native
+  config files, and selected global instruction files or owned links. It
+  preserves unrelated fields and stores private, owner-only backups under
+  `~/.vibebar/agent_library/`. Inventory is read-only and does not start MCP
+  servers; linked skill source trees remain under their existing owner.
 - Vibe Bar-owned cookies and provider secrets live inside one versioned
   Keychain Vault, not one prompt-generating item per secret.
 - E-ink displays are the only feature that sends your quota or usage figures
@@ -560,7 +572,7 @@ Vibe Bar intentionally runs **without the App Sandbox**: browser-cookie
 import and the local AntiGravity language-server probe require capabilities
 the sandbox blocks. The app is open source and reads only the provider inputs
 it needs; local writes stay under `~/.vibebar/`, the Keychain Vault and the
-explicit Skills allowlist above, and what it sends out is the short, itemized
+explicit Skills and Library allowlists above, and what it sends out is the short, itemized
 list above. See
 [AGENTS.md](AGENTS.md#6-home-directory-and-why-we-no-longer-sandbox) for the
 full trade-off.

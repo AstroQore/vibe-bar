@@ -38,12 +38,10 @@ public struct CostUsageScanCache: Codable, Sendable {
         public let isSidechain: Bool?
         public let pathRole: PathRole?
         public let sourceKey: String?
-        /// Billing tier the message ran on when the source log records
-        /// it per-event — Claude writes `message.usage.speed`
-        /// (`"standard"` / `"fast"`). A `"fast"`/`"priority"` value
-        /// triggers the model's fast-tier cost multiplier. Codex resolves
-        /// its tier globally from `~/.codex/config.toml` at scan time, so
-        /// codex events leave this `nil`.
+        /// The tier used for costing. Claude writes `message.usage.speed`.
+        /// Codex prefers request/turn metadata;
+        /// legacy rollouts may infer it from the current config (`default`
+        /// when absent). It is not proof of the original request's tier.
         public let serviceTier: String?
         /// Local harness that produced this event — the CLI / app, not the
         /// company and not the quota SubProvider. `nil` only for entries
@@ -236,7 +234,9 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// v7 adds `ParsedEvent.projectPath`. Codex and Claude both stamp their
     /// cwd in the transcript, but a warm v6 cache never re-opens that header;
     /// invalidate once so the project dashboard is populated immediately.
-    public static let currentSchemaVersion = 7
+    /// v8 preserves Codex request/turn service tiers and the configured
+    /// fallback used for legacy rollouts, so ledger repricing keeps that tier.
+    public static let currentSchemaVersion = 8
 
     public static func fileURL(homeDirectory: String, tool: ToolType) -> URL {
         URL(fileURLWithPath: homeDirectory)

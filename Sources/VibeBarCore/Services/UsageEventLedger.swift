@@ -108,6 +108,7 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// One-time re-ingest for the AntiGravity relative-clock recovery. See
     /// `migrateAntigravityRelativeClockReingest`.
     static let antigravityReclockKey = "antigravity_reclock_v1"
+    static let codexCostingTierKey = "codex_costing_tier_v1"
     private static let pricingRevisionKey = "pricing_revision"
     /// Row count at the last `ANALYZE`. See `refreshStatisticsIfStale`.
     private static let analyzeRowCountKey = "analyze_rows"
@@ -314,6 +315,9 @@ public actor UsageEventLedger: CostUsageEventSink {
             throw UsageLedgerError.open
         }
         guard Self.migrateAntigravityRelativeClockReingest(database) else {
+            throw UsageLedgerError.open
+        }
+        guard Self.migrateCodexCostingTierReingest(database) else {
             throw UsageLedgerError.open
         }
         var statement: OpaquePointer?
@@ -610,6 +614,31 @@ public actor UsageEventLedger: CostUsageEventSink {
         guard markerResult == SQLITE_DONE,
               sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK
         else { return rollback() }
+        return true
+    }
+
+    /// Re-read Codex costing tiers once without dropping any retained rows
+    /// or rollups. The tier may be inferred from config for legacy logs;
+    /// recording it lets subsequent price revisions keep that estimate.
+    @discardableResult
+    static func migrateCodexCostingTierReingest(_ database: OpaquePointer) -> Bool {
+        var marker: OpaquePointer?
+        guard sqlite3_prepare_v2(database,
+                                "SELECT 1 FROM ledger_meta WHERE key = 'codex_costing_tier_v1'",
+                                -1, &marker, nil) == SQLITE_OK, let marker else { return false }
+        let alreadyMigrated = sqlite3_step(marker) == SQLITE_ROW
+        sqlite3_finalize(marker)
+        if alreadyMigrated { return true }
+        let sql = """
+        BEGIN IMMEDIATE;
+        DELETE FROM ingested_files WHERE tool = 'codex';
+        INSERT INTO ledger_meta(key, value) VALUES('codex_costing_tier_v1', '1');
+        COMMIT;
+        """
+        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
+            sqlite3_exec(database, "ROLLBACK", nil, nil, nil)
+            return false
+        }
         return true
     }
 
@@ -956,6 +985,11 @@ public actor UsageEventLedger: CostUsageEventSink {
             OR (
                    excluded.dedupe_key LIKE 'f:%'
                    AND excluded.harness IS NOT usage_events.harness
+               )
+            OR (
+                   excluded.tool = 'codex'
+                   AND excluded.dedupe_key LIKE 'f:%'
+                   AND excluded.service_tier IS NOT usage_events.service_tier
                )
             OR (
                    excluded.project IS NOT usage_events.project
@@ -1406,7 +1440,7 @@ public actor UsageEventLedger: CostUsageEventSink {
                 inputTokens: inputWithCache,
                 cachedInputTokens: cacheRead,
                 outputTokens: output,
-                isFast: isFast
+                serviceTier: row.serviceTier
             )
         case .claude:
             CostUsagePricing.claudeCostUSD(

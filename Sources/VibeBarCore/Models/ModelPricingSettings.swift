@@ -44,6 +44,8 @@ public struct ModelPricingOverride: Codable, Equatable, Sendable, Identifiable {
     public var cacheReadAboveThresholdPerMillion: Double?
     public var cacheWriteAboveThresholdPerMillion: Double?
     public var fastMultiplier: Double?
+    /// Independent Ultrafast card, in USD per one million tokens.
+    public var ultrafast: EffectiveModelPricingTier?
     public var displayLabel: String?
 
     public init(
@@ -60,6 +62,7 @@ public struct ModelPricingOverride: Codable, Equatable, Sendable, Identifiable {
         cacheReadAboveThresholdPerMillion: Double? = nil,
         cacheWriteAboveThresholdPerMillion: Double? = nil,
         fastMultiplier: Double? = nil,
+        ultrafast: EffectiveModelPricingTier? = nil,
         displayLabel: String? = nil
     ) {
         self.id = id
@@ -75,6 +78,7 @@ public struct ModelPricingOverride: Codable, Equatable, Sendable, Identifiable {
         self.cacheReadAboveThresholdPerMillion = cacheReadAboveThresholdPerMillion
         self.cacheWriteAboveThresholdPerMillion = cacheWriteAboveThresholdPerMillion
         self.fastMultiplier = fastMultiplier
+        self.ultrafast = ultrafast
         self.displayLabel = displayLabel
     }
 

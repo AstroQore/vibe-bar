@@ -82,7 +82,29 @@ enum PricingDataSetMerger {
             cacheCreationAboveThreshold: high.cacheCreationAboveThreshold
                 ?? (canFillTier ? low.cacheCreationAboveThreshold : nil),
             fastMultiplier: high.fastMultiplier ?? low.fastMultiplier,
+            ultrafast: merge(high.ultrafast, over: low.ultrafast),
             displayLabel: high.displayLabel ?? low.displayLabel
+        )
+    }
+
+    private static func merge(
+        _ high: PricingDataSet.CodexRates?,
+        over low: PricingDataSet.CodexRates?
+    ) -> PricingDataSet.CodexRates? {
+        guard let high else { return low }
+        guard let low else { return high }
+        let canFillTier = high.thresholdTokens == nil || high.thresholdTokens == low.thresholdTokens
+        return .init(
+            input: high.input, output: high.output,
+            cacheRead: high.cacheRead ?? low.cacheRead,
+            cacheCreation: high.cacheCreation ?? low.cacheCreation,
+            thresholdTokens: high.thresholdTokens ?? low.thresholdTokens,
+            inputAboveThreshold: high.inputAboveThreshold ?? (canFillTier ? low.inputAboveThreshold : nil),
+            outputAboveThreshold: high.outputAboveThreshold ?? (canFillTier ? low.outputAboveThreshold : nil),
+            cacheReadAboveThreshold: high.cacheReadAboveThreshold
+                ?? (canFillTier ? low.cacheReadAboveThreshold : nil),
+            cacheCreationAboveThreshold: high.cacheCreationAboveThreshold
+                ?? (canFillTier ? low.cacheCreationAboveThreshold : nil)
         )
     }
 

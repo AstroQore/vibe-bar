@@ -4,8 +4,8 @@ import XCTest
 final class ProviderPlanDisplayTests: XCTestCase {
     func testSubscriptionFormatsShareProviderAwareTierAndMultiplier() {
         let examples: [(ToolType, String, [String])] = [
-            (.codex, "pro", ["ChatGPT Pro 20x", "ChatGPT Pro", "Pro", "Pro 20x", "20x"]),
-            (.chatgptChat, "pro_lite", ["ChatGPT Pro 5x", "ChatGPT Pro", "Pro", "Pro 5x", "5x"]),
+            (.codex, "pro", ["ChatGPT Pro 200", "ChatGPT Pro 200", "Pro 200", "Pro 200", "Pro 200"]),
+            (.chatgptChat, "pro_lite", ["ChatGPT Pro 100", "ChatGPT Pro 100", "Pro 100", "Pro 100", "Pro 100"]),
             (.claude, "default_claude_max_20x", ["Claude Max 20x", "Claude Max", "Max", "Max 20x", "20x"]),
             (.gemini, "Google AI Ultra 5X", ["Google AI Ultra 5x", "Google AI Ultra", "Ultra", "Ultra 5x", "5x"]),
             (.antigravity, "Google AI Ultra Lite", ["Google AI Ultra Lite", "Google AI Ultra Lite", "Ultra Lite", "Ultra Lite", "Ultra Lite"]),
@@ -28,8 +28,8 @@ final class ProviderPlanDisplayTests: XCTestCase {
     }
 
     func testCodexPlanDisplayHumanizesKnownMachineValues() {
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro"), "ChatGPT Pro 20x")
-        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "prolite"), "ChatGPT Pro 5x")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro"), "ChatGPT Pro 200")
+        XCTAssertEqual(ProviderPlanDisplay.displayName(for: .codex, rawPlan: "prolite"), "ChatGPT Pro 100")
         XCTAssertEqual(
             ProviderPlanDisplay.displayName(for: .codex, rawPlan: "enterprise_cbp_usage_based"),
             "ChatGPT Enterprise CBP Usage Based"
@@ -150,7 +150,7 @@ final class ProviderPlanDisplayTests: XCTestCase {
     }
 
     func testTierNamesStayWithinTheirOwningProvider() {
-        for (raw, expected) in [("go", "Go"), ("plus", "Plus"), ("prolite", "Pro 5x"), ("pro_lite", "Pro 5x"), ("pro", "Pro 20x")] {
+        for (raw, expected) in [("go", "Go"), ("plus", "Plus"), ("prolite", "Pro 100"), ("pro_lite", "Pro 100"), ("pro", "Pro 200")] {
             XCTAssertEqual(ProviderPlanDisplay.displayName(for: .chatgptChat, rawPlan: raw), "ChatGPT " + expected)
         }
         XCTAssertEqual(ProviderPlanDisplay.displayName(for: .gemini, rawPlan: "pro"), "Google AI Pro")

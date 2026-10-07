@@ -78,6 +78,11 @@ struct SkillsManagerPage: View {
                 .vibeBarNoInitialFocus()
                 .vibeBarSystemControlFocus()
         }
+        .sheet(item: $model.sharedPreview) { preview in
+            SharedSkillPreviewSheet(preview: preview)
+                .vibeBarNoInitialFocus()
+                .vibeBarSystemControlFocus()
+        }
         .confirmationDialog(
             pendingBulk.map(bulkConfirmTitle) ?? "",
             isPresented: Binding(
@@ -398,8 +403,8 @@ struct SkillsManagerPage: View {
     }
 
     private var countSummary: String {
-        let total = model.skills.count
-        let shown = model.filteredSkills.count
+        let total = model.skills.count + model.discoveredShared.count
+        let shown = model.filteredSkills.count + model.filteredSharedDiscoveries.count
         var parts = [
             shown == total
                 ? L10n.Workbench.Skills.countTotal(count: total)
@@ -423,9 +428,10 @@ struct SkillsManagerPage: View {
     private var skillList: some View {
         let installed = model.filteredSkills
         let builtIns = model.filteredBuiltIns
-        if model.skills.isEmpty && (!model.showsBuiltIn || model.builtIns.isEmpty) {
+        let discovered = model.filteredSharedDiscoveries
+        if model.skills.isEmpty && model.discoveredShared.isEmpty && (!model.showsBuiltIn || model.builtIns.isEmpty) {
             emptyCard
-        } else if installed.isEmpty && builtIns.isEmpty {
+        } else if installed.isEmpty && builtIns.isEmpty && discovered.isEmpty {
             CardShell(density: density, alignment: .center) {
                 Text(L10n.Workbench.Skills.noMatch(query: model.searchText))
                     .font(.system(size: density.subtitleFontSize))
@@ -435,6 +441,9 @@ struct SkillsManagerPage: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    if !installed.isEmpty {
+                        resourceSection(L10n.Workbench.Library.managed)
+                    }
                     ForEach(installed) { skill in
                         SkillListRow(
                             density: density,
@@ -449,6 +458,14 @@ struct SkillsManagerPage: View {
                             onUninstall: { model.uninstall(skill) },
                             onReplaceShared: { model.replaceSharedCopy(skill: skill, with: $0) }
                         )
+                    }
+                    if !discovered.isEmpty {
+                        resourceSection(L10n.Workbench.Library.discovered)
+                        ForEach(discovered) { entry in
+                            SharedSkillDiscoveryRow(entry: entry, density: density) {
+                                model.previewSharedSkill(entry)
+                            }
+                        }
                     }
                     // Built-ins trail the installed rows: they are the
                     // harnesses' own, read-only, and the list is about the
@@ -469,6 +486,15 @@ struct SkillsManagerPage: View {
             .cardSurface(density: density)
             .frame(maxHeight: .infinity)
         }
+    }
+
+    private func resourceSection(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: density.subtitleFontSize, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, density.cardSpacing)
+            .padding(.bottom, density.cardSpacing / 2)
     }
 
     private var emptyCard: some View {

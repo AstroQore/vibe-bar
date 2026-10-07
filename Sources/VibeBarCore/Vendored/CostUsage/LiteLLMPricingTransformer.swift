@@ -28,6 +28,10 @@ public enum LiteLLMPricingTransformer {
         "gpt-5.5": 2.5,
         "gpt-5.4": 2.0,
         "gpt-5.3-codex": 2.0,
+        "gpt-6-astra": 2.0,
+        "gpt-6-sol": 2.0,
+        "gpt-6-luna": 2.0,
+        "gpt-6.1-sol": 2.0,
         "claude-opus-4-6": 6.0,
         "claude-opus-4-7": 6.0,
         "claude-opus-4-8": 2.0
@@ -46,6 +50,22 @@ public enum LiteLLMPricingTransformer {
         let cacheCreationInputTokenCostAbove200k: Double?
         let cacheReadInputTokenCostAbove200k: Double?
         let providerSpecificEntry: ProviderSpecific?
+        let priorityInput: Double?
+        let priorityOutput: Double?
+        let fastInput: Double?
+        let fastOutput: Double?
+        let inputCostPerTokenAbove272k: Double?
+        let outputCostPerTokenAbove272k: Double?
+        let cacheCreationInputTokenCostAbove272k: Double?
+        let cacheReadInputTokenCostAbove272k: Double?
+        let ultrafastInput: Double?
+        let ultrafastOutput: Double?
+        let ultrafastCacheRead: Double?
+        let ultrafastCacheCreation: Double?
+        let ultrafastInputAbove272k: Double?
+        let ultrafastOutputAbove272k: Double?
+        let ultrafastCacheReadAbove272k: Double?
+        let ultrafastCacheCreationAbove272k: Double?
 
         struct ProviderSpecific: Decodable {
             let fast: Double?
@@ -61,6 +81,22 @@ public enum LiteLLMPricingTransformer {
             case cacheCreationInputTokenCostAbove200k = "cache_creation_input_token_cost_above_200k_tokens"
             case cacheReadInputTokenCostAbove200k = "cache_read_input_token_cost_above_200k_tokens"
             case providerSpecificEntry = "provider_specific_entry"
+            case priorityInput = "input_cost_per_token_priority"
+            case priorityOutput = "output_cost_per_token_priority"
+            case fastInput = "input_cost_per_token_fast"
+            case fastOutput = "output_cost_per_token_fast"
+            case inputCostPerTokenAbove272k = "input_cost_per_token_above_272k_tokens"
+            case outputCostPerTokenAbove272k = "output_cost_per_token_above_272k_tokens"
+            case cacheCreationInputTokenCostAbove272k = "cache_creation_input_token_cost_above_272k_tokens"
+            case cacheReadInputTokenCostAbove272k = "cache_read_input_token_cost_above_272k_tokens"
+            case ultrafastInput = "input_cost_per_token_ultrafast"
+            case ultrafastOutput = "output_cost_per_token_ultrafast"
+            case ultrafastCacheRead = "cache_read_input_token_cost_ultrafast"
+            case ultrafastCacheCreation = "cache_creation_input_token_cost_ultrafast"
+            case ultrafastInputAbove272k = "input_cost_per_token_above_272k_tokens_ultrafast"
+            case ultrafastOutputAbove272k = "output_cost_per_token_above_272k_tokens_ultrafast"
+            case ultrafastCacheReadAbove272k = "cache_read_input_token_cost_above_272k_tokens_ultrafast"
+            case ultrafastCacheCreationAbove272k = "cache_creation_input_token_cost_above_272k_tokens_ultrafast"
         }
     }
 
@@ -128,24 +164,39 @@ public enum LiteLLMPricingTransformer {
                   let (family, key) = classify(rawKey)
             else { continue }
 
-            let fast = entry.providerSpecificEntry?.fast ?? fastMultiplierOverrides[key]
+            let fast = (family == .codex ? apiFastMultiplier(entry, input: input, output: output) : nil)
+                ?? entry.providerSpecificEntry?.fast ?? fastMultiplierOverrides[key]
             let threshold: Int? = (entry.inputCostPerTokenAbove200k != nil
                 || entry.outputCostPerTokenAbove200k != nil
                 || entry.cacheReadInputTokenCostAbove200k != nil) ? 200_000 : nil
 
             switch family {
             case .codex:
+                let has272k = entry.inputCostPerTokenAbove272k != nil || entry.outputCostPerTokenAbove272k != nil
+                let ultrafast = entry.ultrafastInput.flatMap { ultraInput in
+                    entry.ultrafastOutput.map { ultraOutput in
+                        PricingDataSet.CodexRates(
+                            input: ultraInput, output: ultraOutput,
+                            cacheRead: entry.ultrafastCacheRead, cacheCreation: entry.ultrafastCacheCreation,
+                            thresholdTokens: has272k ? 272_000 : nil,
+                            inputAboveThreshold: entry.ultrafastInputAbove272k,
+                            outputAboveThreshold: entry.ultrafastOutputAbove272k,
+                            cacheReadAboveThreshold: entry.ultrafastCacheReadAbove272k,
+                            cacheCreationAboveThreshold: entry.ultrafastCacheCreationAbove272k)
+                    }
+                }
                 codex[key] = PricingDataSet.CodexEntry(
                     input: input,
                     output: output,
                     cacheRead: entry.cacheReadInputTokenCost,
                     cacheCreation: entry.cacheCreationInputTokenCost,
-                    thresholdTokens: threshold,
-                    inputAboveThreshold: entry.inputCostPerTokenAbove200k,
-                    outputAboveThreshold: entry.outputCostPerTokenAbove200k,
-                    cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove200k,
-                    cacheCreationAboveThreshold: entry.cacheCreationInputTokenCostAbove200k,
+                    thresholdTokens: has272k ? 272_000 : threshold,
+                    inputAboveThreshold: entry.inputCostPerTokenAbove272k ?? entry.inputCostPerTokenAbove200k,
+                    outputAboveThreshold: entry.outputCostPerTokenAbove272k ?? entry.outputCostPerTokenAbove200k,
+                    cacheReadAboveThreshold: entry.cacheReadInputTokenCostAbove272k ?? entry.cacheReadInputTokenCostAbove200k,
+                    cacheCreationAboveThreshold: entry.cacheCreationInputTokenCostAbove272k ?? entry.cacheCreationInputTokenCostAbove200k,
                     fastMultiplier: fast,
+                    ultrafast: ultrafast,
                     displayLabel: codex[key]?.displayLabel)
             case .claude:
                 claude[key] = PricingDataSet.ClaudeEntry(
@@ -231,5 +282,16 @@ public enum LiteLLMPricingTransformer {
                 muse: .init(displayName: base.providers.muse.displayName, models: muse),
                 mistral: .init(displayName: base.providers.mistral.displayName, models: mistral),
                 cognition: .init(displayName: base.providers.cognition.displayName, models: cognition)))
+    }
+
+    private static func apiFastMultiplier(_ entry: RawEntry, input: Double, output: Double) -> Double? {
+        guard input > 0, output > 0,
+              let fastInput = entry.fastInput ?? entry.priorityInput,
+              let fastOutput = entry.fastOutput ?? entry.priorityOutput else { return nil }
+        let inputRatio = fastInput / input
+        let outputRatio = fastOutput / output
+        guard inputRatio.isFinite, inputRatio > 0,
+              abs(inputRatio - outputRatio) < 0.000_001 else { return nil }
+        return inputRatio
     }
 }

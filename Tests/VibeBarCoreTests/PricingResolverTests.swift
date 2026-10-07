@@ -47,7 +47,7 @@ final class PricingResolverTests: XCTestCase {
         defer { cleanup(home) }
 
         let cacheDataSet = PricingDataSet(
-            schemaVersion: 1,
+            schemaVersion: PricingDataSet.currentSchemaVersion,
             updatedAt: "2099-01-01",
             calculationVersion: 99,
             providers: PricingDataSet.Providers(
@@ -72,7 +72,7 @@ final class PricingResolverTests: XCTestCase {
         defer { cleanup(home) }
         let floor = PricingHardcoded.fallback.providers
         let legacy = PricingDataSet(
-            schemaVersion: 1,
+            schemaVersion: PricingDataSet.currentSchemaVersion,
             updatedAt: "2099-01-01",
             calculationVersion: 99,
             providers: PricingDataSet.Providers(
@@ -169,7 +169,7 @@ final class PricingResolverTests: XCTestCase {
 
     func testTestOverrideTakesPrecedence() {
         let override = PricingDataSet(
-            schemaVersion: 1,
+            schemaVersion: PricingDataSet.currentSchemaVersion,
             updatedAt: "test-override",
             calculationVersion: 1,
             providers: PricingHardcoded.fallback.providers
@@ -279,7 +279,7 @@ final class PricingResolverTests: XCTestCase {
         }
 
         PricingResolver.testOverride = PricingDataSet(
-            schemaVersion: 1,
+            schemaVersion: PricingDataSet.currentSchemaVersion,
             updatedAt: "test-override",
             calculationVersion: 1,
             providers: PricingHardcoded.fallback.providers

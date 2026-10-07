@@ -90,7 +90,11 @@ See `AGENTS.md` § 6 for the full reasoning.
   request and on the containment / symlink / re-parsed-session-id terms
   there; the Skills manager, which writes only to `~/.agents/skills/` and
   the allowlisted app skills directories, and only through
-  `SkillSyncEngine` / `SkillsService`; the E-ink displays feature, whose
+  `SkillSyncEngine` / `SkillsService`; the resource Library's explicit
+  single-entry MCP edits and selected-target sharing, plus global instruction
+  edits and owned links through `AgentLibraryService`'s fixed allowlist,
+  revision checks and private backups (see `docs/agent-library-core.md`);
+  the E-ink displays feature, whose
   only off-Mac writes go through `EInkSyncService`; and CLI credential
   write-back — a refreshed OAuth token written atomically (0600) back into
   the CLI's own `~/.codex/auth.json` or `~/.grok/auth.json`, touching only

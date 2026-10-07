@@ -15,7 +15,7 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
         case .usageStats: L10n.Workbench.Page.UsageStats.title
         case .sessionManager: L10n.Workbench.Page.Sessions.title
         case .resets: L10n.Workbench.Page.Resets.title
-        case .skillsManager: L10n.Workbench.Page.Skills.title
+        case .skillsManager: L10n.Workbench.Library.title
         case .settings: L10n.Popover.Header.settings
         }
     }
@@ -37,7 +37,7 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
         case .usageStats: L10n.Workbench.Page.UsageStats.subtitle
         case .sessionManager: L10n.Workbench.Page.Sessions.subtitle
         case .resets: L10n.Workbench.Page.Resets.subtitle
-        case .skillsManager: L10n.Workbench.Page.Skills.subtitle
+        case .skillsManager: L10n.Workbench.Library.subtitle
         case .settings: L10n.Workbench.Page.Settings.subtitle
         }
     }
@@ -176,10 +176,7 @@ struct WorkbenchRootView: View {
             else { return L10n.Workbench.Status.cachedQuotas }
             return L10n.Workbench.Status.nextRefill(countdown: countdown)
         case .skillsManager:
-            let count = workbench.skills.skills.count
-            return count == 0
-                ? L10n.Workbench.Status.sharedLibrary
-                : L10n.Workbench.Status.installed(count: count)
+            return L10n.Workbench.Status.sharedLibrary
         case .settings:
             return settingsDestination.title(settings: settingsStore.settings)
         }
@@ -216,7 +213,7 @@ struct WorkbenchRootView: View {
         case .resets:
             ResetsPage(density: density)
         case .skillsManager:
-            SkillsManagerPage(density: density, model: workbench.skills)
+            LibraryManagerPage(density: density, skills: workbench.skills, homeDirectory: RealHomeDirectory.url)
         case .settings:
             SettingsView(density: density, selection: $settingsDestination)
         }

@@ -72,9 +72,9 @@ final class PricingRevisionHistoryTests: XCTestCase {
         // Every input token at $2.50/M, cached or not: 300k × $2.50/M +
         // 10k × $15/M = $0.90 per request.
         let oldAutoReviewCost = 0.90
-        // 100k × $0.20/M + 200k × $0.02/M + 10k × $1.20/M = $0.036, all
-        // below the 272k long-context threshold.
-        let lunaCost = 0.036
+        // Total input includes cached tokens: 300k crosses 272k, so the
+        // full request uses 100k × $0.40/M + 200k × $0.04/M + 10k × $1.80/M.
+        let lunaCost = 0.066
         try await ledger.ingest(UsageLedgerFixtures.batch(
             path: "/Users/example/.codex/sessions/auto-review.jsonl",
             events: events.map { UsageLedgerFixtures.priced($0, costUSD: oldAutoReviewCost) }
@@ -111,7 +111,7 @@ final class PricingRevisionHistoryTests: XCTestCase {
         XCTAssertEqual(change.deltaUSD, 2 * (lunaCost - oldAutoReviewCost), accuracy: 1e-9)
 
         let after = try await ledger.summary(filter)
-        XCTAssertEqual(after.costMicros, 72_000)
+        XCTAssertEqual(after.costMicros, 132_000)
         let repeated = try await ledger.repriceForPricingRevision("luna-card")
         XCTAssertNil(repeated, "an unchanged revision is a no-op")
 

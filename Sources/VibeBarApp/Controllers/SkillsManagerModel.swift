@@ -39,6 +39,10 @@ final class SkillsManagerModel: ObservableObject {
     /// Harness built-ins with no installed counterpart, from the same scan
     /// that attaches `Skill.otherCopies`.
     @Published private(set) var builtIns: [SkillCopy] = []
+    @Published private(set) var discoveredShared: [SharedSkillDiscovery] = []
+    @Published var sharedPreview: SharedSkillPreview?
+    @Published private(set) var refreshRevision = 0
+    @Published private(set) var inventoryCounts: [SkillAppTarget: SkillsInventoryCounts] = [:]
     /// Mirrors `AppSettings.skillsShowBuiltIn` so the page re-renders on a
     /// flip; written back only from the toolbar toggle, never per reload.
     @Published private(set) var showsBuiltIn: Bool
@@ -113,6 +117,17 @@ final class SkillsManagerModel: ObservableObject {
         }
     }
 
+    var filteredSharedDiscoveries: [SharedSkillDiscovery] {
+        let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return discoveredShared }
+        return discoveredShared.filter {
+            $0.name.localizedCaseInsensitiveContains(needle)
+                || ($0.description?.localizedCaseInsensitiveContains(needle) ?? false)
+                || $0.logicalURL.path.localizedCaseInsensitiveContains(needle)
+                || ($0.resolvedURL?.path.localizedCaseInsensitiveContains(needle) ?? false)
+        }
+    }
+
     /// Built-in rows under the current search; empty while the toggle hides
     /// them. Matches name, description, and the harness name, so "codex"
     /// narrows to Codex's bundled skills.
@@ -134,9 +149,7 @@ final class SkillsManagerModel: ObservableObject {
     }
 
     func installedCount(for app: SkillAppTarget) -> Int {
-        skills.reduce(into: 0) { total, skill in
-            if skill.isEnabled(for: app) { total += 1 }
-        }
+        inventoryCounts[app]?.enabled ?? 0
     }
 
     /// How many skills the harness can actually use: enabled ones plus the
@@ -150,23 +163,15 @@ final class SkillsManagerModel: ObservableObject {
     /// independent of the show-built-in toggle and the search, like the
     /// installed half.
     func visibleCount(for app: SkillAppTarget) -> Int {
-        let installed = skills.count {
-            let state = $0.activationState(for: app)
-            return state == .enabled || state == .coupled
-        }
-        let standalone = builtIns.count { $0.location == .builtIn(app) }
-        let attached = skills.reduce(into: 0) { total, skill in
-            total += skill.otherCopies.count { $0.location == .builtIn(app) }
-        }
-        return installed + standalone + attached
+        inventoryCounts[app]?.visible ?? 0
     }
 
     func nativeDisabledCount(for app: SkillAppTarget) -> Int {
-        skills.count { $0.activationState(for: app) == .disabledInHarness }
+        inventoryCounts[app]?.nativeDisabled ?? 0
     }
 
     func coupledCount(for app: SkillAppTarget) -> Int {
-        skills.count { $0.activationState(for: app) == .coupled }
+        inventoryCounts[app]?.coupled ?? 0
     }
 
     func updateState(for skill: Skill) -> SkillUpdateState? {
@@ -209,55 +214,20 @@ final class SkillsManagerModel: ObservableObject {
 
     // MARK: - Lifecycle
 
-    /// Loads the registry and reconciles an existing canonical layout without
-    /// pretending it needs to be imported again. CC Switch and other installers
-    /// already use `~/.agents/skills` as the shared source; recording those
-    /// directories in Vibe Bar changes no skill payload or app link, so it is a
-    /// safe first-run migration. Only app-local directories that genuinely need
-    /// to be copied into the shared source open the review sheet.
+    /// Loading the page inventories existing shared entries without adopting
+    /// them. The explicit Import Existing action keeps registry ownership
+    /// separate from read-only discovery.
     func activate() {
         guard !hasActivated else { return }
         hasActivated = true
         Task {
             await reloadSkills()
             repoList = await service.discoverRepos()
-            guard skills.isEmpty else { return }
-            let report = await scanForImport()
-            guard !report.isEmpty else { return }
-            do {
-                if !report.adopted.isEmpty {
-                    _ = try await service.importAdopted(report)
-                    await reloadSkills()
-                }
-                if !report.unmanagedDirectories.isEmpty {
-                    importReport = SkillImportReport(
-                        adopted: [],
-                        unmanagedDirectories: report.unmanagedDirectories,
-                        unrecognized: report.unrecognized,
-                        conflicts: report.conflicts
-                    )
-                    isImportSheetPresented = true
-                } else if !report.conflicts.isEmpty {
-                    // Two whole sentences rather than one built from
-                    // fragments: only one ICU plural fits in a value, and
-                    // both counts need one.
-                    toast = L10n.Workbench.Skills.Toast.importRecognized(
-                        count: report.adopted.count
-                    ) + " " + L10n.Workbench.Skills.Toast.importConflicts(
-                        count: report.conflicts.count
-                    )
-                }
-            } catch {
-                // Nothing on disk was rewritten by adoption; leave the full
-                // report available so the user can retry explicitly.
-                importReport = report
-                isImportSheetPresented = true
-                toast = error.localizedDescription
-            }
         }
     }
 
     func refresh() {
+        refreshRevision &+= 1
         Task { await reloadSkills() }
     }
 
@@ -752,11 +722,38 @@ final class SkillsManagerModel: ObservableObject {
 
     private func reloadSkills() async {
         let latest = await service.inventory()
+        let counts = Dictionary(uniqueKeysWithValues: SkillAppTarget.managedHarnesses.map { ($0, latest.counts(for: $0)) })
+        if counts != inventoryCounts { inventoryCounts = counts }
         if latest.builtIns != builtIns { builtIns = latest.builtIns }
+        if latest.discoveredShared != discoveredShared { discoveredShared = latest.discoveredShared }
         guard latest.installed != skills else { return }
         skills = latest.installed
         let modified = latest.installed.count { $0.isLocallyModified }
         if modified != locallyModifiedCount { locallyModifiedCount = modified }
+    }
+
+    func previewSharedSkill(_ entry: SharedSkillDiscovery) {
+        Task {
+            do {
+                let text = try await service.previewSharedSkill(entry)
+                sharedPreview = SharedSkillPreview(name: entry.name, source: entry.resolvedURL ?? entry.logicalURL, text: text)
+            } catch let error as SharedSkillReadError {
+                switch error {
+                case .changedSource: toast = L10n.Workbench.Library.Error.staleRevision
+                case .invalidDirectory: toast = L10n.Workbench.Library.Error.unsafePath
+                case .unavailable(let state):
+                    switch state {
+                    case .brokenLink: toast = L10n.Workbench.Library.brokenLink
+                    case .cyclicLink: toast = L10n.Workbench.Library.cyclicLink
+                    case .tooLarge: toast = L10n.Workbench.Library.tooLarge
+                    case .missingSkillFile: toast = L10n.Workbench.Library.missingSkillFile
+                    case .ready, .unreadable: toast = L10n.Workbench.Library.unreadable
+                    }
+                }
+            } catch {
+                toast = L10n.Workbench.Library.unreadable
+            }
+        }
     }
 
     /// `scanForImport` and `listBackups` are `nonisolated` on the service —
@@ -782,4 +779,11 @@ final class SkillsManagerModel: ObservableObject {
                     || $0.directory.caseInsensitiveCompare(name) == .orderedSame
             }
     }
+}
+
+struct SharedSkillPreview: Identifiable {
+    let id = UUID()
+    let name: String
+    let source: URL
+    let text: String
 }
