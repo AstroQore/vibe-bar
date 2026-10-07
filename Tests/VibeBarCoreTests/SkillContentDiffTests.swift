@@ -185,6 +185,32 @@ final class SkillContentDiffTests: XCTestCase {
         XCTAssertTrue(comparison.files.allSatisfy { $0.change == .removed })
     }
 
+    func testEmptyDirectoriesCountAgainstTheTraversalLimit() throws {
+        let home = try SkillTestHome()
+        let shared = try home.makeSSOTSkill("alpha")
+        for index in 0 ..< 20 {
+            try FileManager.default.createDirectory(
+                at: shared.appendingPathComponent("empty\(index)"), withIntermediateDirectories: true
+            )
+        }
+        let comparison = try SkillContentDiff.compare(
+            left: shared, right: nil, scope: scope(home), limits: SkillDiffLimits(maxFiles: 8)
+        )
+        XCTAssertTrue(comparison.truncated, "folders are visited nodes too")
+    }
+
+    func testLongDisjointMiddlesBecomeOneReplacement() {
+        let old = (0 ..< 2_100).map { "old \($0)" }
+        let new = (0 ..< 2_100).map { "new \($0)" }
+        let started = Date()
+        let diff = SkillLineDiff.compute(old: ["same"] + old + ["same"], new: ["same"] + new + ["same"])
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        XCTAssertEqual(diff.hunks.count, 1)
+        let kinds = diff.hunks[0].lines.map(\.kind)
+        XCTAssertEqual(kinds.filter { $0 == .removed }.count, 2_100)
+        XCTAssertEqual(kinds.filter { $0 == .added }.count, 2_100)
+    }
+
     func testLineDiffEdgeCases() {
         XCTAssertTrue(SkillLineDiff.compute(old: [], new: []).isIdentical)
         let separate = SkillLineDiff.compute(

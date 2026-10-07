@@ -185,6 +185,10 @@ public struct SkillLineDiff: Sendable, Hashable {
     /// lines around each change. The common prefix and suffix are trimmed
     /// before `CollectionDifference` runs, which keeps the typical "one
     /// paragraph edited" case linear.
+    /// Upper bound on old × new middle lines handed to `CollectionDifference`
+    /// (about 2,000 × 2,000); beyond it the middle is one replacement.
+    static let maxDifferenceCells = 4_000_000
+
     public static func compute(old: [String], new: [String], context: Int = 3) -> SkillLineDiff {
         var prefix = 0
         while prefix < old.count, prefix < new.count, old[prefix] == new[prefix] { prefix += 1 }
@@ -195,13 +199,22 @@ public struct SkillLineDiff: Sendable, Hashable {
         }
         let oldMiddle = old[prefix ..< old.count - suffix]
         let newMiddle = new[prefix ..< new.count - suffix]
-        let difference = Array(newMiddle).difference(from: Array(oldMiddle))
         var removed = Set<Int>()
         var inserted = Set<Int>()
-        for change in difference {
-            switch change {
-            case let .remove(offset, _, _): removed.insert(offset + prefix)
-            case let .insert(offset, _, _): inserted.insert(offset + prefix)
+        if oldMiddle.count * newMiddle.count > maxDifferenceCells {
+            // Two long, mostly different middles put `CollectionDifference`
+            // in its quadratic corner for seconds on a detached task that
+            // nothing cancels. Past the budget the middle is shown as one
+            // replacement — every old line removed, every new line added —
+            // which is also how such a change reads.
+            removed.formUnion(oldMiddle.indices)
+            inserted.formUnion(newMiddle.indices)
+        } else {
+            for change in Array(newMiddle).difference(from: Array(oldMiddle)) {
+                switch change {
+                case let .remove(offset, _, _): removed.insert(offset + prefix)
+                case let .insert(offset, _, _): inserted.insert(offset + prefix)
+                }
             }
         }
 
@@ -331,7 +344,9 @@ public enum SkillContentDiff {
     ) throws -> (entries: [String: SkillTreeEntry], truncated: Bool) {
         var found: [(path: String, url: URL, isSymlink: Bool)] = []
         var truncated = false
-        try collect(directory: directory, relativePath: "", into: &found, limit: limits.maxFiles, truncated: &truncated)
+        var visited = 0
+        try collect(directory: directory, relativePath: "", into: &found, limit: limits.maxFiles,
+                    visited: &visited, depth: 0, truncated: &truncated)
         var entries: [String: SkillTreeEntry] = [:]
         for item in found {
             if item.isSymlink {
@@ -571,27 +586,41 @@ public enum SkillContentDiff {
         digest.map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Deepest directory nesting walked; a skill is a shallow tree.
+    static let maxDepth = 32
+
+    /// `limit` bounds every node visited — directories included — not just
+    /// the files that end up in `entries`, so a tree of empty folders cannot
+    /// keep the scan going past the advertised cap.
     private static func collect(
         directory: URL,
         relativePath: String,
         into entries: inout [(path: String, url: URL, isSymlink: Bool)],
         limit: Int,
+        visited: inout Int,
+        depth: Int,
         truncated: inout Bool
     ) throws {
+        guard depth < maxDepth else {
+            truncated = true
+            return
+        }
         let fm = FileManager.default
         let names = try fm.contentsOfDirectory(atPath: directory.path).sorted {
             $0.utf8.lexicographicallyPrecedes($1.utf8)
         }
         for name in names where !name.hasPrefix(".") {
-            if entries.count >= limit {
+            if visited >= limit {
                 truncated = true
                 return
             }
+            visited += 1
             let child = directory.appendingPathComponent(name)
             let childPath = relativePath.isEmpty ? name : "\(relativePath)/\(name)"
             switch SkillFileSystem.kind(of: child) {
             case .directory:
-                try collect(directory: child, relativePath: childPath, into: &entries, limit: limit, truncated: &truncated)
+                try collect(directory: child, relativePath: childPath, into: &entries, limit: limit,
+                            visited: &visited, depth: depth + 1, truncated: &truncated)
                 if truncated { return }
             case .symlink:
                 entries.append((childPath, child, true))
