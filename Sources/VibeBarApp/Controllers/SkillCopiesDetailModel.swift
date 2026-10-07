@@ -146,6 +146,10 @@ final class SkillCopiesDetailModel: ObservableObject {
             show(cached)
             return
         }
+        // The pickers already name the new pair; the previous pair's file
+        // list must not sit under them while the new scan runs.
+        comparison = nil
+        fileDiff = nil
         isComparing = true
         let scope = service.readScope
         let left = base.readableURL

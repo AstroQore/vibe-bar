@@ -647,8 +647,8 @@ private struct SkillFileDiffView: View {
             facts(L10n.Workbench.Skills.Copies.Diff.tooLarge, left: left, right: right)
         case let .symlink(left, right)?:
             VStack(alignment: .leading, spacing: 8) {
-                sideLine(L10n.Workbench.Skills.Copies.Diff.base, value: left.map { L10n.Workbench.Skills.Copies.Diff.symlinkTarget(target: $0) })
-                sideLine(L10n.Workbench.Skills.Copies.Diff.compared, value: right.map { L10n.Workbench.Skills.Copies.Diff.symlinkTarget(target: $0) })
+                sideLine(L10n.Workbench.Skills.Copies.Diff.base, value: Self.sideText(left))
+                sideLine(L10n.Workbench.Skills.Copies.Diff.compared, value: Self.sideText(right))
                 Spacer()
             }
             .padding(14)
@@ -756,6 +756,14 @@ private struct SkillFileDiffView: View {
                 .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .monospaced))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private static func sideText(_ side: SkillDiffSide) -> String? {
+        switch side {
+        case .absent: nil
+        case let .symlink(target): L10n.Workbench.Skills.Copies.Diff.symlinkTarget(target: target)
+        case let .file(facts): factsText(facts)
         }
     }
 

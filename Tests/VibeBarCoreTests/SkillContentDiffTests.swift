@@ -153,7 +153,14 @@ final class SkillContentDiffTests: XCTestCase {
         XCTAssertNil(comparison.files.first { $0.path.hasPrefix("docs/") }, "a linked directory is not walked")
 
         let diff = SkillContentDiff.diffFile(path: "leak.txt", left: shared, right: claudeCopy(home), scope: scope(home))
-        XCTAssertEqual(diff, .symlink(left: nil, right: secret.path))
+        XCTAssertEqual(diff, .symlink(left: .absent, right: .symlink(target: secret.path)))
+        // A link on one side and a regular file on the other keeps the file's
+        // identity instead of reading the file side as absent.
+        try "plain".write(to: shared.appendingPathComponent("leak.txt"), atomically: true, encoding: .utf8)
+        let mixed = SkillContentDiff.diffFile(path: "leak.txt", left: shared, right: claudeCopy(home), scope: scope(home))
+        guard case let .symlink(leftSide, rightSide) = mixed else { return XCTFail("expected a symlink diff, got \(mixed)") }
+        XCTAssertEqual(leftSide, .file(SkillFileFacts(size: 5, sha256: SkillContentDiff.facts(of: Data("plain".utf8)).sha256)))
+        XCTAssertEqual(rightSide, .symlink(target: secret.path))
         // Through a linked parent, nothing is read either.
         XCTAssertEqual(
             SkillContentDiff.diffFile(path: "docs/secret.txt", left: shared, right: claudeCopy(home), scope: scope(home)),

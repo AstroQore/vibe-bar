@@ -303,8 +303,17 @@ public enum SkillFileDiff: Sendable, Hashable {
     /// Either side exceeds `SkillDiffLimits.maxTextBytes` or `maxLines`.
     case tooLarge(left: SkillFileFacts?, right: SkillFileFacts?)
     /// Either side is a symlink inside the tree; its target is the content.
-    case symlink(left: String?, right: String?)
+    /// The other side keeps its own identity — a regular file shows its
+    /// facts rather than reading as absent.
+    case symlink(left: SkillDiffSide, right: SkillDiffSide)
     case unreadable
+}
+
+/// One side of a diff that could not be compared line by line.
+public enum SkillDiffSide: Sendable, Hashable {
+    case absent
+    case symlink(target: String)
+    case file(SkillFileFacts)
 }
 
 /// Read-only comparison of two skill directories.
@@ -391,7 +400,7 @@ public enum SkillContentDiff {
         case (.unreadable, _), (_, .unreadable), (.absent, .absent):
             return .unreadable
         case (.symlink, _), (_, .symlink):
-            return .symlink(left: leftSide.linkTarget, right: rightSide.linkTarget)
+            return .symlink(left: leftSide.summary, right: rightSide.summary)
         default:
             break
         }
@@ -440,9 +449,12 @@ public enum SkillContentDiff {
             }
         }
 
-        var linkTarget: String? {
-            if case let .symlink(target) = self { return target }
-            return nil
+        var summary: SkillDiffSide {
+            switch self {
+            case .absent, .unreadable: .absent
+            case let .symlink(target): .symlink(target: target)
+            case let .file(data): .file(SkillContentDiff.facts(of: data))
+            }
         }
     }
 
@@ -468,7 +480,7 @@ public enum SkillContentDiff {
             case (.missing, _): return .absent
             case (.directory, false): continue
             case (.regularFile, true):
-                guard let data = try? Data(contentsOf: current, options: [.mappedIfSafe]) else { return .unreadable }
+                guard let data = readRegularFile(current) else { return .unreadable }
                 return .file(data)
             case (.symlink, true):
                 return .symlink((try? FileManager.default.destinationOfSymbolicLink(atPath: current.path)) ?? "")
@@ -488,8 +500,33 @@ public enum SkillContentDiff {
         }
     }
 
+    /// Opens `url` for reading without following a symlink at the leaf, and
+    /// only if what was opened is a regular file. `kind(of:)` is checked
+    /// before every read, but a link swapped in between that check and the
+    /// open would otherwise be followed — possibly out of scope. Validating
+    /// the descriptor itself closes that window.
+    private static func openRegularFile(_ url: URL) -> FileHandle? {
+        let descriptor = url.withUnsafeFileSystemRepresentation { path -> Int32 in
+            guard let path else { return -1 }
+            return Darwin.open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        }
+        guard descriptor >= 0 else { return nil }
+        var status = stat()
+        guard fstat(descriptor, &status) == 0, (status.st_mode & S_IFMT) == S_IFREG else {
+            Darwin.close(descriptor)
+            return nil
+        }
+        return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+    }
+
+    private static func readRegularFile(_ url: URL) -> Data? {
+        guard let handle = openRegularFile(url) else { return nil }
+        defer { try? handle.close() }
+        return try? handle.readToEnd() ?? Data()
+    }
+
     private static func facts(of url: URL) -> SkillFileFacts? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        guard let handle = openRegularFile(url) else { return nil }
         defer { try? handle.close() }
         var hasher = SHA256()
         var size: UInt64 = 0
@@ -505,7 +542,7 @@ public enum SkillContentDiff {
         return SkillFileFacts(size: size, sha256: hex(hasher.finalize()))
     }
 
-    private static func facts(of data: Data) -> SkillFileFacts {
+    static func facts(of data: Data) -> SkillFileFacts {
         SkillFileFacts(size: UInt64(data.count), sha256: hex(SHA256.hash(data: data)))
     }
 
