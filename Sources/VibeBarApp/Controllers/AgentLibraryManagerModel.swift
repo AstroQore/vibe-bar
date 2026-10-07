@@ -155,8 +155,8 @@ final class AgentLibraryManagerModel: ObservableObject {
         case .shared(managed: true) where target != group.primary.target:
             guard let row = group.rows[target] else { return }
             perform(key: key) {
-                let result = try await self.service.deleteMCPDefinition(target: row.target, name: row.operationName,
-                                                                       expectedRevision: row.revision)
+                let result = try await self.service.withdrawMCPShare(target: row.target, name: row.operationName,
+                                                                    expectedRevision: row.revision)
                 await self.refresh(.mcp)
                 return result
             }

@@ -106,6 +106,23 @@ public actor AgentLibraryService {
         return .init(changed: [target], backups: [backup])
     }
 
+    /// Withdraw a share Vibe Bar made. Unlike `deleteMCPDefinition`, this
+    /// refuses unless the receipt still names the definition as it stands on
+    /// disk: the inventory a toggle was drawn from can go stale when the
+    /// receipts file changes under an unchanged config revision, and a
+    /// one-click withdrawal must not delete a definition the Library no
+    /// longer owns.
+    public func withdrawMCPShare(target: AgentLibraryTarget, name: String, expectedRevision: String) throws -> AgentLibraryMutationResult {
+        let document = try mcpFile(target, expectedRevision: expectedRevision)
+        let actualName = try Self.lookup(name, target: target, entries: document.entries)
+        guard let fields = document.entries[actualName],
+              let receipt = try mcpReceipts()[Self.operationToken(target: target, name: actualName)],
+              receipt.fingerprint == Self.definitionFingerprint(fields) else {
+            throw AgentLibraryError.notOwnedProjection
+        }
+        return try deleteMCPDefinition(target: target, name: actualName, expectedRevision: expectedRevision)
+    }
+
     public func shareMCPDefinition(source: AgentLibraryTarget, name: String, sourceRevision: String,
                                    targets: [AgentLibraryTarget: String]) throws -> AgentLibraryMutationResult {
         let sourceDocument = try readMCPDefinition(target: source, name: name, expectedRevision: sourceRevision)

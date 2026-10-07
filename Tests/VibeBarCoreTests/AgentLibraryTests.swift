@@ -301,6 +301,31 @@ final class AgentLibraryTests: XCTestCase {
                        home.resolvingSymlinksInPath().appendingPathComponent(".agents/AGENTS.md").path)
     }
 
+    func testWithdrawingAShareRequiresAMatchingReceipt() async throws {
+        try write(".claude.json", #"{"mcpServers":{"shared":{"type":"stdio","command":"npx"}}}"#)
+        let sourceRevision = try await revision(.claude)
+        _ = try await service.shareMCPDefinition(source: .claude, name: "shared", sourceRevision: sourceRevision,
+                                                 targets: [.cursor: "missing"])
+        // The receipts file goes away under an unchanged config revision, as
+        // when another app copy rewrites it: the inventory a toggle was drawn
+        // from still says "managed", but the Library no longer owns the copy.
+        let rev = try await revision(.cursor)
+        try FileManager.default.removeItem(at: home.appendingPathComponent(".vibebar/agent_library/mcp_projections.json"))
+        let before = try text(".cursor/mcp.json")
+        await expect(.notOwnedProjection) {
+            _ = try await self.service.withdrawMCPShare(target: .cursor, name: "shared", expectedRevision: rev)
+        }
+        XCTAssertEqual(try text(".cursor/mcp.json"), before)
+
+        // With the receipt intact the same call withdraws the copy.
+        _ = try await service.shareMCPDefinition(source: .claude, name: "shared", sourceRevision: sourceRevision,
+                                                 targets: [.codex: "missing"])
+        let codexRev = try await revision(.codex)
+        _ = try await service.withdrawMCPShare(target: .codex, name: "shared", expectedRevision: codexRev)
+        let inventory = await service.mcpInventory()
+        XCTAssertFalse(inventory.definitions.contains { $0.target == .codex && $0.name == "shared" })
+    }
+
     func testModifiedProjectionCannotBeRevoked() async throws {
         try write(".agents/AGENTS.md", "shared")
         try write(".gemini/GEMINI.md", "other source")
