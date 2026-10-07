@@ -185,9 +185,10 @@ public struct SkillLineDiff: Sendable, Hashable {
     /// lines around each change. The common prefix and suffix are trimmed
     /// before `CollectionDifference` runs, which keeps the typical "one
     /// paragraph edited" case linear.
-    /// Upper bound on old × new middle lines handed to `CollectionDifference`
-    /// (about 2,000 × 2,000); beyond it the middle is one replacement.
-    static let maxDifferenceCells = 4_000_000
+    /// Budget for the Myers walk, in (lines compared) × (edit distance).
+    /// `CollectionDifference` is O((N+M)·D): long files with a short edit
+    /// script are cheap, long files that mostly differ are not.
+    static let maxDifferenceWork = 40_000_000
 
     public static func compute(old: [String], new: [String], context: Int = 3) -> SkillLineDiff {
         var prefix = 0
@@ -201,12 +202,18 @@ public struct SkillLineDiff: Sendable, Hashable {
         let newMiddle = new[prefix ..< new.count - suffix]
         var removed = Set<Int>()
         var inserted = Set<Int>()
-        if oldMiddle.count * newMiddle.count > maxDifferenceCells {
-            // Two long, mostly different middles put `CollectionDifference`
-            // in its quadratic corner for seconds on a detached task that
-            // nothing cancels. Past the budget the middle is shown as one
-            // replacement — every old line removed, every new line added —
-            // which is also how such a change reads.
+        // The edit distance is at least the number of lines that appear in
+        // one middle and not the other, counted with multiplicity — an O(N)
+        // lower bound on the D that drives the Myers walk. A shifted file
+        // has a tiny bound and gets the exact diff; two mostly different
+        // middles would pin a core for seconds on a detached task nothing
+        // cancels, so past the budget the middle is shown as one
+        // replacement, which is also how such a change reads.
+        var tally: [String: Int] = [:]
+        for line in oldMiddle { tally[line, default: 0] += 1 }
+        for line in newMiddle { tally[line, default: 0] -= 1 }
+        let editLowerBound = tally.values.reduce(0) { $0 + abs($1) }
+        if editLowerBound * (oldMiddle.count + newMiddle.count) > maxDifferenceWork {
             removed.formUnion(oldMiddle.indices)
             inserted.formUnion(newMiddle.indices)
         } else {

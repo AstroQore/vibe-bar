@@ -209,6 +209,14 @@ final class SkillContentDiffTests: XCTestCase {
         let kinds = diff.hunks[0].lines.map(\.kind)
         XCTAssertEqual(kinds.filter { $0 == .removed }.count, 2_100)
         XCTAssertEqual(kinds.filter { $0 == .added }.count, 2_100)
+
+        // A long file that merely shifted keeps its exact diff: the cheap
+        // edit-distance bound is tiny, so the real walk runs.
+        let base = (0 ..< 3_000).map { "line \($0)" }
+        let shifted = SkillLineDiff.compute(old: base, new: ["header"] + base.dropLast())
+        let shiftedKinds = shifted.hunks.flatMap(\.lines).map(\.kind)
+        XCTAssertEqual(shiftedKinds.filter { $0 == .added }.count, 1)
+        XCTAssertEqual(shiftedKinds.filter { $0 == .removed }.count, 1)
     }
 
     func testLineDiffEdgeCases() {
