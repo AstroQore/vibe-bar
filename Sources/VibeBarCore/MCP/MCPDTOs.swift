@@ -578,8 +578,18 @@ public struct MCPSessionSummaryDTO: Codable, Equatable, Sendable {
     /// Search only: the matched excerpt, with `<b>` markers around the hit.
     public let snippet: String?
     public let matchedSeq: Int?
+    /// Search only: set when the text matched inside one of this session's
+    /// Auto Reviews rather than in the session itself. The review is its own
+    /// log — read the match with `sessions.transcript` on `matchedReview.id`
+    /// around `matchedReview.matchedSeq`; this row's `matchedSeq` is absent.
+    public let matchedReview: MCPSessionReviewMatchDTO?
 
-    public init(summary: SessionSummary, snippet: String? = nil, matchedSeq: Int? = nil) {
+    public init(
+        summary: SessionSummary,
+        snippet: String? = nil,
+        matchedSeq: Int? = nil,
+        matchedReview: MCPSessionReviewMatchDTO? = nil
+    ) {
         self.id = summary.id
         self.sessionId = summary.sessionID
         self.provider = summary.provider.rawValue
@@ -595,6 +605,41 @@ public struct MCPSessionSummaryDTO: Codable, Equatable, Sendable {
         self.sizeBytes = summary.sizeBytes
         self.sourcePath = summary.sourcePath
         self.snippet = snippet
+        self.matchedSeq = matchedSeq
+        self.matchedReview = matchedReview
+    }
+}
+
+/// One Codex Auto Review, named well enough to read it with
+/// `sessions.transcript`. Reviews are never rows of `sessions.list` or
+/// `sessions.search`; they are reached through the session they reviewed.
+public struct MCPSessionReviewRefDTO: Codable, Equatable, Sendable {
+    public let id: String
+    public let sessionId: String
+    public let createdAt: Date?
+    public let lastActiveAt: Date?
+    public let sizeBytes: Int64
+
+    public init(review: SessionSummary) {
+        self.id = review.id
+        self.sessionId = review.sessionID
+        self.createdAt = review.createdAt
+        self.lastActiveAt = review.lastActiveAt
+        self.sizeBytes = review.sizeBytes
+    }
+}
+
+/// Where a search hit matched, when that was inside an Auto Review.
+public struct MCPSessionReviewMatchDTO: Codable, Equatable, Sendable {
+    public let id: String
+    public let sessionId: String
+    /// Message index inside the review — pass it as `around` together with
+    /// this `id`.
+    public let matchedSeq: Int?
+
+    public init(review: SessionSummary, matchedSeq: Int?) {
+        self.id = review.id
+        self.sessionId = review.sessionID
         self.matchedSeq = matchedSeq
     }
 }
@@ -688,6 +733,14 @@ public struct MCPTranscriptDTO: Codable, Equatable, Sendable {
     /// Bytes of the log parsed to answer this, and its size on disk.
     public let bytesRead: Int64
     public let fileBytes: Int64
+    /// Codex only: how many Auto Reviews this session has. The Sessions page
+    /// shows them inside this transcript; here each stays its own log, read
+    /// with `sessions.transcript` on its `id`, so every `seq` keeps meaning
+    /// one file. Absent when there are none.
+    public let autoReviewCount: Int?
+    /// The oldest of those reviews, up to
+    /// `SessionTranscriptResult.autoReviewListLimit`.
+    public let autoReviews: [MCPSessionReviewRefDTO]?
 
     public init(generatedAt: Date, result: SessionTranscriptResult) {
         let window = result.window
@@ -709,6 +762,10 @@ public struct MCPTranscriptDTO: Codable, Equatable, Sendable {
         self.notice = window.notice { Self.megabytes($0) }
         self.bytesRead = window.bytesRead
         self.fileBytes = window.fileBytes
+        self.autoReviewCount = result.autoReviewCount > 0 ? result.autoReviewCount : nil
+        self.autoReviews = result.autoReviews.isEmpty
+            ? nil
+            : result.autoReviews.map(MCPSessionReviewRefDTO.init(review:))
     }
 
     /// Deliberately not `ByteCountFormatter`: this string goes into a JSON

@@ -65,7 +65,7 @@ struct SessionManagerPage: View {
             Button(L10n.Common.delete, role: .destructive) { model.confirmDelete() }
             Button(L10n.Common.cancel, role: .cancel) { model.cancelDelete() }
         } message: {
-            Text(L10n.Workbench.Sessions.Delete.message)
+            Text(deletionMessage)
         }
         .task { model.activate() }
     }
@@ -77,8 +77,24 @@ struct SessionManagerPage: View {
         )
     }
 
+    /// Counts every log that goes, Auto Reviews included: they are removed
+    /// from disk with the session they belong to.
     private var deletionTitle: String {
         L10n.Workbench.Sessions.Delete.confirm(count: model.pendingDeletion?.count ?? 0)
+    }
+
+    /// The usual warning, plus — when the selection takes Auto Reviews with
+    /// it — how many and how much disk they hold. The plan sums the bytes
+    /// once, so this is string assembly, not a pass over the reviews.
+    private var deletionMessage: String {
+        guard let plan = model.pendingDeletion, !plan.reviews.isEmpty else {
+            return L10n.Workbench.Sessions.Delete.message
+        }
+        return L10n.Workbench.Sessions.Delete.message
+            + "\n"
+            + L10n.Workbench.Sessions.Row.autoReviewsMerged(count: plan.reviews.count)
+            + " · "
+            + plan.reviewBytes.formatted(.byteCount(style: .file).locale(AppLocale.current))
     }
 
     @ViewBuilder

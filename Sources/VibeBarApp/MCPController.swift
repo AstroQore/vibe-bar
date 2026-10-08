@@ -403,21 +403,32 @@ final class MCPController: ObservableObject, MCPDataSource {
         // Escalate rather than accept that: ask for more ranked hits until
         // the page is filled or the store's own ceiling is reached. At most
         // two passes, and FTS ranking is the fast part of this query.
+        //
+        // Hits inside a Codex Auto Review are folded into the session they
+        // reviewed, by the same Core rule the Sessions page uses
+        // (`SessionVisibleRows`), so an agent never gets a review as a row.
+        // Folding merges hits, which is one more reason the filled-page check
+        // below compares against the ranked count, not the folded one.
         let needsHostFilter = !(filter.isAnsweredEntirelyByTheIndex && filter.from == nil)
         return try await readingSessions(isEmpty: \.hits.isEmpty) { index in
             var wanted = needsHostFilter
                 ? min(limit * Self.searchOverFetchFactor, Self.searchOverFetchCap)
                 : limit
-            var matched: [SessionSearchHit] = []
+            var matched: [SessionVisibleRows.FoldedHit] = []
             var sawEverything = false
             while true {
-                let hits = try await Self.rankedHits(
-                    index, query: query, filter: filter, limit: wanted
+                let result = try await SessionVisibleRows.search(
+                    index,
+                    query: query,
+                    providers: filter.providers,
+                    harnesses: filter.harnesses,
+                    projectIncludes: filter.projectIncludes,
+                    limit: wanted
                 )
-                matched = hits.filter { filter.matches($0.summary) }
+                matched = result.hits.filter { filter.matches($0.hit.summary) }
                 // Fewer hits than asked for means the store had no more to
                 // rank, so nothing is hiding below the cut.
-                sawEverything = hits.count < wanted
+                sawEverything = result.rankedCount < wanted
                 if matched.count >= limit || sawEverything || wanted >= Self.searchRankingCeiling {
                     break
                 }
@@ -426,13 +437,19 @@ final class MCPController: ObservableObject, MCPDataSource {
             // Silence is the one wrong answer here: an agent cannot tell
             // "nothing matches" from "the ranking cut ate the matches".
             let incomplete = matched.count < limit && !sawEverything
+            let page = Array(matched.prefix(limit))
+            var matchedReviews: [String: SessionSummary] = [:]
+            for entry in page {
+                if let review = entry.matchedReview { matchedReviews[entry.hit.summary.id] = review }
+            }
             return MCPSessionSearchOutcome(
-                hits: Array(matched.prefix(limit)),
+                hits: page.map(\.hit),
                 notice: incomplete
                     ? "Filters ran after the ranking cut: the top \(wanted) hits for this query "
                         + "yielded \(matched.count) match(es), and more may exist below the cut. "
                         + "Narrow 'query', or widen 'from' / 'to' / 'models' / 'projectDir'."
-                    : nil
+                    : nil,
+                matchedReviews: matchedReviews
             )
         }
     }
@@ -449,21 +466,6 @@ final class MCPController: ObservableObject, MCPDataSource {
     /// that a pathological filter cannot turn one tool call into a full scan.
     private static let listScanCap = 4_000
     private static let listStorePageSize = 500
-
-    private nonisolated static func rankedHits(
-        _ index: SessionIndexService,
-        query: String,
-        filter: SessionQueryFilter,
-        limit: Int
-    ) async throws -> [SessionSearchHit] {
-        try await index.search(
-            query,
-            providers: filter.providers,
-            harnesses: filter.harnesses,
-            projectIncludes: filter.projectIncludes,
-            limit: limit
-        )
-    }
 
     func listSessions(
         filter: SessionQueryFilter,
@@ -536,7 +538,10 @@ final class MCPController: ObservableObject, MCPDataSource {
         offset: Int,
         limit: Int
     ) async throws -> SessionSummaryPage {
-        try await index.summaryPage(
+        // The Sessions page's own list read: Auto Review rows are excluded in
+        // SQL, so `totalCount` and paging describe listed sessions only.
+        try await SessionVisibleRows.page(
+            index,
             providers: filter.providers,
             harnesses: filter.harnesses,
             since: filter.from,
@@ -587,7 +592,34 @@ final class MCPController: ObservableObject, MCPDataSource {
             request: window,
             scratchDirectory: scratch
         )
-        return SessionTranscriptResult(summary: summary, window: read)
+        let reviews = await Self.autoReviews(of: summary, in: environment?.sessionIndex.reviews)
+        return SessionTranscriptResult(
+            summary: summary,
+            window: read,
+            autoReviews: reviews.list,
+            autoReviewCount: reviews.count
+        )
+    }
+
+    /// The Auto Reviews the Sessions page merges into this transcript, named
+    /// rather than merged: each stays its own log for `sessions.transcript`,
+    /// so a `seq` or `nextFrom` always means one file. Best effort — a review
+    /// index that cannot answer leaves the transcript itself untouched.
+    private nonisolated static func autoReviews(
+        of summary: SessionSummary,
+        in reviewIndex: SessionReviewIndex?
+    ) async -> (list: [SessionSummary], count: Int) {
+        guard let reviewIndex,
+              summary.provider == .codex,
+              SessionVisibleRows.reviewParentID(of: summary) == nil
+        else { return ([], 0) }
+        let limit = SessionTranscriptResult.autoReviewListLimit
+        guard let list = try? await reviewIndex.reviews(forParents: [summary.sessionID], limit: limit),
+              !list.isEmpty
+        else { return ([], 0) }
+        guard list.count >= limit else { return (list, list.count) }
+        let count = (try? await reviewIndex.reviewCount(forParent: summary.sessionID)) ?? list.count
+        return (list, count)
     }
 
     /// Same shape as the Workbench's transcript parse: a held detached task

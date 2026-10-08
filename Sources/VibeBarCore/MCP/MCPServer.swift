@@ -35,12 +35,22 @@ public enum MCPCostHistoryTimeframe: String, Sendable, CaseIterable {
 /// and "the matches are below the cut" — an agent cannot tell those apart
 /// from an empty array.
 public struct MCPSessionSearchOutcome: Sendable {
+    /// Listed rows only: a hit inside an Auto Review is reported on the
+    /// session it reviewed (`SessionVisibleRows.fold`).
     public var hits: [SessionSearchHit]
     public var notice: String?
+    /// The review a hit actually matched in, keyed by the hit's row `id`.
+    /// For those hits `matchedSeq` counts that review's messages.
+    public var matchedReviews: [String: SessionSummary]
 
-    public init(hits: [SessionSearchHit], notice: String? = nil) {
+    public init(
+        hits: [SessionSearchHit],
+        notice: String? = nil,
+        matchedReviews: [String: SessionSummary] = [:]
+    ) {
         self.hits = hits
         self.notice = notice
+        self.matchedReviews = matchedReviews
     }
 }
 
@@ -436,8 +446,21 @@ public final class MCPServer: @unchecked Sendable {
         )
         return MCPSessionListDTO(
             generatedAt: now(),
-            sessions: outcome.hits.map {
-                MCPSessionSummaryDTO(summary: $0.summary, snippet: $0.snippet, matchedSeq: $0.matchedSeq)
+            sessions: outcome.hits.map { hit in
+                // A match inside an Auto Review lands on the session it
+                // reviewed, and its seq counts the review's messages — so it
+                // travels with the review's id instead of as the row's own
+                // `matchedSeq`, which an agent would otherwise read the
+                // parent at.
+                if let review = outcome.matchedReviews[hit.summary.id] {
+                    return MCPSessionSummaryDTO(
+                        summary: hit.summary,
+                        snippet: hit.snippet,
+                        matchedSeq: nil,
+                        matchedReview: MCPSessionReviewMatchDTO(review: review, matchedSeq: hit.matchedSeq)
+                    )
+                }
+                return MCPSessionSummaryDTO(summary: hit.summary, snippet: hit.snippet, matchedSeq: hit.matchedSeq)
             },
             totalCount: nil,
             offset: nil,
