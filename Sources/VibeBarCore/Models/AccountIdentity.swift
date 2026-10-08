@@ -96,3 +96,15 @@ public struct AccountIdentity: Codable, Identifiable, Hashable, Sendable {
         try c.encode(updatedAt, forKey: .updatedAt)
     }
 }
+
+extension AccountIdentity {
+    /// Equal in everything except the two timestamps, which detection stamps
+    /// with the time of the probe. Two probes that found the same account
+    /// differ only there, and nothing renders them.
+    public func hasSameContent(as other: AccountIdentity) -> Bool {
+        var aligned = other
+        aligned.createdAt = createdAt
+        aligned.updatedAt = updatedAt
+        return aligned == self
+    }
+}
