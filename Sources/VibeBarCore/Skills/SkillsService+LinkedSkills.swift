@@ -88,12 +88,23 @@ extension SkillsService {
     /// row into an ordinary owned skill. The only operation that reads the
     /// linked tree: once, through `SkillLinkConversionBudget`'s bounds, into
     /// a hidden staging directory in the shared root. The folder itself is
-    /// left unchanged, and the link is swapped only if it is still the one
-    /// the receipt recorded when the copy finished.
+    /// left unchanged, and the link is swapped only if the whole receipt —
+    /// target string, resolved directory, device and inode — still matches
+    /// when the copy finished.
     @discardableResult
     public func convertLinkedSkillToCopy(
         _ id: SkillID,
         budget: SkillLinkConversionBudget = .standard
+    ) async throws -> Skill {
+        try await convertLinkedSkill(id, budget: budget, afterCopy: {})
+    }
+
+    /// `afterCopy` runs between the copy and the swap; tests use it to
+    /// change the disk at the one moment the receipt is checked again.
+    func convertLinkedSkill(
+        _ id: SkillID,
+        budget: SkillLinkConversionBudget,
+        afterCopy: @Sendable () throws -> Void
     ) async throws -> Skill {
         guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
         guard let receipt = skill.linkReceipt else { throw SkillError.notALink(skill.directory) }
@@ -123,9 +134,14 @@ extension SkillsService {
         let copiedName = frontmatter.name ?? skill.directory
         guard copiedName == skill.name else { throw SkillError.linkedSkillRenamed(skill.directory, copiedName) }
 
-        // The copy took time; the link it replaces must still be the one the
-        // receipt names, not one re-pointed (or removed) meanwhile.
-        guard SkillLinkInspector.currentTarget(directoryName: skill.directory, homeDirectory: homeDirectory) == receipt.target else {
+        try afterCopy()
+        // The copy took time. The link must still be the one the receipt
+        // pins, and still lead to the same directory: a folder deleted and
+        // re-created at the same path keeps the target string but not the
+        // inode, and its content is not what the user confirmed. Checked in
+        // full here, immediately before the link goes; `removeLink` then
+        // re-checks the target string itself.
+        guard SkillLinkInspector.check(receipt, directoryName: skill.directory, homeDirectory: homeDirectory) == .matches else {
             throw SkillError.linkReceiptMismatch(skill.directory)
         }
         try SkillLinkInspector.removeLink(directoryName: skill.directory, receipt: receipt, homeDirectory: homeDirectory)

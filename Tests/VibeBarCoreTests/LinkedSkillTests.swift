@@ -641,6 +641,37 @@ final class LinkedSkillTests: XCTestCase {
         XCTAssertNotNil(stored?.linkReceipt)
     }
 
+    func testAFolderReplacedDuringTheCopyStopsTheConversion() async throws {
+        let fixture = try makeFixture()
+        let service = fixture.service
+        let home = fixture.home
+        let skill = try await service.adoptLinkedSkill(directoryName: skillName)
+        let target = try rawTarget(fixture.link)
+        let external = fixture.external
+        let name = skillName
+
+        // Same path, same link target string, different directory.
+        await assertRefused(.linkReceiptMismatch(skillName)) {
+            try await service.convertLinkedSkill(skill.id, budget: .standard) {
+                try FileManager.default.removeItem(at: external)
+                try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+                try "---\nname: \(name)\n---\nreplacement\n".write(
+                    to: external.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8
+                )
+            }
+        }
+
+        XCTAssertEqual(SkillFileSystem.kind(of: fixture.link), .symlink)
+        XCTAssertEqual(try rawTarget(fixture.link), target)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: home.ssot.path), [skillName],
+                       "the staged copy is removed")
+        let stored = await service.store.skill(with: skill.id)
+        XCTAssertEqual(stored?.linkReceipt, skill.linkReceipt)
+        XCTAssertEqual(home.contents(of: external.appendingPathComponent("SKILL.md")), "---\nname: \(name)\n---\nreplacement\n")
+        let discovered = await service.inventory().discoveredShared
+        XCTAssertEqual(discovered.first?.registration, .receiptMismatch(skill.id, .replaced))
+    }
+
     // MARK: - Never hashed, never compared
 
     func testTheHasherNeverWalksThroughALinkedRoot() throws {
