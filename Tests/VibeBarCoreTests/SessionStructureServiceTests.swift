@@ -92,6 +92,30 @@ final class SessionStructureServiceTests: XCTestCase {
         XCTAssertNil(miss)
     }
 
+    func testStoreRebuildsATableFromAnOlderSchema() async throws {
+        // The v1 layout had no sidechains column.
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(storeURL.path, &handle), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(handle, """
+            CREATE TABLE session_structure (source_path TEXT PRIMARY KEY, mtime_ns INTEGER NOT NULL, size INTEGER NOT NULL,
+                provider TEXT NOT NULL, session_id TEXT, kind TEXT NOT NULL, parent_id TEXT, relation TEXT,
+                stats_json TEXT NOT NULL, outline_json TEXT NOT NULL, parsed_at REAL NOT NULL, parser_version INTEGER NOT NULL);
+            INSERT INTO session_structure VALUES ('/Users/example/old.jsonl', 1, 1, 'codex', NULL, 'interactive', NULL, NULL, '{}', '[]', 0, \(SessionStructure.parserVersion));
+            PRAGMA user_version = 1;
+            """, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(handle)
+
+        let session = try rollout(id: threadID(23), turns: 1)
+        let structure = try XCTUnwrap(CodexSessionStructureParser.parse(fileURL: URL(fileURLWithPath: session.sourcePath)))
+        let fingerprint = try XCTUnwrap(SessionFileFingerprint.of(path: session.sourcePath))
+        let store = SessionStructureStore(url: storeURL)
+        let before = await store.count()
+        XCTAssertEqual(before, 0, "an older layout is dropped, not read")
+        await store.upsert(SessionStructureRecord(structure: structure, fingerprint: fingerprint))
+        let row = await store.record(forPath: session.sourcePath, fingerprint: fingerprint)
+        XCTAssertEqual(row?.stats, structure.stats)
+    }
+
     func testStoreDegradesWhenItCannotOpenAndReplacesACorruptFile() async throws {
         let unopenable = SessionStructureStore(url: directory.appendingPathComponent("missing/deeper/structure.sqlite3"))
         let available = await unopenable.isAvailable
@@ -289,6 +313,40 @@ final class SessionStructureServiceTests: XCTestCase {
 
         let missing = CodexThreadStateReader(url: directory.appendingPathComponent("absent.sqlite"))
         XCTAssertNil(missing.thread(id: id))
+    }
+
+    func testClaudeSidechainRollupsSurviveTheSidecar() async throws {
+        let log = ClaudeLogBuilder()
+        log.prompt("Use a subagent", parent: .some(nil))
+        log.assistant(messageID: "m_main", blocks: [["type": "tool_use", "id": "toolu_task", "name": "Task", "input": ["description": "Sub"]]])
+        log.line(["type": "assistant", "isSidechain": true, "agentId": "sc1", "requestId": "req_sc",
+                  "message": ["id": "m_sc", "role": "assistant", "model": "claude-haiku-4-5",
+                              "content": [["type": "tool_use", "id": "toolu_sc", "name": "Grep", "input": ["pattern": "x"]]],
+                              "usage": ["input_tokens": 3, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 40, "output_tokens": 7]]],
+                 parent: .some(nil), chain: false)
+        log.line(["type": "user", "isSidechain": true, "agentId": "sc1",
+                  "message": ["role": "user", "content": [["type": "tool_result", "tool_use_id": "toolu_sc", "content": "boom", "is_error": true]]]],
+                 parent: .some(nil), chain: false)
+        log.toolResult(id: "toolu_task", content: "Sub finished")
+        let url = try SessionStructureFixtures.write(
+            log.lines,
+            to: directory.appendingPathComponent("projects/-Users-example-project/\(SessionStructureFixtures.claudeSessionID).jsonl")
+        )
+        let session = summary(.claude, id: SessionStructureFixtures.claudeSessionID, url: url)
+
+        let first = try await XCTUnwrapAsync(await SessionStructureService(store: SessionStructureStore(url: storeURL)).outline(for: session))
+        XCTAssertEqual(first.sidechains.count, 1)
+        XCTAssertEqual(first.sidechains[0].agentID, "sc1")
+        XCTAssertEqual(first.sidechains[0].failedToolCount, 1)
+        XCTAssertEqual(first.sidechains[0].usage.total, 50)
+
+        let record = try await XCTUnwrapAsync(await SessionStructureStore(url: storeURL).record(forPath: url.path))
+        XCTAssertEqual(record.sidechains, first.sidechains)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
+        let relaunched = try await XCTUnwrapAsync(await SessionStructureService(store: SessionStructureStore(url: storeURL)).outline(for: session))
+        XCTAssertEqual(relaunched.sidechains, first.sidechains, "a sidecar hit returns the same rollups as the parse")
+        XCTAssertEqual(relaunched.stats.sidechainUsage, first.stats.sidechainUsage)
     }
 
     func testStateFallbackDoesNotHandACutForkItsParentsTotal() async throws {

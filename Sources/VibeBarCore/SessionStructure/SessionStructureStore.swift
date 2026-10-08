@@ -21,7 +21,8 @@ public struct SessionFileFingerprint: Hashable, Sendable, Codable {
     }
 }
 
-/// One cached parse: stats and the per-turn outline, no message bodies.
+/// One cached parse: stats, the per-turn outline and the Claude sidechain
+/// rollups (counts, usage, models), no message bodies.
 public struct SessionStructureRecord: Hashable, Sendable, Codable {
     public var sourcePath: String
     public var fingerprint: SessionFileFingerprint
@@ -32,6 +33,7 @@ public struct SessionStructureRecord: Hashable, Sendable, Codable {
     public var relation: SessionStructureRelation?
     public var stats: SessionStats
     public var outline: [SessionTurnOutline]
+    public var sidechains: [SessionStructure.SidechainRollup]
     public var parsedAt: Date
     public var parserVersion: Int
 
@@ -50,6 +52,7 @@ public struct SessionStructureRecord: Hashable, Sendable, Codable {
         relation = structure.stats.relation
         stats = structure.stats
         outline = structure.outline
+        sidechains = structure.sidechains
         self.parsedAt = parsedAt
         self.parserVersion = parserVersion
     }
@@ -62,7 +65,8 @@ public struct SessionStructureRecord: Hashable, Sendable, Codable {
             sourcePath: sourcePath,
             detail: .outline,
             turns: outline.map(\.turn),
-            stats: stats
+            stats: stats,
+            sidechains: sidechains
         )
     }
 }
@@ -83,7 +87,9 @@ public struct SessionStructureRecord: Hashable, Sendable, Codable {
 public actor SessionStructureStore {
     /// Table layout version (`PRAGMA user_version`). A different value
     /// drops and recreates the table.
-    static let schemaVersion: Int32 = 1
+    ///
+    /// v2: `sidechains_json`.
+    static let schemaVersion: Int32 = 2
 
     public let url: URL
     private let parserVersion: Int
@@ -128,7 +134,7 @@ public actor SessionStructureStore {
         guard let database = openIfNeeded(),
               let statement = database.prepare("""
                 SELECT source_path, mtime_ns, size, provider, session_id, kind, parent_id, relation,
-                       stats_json, outline_json, parsed_at, parser_version
+                       stats_json, outline_json, parsed_at, parser_version, sidechains_json
                 FROM session_structure WHERE source_path = ?1
                 """)
         else { return nil }
@@ -143,7 +149,7 @@ public actor SessionStructureStore {
         guard let database = openIfNeeded(),
               let statement = database.prepare("""
                 SELECT source_path, mtime_ns, size, provider, session_id, kind, parent_id, relation,
-                       stats_json, outline_json, parsed_at, parser_version
+                       stats_json, outline_json, parsed_at, parser_version, sidechains_json
                 FROM session_structure WHERE parent_id = ?1 AND parser_version = ?2
                 ORDER BY source_path
                 """)
@@ -173,19 +179,21 @@ public actor SessionStructureStore {
         guard let database = openIfNeeded(),
               let stats = try? encoder.encode(record.stats),
               let outline = try? encoder.encode(record.outline),
+              let sidechains = try? encoder.encode(record.sidechains),
               let statsJSON = String(data: stats, encoding: .utf8),
               let outlineJSON = String(data: outline, encoding: .utf8),
+              let sidechainsJSON = String(data: sidechains, encoding: .utf8),
               let statement = database.prepare("""
                 INSERT INTO session_structure (
                     source_path, mtime_ns, size, provider, session_id, kind, parent_id, relation,
-                    stats_json, outline_json, parsed_at, parser_version
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                    stats_json, outline_json, parsed_at, parser_version, sidechains_json
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                 ON CONFLICT(source_path) DO UPDATE SET
                     mtime_ns = excluded.mtime_ns, size = excluded.size, provider = excluded.provider,
                     session_id = excluded.session_id, kind = excluded.kind, parent_id = excluded.parent_id,
                     relation = excluded.relation, stats_json = excluded.stats_json,
                     outline_json = excluded.outline_json, parsed_at = excluded.parsed_at,
-                    parser_version = excluded.parser_version
+                    parser_version = excluded.parser_version, sidechains_json = excluded.sidechains_json
                 """)
         else { return }
         defer { sqlite3_finalize(statement) }
@@ -201,6 +209,7 @@ public actor SessionStructureStore {
         database.bindText(statement, 10, outlineJSON)
         database.bindDouble(statement, 11, record.parsedAt.timeIntervalSince1970)
         sqlite3_bind_int64(statement, 12, Int64(record.parserVersion))
+        database.bindText(statement, 13, sidechainsJSON)
         _ = sqlite3_step(statement)
     }
 
@@ -285,7 +294,8 @@ public actor SessionStructureStore {
                 stats_json TEXT NOT NULL,
                 outline_json TEXT NOT NULL,
                 parsed_at REAL NOT NULL,
-                parser_version INTEGER NOT NULL
+                parser_version INTEGER NOT NULL,
+                sidechains_json TEXT NOT NULL DEFAULT '[]'
             );
             CREATE INDEX IF NOT EXISTS session_structure_parent ON session_structure(parent_id);
             CREATE INDEX IF NOT EXISTS session_structure_session ON session_structure(provider, session_id);
@@ -327,6 +337,10 @@ public actor SessionStructureStore {
             parserVersion: Int(sqlite3_column_int64(statement, 11))
         )
         record.outline = outline
+        if let sidechainsJSON = database.columnText(statement, 12),
+           let sidechains = try? decoder.decode([SessionStructure.SidechainRollup].self, from: Data(sidechainsJSON.utf8)) {
+            record.sidechains = sidechains
+        }
         return record
     }
 
