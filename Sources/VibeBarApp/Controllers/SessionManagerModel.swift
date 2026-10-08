@@ -270,6 +270,11 @@ final class SessionManagerModel: ObservableObject {
     /// saw the newer file.
     private var appliedLabelsWrittenAt: Date?
     private let registry: SessionProviderRegistry
+    /// One for the page, so a double click on the row's menu and on the
+    /// Details button is still one probe.
+    private let revealer = SessionSourceRevealer { target in
+        NSWorkspace.shared.activateFileViewerSelecting([target])
+    }
     private let deleter: SessionDeleter
     private let index: SharedSessionIndex
 
@@ -1425,10 +1430,12 @@ final class SessionManagerModel: ObservableObject {
 
     /// Select the session's log in Finder — or, when `sourcePath` is not a
     /// file of its own (a Devin locator) or has gone since the last sweep,
-    /// the nearest folder or database that still exists.
+    /// the nearest folder or database that still exists. The path is probed
+    /// off the main actor (a slow volume must not freeze the Workbench), and a
+    /// second click while that probe runs is dropped.
     func revealInFinder(_ summary: SessionSummary) {
-        guard let target = SessionSourceReveal.target(forSourcePath: summary.sourcePath) else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([target])
+        let path = summary.sourcePath
+        Task { [revealer] in await revealer.reveal(sourcePath: path) }
     }
 
     private func report(_ result: TerminalLauncher.Result) {

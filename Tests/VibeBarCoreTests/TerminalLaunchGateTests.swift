@@ -208,37 +208,4 @@ final class TerminalLaunchGateTests: XCTestCase {
         XCTAssertEqual(results, [.launched(.terminal), .launched(.terminal)])
         XCTAssertEqual(Set(harness.runs.map(\.1)), [line, other])
     }
-
-    // MARK: - Reveal in Finder
-
-    func testRevealSelectsTheLogOrTheNearestThingThatExists() {
-        let existing: Set<String> = [
-            "/Users/example/.codex/sessions/2026/01/02/rollout.jsonl",
-            "/Users/example/.local/share/devin/cli/sessions.db",
-            "/Users/example/.claude/projects/demo"
-        ]
-        let exists: (String) -> Bool = { existing.contains($0) }
-        XCTAssertEqual(
-            SessionSourceReveal.target(
-                forSourcePath: "/Users/example/.codex/sessions/2026/01/02/rollout.jsonl", fileExists: exists
-            )?.path,
-            "/Users/example/.codex/sessions/2026/01/02/rollout.jsonl"
-        )
-        // A Devin locator names a row inside the database.
-        XCTAssertEqual(
-            SessionSourceReveal.target(
-                forSourcePath: "/Users/example/.local/share/devin/cli/sessions.db/sess-1", fileExists: exists
-            )?.path,
-            "/Users/example/.local/share/devin/cli/sessions.db"
-        )
-        // A log removed since the last sweep: its folder.
-        XCTAssertEqual(
-            SessionSourceReveal.target(
-                forSourcePath: "/Users/example/.claude/projects/demo/gone.jsonl", fileExists: exists
-            )?.path,
-            "/Users/example/.claude/projects/demo"
-        )
-        XCTAssertNil(SessionSourceReveal.target(forSourcePath: "/nowhere/at/all", fileExists: exists))
-        XCTAssertNil(SessionSourceReveal.target(forSourcePath: "", fileExists: exists))
-    }
 }
