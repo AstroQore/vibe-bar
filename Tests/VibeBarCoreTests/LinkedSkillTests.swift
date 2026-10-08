@@ -432,6 +432,50 @@ final class LinkedSkillTests: XCTestCase {
         XCTAssertTrue(removed)
     }
 
+    func testReconfirmingOrConvertingARenamedSkillIsRefused() async throws {
+        let fixture = try makeFixture()
+        let service = fixture.service
+        let home = fixture.home
+        let settings = home.url.appendingPathComponent(".claude/settings.json")
+        try home.write("{\"skillOverrides\":{\"\(skillName)\":\"off\"}}\n", to: settings)
+        let skill = try await service.adoptLinkedSkill(directoryName: skillName)
+        let receipt = try XCTUnwrap(skill.linkReceipt)
+        let target = try rawTarget(fixture.link)
+
+        // Renamed inside the linked folder: the receipt still matches, but
+        // Claude's switch is keyed by the old name, so the row keeps it.
+        try home.write("---\nname: renamed-agent\n---\n", to: fixture.external.appendingPathComponent("SKILL.md"))
+        let renamed = SkillError.linkedSkillRenamed(skillName, "renamed-agent")
+        await assertRefused(renamed) { try await service.reconfirmLinkedSkill(skill.id) }
+        await assertRefused(renamed) { try await service.adoptLinkedSkill(directoryName: skillName) }
+        await assertRefused(renamed) { try await service.convertLinkedSkillToCopy(skill.id) }
+        XCTAssertEqual(try rawTarget(fixture.link), target)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: home.ssot.path), [skillName])
+        let stored = await service.store.skill(with: skill.id)
+        XCTAssertEqual(stored?.name, skillName)
+        XCTAssertEqual(stored?.linkReceipt, receipt)
+        let renamedRows = await service.inventory().installed
+        let row = try XCTUnwrap(renamedRows.first { $0.id == skill.id })
+        XCTAssertEqual(row.name, skillName, "the row keeps the name its switches were written for")
+
+        // Re-pointed at a differently named skill: still refused, and the
+        // row stays paused in the read-only list.
+        let other = try home.makeSkillDirectory(
+            at: home.url.appendingPathComponent("Coding/other/other-agent"),
+            name: "other-agent"
+        )
+        try FileManager.default.removeItem(at: fixture.link)
+        try FileManager.default.createSymbolicLink(at: fixture.link, withDestinationURL: other)
+        await assertRefused(.linkedSkillRenamed(skillName, "other-agent")) {
+            try await service.reconfirmLinkedSkill(skill.id)
+        }
+        let discovered = await service.inventory().discoveredShared
+        let entry = try XCTUnwrap(discovered.first)
+        XCTAssertEqual(entry.registration, .receiptMismatch(skill.id, .retargeted))
+        let after = await service.store.skill(with: skill.id)
+        XCTAssertEqual(after?.linkReceipt, receipt)
+    }
+
     func testAFolderRecreatedBehindTheSameLinkIsChangedButCanBeUnlinked() async throws {
         let fixture = try makeFixture()
         let service = fixture.service

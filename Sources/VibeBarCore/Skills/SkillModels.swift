@@ -562,6 +562,9 @@ public enum SkillError: Error, Equatable, Sendable {
     case linkedSkillUnsupported(String)
     /// The linked folder is larger than a copy into the shared root allows.
     case copyLimitExceeded(String)
+    /// The linked folder now names its skill differently (directory, new
+    /// name). Native switches are keyed by name, so it is not renamed.
+    case linkedSkillRenamed(String, String)
 }
 
 extension SkillError: LocalizedError {
@@ -615,6 +618,8 @@ extension SkillError: LocalizedError {
             return "\"\(name)\" links to a folder outside Vibe Bar's management. Convert it to a copy before changing its files."
         case let .copyLimitExceeded(name):
             return "\"\(name)\" is too large to copy into the shared library."
+        case let .linkedSkillRenamed(name, newName):
+            return "\"\(name)\" now links to a skill named \"\(newName)\". Agent switches are kept by skill name, so Vibe Bar does not rename it: unlink it and adopt the link again."
         }
     }
 }

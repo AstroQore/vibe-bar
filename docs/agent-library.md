@@ -43,7 +43,10 @@ string rather than the folder. When the receipt stops matching — the link was
 re-pointed, broken, replaced by a folder, or removed — every write is refused
 and the entry returns to the read-only inventory as "Source changed", with
 Re-confirm Source (once the link is readable again) and, where the recorded
-link is still the one on disk or is gone, Unlink. The copies sheet lists a
+link is still the one on disk or is gone, Unlink. Re-confirming and converting
+keep the skill's name: native switches are keyed by name, so a linked folder
+whose SKILL.md now names a different skill is unlinked and adopted again
+rather than renamed in place. The copies sheet lists a
 linked skill's other copies without comparing any of them.
 
 Availability and header counts use the same native settings and current

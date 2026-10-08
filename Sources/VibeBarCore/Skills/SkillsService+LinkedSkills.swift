@@ -60,16 +60,23 @@ extension SkillsService {
     }
 
     /// Takes a new receipt for a linked skill whose link changed — or simply
-    /// records the current one again. The user is vouching for whatever the
-    /// link points at now, so its name and description are taken from it.
-    /// The folder must be a readable skill; nothing on disk is written.
+    /// records the current one again. The folder must be a readable skill;
+    /// nothing on disk is written.
+    ///
+    /// The skill's name must not change, exactly as `acceptLocalChanges`
+    /// requires: Codex, Claude, Gemini CLI, Grok Build and Mistral Vibe key
+    /// their per-skill switches by name, so a new name would leave the old
+    /// entries behind — a skill switched off would read as on, and unlink
+    /// could no longer find what to clear. A renamed skill is unlinked and
+    /// adopted again instead. The description simply follows the file.
     @discardableResult
     public func reconfirmLinkedSkill(_ id: SkillID) async throws -> Skill {
         guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
         guard skill.isLinked else { throw SkillError.notALink(skill.directory) }
         let capture = try SkillLinkInspector.capture(directoryName: skill.directory, homeDirectory: homeDirectory)
+        let name = capture.frontmatter.name ?? skill.directory
+        guard name == skill.name else { throw SkillError.linkedSkillRenamed(skill.directory, name) }
         skill.origin = .linked(capture.receipt)
-        skill.name = capture.frontmatter.name ?? skill.directory
         skill.description = capture.frontmatter.description
         skill.updatedAt = Date()
         try await store.upsert(skill)
@@ -110,6 +117,11 @@ extension SkillsService {
         defer { try? fm.removeItem(at: staging) }
         try fm.copyItem(at: source, to: staging)
         guard SkillTreeScanner.isSkillDirectory(staging) else { throw SkillError.missingSkillMD(skill.directory) }
+        // The same rule as re-confirming: the copy keeps the name the native
+        // switches were written for, or the link stays as it is.
+        let frontmatter = SkillFrontmatterParser.parse(contentsOf: staging.appendingPathComponent("SKILL.md"))
+        let copiedName = frontmatter.name ?? skill.directory
+        guard copiedName == skill.name else { throw SkillError.linkedSkillRenamed(skill.directory, copiedName) }
 
         // The copy took time; the link it replaces must still be the one the
         // receipt names, not one re-pointed (or removed) meanwhile.
@@ -125,10 +137,8 @@ extension SkillsService {
             throw error
         }
 
-        let frontmatter = SkillFrontmatterParser.parse(contentsOf: shared.appendingPathComponent("SKILL.md"))
         skill.origin = .owned
         skill.linkCheck = nil
-        skill.name = frontmatter.name ?? skill.directory
         skill.description = frontmatter.description
         skill.contentHash = try SkillDirectoryHasher.hash(directory: shared)
         skill.updatedAt = Date()
