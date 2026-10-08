@@ -20,18 +20,38 @@ both its shared path and its resolved source, with a bounded SKILL.md preview
 and Finder reveal actions. The source tree is not recursively hashed.
 
 Discovery does not add entries to `skills.json`, copy source files, create
-projections, or adopt ownership. Broken links, link cycles, missing SKILL.md,
-and unreadable or oversized sources remain visible with their current state.
-An existing registry record whose directory became a symlink is shown once
-through this read-only inventory. Its target does not acquire update, replace,
-or uninstall actions.
+projections, or adopt ownership. Only an explicit user action does. Adopt link
+(on the row, or the linked section of Import Existing) records the link and a
+receipt — its target string, resolved directory, and that directory's
+device/inode — and changes nothing on disk. Projections are created only when
+the user then switches a harness on, and only inside the allowlisted skills
+folders: always a symlink to `~/.agents/skills/<name>`, never a copy. The
+external folder is never written, recursively hashed, or copied, unless the
+user explicitly converts the skill to a copy (confirmed, and bounded by the
+archive budget). Broken links, link cycles, missing SKILL.md, and unreadable
+or oversized sources remain visible with their current state. An existing
+owned registry record whose directory became a symlink is shown once through
+this read-only inventory and can be adopted as a link; until then its target
+does not acquire update, replace, or uninstall actions.
+
+An adopted link is managed like any other skill: per-harness toggles, bulk
+actions, and native switches. Its row menu adds Reveal Source, Re-confirm
+Source, Convert to Copy, and Unlink, which replaces Uninstall: it removes the
+link's projections, its native per-skill switches, and the link itself (only
+while it still points where the receipt says), and backs up the link's target
+string rather than the folder. When the receipt stops matching — the link was
+re-pointed, broken, replaced by a folder, or removed — every write is refused
+and the entry returns to the read-only inventory as "Source changed", with
+Re-confirm Source (once the link is readable again) and, where the recorded
+link is still the one on disk or is gone, Unlink. The copies sheet lists a
+linked skill's other copies without comparing any of them.
 
 Availability and header counts use the same native settings and current
 projection evidence. A harness that reads the shared root can see a discovered
 skill without an extra link; a native disable is reported separately. Bulk
-operations continue to select managed registry entries only. Import Existing
-is the explicit action for bringing supported real shared directories under
-management.
+operations select managed registry entries, adopted links included. Import
+Existing is the explicit action for bringing supported real shared directories
+under management, and lists shared links for adoption, unchecked by default.
 
 ## MCP servers
 

@@ -8,7 +8,9 @@ import VibeBarCore
 /// records. Adopting the SSOT skills is one button because it writes no files
 /// at all; adopting a foreign app-side directory is per row, because that one
 /// copies real content into `~/.agents/skills` and replaces the original with
-/// a link.
+/// a link. Links in the shared root that lead elsewhere are per row too, and
+/// unchecked by default: adopting one writes only the registry, but it is
+/// still the user's call which outside folders Vibe Bar manages links to.
 struct SkillImportSheet: View {
     let density: Theme.Density
     @ObservedObject var model: SkillsManagerModel
@@ -16,6 +18,7 @@ struct SkillImportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var adoptedApps: Set<SkillAppTarget> = []
     @State private var adopting: [String: Set<SkillAppTarget>] = [:]
+    @State private var linking: Set<String> = []
     @State private var showsExistingSkills = false
 
     private var report: SkillImportReport? { model.importReport }
@@ -28,6 +31,7 @@ struct SkillImportSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                         if !report.adopted.isEmpty { adoptedSection(report) }
+                        if !report.linkedCandidates.isEmpty { linkedSection(report) }
                         if !report.unmanagedDirectories.isEmpty { unmanagedSection(report) }
                         if !report.unrecognized.isEmpty { unrecognizedSection(report) }
                         if !report.conflicts.isEmpty { conflictsSection(report) }
@@ -81,7 +85,8 @@ struct SkillImportSheet: View {
             Button {
                 model.runImport(
                     apps: Array(adoptedApps).sorted { $0.rawValue < $1.rawValue },
-                    adopting: adopting.mapValues { Array($0).sorted { $0.rawValue < $1.rawValue } }
+                    adopting: adopting.mapValues { Array($0).sorted { $0.rawValue < $1.rawValue } },
+                    linking: linking
                 )
             } label: {
                 HStack(spacing: 5) {
@@ -89,13 +94,13 @@ struct SkillImportSheet: View {
                         ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 12, height: 12)
                     }
                     Text(L10n.Workbench.Skills.Import.apply(
-                        count: report.adopted.count + adopting.count
+                        count: report.adopted.count + adopting.count + linking.count
                     ))
                 }
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(report.adopted.isEmpty && adopting.isEmpty)
+            .disabled(report.adopted.isEmpty && adopting.isEmpty && linking.isEmpty)
         }
         .padding(.horizontal, density.popoverPaddingH)
         .padding(.vertical, 12)
@@ -160,6 +165,73 @@ struct SkillImportSheet: View {
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: - Linked
+
+    private func linkedSection(_ report: SkillImportReport) -> some View {
+        let candidates = report.linkedCandidates
+        return CardShell(density: density, spacing: density.cardSpacing) {
+            sectionHeader(
+                L10n.Workbench.Skills.Import.linked,
+                detail: AppLocale.number(candidates.count)
+            )
+            Text(L10n.Workbench.Skills.Import.linkedDetail)
+                .font(.system(size: density.subtitleFontSize))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                smallButton(L10n.Workbench.Skills.Import.selectAllRows) {
+                    linking = Set(candidates.map(\.directoryName))
+                }
+                .disabled(linking.count == candidates.count)
+                smallButton(L10n.Workbench.Skills.Import.selectNoRows) {
+                    linking = []
+                }
+                .disabled(linking.isEmpty)
+                Spacer(minLength: 8)
+            }
+            ForEach(candidates) { candidate in
+                linkedRow(candidate)
+            }
+        }
+    }
+
+    private func linkedRow(_ candidate: SkillLinkCandidate) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Toggle(isOn: Binding(
+                get: { linking.contains(candidate.directoryName) },
+                set: { isOn in
+                    if isOn {
+                        linking.insert(candidate.directoryName)
+                    } else {
+                        linking.remove(candidate.directoryName)
+                    }
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(candidate.name)
+                        .font(.system(size: density.bucketTitleFontSize, weight: .semibold))
+                        .lineLimit(1)
+                    Text(L10n.Workbench.Skills.Import.linksTo(target: candidate.linkTarget))
+                        .font(.system(size: max(10, density.resetCountdownFontSize)))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(candidate.resolvedURL.path)
+                }
+            }
+            .toggleStyle(.checkbox)
+            Spacer(minLength: 8)
+            // The harnesses that already link to the shared path: recorded
+            // as adopted projections, exactly like an already-shared skill.
+            HStack(spacing: 3) {
+                ForEach(candidate.projectedApps, id: \.self) { app in
+                    SkillAppGlyph(app: app, size: 11)
+                        .help(app.displayName)
+                }
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     // MARK: - Unmanaged
@@ -331,5 +403,6 @@ struct SkillImportSheet: View {
         guard let report else { return }
         adoptedApps = Set(report.adopted.flatMap(\.projectedApps))
         adopting = [:]
+        linking = []
     }
 }

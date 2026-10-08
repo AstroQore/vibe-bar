@@ -856,7 +856,21 @@ capture against § 8 before committing it — a screenshot is source content.
   a time, never follow a symlink while deleting, and remove only
   symlinks that resolve back into the SSOT or copies whose recorded
   content hash still matches — so a folder the user authored or edited
-  is left in place. Vibe Bar reads `~/.agents/.skill-lock.json` for
+  is left in place. An adopted *linked* skill (`SkillOrigin.linked`: a
+  symlink in `~/.agents/skills` to a folder outside these roots, recorded
+  with a `SkillLinkReceipt` of its target string, resolved directory, and
+  that directory's device/inode) adds exactly one more removable entry —
+  that link itself, removed with `unlink(2)` on Unlink and only while its
+  target string still equals the receipt's. Every write on a linked skill
+  first re-checks the receipt and is refused while it does not match; its
+  projections are always symlinks to the shared path, never copies; and the
+  linked folder is never written, hashed (`SkillDirectoryHasher` refuses a
+  symlink root), or copied, except once by the explicit, confirmed Convert
+  to Copy, bounded by the archive budget (`SkillLinkConversionBudget`).
+  Unlink also returns the skill's native per-skill switches to their
+  default through `SkillHarnessConfigManager` (except a name-keyed switch
+  another skill on the Mac still answers to), and backs up the link's
+  target string only. Vibe Bar reads `~/.agents/.skill-lock.json` for
   provenance and never writes it, and pre-uninstall snapshots stay under
   `~/.vibebar/skill_backups/`. The harness built-in folders listed in
   `SkillAppCatalog.builtInRelativePaths` (Codex `~/.codex/skills/.system`,
@@ -927,9 +941,18 @@ capture against § 8 before committing it — a screenshot is source content.
 
   Shared skills discovered on disk are a separate, read-only inventory.
   Valid external links expose their logical path, resolved source, metadata,
-  and preview; opening the page does not adopt them or permit updating or
-  deleting their source tree. Managed skill mutations retain the Skills
-  manager's allowlist and ownership checks above.
+  and preview; discovery never adopts them and never creates a projection.
+  Only an explicit user action does: adopting a link (from its row or Import
+  Existing) writes nothing but its `skills.json` record and receipt, and a
+  projection appears only when the user switches a harness on — always a
+  symlink to `~/.agents/skills/<name>`, written only inside the allowlisted
+  roots above. An adopted link whose receipt no longer matches (re-pointed,
+  broken, replaced, removed) drops back to this read-only list until the user
+  re-confirms or unlinks it. The external folder is never written, never
+  recursively hashed or copied, and never read by the copies sheet
+  (`SkillReadScope` still refuses it), unless the user explicitly converts
+  the skill to a copy. Managed skill mutations retain the Skills manager's
+  allowlist and ownership checks above.
 - **E-ink displays are the one path that writes off this Mac.** Every
   other feature reads the network and writes the local disk; this one
   sends the user's numbers *out* — the panel has no local API, so every

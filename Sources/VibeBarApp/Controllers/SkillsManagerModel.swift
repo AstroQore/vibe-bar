@@ -31,6 +31,7 @@ final class SkillsManagerModel: ObservableObject {
         static func searchRow(_ id: String) -> String { "search-row:\(id)" }
         static func backup(_ name: String) -> String { "backup:\(name)" }
         static func copy(_ copy: SkillCopy) -> String { "copy:\(copy.id)" }
+        static func shared(_ entry: SharedSkillDiscovery) -> String { "shared:\(entry.id)" }
     }
 
     // MARK: - Installed skills
@@ -352,18 +353,83 @@ final class SkillsManagerModel: ObservableObject {
         ].joined(separator: " · ")
     }
 
+    /// Uninstalls an owned skill; for a linked one the service unlinks it
+    /// instead, and the toast says which happened.
     func uninstall(_ skill: Skill) {
         let id = skill.id
         perform(BusyKey.skill(id)) { [self] in
             let result = try await service.uninstall(id)
             updateStates[id] = nil
-            let kept = result.retainedApps
-            toast = kept.isEmpty
-                ? L10n.Workbench.Skills.Toast.uninstalledBackedUp(skill: skill.name)
-                : L10n.Workbench.Skills.Toast.uninstalledLeftInPlace(
-                    skill: skill.name,
-                    apps: kept.map(\.displayName).joined(separator: ", ")
-                )
+            toast = Self.uninstallToast(name: skill.name, linked: skill.isLinked, result: result)
+        }
+    }
+
+    // MARK: - Linked skills
+
+    /// Records a discovered link as a managed skill. Writes `skills.json`
+    /// only; the link and the folder it points at stay as they are.
+    func adoptLink(_ entry: SharedSkillDiscovery) {
+        perform(BusyKey.shared(entry)) { [self] in
+            _ = try await service.adoptLinkedSkill(directoryName: entry.directoryName)
+            toast = L10n.Workbench.Skills.Toast.recorded(count: 1)
+        }
+    }
+
+    /// Takes a fresh receipt for a link that changed — from a discovered row
+    /// whose receipt no longer matches, or from a managed row's menu.
+    func reconfirmLink(_ entry: SharedSkillDiscovery) {
+        guard let id = entry.registeredID else { return }
+        perform(BusyKey.shared(entry)) { [self] in
+            let skill = try await service.reconfirmLinkedSkill(id)
+            toast = L10n.Workbench.Skills.Toast.reconfirmedSource(skill: skill.name)
+        }
+    }
+
+    func reconfirmLink(_ skill: Skill) {
+        let id = skill.id
+        perform(BusyKey.skill(id)) { [self] in
+            let confirmed = try await service.reconfirmLinkedSkill(id)
+            toast = L10n.Workbench.Skills.Toast.reconfirmedSource(skill: confirmed.name)
+        }
+    }
+
+    /// Unlinks a linked row the read-only list shows: one whose link changed
+    /// but is still the one adopted, or one whose link is already gone.
+    func unlink(_ entry: SharedSkillDiscovery) {
+        guard let id = entry.registeredID, entry.canUnlink else { return }
+        perform(BusyKey.shared(entry)) { [self] in
+            let result = try await service.uninstall(id)
+            updateStates[id] = nil
+            toast = Self.uninstallToast(name: entry.name, linked: true, result: result)
+        }
+    }
+
+    /// Replaces a link with a copy of its folder. The confirmation lives in
+    /// the row; the copy runs on the service's actor, off the main thread.
+    func convertToCopy(_ skill: Skill) {
+        let id = skill.id
+        perform(BusyKey.skill(id)) { [self] in
+            let converted = try await service.convertLinkedSkillToCopy(id)
+            updateStates[id] = nil
+            toast = L10n.Workbench.Skills.Toast.convertedToCopy(skill: converted.name)
+        }
+    }
+
+    private static func uninstallToast(
+        name: String,
+        linked: Bool,
+        result: SkillsService.UninstallResult
+    ) -> String {
+        let kept = result.retainedApps.map(\.displayName).joined(separator: ", ")
+        switch (linked, kept.isEmpty) {
+        case (true, true):
+            return L10n.Workbench.Skills.Toast.unlinked(skill: name)
+        case (true, false):
+            return L10n.Workbench.Skills.Toast.unlinkedLeftInPlace(skill: name, apps: kept)
+        case (false, true):
+            return L10n.Workbench.Skills.Toast.uninstalledBackedUp(skill: name)
+        case (false, false):
+            return L10n.Workbench.Skills.Toast.uninstalledLeftInPlace(skill: name, apps: kept)
         }
     }
 
@@ -632,7 +698,15 @@ final class SkillsManagerModel: ObservableObject {
 
     func presentImportSheet() {
         perform(BusyKey.importing) { [self] in
-            importReport = await scanForImport()
+            let report = await scanForImport()
+            // A link already managed is not offered again; one whose receipt
+            // changed is re-confirmed from its own row instead.
+            let registered = Set(skills.map(\.directory) + discoveredShared.compactMap {
+                $0.registeredID == nil || $0.canAdoptLink ? nil : $0.directoryName
+            })
+            importReport = report.withLinkedCandidates(
+                report.linkedCandidates.filter { !registered.contains($0.directoryName) }
+            )
             isImportSheetPresented = true
         }
     }
@@ -644,12 +718,27 @@ final class SkillsManagerModel: ObservableObject {
     /// unmanaged directory is real content in an app's own folder: bringing it
     /// under management replaces it with a link, and that is a decision the
     /// user makes one row at a time.
-    func runImport(apps: [SkillAppTarget], adopting: [String: [SkillAppTarget]]) {
+    func runImport(
+        apps: [SkillAppTarget],
+        adopting: [String: [SkillAppTarget]],
+        linking: Set<String> = []
+    ) {
         guard let report = importReport else { return }
         let method = settingsStore.settings.skillsSyncMethod
         perform(BusyKey.importing) { [self] in
             var recorded = try await service.importAdopted(report, apps: apps).count
             var failed = 0
+            // Adopting a link writes the registry and nothing else.
+            for directory in linking.sorted()
+            where report.linkedCandidates.contains(where: { $0.directoryName == directory }) {
+                do {
+                    _ = try await service.adoptLinkedSkill(directoryName: directory)
+                    recorded += 1
+                } catch {
+                    failed += 1
+                    toast = error.localizedDescription
+                }
+            }
             for directory in adopting.keys.sorted() {
                 guard
                     let targets = adopting[directory], !targets.isEmpty,
@@ -763,7 +852,8 @@ final class SkillsManagerModel: ObservableObject {
                     case .cyclicLink: toast = L10n.Workbench.Library.cyclicLink
                     case .tooLarge: toast = L10n.Workbench.Library.tooLarge
                     case .missingSkillFile: toast = L10n.Workbench.Library.missingSkillFile
-                    case .ready, .unreadable, .missing: toast = L10n.Workbench.Library.unreadable
+                    case .missing: toast = L10n.Workbench.Library.linkMissing
+                    case .ready, .unreadable: toast = L10n.Workbench.Library.unreadable
                     }
                 }
             } catch {
