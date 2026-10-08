@@ -55,7 +55,13 @@ final class MCPDTOEncodingTests: XCTestCase {
                 sourceKey: nil
             ))),
             try keys(MCPCostToolSnapshotDTO(snapshot: FakeMCPDataSource.costSnapshot(for: .claude))),
-            try keys(MCPSessionSummaryDTO(summary: FakeMCPDataSource.sessionSummary))
+            try keys(MCPSessionSummaryDTO(summary: FakeMCPDataSource.sessionSummary)),
+            try keys(MCPSessionReviewRefDTO(review: FakeMCPDataSource.sessionSummary)),
+            try keys(MCPSessionReviewMatchDTO(review: FakeMCPDataSource.sessionSummary, matchedSeq: 1)),
+            try keys(MCPSessionSummaryDTO(
+                summary: FakeMCPDataSource.sessionSummary,
+                matchedReview: MCPSessionReviewMatchDTO(review: FakeMCPDataSource.sessionSummary, matchedSeq: 1)
+            ))
         ]
         for keys in samples {
             for key in keys {
