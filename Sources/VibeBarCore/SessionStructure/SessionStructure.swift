@@ -29,7 +29,9 @@ public struct SessionStructure: Codable, Sendable, Hashable {
     /// v5: a Codex counter that resets mid-session sums its epochs.
     /// v6: a review thread recognized only by its model gets guardian
     /// verdicts and prompt origins, not just the guardian kind.
-    public static let parserVersion = 6
+    /// v7: a guardian request with only `retained_source` keeps its
+    /// reviewed turn.
+    public static let parserVersion = 7
 
     /// How much of each turn was materialized.
     public enum Detail: String, Codable, Sendable, Hashable {

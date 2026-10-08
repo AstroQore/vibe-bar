@@ -537,6 +537,28 @@ final class CodexSessionStructureParserTests: XCTestCase {
         }
     }
 
+    func testRetainedSourceAloneNamesTheReviewedTurnAndExplicitSourcesWin() throws {
+        let builder = CodexRolloutBuilder()
+            .meta(source: ["subagent": ["other": "guardian"]], threadSource: "guardian_review")
+            .taskStarted("review-1")
+            .userResponseItem("Request with a retained source only", metadata: [
+                "retained_source": ["complete": true, "id": ["message_id": "msg_9", "turn_id": "parent-turn-3", "role": "user"]]
+            ])
+            .assistant(#"{"outcome":"allow","rationale":"Fine."}"#)
+            .taskComplete("review-1")
+            .taskStarted("review-2")
+            .userResponseItem("Copied excerpt", metadata: [
+                "retained_source": ["id": ["message_id": "msg_10", "turn_id": "parent-turn-4", "role": "assistant"]]
+            ])
+            .userResponseItem("The request itself", metadata: [
+                "guardian_sources": [["complete": true, "id": ["message_id": "msg_11", "turn_id": "parent-turn-5", "role": "assistant"]]]
+            ])
+            .assistant(#"{"outcome":"allow","rationale":"Fine."}"#)
+            .taskComplete("review-2")
+        let structure = try parse(builder)
+        XCTAssertEqual(structure.turns.map(\.reviewedTurnID), ["parent-turn-3", "parent-turn-5"])
+    }
+
     func testAutomationExecAndAgentCreatedKinds() throws {
         let automation = try parse(CodexRolloutBuilder().meta(threadSource: "automation")
             .taskStarted("a").prompt("Nightly report", turnID: "a").assistant("Sent").taskComplete("a")

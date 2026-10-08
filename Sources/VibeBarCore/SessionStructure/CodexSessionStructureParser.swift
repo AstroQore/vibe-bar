@@ -410,13 +410,20 @@ private final class CodexStructureBuilder {
         handleHumanInput(raw: stripped, imageCount: 0, authoritative: false, line: line, object: object)
     }
 
+    /// The parent turn a review is about. `guardian_sources` names it
+    /// explicitly and wins; a message carrying only `retained_source` (the
+    /// turn it was copied from) supplies it when nothing better has.
     func recordGuardianSource(_ metadata: [String: Any], line: SessionStructureLineReader.Line, object: [String: Any]) {
         let sources = metadata["guardian_sources"] as? [[String: Any]] ?? []
-        let reference = (sources.last?["id"] as? [String: Any])
-            ?? ((metadata["retained_source"] as? [String: Any])?["id"] as? [String: Any])
-        guard !sources.isEmpty, let turnID = SessionStructureText.string(reference?["turn_id"]) else { return }
+        let explicit = SessionStructureText.string((sources.last?["id"] as? [String: Any])?["turn_id"])
+        let retained = SessionStructureText.string(
+            ((metadata["retained_source"] as? [String: Any])?["id"] as? [String: Any])?["turn_id"]
+        )
+        guard let turnID = explicit ?? retained else { return }
         let turn = acc.ensureTurn(offset: line.offset, timestamp: timestamp(object), model: currentModel)
-        if acc.turns[turn].reviewedTurnID == nil { acc.turns[turn].reviewedTurnID = turnID }
+        if explicit != nil || acc.turns[turn].reviewedTurnID == nil {
+            acc.turns[turn].reviewedTurnID = turnID
+        }
     }
 
     /// One opening input. `authoritative` inputs (`UserMessage` items, the
