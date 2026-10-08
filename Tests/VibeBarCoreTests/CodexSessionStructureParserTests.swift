@@ -183,6 +183,49 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertTrue(steps[0].isError)
     }
 
+    func testCompletedItemAloneFinishesItsCall() throws {
+        let builder = CodexRolloutBuilder()
+            .meta()
+            .taskStarted("t1")
+            .prompt("Run the build", turnID: "t1")
+            .functionCall("exec_command", callID: "call_only_item", arguments: ["cmd": "swift build"])
+            .commandExecution(id: "call_only_item", command: ["/bin/zsh", "-lc", "swift build"], exitCode: 0, seconds: 3, nanos: 0)
+            .commandExecution(id: "exec-loose", command: ["/bin/zsh", "-lc", "true"], exitCode: 0)
+            .taskComplete("t1")
+        let structure = try parse(builder)
+        let only = try XCTUnwrap(structure.turns[0].steps.first { $0.callID == "call_only_item" })
+        XCTAssertEqual(only.pairing, .paired)
+        XCTAssertEqual(only.exitCode, 0)
+        XCTAssertEqual(only.durationMs, 3_000)
+        XCTAssertEqual(structure.diagnostics.pendingCalls, 0)
+        XCTAssertEqual(structure.diagnostics.orphanResults, 0)
+        // Once finished, the call no longer parents later items.
+        let loose = try XCTUnwrap(structure.turns[0].steps.first { $0.name == "command" && $0.callID == nil })
+        XCTAssertNil(loose.parentCallID)
+    }
+
+    func testItemBeforeOutputMergesIntoOneStep() throws {
+        let builder = CodexRolloutBuilder()
+            .meta()
+            .taskStarted("t1")
+            .prompt("Run the tests", turnID: "t1")
+            .functionCall("exec_command", callID: "call_tests", arguments: ["cmd": "swift test"])
+            .commandExecution(id: "call_tests", command: ["/bin/zsh", "-lc", "swift test"], exitCode: 1, seconds: 2, nanos: 0)
+            .stringOutput(callID: "call_tests", text: "Chunk ID: 1\nWall time: 2.1 seconds\nProcess exited with code 1\nOutput:\nerror: failed\n")
+            .taskComplete("t1")
+        let structure = try parse(builder)
+        let actions = structure.turns[0].steps.filter(\.kind.isAction)
+        XCTAssertEqual(actions.count, 1)
+        XCTAssertEqual(actions[0].pairing, .paired)
+        XCTAssertEqual(actions[0].exitCode, 1)
+        XCTAssertEqual(actions[0].durationMs, 2_000, "the completed item's duration is kept")
+        XCTAssertTrue(actions[0].isError)
+        XCTAssertEqual(actions[0].resultSummary, "error: failed")
+        XCTAssertEqual(structure.diagnostics.pendingCalls, 0)
+        XCTAssertEqual(structure.diagnostics.orphanResults, 0)
+        XCTAssertEqual(structure.stats.failedToolCount, 1)
+    }
+
     func testCodeModeExecNestsCommandsAndMCPCallsUnderTheScript() throws {
         let builder = CodexRolloutBuilder()
             .meta()

@@ -744,10 +744,11 @@ private final class CodexStructureBuilder {
         }
 
         // An item that shares a call's id completes that call rather than
-        // adding a second step for the same work.
-        if let itemID, let location = acc.location(forCall: itemID) {
+        // adding a second step for the same work — whether or not an
+        // `*_output` record also arrives (before or after it).
+        if let itemID, acc.location(forCall: itemID) != nil {
             let completed = step
-            acc.update(location) { existing in
+            let location = acc.completeCall(itemID) { existing in
                 if completed.kind == .command || completed.kind == .mcpCall { existing.kind = completed.kind }
                 existing.exitCode = completed.exitCode ?? existing.exitCode
                 existing.durationMs = completed.durationMs ?? existing.durationMs
@@ -756,7 +757,7 @@ private final class CodexStructureBuilder {
                 if existing.resultSummary == nil { existing.resultSummary = completed.resultSummary }
                 if existing.childSessionID == nil { existing.childSessionID = completed.childSessionID }
             }
-            if let child = completed.childSessionID { subagentSteps[child] = location }
+            if let child = completed.childSessionID, let location { subagentSteps[child] = location }
             return
         }
         let turn = acc.ensureTurn(offset: line.offset, timestamp: timestamp(object), model: currentModel)

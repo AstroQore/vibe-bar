@@ -283,6 +283,21 @@ final class SessionStructureAccumulator {
         return location
     }
 
+    /// Mark a call finished by a record that is not its result proper (a
+    /// completed item sharing its id). Unlike `resolveCall` an unknown id
+    /// is not an orphan — the caller adds a step instead — and a result
+    /// that still arrives later merges into the same step.
+    @discardableResult
+    func completeCall(_ callID: String, _ mutate: (inout Step) -> Void) -> StepLocation? {
+        guard let location = location(forCall: callID) else { return nil }
+        if let open = openCalls.lastIndex(of: callID) { openCalls.remove(at: open) }
+        update(location) { step in
+            if step.pairing == .pending { step.pairing = .paired }
+            mutate(&step)
+        }
+        return location
+    }
+
     /// The innermost call still waiting for its result — the parent of an
     /// `item_completed` that ran inside it.
     var innermostOpenCall: String? { openCalls.last }
