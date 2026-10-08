@@ -134,17 +134,16 @@ public struct SkillSyncEngine: Sendable {
     /// symlink, which is only accepted while the receipt still matches it,
     /// and only ever projected as another symlink to the shared path — never
     /// copied, so the linked folder is not read to make the projection.
-    /// `retiredCopyHash` names a copy Vibe Bar made for the owned row the
-    /// link replaced (`Skill.retiredCopyHashes`); a directory at the
-    /// destination that still hashes to it is replaced by the link.
+    /// A real directory at a linked skill's destination is always a conflict
+    /// here; `SkillsService` moves a retired copy Vibe Bar made aside first
+    /// (`stashRetiredCopy`), so it can put it back if the toggle fails.
     @discardableResult
     public func materialize(
         skillDirectoryName: String,
         into app: SkillAppTarget,
         method: SkillSyncMethod,
         recorded: SkillMaterialization? = nil,
-        linkReceipt: SkillLinkReceipt? = nil,
-        retiredCopyHash: String? = nil
+        linkReceipt: SkillLinkReceipt? = nil
     ) throws -> SkillMaterialization {
         guard app.supportsProjection else { throw SkillError.projectionUnsupported(app) }
         try SkillPathValidator.validate(directoryName: skillDirectoryName)
@@ -161,8 +160,7 @@ public struct SkillSyncEngine: Sendable {
                 source: source,
                 into: app,
                 method: method,
-                receipt: linkReceipt,
-                retiredCopyHash: retiredCopyHash
+                receipt: linkReceipt
             )
         case .missing: throw SkillError.sourceDirectoryMissing(skillDirectoryName)
         default: throw SkillError.sourceNotADirectory(skillDirectoryName)
@@ -353,17 +351,14 @@ public struct SkillSyncEngine: Sendable {
 
     /// A linked skill's projection: a symlink to the shared path, made only
     /// while the receipt matches. An existing real directory at the
-    /// destination is a conflict — deciding whether it is a copy of the
-    /// source would mean hashing the linked folder — unless it is a copy
-    /// Vibe Bar made for the owned row the link replaced and it still hashes
-    /// to what Vibe Bar recorded (only the destination is hashed).
+    /// destination is a conflict outright — deciding whether it is a copy of
+    /// the source would mean hashing the linked folder.
     private func materializeLinked(
         skillDirectoryName: String,
         source: URL,
         into app: SkillAppTarget,
         method: SkillSyncMethod,
-        receipt: SkillLinkReceipt,
-        retiredCopyHash: String?
+        receipt: SkillLinkReceipt
     ) throws -> SkillMaterialization {
         guard SkillLinkInspector.check(receipt, directoryName: skillDirectoryName, homeDirectory: homeDirectory) == .matches else {
             throw SkillError.linkReceiptMismatch(skillDirectoryName)
@@ -380,12 +375,7 @@ public struct SkillSyncEngine: Sendable {
             break
         case .symlink:
             try FileManager.default.removeItem(at: destination)
-        case .directory:
-            guard let retiredCopyHash,
-                  (try? SkillDirectoryHasher.hash(directory: destination)) == retiredCopyHash
-            else { throw SkillError.directoryConflict(skillDirectoryName) }
-            try FileManager.default.removeItem(at: destination)
-        case .regularFile, .other:
+        case .directory, .regularFile, .other:
             throw SkillError.directoryConflict(skillDirectoryName)
         }
         return try link(source: source, destination: destination)

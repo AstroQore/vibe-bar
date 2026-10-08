@@ -397,14 +397,21 @@ public actor SkillsService {
         guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
         let receipt = try writableLinkReceipt(for: skill)
         if enabled {
-            let materialization = try engine.materialize(
-                skillDirectoryName: skill.directory,
-                into: app,
-                method: receipt == nil ? method : .symlink,
-                recorded: skill.apps[app],
-                linkReceipt: receipt,
-                retiredCopyHash: skill.retiredCopyHashes[app]
-            )
+            let stash = try stashRetiredCopy(of: skill, in: app)
+            let materialization: SkillMaterialization
+            do {
+                materialization = try engine.materialize(
+                    skillDirectoryName: skill.directory,
+                    into: app,
+                    method: receipt == nil ? method : .symlink,
+                    recorded: skill.apps[app],
+                    linkReceipt: receipt
+                )
+            } catch {
+                if let stash { restoreRetiredCopy(stash) }
+                throw error
+            }
+            if let stash { discardRetiredCopy(stash) }
             skill.apps[app] = materialization
             skill.retiredCopyHashes[app] = nil
             try await store.upsert(skill)
@@ -470,44 +477,54 @@ public actor SkillsService {
                 return false
             }
             let prior = skill.apps[app]
+            // A retired copy at the destination is moved aside, not
+            // deleted, until both layers have landed: if either fails, the
+            // harness gets back exactly the folder it had.
+            let stash = app.discoversSharedSkillRoot ? nil : try stashRetiredCopy(of: skill, in: app)
             let materialization: SkillMaterialization?
-            if app.discoversSharedSkillRoot {
-                // The SSOT is already a native discovery root. Creating a
-                // second link is redundant and, in Gemini, surfaces as a
-                // conflict warning. Native state alone controls these apps.
-                materialization = prior
-            } else {
-                materialization = try engine.materialize(
-                    skillDirectoryName: skill.directory,
-                    into: app,
-                    method: method,
-                    recorded: prior,
-                    linkReceipt: receipt,
-                    retiredCopyHash: skill.retiredCopyHashes[app]
-                )
-            }
             do {
-                if app.supportsNativeSkillActivation {
-                    try harnessConfig.setNativeEnabled(
-                        action == .enable,
-                        directoryName: skill.directory,
-                        skillName: skill.name,
-                        app: app
+                if app.discoversSharedSkillRoot {
+                    // The SSOT is already a native discovery root. Creating a
+                    // second link is redundant and, in Gemini, surfaces as a
+                    // conflict warning. Native state alone controls these apps.
+                    materialization = prior
+                } else {
+                    materialization = try engine.materialize(
+                        skillDirectoryName: skill.directory,
+                        into: app,
+                        method: method,
+                        recorded: prior,
+                        linkReceipt: receipt
                     )
+                }
+                do {
+                    if app.supportsNativeSkillActivation {
+                        try harnessConfig.setNativeEnabled(
+                            action == .enable,
+                            directoryName: skill.directory,
+                            skillName: skill.name,
+                            app: app
+                        )
+                    }
+                } catch {
+                    // A newly-created projection without its matching native
+                    // state is misleading. Roll back only what this call
+                    // created; an existing projection belongs to the prior
+                    // state.
+                    if prior == nil, let materialization {
+                        _ = try? engine.unmaterialize(
+                            skillDirectoryName: skill.directory,
+                            from: app,
+                            recorded: materialization
+                        )
+                    }
+                    throw error
                 }
             } catch {
-                // A newly-created projection without its matching native
-                // state is misleading. Roll back only what this call created;
-                // an existing projection belongs to the prior state.
-                if prior == nil, let materialization {
-                    _ = try? engine.unmaterialize(
-                        skillDirectoryName: skill.directory,
-                        from: app,
-                        recorded: materialization
-                    )
-                }
+                if let stash { restoreRetiredCopy(stash) }
                 throw error
             }
+            if let stash { discardRetiredCopy(stash) }
             if let materialization {
                 skill.apps[app] = materialization
                 // A link now stands where the retired copy was.

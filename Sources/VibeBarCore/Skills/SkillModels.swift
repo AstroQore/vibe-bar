@@ -351,9 +351,10 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
     /// one replaced, by the content hash recorded when it wrote them. They
     /// are not projections of the link — a linked row records links only —
     /// but they are still Vibe Bar's, so switching that harness on (or
-    /// unlinking) may remove one while it still hashes to this value. An
-    /// edited copy is the user's and stays a conflict. Persisted as the
-    /// optional `retiredCopies` key.
+    /// unlinking) may remove one while it still hashes to this value —
+    /// a toggle moves it aside first and puts it back if either layer
+    /// fails. An edited copy is the user's and stays a conflict. Persisted
+    /// as the optional `retiredCopies` key.
     public var retiredCopyHashes: [SkillAppTarget: String] = [:]
     /// Live native-harness state, derived on reload and omitted from
     /// `skills.json`.

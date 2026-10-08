@@ -232,6 +232,60 @@ final class LinkedSkillTests: XCTestCase {
         XCTAssertEqual(home.lstatSnapshot(under: repository), externalBefore)
     }
 
+    func testARetiredCopyComesBackWhenTheNativeSwitchCannotBeWritten() async throws {
+        let home = try SkillTestHome()
+        let shared = try home.makeSSOTSkill(skillName, extraFiles: ["notes.md": "owned content"])
+        let service = SkillsService(homeDirectory: home.path)
+        let repoID = SkillID.repo(owner: "acme", repo: "skills", directory: skillName)
+        try await service.store.upsert(Skill(
+            id: repoID, name: skillName, directory: skillName, installedAt: .distantPast,
+            contentHash: try SkillDirectoryHasher.hash(directory: shared)
+        ))
+        _ = try await service.setActivation(repoID, app: .claude, action: .enable, method: .copy)
+        let claudeCopy = home.appDirectory(.claude).appendingPathComponent(skillName)
+        let copyHash = try SkillDirectoryHasher.hash(directory: claudeCopy)
+        let copyInode = try XCTUnwrap(
+            (FileManager.default.attributesOfItem(atPath: claudeCopy.path)[.systemFileNumber] as? NSNumber)?.uint64Value
+        )
+        let external = try home.makeSkillDirectory(
+            at: home.url.appendingPathComponent("Coding/media-skills/\(skillName)"), name: skillName
+        )
+        try FileManager.default.removeItem(at: shared)
+        try FileManager.default.createSymbolicLink(at: shared, withDestinationURL: external)
+        let adopted = try await service.adoptLinkedSkill(directoryName: skillName)
+        XCTAssertEqual(adopted.retiredCopyHashes[.claude], copyHash)
+        // Claude's settings cannot be parsed, so its native switch cannot be
+        // written after the link replaces the copy.
+        let settings = home.url.appendingPathComponent(".claude/settings.json")
+        try home.write("{ not json", to: settings)
+        let staging = VibeBarLocalStore.skillBackupsDirectoryURL(homeDirectory: home.path)
+            .appendingPathComponent(".retired-staging")
+
+        await assertRefused(.nativeConfigUnreadable(.claude)) {
+            try await service.setActivation(adopted.id, app: .claude, action: .enable)
+        }
+
+        XCTAssertEqual(SkillFileSystem.kind(of: claudeCopy), .directory, "the copy is back, not a link")
+        XCTAssertEqual(try SkillDirectoryHasher.hash(directory: claudeCopy), copyHash)
+        let restoredInode = (try FileManager.default.attributesOfItem(atPath: claudeCopy.path)[.systemFileNumber]
+            as? NSNumber)?.uint64Value
+        XCTAssertEqual(restoredInode, copyInode, "the same folder, moved back rather than re-created")
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: staging.path)) ?? [], [])
+        let stored = await service.store.skill(with: adopted.id)
+        XCTAssertNil(stored?.apps[.claude])
+        XCTAssertEqual(stored?.retiredCopyHashes[.claude], copyHash)
+        XCTAssertEqual(home.contents(of: settings), "{ not json")
+
+        // With the settings repaired the same toggle replaces the copy.
+        try FileManager.default.removeItem(at: settings)
+        let enabled = try await service.setActivation(adopted.id, app: .claude, action: .enable)
+        XCTAssertTrue(enabled)
+        XCTAssertEqual(SkillFileSystem.kind(of: claudeCopy), .symlink)
+        XCTAssertEqual((try? FileManager.default.contentsOfDirectory(atPath: staging.path)) ?? [], [])
+        let after = await service.store.skill(with: adopted.id)
+        XCTAssertNil(after?.retiredCopyHashes[.claude])
+    }
+
     func testALinkedRowNeverInheritsACopyFromADisplacedRow() async throws {
         let home = try SkillTestHome()
         let store = SkillsStore(homeDirectory: home.path)

@@ -204,6 +204,66 @@ extension SkillsService {
         return UninstallResult(backupURL: backupURL, removedByApp: removedByApp, retainedNativeApps: retainedNative)
     }
 
+    /// A retired copy moved out of a harness folder while a toggle replaces
+    /// it with a link.
+    struct RetiredCopyStash {
+        let destination: URL
+        let stash: URL
+    }
+
+    /// Moves the unchanged retired copy of `skill` in `app`
+    /// (`Skill.retiredCopyHashes`) into a private staging folder under
+    /// `~/.vibebar/skill_backups/`, so the destination is free for the link
+    /// and the copy can be put back if the rest of the toggle fails. `nil`
+    /// when there is nothing to move: no retired copy, or one that was
+    /// edited — that stays where it is and the link reports the conflict.
+    func stashRetiredCopy(of skill: Skill, in app: SkillAppTarget) throws -> RetiredCopyStash? {
+        guard skill.isLinked, app.supportsProjection, let hash = skill.retiredCopyHashes[app],
+              SkillPathValidator.isValid(skill.directory)
+        else { return nil }
+        let destination = engine.destination(for: skill.directory, app: app)
+        guard SkillAppCatalog.isWriteAllowed(destination, homeDirectory: homeDirectory),
+              SkillFileSystem.kind(of: destination) == .directory,
+              (try? SkillDirectoryHasher.hash(directory: destination)) == hash
+        else { return nil }
+        let root = VibeBarLocalStore.skillBackupsDirectoryURL(homeDirectory: homeDirectory)
+            .appendingPathComponent(".retired-staging", isDirectory: true)
+        try SkillFileSystem.ensureDirectory(root, stopAt: homeURL, permissions: 0o700)
+        let stash = root.appendingPathComponent(
+            "\(app.rawValue)-\(skill.directory)-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.moveItem(at: destination, to: stash)
+        return RetiredCopyStash(destination: destination, stash: stash)
+    }
+
+    /// Puts a stashed copy back after a failed toggle. Whatever the toggle
+    /// left at the destination can only be its own link to the shared path;
+    /// that goes first, and nothing else is ever overwritten.
+    func restoreRetiredCopy(_ stash: RetiredCopyStash) {
+        let fm = FileManager.default
+        let ssot = SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
+        if SkillFileSystem.kind(of: stash.destination) == .symlink,
+           let target = SkillFileSystem.lexicalSymlinkTarget(of: stash.destination),
+           SkillAppCatalog.isPath(target, under: ssot) {
+            try? fm.removeItem(at: stash.destination)
+        }
+        guard SkillFileSystem.kind(of: stash.destination) == .missing else {
+            SafeLog.warn("Skills could not put a retired copy back: its folder is occupied.")
+            return
+        }
+        do {
+            try fm.moveItem(at: stash.stash, to: stash.destination)
+        } catch {
+            SafeLog.warn("Skills could not put a retired copy back: \(SafeLog.sanitize(error.localizedDescription))")
+        }
+    }
+
+    /// Drops a stashed copy once the link replacing it has landed.
+    func discardRetiredCopy(_ stash: RetiredCopyStash) {
+        try? FileManager.default.removeItem(at: stash.stash)
+    }
+
     /// Clears every native per-skill disable this skill has, so nothing the
     /// harness configs say about it outlives the link. Returns the harnesses
     /// left as they were: an unreadable or refused config, or a name-keyed
