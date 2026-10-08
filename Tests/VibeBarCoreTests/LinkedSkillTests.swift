@@ -762,6 +762,48 @@ final class LinkedSkillTests: XCTestCase {
         XCTAssertNoThrow(try SkillDirectoryHasher.hash(directory: fixture.external))
     }
 
+    func testALinkedSharedCopyIsReadOnlyThroughTheBoundedMetadata() async throws {
+        let fixture = try makeFixture()
+        let service = fixture.service
+        let home = fixture.home
+        let skill = try await service.adoptLinkedSkill(directoryName: skillName)
+        try home.makeSkillDirectory(at: home.appDirectory(.grok).appendingPathComponent(skillName), name: skillName)
+        // A SKILL.md under the 256 KB limit whose description only appears
+        // past the 16 KB frontmatter read: a full read would find it.
+        let padding = String(repeating: "x-padding: \(String(repeating: "a", count: 100))\n", count: 200)
+        let skillFile = fixture.external.appendingPathComponent("SKILL.md")
+        try home.write("---\nname: \(skillName)\n\(padding)description: past the bound\n---\nbody\n", to: skillFile)
+        XCTAssertEqual(SkillFrontmatterParser.parse(contentsOf: skillFile).description, "past the bound",
+                       "the fixture would be visible to an unbounded read")
+
+        let scanner = SkillCopyScanner(homeDirectory: home.path)
+        XCTAssertNil(scanner.sharedCopy(directoryName: skillName), "a link is not a shared copy unless allowed")
+        let bounded = try XCTUnwrap(scanner.sharedCopy(directoryName: skillName, allowingLink: true))
+        XCTAssertEqual(bounded.name, skillName)
+        XCTAssertNil(bounded.description)
+        XCTAssertNil(bounded.contentHash)
+        XCTAssertEqual(bounded.url.standardizedFileURL.path, fixture.link.standardizedFileURL.path)
+
+        // The inventory refresh of a linked row with another copy reads the
+        // same bounded metadata.
+        let rows = await service.inventory().installed
+        let row = try XCTUnwrap(rows.first { $0.id == skill.id })
+        XCTAssertEqual(row.otherCopies.count, 1)
+        XCTAssertEqual(row.sharedCopy?.name, skillName)
+        XCTAssertNil(row.sharedCopy?.description)
+
+        // Past the 256 KB limit the file is never parsed at all: no shared
+        // copy, and the row waits in the read-only list as too large.
+        let oversized = String(repeating: "y", count: SharedSkillDiscoveryScanner.maximumPreviewBytes + 1)
+        try home.write("---\nname: \(skillName)\n---\n\(oversized)\n", to: skillFile)
+        XCTAssertNil(scanner.sharedCopy(directoryName: skillName, allowingLink: true))
+        let inventory = await service.inventory()
+        XCTAssertTrue(inventory.installed.isEmpty)
+        let entry = try XCTUnwrap(inventory.discoveredShared.first)
+        XCTAssertEqual(entry.state, .tooLarge)
+        XCTAssertEqual(entry.registration, .receiptMismatch(skill.id, .unavailable))
+    }
+
     func testCopiesOfALinkedSkillAreListedButNeverCompared() async throws {
         let fixture = try makeFixture()
         let service = fixture.service
