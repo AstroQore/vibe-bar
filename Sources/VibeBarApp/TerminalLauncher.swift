@@ -10,37 +10,40 @@ import VibeBarCore
 /// places is how one of them ends up without the validation.
 ///
 /// Driving Terminal or iTerm means sending Apple events, and macOS gates
-/// those behind a per-target Automation approval. A refusal is not a
-/// failure here: the line goes to the pasteboard and the caller says so, so
-/// the user can paste it into whatever they already have open instead of
-/// being sent to System Settings for a one-off action.
+/// those behind a per-target Automation approval. The decisions — what a
+/// refusal means, what goes to the pasteboard, which repeat clicks to ignore
+/// — live in `TerminalLaunchGate` (Core); this file is the AppKit half: the
+/// scripts, the queue they run on, and the pasteboard.
 @MainActor
 enum TerminalLauncher {
-    enum Result: Equatable {
-        /// The terminal accepted the line and is running it.
-        case launched(PreferredTerminal)
-        /// The line is on the pasteboard. `reason` is `nil` when that was
-        /// what the user asked for, and carries the automation failure
-        /// otherwise.
-        case copiedToClipboard(reason: String?)
-        /// Neither the terminal nor the pasteboard took it.
-        case failed(String)
-    }
+    typealias Result = TerminalLaunchGate.Result
 
-    static func launch(shellLine: String, preferred: PreferredTerminal) async -> Result {
-        switch preferred {
-        case .copyOnly:
-            return copy(shellLine, reason: nil)
-        case .terminal:
-            return run(terminalScript(for: shellLine), line: shellLine, target: preferred)
-        case .iterm2:
-            return run(itermScript(for: shellLine), line: shellLine, target: preferred)
+    /// One gate for the app, so a double click on the row's menu and on the
+    /// transcript header's button is still one launch.
+    private static let gate = TerminalLaunchGate(
+        runScript: { target, line in await execute(script(for: target, line: line)) },
+        copyToPasteboard: { line in
+            NSPasteboard.general.clearContents()
+            return NSPasteboard.general.setString(line, forType: .string)
         }
+    )
+
+    /// `nil` when the same launch is already in progress — nothing new to
+    /// report, and nothing was started.
+    static func launch(shellLine: String, preferred: PreferredTerminal) async -> Result? {
+        await gate.launch(shellLine: shellLine, preferred: preferred)
     }
 
     // MARK: - Scripts
 
-    private static func terminalScript(for line: String) -> String {
+    private nonisolated static func script(for target: PreferredTerminal, line: String) -> String {
+        switch target {
+        case .iterm2: itermScript(for: line)
+        case .terminal, .copyOnly: terminalScript(for: line)
+        }
+    }
+
+    private nonisolated static func terminalScript(for line: String) -> String {
         """
         tell application "Terminal"
             activate
@@ -52,7 +55,7 @@ enum TerminalLauncher {
     /// `create window with default profile` rather than reusing the front
     /// window: a resume writes into whatever session it lands in, and the
     /// window a user left a long-running command in is not a scratch pad.
-    private static func itermScript(for line: String) -> String {
+    private nonisolated static func itermScript(for line: String) -> String {
         """
         tell application "iTerm"
             activate
@@ -67,7 +70,7 @@ enum TerminalLauncher {
     /// AppleScript's string literal understands exactly two escapes, and the
     /// backslash has to be doubled first or it would escape the quote that
     /// the next replacement inserts.
-    static func appleScriptLiteral(_ raw: String) -> String {
+    nonisolated static func appleScriptLiteral(_ raw: String) -> String {
         let escaped = raw
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
@@ -76,41 +79,39 @@ enum TerminalLauncher {
 
     // MARK: - Execution
 
-    /// AppleScript's "not authorized to send Apple events" — the code macOS
-    /// returns once the user has denied the Automation prompt, and the one
-    /// outcome that is a settings problem rather than a scripting one.
-    static let notAuthorizedErrorNumber = -1743
+    /// Every AppleScript this app runs goes through this one serial queue.
+    ///
+    /// Off the main thread because `executeAndReturnError` does not return
+    /// until the target answers — and the first launch to each target waits
+    /// on the Automation prompt for as long as the user leaves it up, which
+    /// used to freeze the app behind a system dialog. Serial because
+    /// `NSAppleScript` is not safe to run on two threads at once.
+    private nonisolated static let scriptQueue = DispatchQueue(
+        label: "com.astroqore.VibeBar.terminal-launch",
+        qos: .userInitiated
+    )
 
-    private static func run(_ source: String, line: String, target: PreferredTerminal) -> Result {
-        guard let script = NSAppleScript(source: source) else {
-            return copy(line, reason: "The \(target.displayName) launch script could not be compiled.")
+    private nonisolated static func execute(_ source: String) async -> TerminalScriptOutcome {
+        await withCheckedContinuation { continuation in
+            scriptQueue.async {
+                guard let script = NSAppleScript(source: source) else {
+                    continuation.resume(returning: .uncompilable)
+                    return
+                }
+                var errorInfo: NSDictionary?
+                // The error dictionary is the only reliable signal: the
+                // returned descriptor is typed non-optional here and carries
+                // nothing useful for a `tell` that returns no value.
+                _ = script.executeAndReturnError(&errorInfo)
+                guard let errorInfo else {
+                    continuation.resume(returning: .succeeded)
+                    return
+                }
+                continuation.resume(returning: .failed(
+                    code: (errorInfo[NSAppleScript.errorNumber] as? NSNumber)?.intValue,
+                    message: errorInfo[NSAppleScript.errorMessage] as? String
+                ))
+            }
         }
-        var errorInfo: NSDictionary?
-        // The error dictionary is the only reliable signal: the returned
-        // descriptor is typed non-optional here and carries nothing useful
-        // for a `tell` that returns no value.
-        _ = script.executeAndReturnError(&errorInfo)
-        guard let errorInfo else { return .launched(target) }
-        return copy(line, reason: reason(for: errorInfo, target: target))
-    }
-
-    private static func reason(for errorInfo: NSDictionary, target: PreferredTerminal) -> String {
-        let code = (errorInfo[NSAppleScript.errorNumber] as? NSNumber)?.intValue
-        if code == notAuthorizedErrorNumber {
-            return "Vibe Bar is not allowed to control \(target.displayName) yet — "
-                + "approve it under System Settings › Privacy & Security › Automation."
-        }
-        if let message = errorInfo[NSAppleScript.errorMessage] as? String, !message.isEmpty {
-            return "\(target.displayName) could not run the command: \(message)"
-        }
-        return "\(target.displayName) did not respond to the launch request."
-    }
-
-    private static func copy(_ line: String, reason: String?) -> Result {
-        NSPasteboard.general.clearContents()
-        guard NSPasteboard.general.setString(line, forType: .string) else {
-            return .failed(reason ?? "The command could not be copied to the clipboard.")
-        }
-        return .copiedToClipboard(reason: reason)
     }
 }

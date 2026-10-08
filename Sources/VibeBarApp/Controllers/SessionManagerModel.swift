@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import VibeBarCore
@@ -1398,12 +1399,17 @@ final class SessionManagerModel: ObservableObject {
             return
         }
         Task { [weak self] in
-            let result = await TerminalLauncher.launch(shellLine: line, preferred: .copyOnly)
+            guard let result = await TerminalLauncher.launch(shellLine: line, preferred: .copyOnly) else { return }
             guard let self else { return }
             self.report(result)
         }
     }
 
+    /// The AppleScript runs on `TerminalLauncher`'s own queue, so the main
+    /// actor only starts the launch and, later, shows how it went — it never
+    /// waits on Terminal, or on the Automation prompt the first launch raises.
+    /// A second click while the same launch is still running comes back `nil`
+    /// and is dropped: one window, one toast.
     func resumeInTerminal(_ summary: SessionSummary) {
         guard let line = resumeShellLine(for: summary) else {
             show(toast: L10n.Workbench.Sessions.Toast.noResumeCommand)
@@ -1411,10 +1417,18 @@ final class SessionManagerModel: ObservableObject {
         }
         let preferred = settingsStore.settings.preferredTerminal
         Task { [weak self] in
-            let result = await TerminalLauncher.launch(shellLine: line, preferred: preferred)
+            guard let result = await TerminalLauncher.launch(shellLine: line, preferred: preferred) else { return }
             guard let self else { return }
             self.report(result)
         }
+    }
+
+    /// Select the session's log in Finder — or, when `sourcePath` is not a
+    /// file of its own (a Devin locator) or has gone since the last sweep,
+    /// the nearest folder or database that still exists.
+    func revealInFinder(_ summary: SessionSummary) {
+        guard let target = SessionSourceReveal.target(forSourcePath: summary.sourcePath) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([target])
     }
 
     private func report(_ result: TerminalLauncher.Result) {
@@ -1431,7 +1445,7 @@ final class SessionManagerModel: ObservableObject {
 
     func copyToClipboard(_ text: String, note: String) {
         Task { [weak self] in
-            let result = await TerminalLauncher.launch(shellLine: text, preferred: .copyOnly)
+            guard let result = await TerminalLauncher.launch(shellLine: text, preferred: .copyOnly) else { return }
             guard let self else { return }
             if case .copiedToClipboard = result {
                 self.show(toast: note)
