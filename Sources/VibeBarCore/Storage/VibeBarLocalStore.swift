@@ -177,6 +177,14 @@ public enum VibeBarLocalStore {
         baseDirectory.appendingPathComponent("session_index.sqlite3")
     }
 
+    /// Per-file turn/step outline and stats written by
+    /// `SessionStructureStore`. Derived like the session index: keyed by
+    /// source path + mtime + size and rebuilt from the session logs on any
+    /// mismatch, so deleting it costs a re-parse and nothing else.
+    public static var sessionStructureURL: URL {
+        baseDirectory.appendingPathComponent("session_structure.sqlite3")
+    }
+
     /// `SessionIndexCompactor`'s throttle stamp: when the last maintenance
     /// pass over `session_index.sqlite3` completed and under which
     /// `SessionIndexExcerptPolicy.version`. Its own file so maintenance

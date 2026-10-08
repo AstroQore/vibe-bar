@@ -424,11 +424,31 @@ Vibe Bar persists derived data under the user's **real** home directory:
 ├── service_status.json
 ├── cost_history.json
 ├── mini_window_geometry.json
+├── session_structure.sqlite3   (derived turn/step outline + stats, see below)
 └── mcp.sock          (socket, 0600, only while the app runs — see § 5.1)
 ```
 
 If you are debugging odd behavior, that directory is the place to look.
 Deleting it resets the app to first-run state.
+
+`session_structure.sqlite3` is the host-side sidecar written by
+`SessionStructureStore` (`Sources/VibeBarCore/SessionStructure/`): one row
+per Codex / Claude session file holding its stats, a per-turn outline
+(boundaries, byte offsets, every per-turn counter, usage, and a prompt
+preview of at most 120 characters) and Claude's sidechain rollups (counts,
+usage, models) — never a message body. It is derived
+data, kept apart from the kit's `session_index.sqlite3` because that schema
+is a cross-language contract this app does not extend. A row is keyed by
+`source_path` and is valid only for the `(mtime_ns, size)` it was parsed at
+and the current `SessionStructure.parserVersion`: either moving makes it a
+miss, and rows from another parser version are deleted when the store
+opens. Deleting the file costs a re-parse and nothing else; a file SQLite
+reports as not-a-database is rebuilt in place, and one that cannot be
+opened at all degrades the store to "always miss". The parsers only read
+the session logs; the one other input, `~/.codex/state_5.sqlite` (Codex's
+own thread table, used for `tokens_used` when a rollout carries no
+`token_count`), is opened `SQLITE_OPEN_READONLY` with a 100 ms busy timeout
+and skipped on any error.
 
 Keychain stores one Vibe Bar credential Vault
 (`com.astroqore.VibeBar.credential-vault` / `vault-v1`). Its versioned
