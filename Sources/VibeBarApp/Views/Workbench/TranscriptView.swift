@@ -718,6 +718,12 @@ struct SessionMetadataHeader: View {
                         note: L10n.Workbench.Sessions.Toast.sourcePathCopied
                     )
                 }
+                BorderlessIconButton(
+                    systemImage: "folder",
+                    help: L10n.Workbench.Skills.menuRevealInFinder
+                ) {
+                    model.revealInFinder(summary)
+                }
                 Spacer(minLength: 0)
             }
         }
