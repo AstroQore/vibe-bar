@@ -157,6 +157,24 @@ public enum SessionVisibleRows {
         return out
     }
 
+    /// The reviews a transcript merges: `fetched` — a bounded, oldest-first
+    /// read — plus the review a search hit landed in, when the bound left it
+    /// out. Without it, a match in a session's 501st review opened the session
+    /// with nothing to scroll to: the hit's `matchedSeq` counts messages of a
+    /// review the transcript never loaded. Only a review of `parentID` is
+    /// added, and never twice.
+    public static func reviewsToMerge(
+        _ fetched: [SessionSummary],
+        parentID: String,
+        focused: SessionSummary?
+    ) -> [SessionSummary] {
+        guard let focused,
+              reviewParentID(of: focused) == parentID,
+              !fetched.contains(where: { $0.id == focused.id })
+        else { return fetched }
+        return fetched + [focused]
+    }
+
     /// Look the parents up, one exact-row query each. Cancellation is
     /// checked per id so an abandoned search stops paying immediately.
     public static func resolveParents(

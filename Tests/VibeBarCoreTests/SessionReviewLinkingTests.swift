@@ -437,6 +437,46 @@ final class SessionReviewLinkingTests: XCTestCase {
         XCTAssertEqual(quietCount, 600)
     }
 
+    /// A search hit in a review past the transcript's merge bound still has
+    /// to be merged, or its `matchedSeq` lands nowhere.
+    func testTheMatchedReviewIsMergedEvenPastTheBound() async throws {
+        let store = try SessionIndexStore(url: databaseURL)
+        let prefix = CodexSessionAdapter.autoReviewVariantPrefix
+        let start = Date(timeIntervalSince1970: 1_767_225_600)
+        var entries: [SessionIndexStore.IndexBatchEntry] = []
+        for index in 0..<600 {
+            let id = String(format: "0199dddd-0000-7000-8000-%012d", index)
+            let path = "/Users/example/.codex/sessions/2026/01/02/rollout-\(id).jsonl"
+            entries.append(SessionIndexStore.IndexBatchEntry(
+                summary: SessionSummary(
+                    provider: .codex, sessionID: id, providerVariant: prefix + parentID, harness: .codex,
+                    createdAt: start.addingTimeInterval(TimeInterval(index)), sourcePath: path, sizeBytes: 64
+                ),
+                pathHash: id, path: path, provider: .codex, mtimeNanos: Int64(index), size: 64, excerpts: nil
+            ))
+        }
+        try await store.applyIndexBatch(entries)
+        let fetched = try await SessionReviewIndex(databaseURL: databaseURL)
+            .reviews(forParents: [parentID], limit: 500)
+        XCTAssertEqual(fetched.count, 500)
+        let newest = entries.last!.summary
+        XCTAssertFalse(fetched.contains { $0.id == newest.id }, "the newest review is past the bound")
+
+        let merged = SessionVisibleRows.reviewsToMerge(fetched, parentID: parentID, focused: newest)
+        XCTAssertEqual(merged.count, 501)
+        XCTAssertEqual(merged.last?.id, newest.id)
+        // Already inside the bound: not added twice.
+        let inside = SessionVisibleRows.reviewsToMerge(fetched, parentID: parentID, focused: fetched[3])
+        XCTAssertEqual(inside.count, 500)
+        // Another session's review, or no hit at all: untouched.
+        let stranger = SessionSummary(provider: .codex, sessionID: otherID, providerVariant: prefix + otherID + "x",
+                                      sourcePath: "/Users/example/.codex/sessions/s.jsonl")
+        XCTAssertEqual(SessionVisibleRows.reviewsToMerge(fetched, parentID: parentID, focused: stranger).count, 500)
+        XCTAssertEqual(SessionVisibleRows.reviewsToMerge(fetched, parentID: parentID, focused: nil).count, 500)
+        XCTAssertEqual(SessionVisibleRows.reviewsToMerge([], parentID: parentID, focused: newest).map(\.id),
+                       [newest.id], "a failed lookup still loads the review the hit is in")
+    }
+
     /// The legacy index is the shape the bug produced: a self-linked row is
     /// nobody's review, and must not be counted as its own.
     func testASelfLinkedRowIsNobodysReview() async throws {

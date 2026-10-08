@@ -1097,19 +1097,23 @@ final class SessionManagerModel: ObservableObject {
         select(
             row.summary,
             focusSeq: row.matchedSeq,
-            focusedRelatedID: row.matchedRelated?.id
+            focusedRelated: row.matchedRelated
         )
     }
 
+    /// `focusedRelated` is the Auto Review a search hit matched in, carried
+    /// whole rather than by id: the transcript merges at most
+    /// `transcriptReviewLimit` reviews, and this one has to be among them even
+    /// when it falls past that bound.
     func select(
         _ summary: SessionSummary?,
         focusSeq: Int? = nil,
-        focusedRelatedID: String? = nil
+        focusedRelated: SessionSummary? = nil
     ) {
         load(
             summary,
             focusSeq: focusSeq,
-            focusedRelatedID: focusedRelatedID,
+            focusedRelated: focusedRelated,
             headByteLimit: SessionIndexingBounds.viewerHeadParseByteLimit
         )
     }
@@ -1123,7 +1127,7 @@ final class SessionManagerModel: ObservableObject {
         load(
             selection,
             focusSeq: focusSeq,
-            focusedRelatedID: nil,
+            focusedRelated: nil,
             headByteLimit: nil
         )
     }
@@ -1162,7 +1166,7 @@ final class SessionManagerModel: ObservableObject {
     private func load(
         _ summary: SessionSummary?,
         focusSeq: Int?,
-        focusedRelatedID: String?,
+        focusedRelated: SessionSummary?,
         headByteLimit: Int64?
     ) {
         // Cancel first, and hold the new task: the generation check alone
@@ -1200,10 +1204,17 @@ final class SessionManagerModel: ObservableObject {
         transcriptTask = Task { [weak self] in
             var related: [SessionSummary] = []
             if let reviewParentID {
-                related = (try? await reviewIndex.reviews(
+                let fetched = (try? await reviewIndex.reviews(
                     forParents: [reviewParentID],
                     limit: Self.transcriptReviewLimit
                 )) ?? []
+                // The review the search hit is in rides along even past the
+                // bound — otherwise its `matchedSeq` has nowhere to land.
+                related = SessionVisibleRows.reviewsToMerge(
+                    fetched,
+                    parentID: reviewParentID,
+                    focused: focusedRelated
+                )
             }
             guard !Task.isCancelled else { return }
             let parsed = await Self.parse(
@@ -1211,7 +1222,7 @@ final class SessionManagerModel: ObservableObject {
                 url: url,
                 related: related,
                 requestedFocusSeq: focusSeq,
-                focusedRelatedID: focusedRelatedID,
+                focusedRelatedID: focusedRelated?.id,
                 headByteLimit: headByteLimit,
                 scratchDirectory: scratch
             )
