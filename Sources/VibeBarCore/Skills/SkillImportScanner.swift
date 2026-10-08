@@ -137,6 +137,7 @@ public enum SkillImportScanner {
         // resolution reads link targets and one file's metadata, and the
         // frontmatter read is bounded.
         var linkResolutions: [(name: String, target: String, resolved: URL, frontmatter: SkillFrontmatterParser.Frontmatter)] = []
+        var unsupportedLinkNames: Set<String> = []
         for name in directoryEntries(at: ssot) {
             let directory = ssot.appendingPathComponent(name, isDirectory: true)
             switch SkillFileSystem.kind(of: directory) {
@@ -156,6 +157,13 @@ public enum SkillImportScanner {
                       let skillFile = resolution.skillFile,
                       let frontmatter = SharedSkillDiscoveryScanner.frontmatter(of: skillFile)
                 else { continue }
+                // Still a shared-root name (a harness folder of the same name
+                // is a conflict), but never offered: its source is inside a
+                // folder Vibe Bar writes.
+                guard !SkillLinkInspector.isUnsupportedSource(resolved, homeDirectory: homeDirectory) else {
+                    unsupportedLinkNames.insert(name)
+                    continue
+                }
                 linkResolutions.append((name, target, resolved, frontmatter))
             default:
                 continue
@@ -165,6 +173,7 @@ public enum SkillImportScanner {
         // A real folder in a harness directory named like a shared link is a
         // conflict, not a skill to copy into a slot the link already holds.
         let ssotNames = candidateNames.union(unrecognized).union(linkResolutions.map(\.name))
+            .union(unsupportedLinkNames)
 
         var evidence: [String: [SkillAppTarget]] = [:]
         var unmanaged: [String: [SkillAppTarget]] = [:]

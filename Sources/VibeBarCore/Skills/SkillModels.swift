@@ -556,7 +556,8 @@ public enum SkillError: Error, Equatable, Sendable {
     case linkedSourceUnavailable(String)
     /// A linked skill's receipt no longer matches the link on disk.
     case linkReceiptMismatch(String)
-    /// The link resolves to a folder that contains the shared skills root.
+    /// The link resolves inside, or above, a folder Vibe Bar writes: the
+    /// shared skills root or a harness skills folder.
     case linkTargetUnsupported(String)
     /// The operation would read, hash, or write the linked folder's files.
     case linkedSkillUnsupported(String)
@@ -613,7 +614,7 @@ extension SkillError: LocalizedError {
         case let .linkReceiptMismatch(name):
             return "The link for \"\(name)\" no longer points where Vibe Bar recorded it. Re-confirm its source first."
         case let .linkTargetUnsupported(name):
-            return "\"\(name)\" links to a folder that contains ~/.agents/skills itself, which Vibe Bar cannot manage."
+            return "\"\(name)\" links into a folder Vibe Bar already manages — ~/.agents/skills or an agent's skills folder — so it cannot be adopted as a linked skill."
         case let .linkedSkillUnsupported(name):
             return "\"\(name)\" links to a folder outside Vibe Bar's management. Convert it to a copy before changing its files."
         case let .copyLimitExceeded(name):

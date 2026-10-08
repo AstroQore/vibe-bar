@@ -37,6 +37,10 @@ public struct SharedSkillDiscovery: Identifiable, Hashable, Sendable {
     public internal(set) var agents: [SkillAppTarget: Availability] = [:]
     public internal(set) var projectedTo: Set<SkillAppTarget> = []
     public internal(set) var registration: Registration = .unregistered
+    /// A link whose source lies inside (or contains) a folder Vibe Bar
+    /// writes — the shared root or a harness skills folder. Its projection
+    /// destination could be its own source, so it is never adoptable.
+    public internal(set) var linkTargetUnsupported = false
     public var id: String { logicalURL.path }
 
     /// The registry row this entry belongs to, when there is one.
@@ -49,7 +53,7 @@ public struct SharedSkillDiscovery: Identifiable, Hashable, Sendable {
 
     /// A ready link nobody adopted yet, or one an old owned row still names.
     public var canAdoptLink: Bool {
-        guard isSymlink, state == .ready else { return false }
+        guard isSymlink, state == .ready, !linkTargetUnsupported else { return false }
         switch registration {
         case .unregistered, .ownedRecord: return true
         case .receiptMismatch: return false
@@ -58,7 +62,8 @@ public struct SharedSkillDiscovery: Identifiable, Hashable, Sendable {
 
     /// A changed link that is readable again and can be recorded anew.
     public var canReconfirmLink: Bool {
-        guard isSymlink, state == .ready, case .receiptMismatch = registration else { return false }
+        guard isSymlink, state == .ready, !linkTargetUnsupported,
+              case .receiptMismatch = registration else { return false }
         return true
     }
 
@@ -163,11 +168,15 @@ final class SharedSkillDiscoveryScanner {
                 state = .unreadable
             }
         }
-        return SharedSkillDiscovery(
+        var entry = SharedSkillDiscovery(
             directoryName: name, name: frontmatter.name ?? name, description: frontmatter.description,
             logicalURL: logical, resolvedURL: resolution.resolvedURL, isSymlink: linked, state: state,
             linkTarget: target
         )
+        if linked, let resolved = resolution.resolvedURL {
+            entry.linkTargetUnsupported = SkillLinkInspector.isUnsupportedSource(resolved, homeDirectory: homeDirectory)
+        }
+        return entry
     }
 
     /// Follows `logical` the way discovery always has, without reading
@@ -247,13 +256,9 @@ enum SkillLinkInspector {
               let identity = directoryIdentity(resolved),
               let frontmatter = SharedSkillDiscoveryScanner.frontmatter(of: skillFile)
         else { throw SkillError.linkedSourceUnavailable(directoryName) }
-        // A link to an ancestor of the shared root would make "the linked
-        // folder" contain every skill Vibe Bar manages, the link included.
-        let ssot = SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
-        let canonicalSSOT = ssot.resolvingSymlinksInPath().standardizedFileURL
-        guard !SkillAppCatalog.isPath(ssot, under: resolved),
-              !SkillAppCatalog.isPath(canonicalSSOT, under: resolved)
-        else { throw SkillError.linkTargetUnsupported(directoryName) }
+        guard !isUnsupportedSource(resolved, homeDirectory: homeDirectory) else {
+            throw SkillError.linkTargetUnsupported(directoryName)
+        }
         return Capture(
             receipt: SkillLinkReceipt(
                 target: target,
@@ -264,6 +269,30 @@ enum SkillLinkInspector {
             ),
             frontmatter: frontmatter
         )
+    }
+
+    /// Whether a link's resolved source sits inside, or contains, any root
+    /// Vibe Bar writes: the shared root and every harness skills folder
+    /// (`SkillAppCatalog.allowedWriteRoots`), each compared both as spelled
+    /// and with its own symlinks resolved.
+    ///
+    /// Such a "linked folder" is not outside Vibe Bar's management. A source
+    /// in `~/.claude/skills/foo` is the very destination a Claude projection
+    /// of `foo` would occupy — enabling it could only conflict, or replace a
+    /// link there and close a cycle through the shared entry — and an
+    /// ancestor of the shared root would contain every managed skill, the
+    /// link itself included.
+    static func isUnsupportedSource(_ resolved: URL, homeDirectory: String) -> Bool {
+        let source = resolved.standardizedFileURL
+        let canonicalSource = resolved.resolvingSymlinksInPath().standardizedFileURL
+        return SkillAppCatalog.allowedWriteRoots(homeDirectory: homeDirectory).contains { root in
+            let spellings = [root.standardizedFileURL, root.resolvingSymlinksInPath().standardizedFileURL]
+            return spellings.contains { root in
+                [source, canonicalSource].contains { source in
+                    SkillAppCatalog.isPath(source, under: root) || SkillAppCatalog.isPath(root, under: source)
+                }
+            }
+        }
     }
 
     /// Whether the link at the shared path is still the one `receipt` pins.

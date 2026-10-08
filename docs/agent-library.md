@@ -23,7 +23,9 @@ Discovery does not add entries to `skills.json`, copy source files, create
 projections, or adopt ownership. Only an explicit user action does. Adopt link
 (on the row, or the linked section of Import Existing) records the link and a
 receipt — its target string, resolved directory, and that directory's
-device/inode — and changes nothing on disk. Projections are created only when
+device/inode — and changes nothing on disk. A link whose source lies inside,
+or contains, a folder Vibe Bar writes (the shared root or a harness skills
+folder) is not adoptable: its row says the link is managed elsewhere. Projections are created only when
 the user then switches a harness on, and only inside the allowlisted skills
 folders: always a symlink to `~/.agents/skills/<name>`, never a copy. The
 external folder is never written, recursively hashed, or copied, unless the

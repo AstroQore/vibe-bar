@@ -35,6 +35,14 @@ struct SharedSkillDiscoveryRow: View {
                     Text(detail).font(.caption).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                // Points into a folder Vibe Bar writes itself (another
+                // agent's skills folder, the shared root), so there is
+                // nothing outside to adopt: the agent that folder belongs to
+                // manages it.
+                if entry.linkTargetUnsupported, entry.state == .ready {
+                    Text(L10n.Workbench.Library.Error.notOwnedProjection).font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let description = entry.description {
                     Text(description).font(.system(size: density.subtitleFontSize)).foregroundStyle(.secondary).lineLimit(2)
                 }

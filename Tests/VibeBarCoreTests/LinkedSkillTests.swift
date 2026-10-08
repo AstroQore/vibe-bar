@@ -305,6 +305,52 @@ final class LinkedSkillTests: XCTestCase {
         XCTAssertTrue(rows.isEmpty)
     }
 
+    func testALinkIntoAManagedSkillsFolderIsNotAdoptable() async throws {
+        let home = try SkillTestHome()
+        try home.makeDirectory(home.ssot)
+        // Into Claude's own folder: the projection destination is the source.
+        try home.makeSkillDirectory(at: home.appDirectory(.claude).appendingPathComponent("foo"), name: "foo")
+        try FileManager.default.createSymbolicLink(
+            at: home.ssot.appendingPathComponent("foo"),
+            withDestinationURL: home.appDirectory(.claude).appendingPathComponent("foo")
+        )
+        // At Codex's skills folder itself.
+        try home.write("---\nname: codex-root\n---\n", to: home.appDirectory(.codex).appendingPathComponent("SKILL.md"))
+        try FileManager.default.createSymbolicLink(
+            at: home.ssot.appendingPathComponent("codex-root"),
+            withDestinationURL: home.appDirectory(.codex)
+        )
+        // Through a harness folder that is itself a link into a dotfiles
+        // checkout: still that harness's folder once resolved.
+        let dotfiles = home.url.appendingPathComponent("dotfiles/grok-skills", isDirectory: true)
+        try home.makeSkillDirectory(at: dotfiles.appendingPathComponent("bar"), name: "bar")
+        try home.makeDirectory(home.appDirectory(.grok).deletingLastPathComponent())
+        try FileManager.default.createSymbolicLink(at: home.appDirectory(.grok), withDestinationURL: dotfiles)
+        try FileManager.default.createSymbolicLink(
+            at: home.ssot.appendingPathComponent("bar"),
+            withDestinationURL: home.appDirectory(.grok).appendingPathComponent("bar")
+        )
+        let service = SkillsService(homeDirectory: home.path)
+        let before = home.lstatSnapshot()
+
+        let entries = await service.inventory().discoveredShared
+        XCTAssertEqual(Set(entries.map(\.directoryName)), ["bar", "codex-root", "foo"])
+        for entry in entries {
+            XCTAssertEqual(entry.state, .ready, entry.directoryName)
+            XCTAssertTrue(entry.linkTargetUnsupported, entry.directoryName)
+            XCTAssertFalse(entry.canAdoptLink, entry.directoryName)
+        }
+        XCTAssertTrue(SkillImportScanner.scan(homeDirectory: home.path).linkedCandidates.isEmpty)
+        for name in ["foo", "codex-root", "bar"] {
+            await assertRefused(.linkTargetUnsupported(name)) {
+                try await service.adoptLinkedSkill(directoryName: name)
+            }
+        }
+        let rows = await service.store.all()
+        XCTAssertTrue(rows.isEmpty)
+        XCTAssertEqual(home.lstatSnapshot(), before)
+    }
+
     // MARK: - Projection
 
     func testEnablingClaudeLinksToTheSharedPathAndNeverCopies() async throws {
