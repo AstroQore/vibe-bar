@@ -520,8 +520,13 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
         inner.discoverSessionFiles(homeDirectory: homeDirectory)
     }
 
+    /// The kit's metadata, with one host-side correction: an old Codex
+    /// guardian rollout that the kit linked to itself is re-pointed at its
+    /// real parent, or unlinked when it never recorded one. See
+    /// `CodexReviewLinkRepair`. Only the indexer sees this; the deleter's
+    /// re-parse compares session ids, which the repair never changes.
     func extractMetadata(fileURL: URL) throws -> SessionSummary {
-        try inner.extractMetadata(fileURL: fileURL)
+        CodexReviewLinkRepair.repaired(try inner.extractMetadata(fileURL: fileURL), fileURL: fileURL)
     }
 
     /// Forwarded, not defaulted: an adapter whose sessions are not one file

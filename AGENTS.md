@@ -537,6 +537,24 @@ count is withheld rather than misreported (`hasMore` stays truthful);
 lives. `sessions.list` still accepts its original `since` as an alias for
 `from`.
 
+**Codex Auto Review rows are never rows here, exactly as on the Sessions
+page.** A guardian rollout belongs to the session it reviewed, and
+`SessionVisibleRows` (Core) is the one listing and search rule both surfaces
+call: `page` excludes those rows in SQL, so `totalCount` counts listed
+sessions only, and `search` folds a hit inside a review onto the session it
+reviewed. Such a hit carries `matchedReview` (`id`, `sessionId`,
+`matchedSeq`) and no row `matchedSeq` of its own — the seq counts the
+review's messages, and handing it out on the parent would send an agent to
+the wrong place in the wrong file. A review whose session is no longer in the
+index stands as a row of its own rather than vanishing. `sessions.transcript`
+does not merge reviews into the parent the way the Workbench viewer does:
+each stays its own log, so every `seq` and `nextFrom` means one file. The
+parent's response says how many it has in `autoReviewCount` and names the
+oldest `SessionTranscriptResult.autoReviewListLimit` (50) in `autoReviews`;
+an agent reads one by passing its `id` back. Both come from
+`SessionReviewIndex`, the read-only per-parent view the Workbench uses, and
+are omitted when a session has none.
+
 `sessions.transcript` returns **bounded windows**, never a whole log. It goes
 through `SessionIndexingBounds.readTranscriptWindow`, which is a wrapper
 around the same `readTranscript` the Workbench viewer uses — one read path,
@@ -1087,15 +1105,25 @@ Three rules keep the browser-cookie importers (the four core providers'
 `SessionIndexService` skips a file whose size and mtime have not moved,
 which is what makes a refresh cheap — and what makes a *parser* upgrade
 invisible: nothing about the file changed, so the better reading is never
-asked for. `SessionIndexReparse` drops the affected provider's rows from
+asked for. `SessionIndexReparse` drops the affected rows from
 `session_files` once per version at launch, so the next pass re-reads those
 files; it never touches `sessions` or `session_messages`, so nothing
-disappears from the Workbench meanwhile. Bump `currentVersion` and list the
-providers when a kit upgrade changes what already-indexed rows should say.
-It runs behind `SessionIndexMaintenanceGate` and stamps only after every
-delete reports `SQLITE_DONE`, so a pass that is already walking those files
-cannot skip one on a cursor being deleted, and a refusal is retried on the
-next launch rather than recorded as done.
+disappears from the Workbench meanwhile. Each version is one entry in
+`SessionIndexReparse.steps`, and a step drops cursors one of two ways: a
+whole provider (`providers`, what v1 does for AntiGravity's new titles), or a
+`TargetedDrop` that picks rows out by what they say, for a fix that touches a
+few files of a large tree. v2 is the targeted kind: it drops only the Codex
+Auto Review rows whose variant names the row itself — the pre-0.142 shape
+`CodexReviewLinkRepair` re-points on the indexing adapter — so a few hundred
+rollouts are re-read rather than the whole Codex archive. When a kit upgrade
+or a host-side correction changes what already-indexed rows should say, bump
+`currentVersion` and append a step; never edit a shipped one, because its
+version is already stamped on every Mac that ran it. A launch runs every step
+newer than its stamp, in order, behind `SessionIndexMaintenanceGate`, and
+stamps each step only after every one of its deletes reports `SQLITE_DONE`,
+so a pass that is already walking those files cannot skip one on a cursor
+being deleted, and a refusal is retried on the next launch rather than
+recorded as done.
 
 ### 7.1 Provider and harness naming
 

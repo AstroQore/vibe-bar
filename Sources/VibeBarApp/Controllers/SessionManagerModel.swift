@@ -241,7 +241,9 @@ final class SessionManagerModel: ObservableObject {
         }
     }
     @Published var checkedIDs: Set<String> = []
-    @Published private(set) var pendingDeletion: [SessionSummary]?
+    /// What the confirmation is asking about: the selection, plus the Auto
+    /// Reviews that go with it.
+    @Published private(set) var pendingDeletion: SessionDeletionCascade.Plan?
     @Published private(set) var toast: String?
 
     struct IndexProgress: Equatable {
@@ -274,12 +276,16 @@ final class SessionManagerModel: ObservableObject {
 
     private var store: SessionIndexStore? { index.store }
     private var service: SessionIndexService? { index.service }
+    private var reviewIndex: SessionReviewIndex { index.reviews }
 
     private var searchTask: Task<Void, Never>?
     private var directoryFilterTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var rowsTask: Task<Void, Never>?
+    /// Reads the reviews a deletion takes with it, before the confirmation
+    /// is shown. Held so a second request (or Cancel) supersedes it.
+    private var deletionPlanTask: Task<Void, Never>?
     /// The parse behind the open transcript. Held so a second click cancels
     /// the first: three 1 GB sessions in a row used to mean three concurrent
     /// full parses, of which two were discarded on arrival by a generation
@@ -289,11 +295,14 @@ final class SessionManagerModel: ObservableObject {
     private var searchGeneration: UInt64 = 0
     private var summaryGeneration: UInt64 = 0
     private var lastScanFinishedAt: Date?
-    private var reviewSummariesByParent: [String: [SessionSummary]] = [:]
+    /// Auto Reviews per parent session id — one small entry per parent, from
+    /// `SessionReviewIndex.overview()`. The reviews themselves are read only
+    /// when a transcript opens or a deletion is planned.
+    private var reviewCountsByParent: [String: Int] = [:]
     private var relatedHitByParent: [String: SessionSummary] = [:]
     /// Bumped whenever the index's contents can have moved (a completed
     /// refresh, a rebuild, a delete). Everything derived from a whole-index
-    /// query — the review children and the harness chip counts — is fetched
+    /// query — the review counts and the harness chip counts — is fetched
     /// once per value of this rather than on every filter change.
     private var indexGeneration: UInt64 = 0
     private var indexDerivedGeneration: UInt64?
@@ -321,6 +330,9 @@ final class SessionManagerModel: ObservableObject {
     /// thousands of main-actor hops between the user and a scroll.
     private nonisolated static let progressStride = 250
     private static let summaryPageSize = 250
+    /// Most Auto Reviews one transcript merges. The busiest session on a
+    /// heavy Mac has a few hundred; this only bounds a pathological one.
+    private static let transcriptReviewLimit = 500
     /// Ceiling on how many summaries the page keeps loaded.
     ///
     /// The list is a `LazyVStack`, which builds rows lazily but never
@@ -431,12 +443,14 @@ final class SessionManagerModel: ObservableObject {
         refreshTask?.cancel()
         toastTask?.cancel()
         rowsTask?.cancel()
+        deletionPlanTask?.cancel()
         cancelTranscriptParse()
         searchTask = nil
         directoryFilterTask = nil
         refreshTask = nil
         toastTask = nil
         rowsTask = nil
+        deletionPlanTask = nil
 
         isLoadingTranscript = false
         isPreparingRows = false
@@ -545,33 +559,34 @@ final class SessionManagerModel: ObservableObject {
         let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
         let since = dateRange.start()
         let order = summaryOrder
-        // Chip counts and the Auto Review children are whole-index facts:
-        // they do not depend on the harness, date, sort or directory filter
-        // that triggered this reload. Re-asking for up to 2 000 review
-        // summaries on every chip click was the page's most expensive habit.
+        // Chip counts and the Auto Review counts are whole-index facts: they
+        // do not depend on the harness, date, sort or directory filter that
+        // triggered this reload, so they are read once per index generation.
+        // The review counts come grouped from SQLite — one entry per parent,
+        // every review counted — rather than as a capped list of summaries.
         let currentIndexGeneration = indexGeneration
         let needsIndexDerived = reset && indexDerivedGeneration != currentIndexGeneration
         let includes = directoryIncludes
         let excludes = directoryExcludes
+        let reviewIndex = self.reviewIndex
         isLoadingSummaries = true
         Task { [weak self] in
-            let page = try? await service.summaryPage(
+            let page = try? await SessionVisibleRows.page(
+                service,
                 harnesses: harnesses,
                 since: since,
                 projectIncludes: includes,
                 projectExcludes: excludes,
-                excludingProviderVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix,
                 order: order,
                 offset: offset,
                 limit: Self.summaryPageSize
             )
             let counts = needsIndexDerived ? (try? await service.harnessCounts()) : nil
-            let reviews = needsIndexDerived ? (try? await service.summaries(
-                provider: .codex,
-                providerVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix
-            )) : nil
+            let overview = needsIndexDerived ? (try? await reviewIndex.overview()) : nil
             guard let self, generation == self.summaryGeneration else { return }
-            if needsIndexDerived, counts != nil || reviews != nil {
+            // Both or neither: chip counts that never had the hidden reviews
+            // taken off would otherwise stick for the whole generation.
+            if needsIndexDerived, counts != nil, overview != nil {
                 self.indexDerivedGeneration = currentIndexGeneration
             }
             self.isLoadingSummaries = false
@@ -593,17 +608,13 @@ final class SessionManagerModel: ObservableObject {
                 self.select(first)
             }
             if var counts {
-                for review in reviews ?? [] {
-                    let harness = review.effectiveHarness
-                    counts[harness] = max(0, (counts[harness] ?? 0) - 1)
+                for (harness, hidden) in overview?.hiddenRowsByHarness ?? [:] {
+                    counts[harness] = max(0, (counts[harness] ?? 0) - hidden)
                 }
                 self.harnessCounts = counts
             }
-            if let reviews {
-                self.reviewSummariesByParent = Dictionary(grouping: reviews) {
-                    CodexSessionAdapter.autoReviewParentSessionID(providerVariant: $0.providerVariant) ?? ""
-                }
-                self.reviewSummariesByParent.removeValue(forKey: "")
+            if let overview {
+                self.reviewCountsByParent = overview.countsByParent
                 self.refreshRows()
             }
             self.reconcileSelection()
@@ -682,56 +693,28 @@ final class SessionManagerModel: ObservableObject {
         guard !Task.isCancelled, generation == searchGeneration else { return }
         labelHits = labelled
 
-        // Resolve every Auto Review child to its parent in one hop.
+        // Resolve every Auto Review child to its parent in one hop, then fold
+        // — the same rule `sessions.search` applies (`SessionVisibleRows`).
         //
-        // This used to be one `await service.summary(...)` per hit inside the
-        // loop: up to 200 main-actor → index-actor → main-actor round trips
-        // for a single search, most of them asking for a parent the last hit
-        // had already fetched. agent-session-kit 0.7.0 has no `IN`-list
-        // lookup (`summaries(provider:)` only takes a variant prefix), so the
-        // batching is host-side: dedupe the ids, answer what the loaded page
-        // and the per-generation cache already know, and ask the index only
-        // for the remainder — from a single detached task, so the main actor
-        // is entered once rather than 200 times.
-        var wanted: [String] = []
-        var seenWanted: Set<String> = []
-        for hit in found {
-            guard let parentID = CodexSessionAdapter.autoReviewParentSessionID(
-                providerVariant: hit.summary.providerVariant
-            ) else { continue }
-            guard parentSummaryCache[parentID] == nil, seenWanted.insert(parentID).inserted else {
-                continue
-            }
-            wanted.append(parentID)
-        }
+        // The lookups are batched host-side: dedupe the ids, answer what the
+        // per-generation cache already knows, and ask the index only for the
+        // remainder — from a single detached task, so the main actor is
+        // entered once rather than once per hit.
+        let wanted = SessionVisibleRows.reviewParentIDs(in: found).filter { parentSummaryCache[$0] == nil }
         if !wanted.isEmpty {
             let fetched = await Self.resolveParentSummaries(service: service, sessionIDs: wanted)
             guard !Task.isCancelled, generation == searchGeneration else { return }
             parentSummaryCache.merge(fetched) { _, new in new }
         }
 
-        var resolved: [SessionSearchHit] = []
-        var seen: Set<String> = []
+        let folded = SessionVisibleRows.fold(found, parents: parentSummaryCache)
         var relatedHits: [String: SessionSummary] = [:]
-        for hit in found {
-            if let parentID = CodexSessionAdapter.autoReviewParentSessionID(
-                providerVariant: hit.summary.providerVariant
-            ), let parent = parentSummaryCache[parentID] {
-                guard seen.insert(parent.id).inserted else { continue }
-                relatedHits[parent.id] = hit.summary
-                resolved.append(SessionSearchHit(
-                    summary: parent,
-                    snippet: hit.snippet,
-                    matchedSeq: hit.matchedSeq
-                ))
-            } else {
-                guard seen.insert(hit.summary.id).inserted else { continue }
-                resolved.append(hit)
-            }
+        for entry in folded {
+            if let review = entry.matchedReview { relatedHits[entry.hit.summary.id] = review }
         }
         guard !Task.isCancelled, generation == searchGeneration else { return }
         relatedHitByParent = relatedHits
-        hits = resolved
+        hits = folded.map(\.hit)
     }
 
     private var summaryOrder: SessionSummaryOrder {
@@ -762,12 +745,12 @@ final class SessionManagerModel: ObservableObject {
         var out: [SessionSummary] = []
         var offset = 0
         while out.count < labelHitLimit, !Task.isCancelled {
-            guard let page = try? await service.summaryPage(
+            guard let page = try? await SessionVisibleRows.page(
+                service,
                 harnesses: harnesses,
                 since: since,
                 projectIncludes: projectIncludes,
                 projectExcludes: projectExcludes,
-                excludingProviderVariantPrefix: CodexSessionAdapter.autoReviewVariantPrefix,
                 order: order,
                 offset: offset,
                 limit: labelScanPageSize
@@ -789,14 +772,7 @@ final class SessionManagerModel: ObservableObject {
         sessionIDs: [String]
     ) async -> [String: SessionSummary] {
         await Task.detached(priority: .userInitiated) {
-            var out: [String: SessionSummary] = [:]
-            for sessionID in sessionIDs {
-                guard !Task.isCancelled else { return out }
-                if let parent = try? await service.summary(provider: .codex, sessionID: sessionID) {
-                    out[sessionID] = parent
-                }
-            }
-            return out
+            await SessionVisibleRows.resolveParents(service, ids: sessionIDs)
         }.value
     }
 
@@ -835,9 +811,7 @@ final class SessionManagerModel: ObservableObject {
             hits: hits,
             labelHits: labelHits,
             relatedHitByParent: relatedHitByParent,
-            reviewCounts: reviewSummariesByParent.reduce(into: [String: Int]()) {
-                $0[$1.key] = $1.value.count
-            },
+            reviewCounts: reviewCountsByParent,
             needle: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
             scopes: searchScopes,
             harnessFilter: harnessFilter,
@@ -1214,10 +1188,24 @@ final class SessionManagerModel: ObservableObject {
         }
         let generation = transcriptGeneration
         let url = URL(fileURLWithPath: summary.sourcePath)
-        let related = reviewSummariesByParent[summary.sessionID] ?? []
+        // A Codex session's Auto Reviews are read on selection, from the
+        // review index's actor: always the current set, never a list the page
+        // had to hold for every session in advance.
+        let reviewParentID = summary.provider == .codex
+            && SessionVisibleRows.reviewParentID(of: summary) == nil
+            ? summary.sessionID : nil
+        let reviewIndex = self.reviewIndex
         let scratch = VibeBarLocalStore.sessionIndexScratchDirectoryURL(homeDirectory: homeDirectory)
         isLoadingTranscript = true
         transcriptTask = Task { [weak self] in
+            var related: [SessionSummary] = []
+            if let reviewParentID {
+                related = (try? await reviewIndex.reviews(
+                    forParents: [reviewParentID],
+                    limit: Self.transcriptReviewLimit
+                )) ?? []
+            }
+            guard !Task.isCancelled else { return }
             let parsed = await Self.parse(
                 adapter: adapter,
                 url: url,
@@ -1474,20 +1462,41 @@ final class SessionManagerModel: ObservableObject {
             show(toast: SessionDeleteError.providerIsReadOnly(refused).message)
             return
         }
-        pendingDeletion = deletable
+        // A Codex session's Auto Reviews go with it (`SessionDeletionCascade`),
+        // so the confirmation counts them before it is shown. One grouped
+        // query on the review index's actor; the dialog waits for it rather
+        // than promising a number it then changes.
+        deletionPlanTask?.cancel()
+        let reviewIndex = self.reviewIndex
+        deletionPlanTask = Task { [weak self] in
+            let plan = await SessionDeletionCascade.plan(selected: deletable, reviewIndex: reviewIndex)
+            guard let self, !Task.isCancelled else { return }
+            self.deletionPlanTask = nil
+            self.pendingDeletion = plan
+        }
     }
 
     func cancelDelete() {
+        deletionPlanTask?.cancel()
+        deletionPlanTask = nil
         pendingDeletion = nil
     }
 
     func confirmDelete() {
-        guard let targets = pendingDeletion else { return }
+        guard let plan = pendingDeletion else { return }
         pendingDeletion = nil
         let deleter = self.deleter
         let registry = self.registry
+        if !plan.reviews.isEmpty {
+            SafeLog.info(
+                "Session delete: \(plan.selected.count) selected with \(plan.reviews.count) Auto Review(s), "
+                    + "\(plan.totalBytes) bytes"
+            )
+        }
         Task { [weak self] in
-            let outcomes = await Self.performDelete(deleter: deleter, registry: registry, targets: targets)
+            // Every file — review or not — through the deleter, so each one
+            // gets the same containment, symlink and re-parsed-id checks.
+            let outcomes = await Self.performDelete(deleter: deleter, registry: registry, targets: plan.all)
             guard let self else { return }
             await self.finish(outcomes)
         }
@@ -1609,6 +1618,10 @@ final class SharedSessionIndex {
     /// not the app its launch.
     let store: SessionIndexStore?
     let service: SessionIndexService?
+    /// Auto Review rows by parent, on a read-only connection of its own —
+    /// shared by the Sessions page and the MCP session tools so the two read
+    /// the same answer. See `SessionReviewIndex`.
+    let reviews = SessionReviewIndex(databaseURL: VibeBarLocalStore.sessionIndexURL)
     /// The privacy switch, mirrored where the index actor can read it
     /// without a main-actor hop — and, unlike a captured `Bool`, re-read on
     /// every pass. Following the setting for the life of the app is what

@@ -147,6 +147,7 @@ match every checkout of it, or a full absolute path for an exact one.
 | `title` / `summary` | naming the session to the user |
 | `lastActiveAt` | how stale the work is |
 | `matchedSeq` (search) | the message index of the hit — feed straight to `sessions.transcript` |
+| `matchedReview` (search) | the hit is inside one of this session's Codex Auto Reviews — read it there, see below |
 | `snippet` (search) | the excerpt, `<b>` around the match — render as emphasis or strip, never print raw |
 | `sourcePath` | telling two sessions apart, or a command the *user* runs. **Not** for you to open |
 | `id` | naming the session to `sessions.transcript` |
@@ -166,6 +167,16 @@ shapes:
   bite, the window shrinks *towards* your message rather than dropping it.
 - **`from` / `limit`** — paging. Feed the response's `nextFrom` back as `from`
   until `hasMore` is false.
+
+Codex Auto Review passes are part of the session they reviewed, so they are
+never rows of `sessions.list` or `sessions.search`. When a search matched
+inside one, the hit is the reviewed session with `matchedReview` (`id`,
+`sessionId`, `matchedSeq`) and no `matchedSeq` of its own: call
+`sessions.transcript` with `id: matchedReview.id` and
+`around: matchedReview.matchedSeq`. Do not pass that seq with the session's
+own `id` — it counts the review's messages, not the session's. A Codex
+session's transcript says how many reviews it has in `autoReviewCount` and
+names the oldest in `autoReviews`; read one by passing its `id`.
 
 `roles` thins a window (`["user"]` for just the prompts). It does *not* search
 past the window, so "the 20 messages around seq 400, user turns only" stays

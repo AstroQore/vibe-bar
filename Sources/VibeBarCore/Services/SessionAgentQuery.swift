@@ -332,11 +332,25 @@ public enum TranscriptReadRefusal: Error, LocalizedError, Equatable {
 
 /// One session, read for an agent.
 public struct SessionTranscriptResult: Sendable {
+    /// How many of a session's Auto Reviews one transcript response names.
+    public static let autoReviewListLimit = 50
+
     public let summary: SessionSummary
     public let window: TranscriptWindow
+    /// Codex: the session's Auto Reviews, oldest first, at most
+    /// `autoReviewListLimit`; `autoReviewCount` is all of them.
+    public let autoReviews: [SessionSummary]
+    public let autoReviewCount: Int
 
-    public init(summary: SessionSummary, window: TranscriptWindow) {
+    public init(
+        summary: SessionSummary,
+        window: TranscriptWindow,
+        autoReviews: [SessionSummary] = [],
+        autoReviewCount: Int? = nil
+    ) {
         self.summary = summary
         self.window = window
+        self.autoReviews = autoReviews
+        self.autoReviewCount = max(autoReviewCount ?? autoReviews.count, autoReviews.count)
     }
 }

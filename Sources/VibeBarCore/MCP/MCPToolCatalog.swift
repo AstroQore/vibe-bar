@@ -299,7 +299,10 @@ public enum MCPToolCatalog {
             search needs Vibe Bar's session body indexing enabled; with it off, titles and projects still \
             match. The index is as fresh as the last sweep, so a session being written right now is \
             searchable up to that point. Rows are labelled with the harness (the usage axis), not the \
-            quota SubProvider.
+            quota SubProvider. Codex Auto Review passes are never rows of their own: a match inside one \
+            is reported on the session it reviewed, with 'matchedReview' ({id, sessionId, matchedSeq}) \
+            naming the review — read that match with sessions.transcript on matchedReview.id around \
+            matchedReview.matchedSeq.
             """,
         inputSchema: object(
             properties: sessionFilterProperties.merging([
@@ -319,7 +322,8 @@ public enum MCPToolCatalog {
             is that other agent in'. Use sessions.search when you know what the session was about, and \
             sessions.transcript to read one. 'totalCount' is exact unless a 'to' or 'models' filter is \
             in play — those are applied after the index query, so trust 'hasMore' instead. Rows are \
-            labelled with the harness (the usage axis).
+            labelled with the harness (the usage axis). Codex Auto Review passes are not listed; a \
+            session's transcript names them.
             """,
         inputSchema: object(properties: sessionFilterProperties.merging([
             "since": string(
@@ -355,6 +359,9 @@ public enum MCPToolCatalog {
             'totalMessageCount' is absent whenever the read stopped before the end of the log, which a \
             bounded read usually does — a prefix's count is not the log's count. Use 'hasMore' and \
             'nextFrom' to keep going.
+
+            A Codex session's Auto Review passes are separate logs. 'autoReviewCount' says how many it \
+            has and 'autoReviews' names the oldest of them; read one by passing its 'id' here.
             """,
         inputSchema: object(properties: [
             "id": string(
