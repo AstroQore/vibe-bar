@@ -347,6 +347,14 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
     /// Live verification of a linked row's receipt, derived on reload and
     /// omitted from `skills.json`. `nil` for owned rows.
     public var linkCheck: SkillLinkCheck?
+    /// Linked rows only: harness copies Vibe Bar made for the owned row this
+    /// one replaced, by the content hash recorded when it wrote them. They
+    /// are not projections of the link — a linked row records links only —
+    /// but they are still Vibe Bar's, so switching that harness on (or
+    /// unlinking) may remove one while it still hashes to this value. An
+    /// edited copy is the user's and stays a conflict. Persisted as the
+    /// optional `retiredCopies` key.
+    public var retiredCopyHashes: [SkillAppTarget: String] = [:]
     /// Live native-harness state, derived on reload and omitted from
     /// `skills.json`.
     public var nativeDisabledApps: Set<SkillAppTarget>
@@ -457,6 +465,7 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, description, directory, repoBranch, installedAt, contentHash, updatedAt, apps, link
+        case retiredCopies
     }
 
     public init(from decoder: Decoder) throws {
@@ -489,6 +498,12 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
             self.origin = .owned
         }
         self.linkCheck = nil
+        var retired: [SkillAppTarget: String] = [:]
+        for (key, hash) in (try? c.decodeIfPresent([String: String].self, forKey: .retiredCopies)) ?? [:] {
+            guard let app = SkillAppTarget(rawValue: key) else { continue }
+            retired[app] = hash
+        }
+        self.retiredCopyHashes = retired
         self.nativeDisabledApps = []
         self.nativeStateUnknownApps = []
         self.localContentHash = nil
@@ -508,6 +523,11 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         for (app, value) in apps { rawApps[app.rawValue] = value }
         try c.encode(rawApps, forKey: .apps)
         try c.encodeIfPresent(linkReceipt, forKey: .link)
+        if !retiredCopyHashes.isEmpty {
+            var rawRetired: [String: String] = [:]
+            for (app, hash) in retiredCopyHashes { rawRetired[app.rawValue] = hash }
+            try c.encode(rawRetired, forKey: .retiredCopies)
+        }
     }
 }
 

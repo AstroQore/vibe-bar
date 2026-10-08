@@ -402,18 +402,21 @@ public actor SkillsService {
                 into: app,
                 method: receipt == nil ? method : .symlink,
                 recorded: skill.apps[app],
-                linkReceipt: receipt
+                linkReceipt: receipt,
+                retiredCopyHash: skill.retiredCopyHashes[app]
             )
             skill.apps[app] = materialization
+            skill.retiredCopyHashes[app] = nil
             try await store.upsert(skill)
             return true
         }
         let removed = try engine.unmaterialize(
             skillDirectoryName: skill.directory,
             from: app,
-            recorded: skill.apps[app]
+            recorded: skill.apps[app] ?? retiredCopy(of: skill, in: app)
         )
         skill.apps[app] = nil
+        if removed { skill.retiredCopyHashes[app] = nil }
         try await store.upsert(skill)
         return removed
     }
@@ -445,9 +448,10 @@ public actor SkillsService {
             let removed = try engine.unmaterialize(
                 skillDirectoryName: skill.directory,
                 from: app,
-                recorded: skill.apps[app]
+                recorded: skill.apps[app] ?? retiredCopy(of: skill, in: app)
             )
             skill.apps[app] = nil
+            if removed { skill.retiredCopyHashes[app] = nil }
             try await store.upsert(skill)
             return removed
 
@@ -478,7 +482,8 @@ public actor SkillsService {
                     into: app,
                     method: method,
                     recorded: prior,
-                    linkReceipt: receipt
+                    linkReceipt: receipt,
+                    retiredCopyHash: skill.retiredCopyHashes[app]
                 )
             }
             do {
@@ -503,7 +508,11 @@ public actor SkillsService {
                 }
                 throw error
             }
-            if let materialization { skill.apps[app] = materialization }
+            if let materialization {
+                skill.apps[app] = materialization
+                // A link now stands where the retired copy was.
+                if materialization.method == .symlink { skill.retiredCopyHashes[app] = nil }
+            }
             try await store.upsert(skill)
             return true
         }
@@ -676,6 +685,12 @@ public actor SkillsService {
             throw SkillError.linkReceiptMismatch(skill.directory)
         }
         return receipt
+    }
+
+    /// A copy retired when a link replaced an owned row, as the
+    /// materialization `unmaterialize` needs to remove it while unchanged.
+    func retiredCopy(of skill: Skill, in app: SkillAppTarget) -> SkillMaterialization? {
+        skill.retiredCopyHashes[app].map { SkillMaterialization(method: .copy, contentHashAtCopy: $0) }
     }
 
     func ssotDirectory(for directoryName: String) -> URL {

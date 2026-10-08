@@ -167,6 +167,98 @@ final class LinkedSkillTests: XCTestCase {
         XCTAssertEqual(home.lstatSnapshot(under: home.url, excluding: ["/.vibebar"]), before)
     }
 
+    func testAdoptingOverARepositoryRowRetiresItsCopiesInsteadOfInheritingThem() async throws {
+        let home = try SkillTestHome()
+        let shared = try home.makeSSOTSkill(skillName)
+        let service = SkillsService(homeDirectory: home.path)
+        let repoID = SkillID.repo(owner: "acme", repo: "skills", directory: skillName)
+        try await service.store.upsert(Skill(
+            id: repoID,
+            name: skillName,
+            directory: skillName,
+            installedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            contentHash: try SkillDirectoryHasher.hash(directory: shared)
+        ))
+        _ = try await service.setActivation(repoID, app: .claude, action: .enable, method: .copy)
+        _ = try await service.setActivation(repoID, app: .antigravity, action: .enable, method: .copy)
+        let claudeCopy = home.appDirectory(.claude).appendingPathComponent(skillName)
+        let antigravityCopy = home.appDirectory(.antigravity).appendingPathComponent(skillName)
+        XCTAssertEqual(SkillFileSystem.kind(of: claudeCopy), .directory)
+        // The AntiGravity copy is edited by hand: from now on it is the user's.
+        try home.write("edited by hand", to: antigravityCopy.appendingPathComponent("notes.md"))
+        // The shared directory is then replaced by a link to a checkout.
+        let repository = home.url.appendingPathComponent("Coding/media-skills", isDirectory: true)
+        let external = try home.makeSkillDirectory(
+            at: repository.appendingPathComponent(skillName),
+            name: skillName,
+            extraFiles: ["scripts/run.py": "print('synthetic')"]
+        )
+        try FileManager.default.removeItem(at: shared)
+        try FileManager.default.createSymbolicLink(at: shared, withDestinationURL: external)
+        let externalBefore = home.lstatSnapshot(under: repository)
+
+        let adopted = try await service.adoptLinkedSkill(directoryName: skillName)
+
+        // One row, local identity, and no copy projection inherited from the
+        // displaced repository row — the copies are only remembered by hash.
+        let rows = await service.store.all()
+        XCTAssertEqual(rows.map(\.id), [.local(directory: skillName)])
+        let stored = try XCTUnwrap(rows.first)
+        XCTAssertFalse(stored.apps.values.contains { $0.method == .copy })
+        XCTAssertEqual(Set(stored.retiredCopyHashes.keys), [.claude, .antigravity])
+        let reloaded = await SkillsStore(homeDirectory: home.path).all()
+        XCTAssertEqual(reloaded.first?.retiredCopyHashes, stored.retiredCopyHashes)
+        let rowCandidates = await service.inventory().installed.first
+        let row = try XCTUnwrap(rowCandidates)
+        XCTAssertEqual(row.activationState(for: .claude), .notProjected)
+
+        // Switching Claude on replaces Vibe Bar's unchanged copy with a link.
+        let enabled = try await service.setActivation(adopted.id, app: .claude, action: .enable)
+        XCTAssertTrue(enabled)
+        XCTAssertEqual(SkillFileSystem.kind(of: claudeCopy), .symlink)
+        XCTAssertEqual(try rawTarget(claudeCopy), shared.standardizedFileURL.path)
+        let afterEnable = await service.store.skill(with: adopted.id)
+        XCTAssertEqual(afterEnable?.apps[.claude]?.method, .symlink)
+        XCTAssertNil(afterEnable?.retiredCopyHashes[.claude])
+
+        // The edited copy stays a conflict, through activation and unlink.
+        await assertRefused(.directoryConflict(skillName)) {
+            try await service.setActivation(adopted.id, app: .antigravity, action: .enable)
+        }
+        let result = try await service.uninstall(adopted.id)
+        XCTAssertEqual(result.removedByApp[.antigravity], false)
+        XCTAssertEqual(home.contents(of: antigravityCopy.appendingPathComponent("notes.md")), "edited by hand")
+        XCTAssertEqual(SkillFileSystem.kind(of: claudeCopy), .missing)
+        XCTAssertEqual(home.lstatSnapshot(under: repository), externalBefore)
+    }
+
+    func testALinkedRowNeverInheritsACopyFromADisplacedRow() async throws {
+        let home = try SkillTestHome()
+        let store = SkillsStore(homeDirectory: home.path)
+        try await store.upsert(Skill(
+            id: .repo(owner: "acme", repo: "skills", directory: "alpha"),
+            name: "alpha",
+            directory: "alpha",
+            installedAt: .distantPast,
+            apps: [
+                .claude: SkillMaterialization(method: .copy, contentHashAtCopy: "abc"),
+                .antigravity: SkillMaterialization(method: .symlink, adopted: true),
+            ]
+        ))
+        let receipt = SkillLinkReceipt(
+            target: "/Users/example/Coding/alpha", resolvedPath: "/Users/example/Coding/alpha",
+            device: 1, inode: 2, confirmedAt: .distantPast
+        )
+        try await store.upsert(Skill(
+            id: .local(directory: "alpha"), name: "alpha", directory: "alpha",
+            installedAt: .distantPast, origin: .linked(receipt)
+        ))
+        let rows = await store.all()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertNil(rows.first?.apps[.claude], "a copy is not a projection of a link")
+        XCTAssertEqual(rows.first?.apps[.antigravity]?.method, .symlink)
+    }
+
     func testImportScanOffersLinksAndAdoptionKeepsExistingHarnessLinks() async throws {
         let fixture = try makeFixture(name: "admin-cli")
         let home = fixture.home

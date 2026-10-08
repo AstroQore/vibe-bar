@@ -30,10 +30,18 @@ extension SkillsService {
         }
         // A copy projection recorded for the old owned directory is not a
         // projection of the link; only links to the shared path carry over.
+        // The copies themselves stay where they are — adopting writes no
+        // file — and are remembered by hash, so switching that harness on
+        // can replace one Vibe Bar made without treating it as a conflict.
         var apps = (existing?.apps ?? [:]).filter { $0.value.method == .symlink }
+        var retired: [SkillAppTarget: String] = [:]
+        for (app, materialization) in existing?.apps ?? [:] where materialization.method == .copy {
+            if let hash = materialization.contentHashAtCopy { retired[app] = hash }
+        }
         for app in SkillAppTarget.managedHarnesses where app.supportsProjection {
             if let evidence = engine.adoptionState(skillDirectoryName: directoryName, app: app) {
                 apps[app] = evidence
+                retired[app] = nil
             }
         }
         var skill = Skill(
@@ -45,6 +53,7 @@ extension SkillsService {
             apps: apps,
             origin: .linked(capture.receipt)
         )
+        skill.retiredCopyHashes = retired
         try await store.upsert(skill)
         skill.linkCheck = .matches
         return skill
@@ -125,7 +134,12 @@ extension SkillsService {
         skill.updatedAt = Date()
         // Harness links already point at the shared path, which is now the
         // copy; there are no copy projections of a linked skill to redo.
+        // Copies retired at adoption are owned-row copies again.
         skill.apps = skill.apps.filter { $0.value.method == .symlink }
+        for (app, hash) in skill.retiredCopyHashes where skill.apps[app] == nil {
+            skill.apps[app] = SkillMaterialization(method: .copy, contentHashAtCopy: hash)
+        }
+        skill.retiredCopyHashes = [:]
         try await store.upsert(skill)
         skill.localContentHash = skill.contentHash
         return skill
@@ -146,10 +160,11 @@ extension SkillsService {
         let backupURL = try backups.createBackup(of: skill.directory, skill: skill)
         var removedByApp: [SkillAppTarget: Bool] = [:]
         for app in SkillAppTarget.allCases where app.supportsProjection {
+            // A copy retired at adoption goes too, while it is unchanged.
             removedByApp[app] = try engine.unmaterialize(
                 skillDirectoryName: skill.directory,
                 from: app,
-                recorded: skill.apps[app]
+                recorded: skill.apps[app] ?? retiredCopy(of: skill, in: app)
             )
         }
         let retainedNative = await restoreNativeDefaults(for: skill)
