@@ -98,14 +98,7 @@ final class AppEnvironment: ObservableObject {
             // daily check is due the moment the updater starts.
             isEnabled: !isDemo
         )
-        let accounts = AccountStore(
-            chatGPTChatEnabled: settings.settings.chatGPTChat.enabled,
-            codexUsageMode: settings.codexUsageMode,
-            claudeUsageMode: settings.claudeUsageMode,
-            geminiUsageMode: settings.geminiUsageMode,
-            antigravityUsageMode: settings.antigravityUsageMode,
-            miscProviderInstances: settings.settings.miscProviderInstances
-        )
+        let accounts = AccountStore(request: AccountReloadRequest(settings: settings.settings))
         let service = QuotaService.makeDefault(
             mockProvider: { [weak settings] in
                 settings?.mockEnabled ?? false
@@ -284,22 +277,22 @@ final class AppEnvironment: ObservableObject {
                     && $0.miscProviderInstances == $1.miscProviderInstances
             }
             .sink { [weak self] settings in
+                guard let self else { return }
                 // Adapters resolve usage modes and misc-provider plans from
                 // settings.json on disk; make sure the edit is there before
                 // the refresh this sink triggers reads it. `@Published` emits
                 // during willSet, so flush the emitted value, not the store's.
-                self?.settingsStore.flush(settings)
-                self?.accountStore.reload(
-                    chatGPTChatEnabled: settings.chatGPTChat.enabled,
-                    codexUsageMode: settings.codexUsageMode,
-                    claudeUsageMode: settings.claudeUsageMode,
-                    geminiUsageMode: settings.geminiUsageMode,
-                    antigravityUsageMode: settings.antigravityUsageMode,
-                    miscProviderInstances: settings.miscProviderInstances
-                )
-                self?.recheckPrimaryRouteHealth()
-                self?.scheduler.reschedule()
-                self?.scheduler.triggerRefresh()
+                self.settingsStore.flush(settings)
+                // Same reason the reload takes the emitted value: the store
+                // still holds the previous settings at this point.
+                let reload = self.accountStore.reload(AccountReloadRequest(settings: settings))
+                self.recheckPrimaryRouteHealth()
+                self.scheduler.reschedule()
+                // The refresh reads the accounts, so it waits for the reload.
+                Task { @MainActor [weak self] in
+                    await reload.value
+                    self?.scheduler.triggerRefresh()
+                }
             }
             .store(in: &cancellables)
 
@@ -678,16 +671,25 @@ final class AppEnvironment: ObservableObject {
     /// anything. A cookie import or delete changes what an always-present
     /// account (Muse, Mistral Vibe, Devin, Cursor) reports as its source, and
     /// that is only computed here — so the settings panel that made the change
-    /// calls this before refreshing.
-    func reloadAccounts() {
-        accountStore.reload(
-            chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
-            codexUsageMode: settingsStore.settings.codexUsageMode,
-            claudeUsageMode: settingsStore.claudeUsageMode,
-            geminiUsageMode: settingsStore.geminiUsageMode,
-            antigravityUsageMode: settingsStore.antigravityUsageMode,
-            miscProviderInstances: settingsStore.settings.miscProviderInstances
-        )
+    /// awaits this before refreshing.
+    ///
+    /// The probe runs off the main actor (`AccountStore.reload`); this returns
+    /// once the newest reload has landed, so the caller's next read of
+    /// `accountStore` sees it.
+    func reloadAccounts() async {
+        await accountStore.reload(AccountReloadRequest(settings: settingsStore.settings)).value
+    }
+
+    /// `reloadAccounts()` for synchronous call sites: the request is taken
+    /// now, and `followUp` runs on the main actor once the newest reload has
+    /// landed. Overlapping calls coalesce in `AccountStore` — the newest wins
+    /// and every follow-up sees its result.
+    private func reloadAccounts(then followUp: @escaping @MainActor () -> Void) {
+        let reload = accountStore.reload(AccountReloadRequest(settings: settingsStore.settings))
+        Task { @MainActor in
+            await reload.value
+            followUp()
+        }
     }
 
     func reloadProviderCredentialsAndRefresh() {
@@ -706,14 +708,6 @@ final class AppEnvironment: ObservableObject {
         importClaudeBrowserCookiesAndRefreshIfNeeded()
         importGeminiBrowserCookiesAndRefreshIfNeeded()
         importGrokBrowserCookiesAndRefreshIfNeeded()
-        accountStore.reload(
-            chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
-            codexUsageMode: settingsStore.settings.codexUsageMode,
-            claudeUsageMode: settingsStore.claudeUsageMode,
-            geminiUsageMode: settingsStore.geminiUsageMode,
-            antigravityUsageMode: settingsStore.antigravityUsageMode,
-            miscProviderInstances: settingsStore.settings.miscProviderInstances
-        )
         // Cookies may have changed (login / re-login) — drop any stale
         // 1h failure cooldowns so the routine WebView probe gets a fresh
         // chance on the very next quota refresh.
@@ -722,7 +716,11 @@ final class AppEnvironment: ObservableObject {
         // exists to stop *scheduled* refreshes re-reading a signed-out
         // browser, and this path is the user saying the browser changed.
         MiscCookieAutoImporter.shared.resetCooldowns()
-        scheduler.triggerRefresh()
+        // The credential probe runs off the main actor; the quota refresh
+        // reads the accounts it found, so it waits for them.
+        reloadAccounts { [weak self] in
+            self?.scheduler.triggerRefresh()
+        }
         serviceStatus.refreshAll()
     }
 
@@ -752,18 +750,10 @@ final class AppEnvironment: ObservableObject {
         // User-initiated: let the cookie re-import run again even if a
         // scheduled refresh already found the browser signed out.
         MiscCookieAutoImporter.shared.resetCooldown(for: tool)
-        accountStore.reload(
-            chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
-            codexUsageMode: settingsStore.settings.codexUsageMode,
-            claudeUsageMode: settingsStore.claudeUsageMode,
-            geminiUsageMode: settingsStore.geminiUsageMode,
-            antigravityUsageMode: settingsStore.antigravityUsageMode,
-            miscProviderInstances: settingsStore.settings.miscProviderInstances
-        )
-        let account = account(for: tool)
-        Task { @MainActor in
-            if let account {
-                _ = await quotaService.refresh(account)
+        reloadAccounts { [weak self] in
+            guard let self, let account = self.account(for: tool) else { return }
+            Task { @MainActor in
+                _ = await self.quotaService.refresh(account)
             }
         }
     }
@@ -802,7 +792,11 @@ final class AppEnvironment: ObservableObject {
                 merged[route] = health
                 self.routeHealthWriteGeneration[route] = generation
             }
-            self.routeHealth = merged
+            // Every probe stamps a fresh `checkedAt`, so a plain comparison
+            // would publish on every refresh; compare what Settings shows.
+            if !PrimaryProviderRouteHealth.rendersSame(merged, self.routeHealth) {
+                self.routeHealth = merged
+            }
         }
     }
 
@@ -837,11 +831,23 @@ final class AppEnvironment: ObservableObject {
                 )
             }.value
             guard let self, generation == self.webCookiePresenceGeneration else { return }
-            self.hasClaudeWebCookies = presence.claude
-            self.hasOpenAIWebCookies = presence.openAI
-            self.hasGeminiWebCookies = presence.gemini
-            self.hasGrokWebCookies = presence.grok
+            self.publishIfChanged(presence.claude, to: \.hasClaudeWebCookies)
+            self.publishIfChanged(presence.openAI, to: \.hasOpenAIWebCookies)
+            self.publishIfChanged(presence.gemini, to: \.hasGeminiWebCookies)
+            self.publishIfChanged(presence.grok, to: \.hasGrokWebCookies)
         }
+    }
+
+    /// Assigning a `@Published` property fires `objectWillChange` even when
+    /// the value is the same, and every view observing this environment
+    /// re-evaluates its body. The refresh paths re-derive these values on
+    /// every pass, so publish only an actual change.
+    private func publishIfChanged<Value: Equatable>(
+        _ value: Value,
+        to keyPath: ReferenceWritableKeyPath<AppEnvironment, Value>
+    ) {
+        guard self[keyPath: keyPath] != value else { return }
+        self[keyPath: keyPath] = value
     }
 
     private struct WebCookiePresence: Sendable {
@@ -962,14 +968,14 @@ final class AppEnvironment: ObservableObject {
 
     func openClaudeWebLogin() {
         claudeWebLoginController.open { [weak self] in
-            self?.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            self?.publishIfChanged(ClaudeWebCookieStore.hasCookieHeader(), to: \.hasClaudeWebCookies)
             self?.reloadProviderCredentialsAndRefresh()
         }
     }
 
     func openOpenAIWebLogin() {
         openAIWebLoginController.open { [weak self] in
-            self?.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            self?.publishIfChanged(OpenAIWebCookieStore.hasCookieHeader(), to: \.hasOpenAIWebCookies)
             self?.reloadProviderCredentialsAndRefresh()
         }
     }
@@ -1045,7 +1051,7 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.isImportingGrokBrowserCookies = false
             }
-            self.hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+            self.publishIfChanged(GrokWebCookieStore.hasCookieHeader(), to: \.hasGrokWebCookies)
             self.recheckPrimaryRouteHealth(provider: .grok)
             guard let result else {
                 if userInitiated {
@@ -1056,15 +1062,9 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.grokBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(
-                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.scheduler.triggerRefresh()
+            self.reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
         }
     }
 
@@ -1094,7 +1094,7 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.isImportingGeminiBrowserCookies = false
             }
-            self.hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+            self.publishIfChanged(GeminiWebCookieStore.hasCookieHeader(), to: \.hasGeminiWebCookies)
             self.recheckPrimaryRouteHealth(provider: .gemini)
             guard let result else {
                 if userInitiated {
@@ -1105,15 +1105,9 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.geminiBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(
-                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.scheduler.triggerRefresh()
+            self.reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
         }
     }
 
@@ -1124,19 +1118,13 @@ final class AppEnvironment: ObservableObject {
         ClaudeWebLoginController.importPersistentClaudeCookiesIfAvailable { [weak self] didImport in
             guard let self else { return }
             self.persistentClaudeCookieImportInFlight = false
-            self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            self.publishIfChanged(ClaudeWebCookieStore.hasCookieHeader(), to: \.hasClaudeWebCookies)
             self.recheckPrimaryRouteHealth(provider: .claude)
             guard didImport, !hadCookies else { return }
-            self.accountStore.reload(
-                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
             self.lastRoutineBudgetAttemptByAccount.removeAll()
-            self.scheduler.triggerRefresh()
+            self.reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
         }
     }
 
@@ -1166,7 +1154,7 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.isImportingClaudeBrowserCookies = false
             }
-            self.hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            self.publishIfChanged(ClaudeWebCookieStore.hasCookieHeader(), to: \.hasClaudeWebCookies)
             self.recheckPrimaryRouteHealth(provider: .claude)
             guard let result else {
                 if userInitiated {
@@ -1177,16 +1165,10 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.claudeBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(
-                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
             self.lastRoutineBudgetAttemptByAccount.removeAll()
-            self.scheduler.triggerRefresh()
+            self.reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
         }
     }
 
@@ -1197,18 +1179,12 @@ final class AppEnvironment: ObservableObject {
         OpenAIWebLoginController.importPersistentOpenAICookiesIfAvailable { [weak self] didImport in
             guard let self else { return }
             self.persistentOpenAICookieImportInFlight = false
-            self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            self.publishIfChanged(OpenAIWebCookieStore.hasCookieHeader(), to: \.hasOpenAIWebCookies)
             self.recheckPrimaryRouteHealth(provider: .codex)
             guard didImport, !hadCookies else { return }
-            self.accountStore.reload(
-                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.scheduler.triggerRefresh()
+            self.reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
         }
     }
 
@@ -1238,7 +1214,7 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.isImportingOpenAIBrowserCookies = false
             }
-            self.hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            self.publishIfChanged(OpenAIWebCookieStore.hasCookieHeader(), to: \.hasOpenAIWebCookies)
             self.recheckPrimaryRouteHealth(provider: .codex)
             guard let result else {
                 if userInitiated {
@@ -1249,15 +1225,9 @@ final class AppEnvironment: ObservableObject {
             if userInitiated {
                 self.openAIBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
             }
-            self.accountStore.reload(
-                chatGPTChatEnabled: self.settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: self.settingsStore.settings.codexUsageMode,
-                claudeUsageMode: self.settingsStore.claudeUsageMode,
-                geminiUsageMode: self.settingsStore.geminiUsageMode,
-                antigravityUsageMode: self.settingsStore.antigravityUsageMode,
-                miscProviderInstances: self.settingsStore.settings.miscProviderInstances
-            )
-            self.scheduler.triggerRefresh()
+            self.reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
         }
     }
 
@@ -1267,24 +1237,18 @@ final class AppEnvironment: ObservableObject {
             ClaudeWebLoginController.clearPersistentClaudeWebsiteData()
             try ClaudeWebCookieStore.deleteCookieHeader()
             claudeBrowserCookieImportStatus = nil
-            hasClaudeWebCookies = false
+            publishIfChanged(false, to: \.hasClaudeWebCookies)
             recheckPrimaryRouteHealth(provider: .claude)
             for account in accountStore.accounts(for: .claude) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(
-                chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode,
-                geminiUsageMode: settingsStore.geminiUsageMode,
-                antigravityUsageMode: settingsStore.antigravityUsageMode,
-                miscProviderInstances: settingsStore.settings.miscProviderInstances
-            )
-            scheduler.triggerRefresh()
+            reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
             return true
         } catch {
             SafeLog.warn("Deleting Claude web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
-            hasClaudeWebCookies = ClaudeWebCookieStore.hasCookieHeader()
+            publishIfChanged(ClaudeWebCookieStore.hasCookieHeader(), to: \.hasClaudeWebCookies)
             return false
         }
     }
@@ -1295,24 +1259,18 @@ final class AppEnvironment: ObservableObject {
             OpenAIWebLoginController.clearPersistentOpenAIWebsiteData()
             try OpenAIWebCookieStore.deleteCookieHeader()
             openAIBrowserCookieImportStatus = nil
-            hasOpenAIWebCookies = false
+            publishIfChanged(false, to: \.hasOpenAIWebCookies)
             recheckPrimaryRouteHealth(provider: .codex)
             for account in accountStore.accounts(for: .codex) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(
-                chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode,
-                geminiUsageMode: settingsStore.geminiUsageMode,
-                antigravityUsageMode: settingsStore.antigravityUsageMode,
-                miscProviderInstances: settingsStore.settings.miscProviderInstances
-            )
-            scheduler.triggerRefresh()
+            reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
             return true
         } catch {
             SafeLog.warn("Deleting OpenAI web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
-            hasOpenAIWebCookies = OpenAIWebCookieStore.hasCookieHeader()
+            publishIfChanged(OpenAIWebCookieStore.hasCookieHeader(), to: \.hasOpenAIWebCookies)
             return false
         }
     }
@@ -1322,24 +1280,18 @@ final class AppEnvironment: ObservableObject {
         do {
             try GeminiWebCookieStore.deleteCookieHeader()
             geminiBrowserCookieImportStatus = nil
-            hasGeminiWebCookies = false
+            publishIfChanged(false, to: \.hasGeminiWebCookies)
             recheckPrimaryRouteHealth(provider: .gemini)
             for account in accountStore.accounts(for: .gemini) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(
-                chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode,
-                geminiUsageMode: settingsStore.geminiUsageMode,
-                antigravityUsageMode: settingsStore.antigravityUsageMode,
-                miscProviderInstances: settingsStore.settings.miscProviderInstances
-            )
-            scheduler.triggerRefresh()
+            reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
             return true
         } catch {
             SafeLog.warn("Deleting Gemini web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
-            hasGeminiWebCookies = GeminiWebCookieStore.hasCookieHeader()
+            publishIfChanged(GeminiWebCookieStore.hasCookieHeader(), to: \.hasGeminiWebCookies)
             return false
         }
     }
@@ -1349,24 +1301,18 @@ final class AppEnvironment: ObservableObject {
         do {
             try GrokWebCookieStore.deleteCookieHeader()
             grokBrowserCookieImportStatus = nil
-            hasGrokWebCookies = false
+            publishIfChanged(false, to: \.hasGrokWebCookies)
             recheckPrimaryRouteHealth(provider: .grok)
             for account in accountStore.accounts(for: .grok) {
                 quotaService.clear(accountId: account.id)
             }
-            accountStore.reload(
-                chatGPTChatEnabled: settingsStore.settings.chatGPTChat.enabled,
-                codexUsageMode: settingsStore.settings.codexUsageMode,
-                claudeUsageMode: settingsStore.claudeUsageMode,
-                geminiUsageMode: settingsStore.geminiUsageMode,
-                antigravityUsageMode: settingsStore.antigravityUsageMode,
-                miscProviderInstances: settingsStore.settings.miscProviderInstances
-            )
-            scheduler.triggerRefresh()
+            reloadAccounts { [weak self] in
+                self?.scheduler.triggerRefresh()
+            }
             return true
         } catch {
             SafeLog.warn("Deleting Grok web cookies failed: \(SafeLog.sanitize(error.localizedDescription))")
-            hasGrokWebCookies = GrokWebCookieStore.hasCookieHeader()
+            publishIfChanged(GrokWebCookieStore.hasCookieHeader(), to: \.hasGrokWebCookies)
             return false
         }
     }
