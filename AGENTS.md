@@ -434,7 +434,7 @@ Deleting it resets the app to first-run state.
 `session_structure.sqlite3` is the host-side sidecar written by
 `SessionStructureStore` (`Sources/VibeBarCore/SessionStructure/`): one row
 per Codex / Claude session file holding its stats and a per-turn outline
-(boundaries, byte offsets, step / failure counts, usage, and a prompt
+(boundaries, byte offsets, every per-turn counter, usage, and a prompt
 preview of at most 120 characters — never a message body). It is derived
 data, kept apart from the kit's `session_index.sqlite3` because that schema
 is a cross-language contract this app does not extend. A row is keyed by

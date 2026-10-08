@@ -23,7 +23,8 @@ public struct SessionStructure: Codable, Sendable, Hashable {
     ///
     /// v2: a Codex session cut at its inherited-history ordinal reports its
     /// own counter deltas as `totalTokens` (`SessionUsageSource.ownCounterDeltas`).
-    public static let parserVersion = 2
+    /// v3: `SessionTurnOutline` keeps every per-turn counter and prompt tally.
+    public static let parserVersion = 3
 
     /// How much of each turn was materialized.
     public enum Detail: String, Codable, Sendable, Hashable {
@@ -697,51 +698,74 @@ public struct SessionStats: Codable, Sendable, Hashable {
 // MARK: - Outline
 
 /// The compact per-turn record the sidecar stores (`outline_json`). Numbers,
-/// boundaries and a ≤ 120-character prompt preview — never a message body.
+/// ids, boundaries and a ≤ 120-character prompt preview — never a message
+/// body. Everything a turn carries except its steps, prompt text and final
+/// answer survives the round trip, so an outline read back from the sidecar
+/// reports the same per-turn breakdown as the parse that wrote it.
 public struct SessionTurnOutline: Codable, Sendable, Hashable {
     public var index: Int
+    public var turnID: String?
     public var startedAt: Date?
+    public var endedAt: Date?
     public var promptPreview: String?
     public var origin: SessionStructure.PromptOrigin
-    public var stepCount: Int
-    public var failedCount: Int
-    public var commandCount: Int
+    public var additionalHumanMessages: Int
+    /// Injected-block counts keyed by `InjectedBlock.rawValue`.
+    public var injected: [String: Int]
+    /// Every counter, not only the headline ones.
+    public var counts: SessionStructure.TurnCounts
     public var byteOffset: Int64
     public var byteEnd: Int64
     public var durationMs: Int?
     public var model: String?
     public var usage: SessionStructure.TokenUsage
     public var status: SessionStructure.TurnStatus
+    public var reviewedTurnID: String?
+
+    public var stepCount: Int { counts.steps }
+    public var failedCount: Int { counts.failed }
+    public var commandCount: Int { counts.commands }
 
     public init(turn: SessionStructure.Turn) {
         index = turn.index
+        turnID = turn.turnID
         startedAt = turn.startedAt
+        endedAt = turn.endedAt
         promptPreview = turn.prompt.preview.map { SessionStructureText.preview($0, limit: SessionStructure.Prompt.previewLimit) }
         origin = turn.prompt.origin
-        stepCount = turn.counts.steps
-        failedCount = turn.counts.failed
-        commandCount = turn.counts.commands
+        additionalHumanMessages = turn.prompt.additionalHumanMessages
+        injected = turn.prompt.injected
+        counts = turn.counts
         byteOffset = turn.byteOffset
         byteEnd = turn.byteEnd
         durationMs = turn.durationMs
         model = turn.model
         usage = turn.usage
         status = turn.status
+        reviewedTurnID = turn.reviewedTurnID
     }
 
     /// Rebuild an outline-detail turn (no steps, no text) from the record.
     public var turn: SessionStructure.Turn {
         SessionStructure.Turn(
             index: index,
+            turnID: turnID,
             startedAt: startedAt,
+            endedAt: endedAt,
             status: status,
-            prompt: SessionStructure.Prompt(origin: origin, preview: promptPreview),
-            counts: SessionStructure.TurnCounts(steps: stepCount, commands: commandCount, failed: failedCount),
+            prompt: SessionStructure.Prompt(
+                origin: origin,
+                preview: promptPreview,
+                additionalHumanMessages: additionalHumanMessages,
+                injected: injected
+            ),
+            counts: counts,
             model: model,
             usage: usage,
             durationMs: durationMs,
             byteOffset: byteOffset,
-            byteEnd: byteEnd
+            byteEnd: byteEnd,
+            reviewedTurnID: reviewedTurnID
         )
     }
 }

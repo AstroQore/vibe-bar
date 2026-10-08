@@ -110,6 +110,76 @@ final class SessionStructureServiceTests: XCTestCase {
         XCTAssertNotNil(row, "a file that is not a database is derived data and gets rebuilt")
     }
 
+    /// A rollout whose turns exercise every per-turn counter and tally.
+    private func richRollout(id: String) throws -> SessionSummary {
+        let builder = CodexRolloutBuilder()
+            .meta(id: id)
+            .taskStarted("t0")
+            .userResponseItem("<environment_context><cwd>/Users/example/project</cwd></environment_context>")
+            .turnContext(model: "gpt-5")
+            .prompt("Audit and fix", turnID: "t0")
+            .userResponseItem("Also check the docs")
+            .userMessageItem("Also check the docs", turnID: "t0")
+            .reasoning(id: "rs0", summary: "Plan the audit")
+            .customToolCall("exec", callID: "call_js", input: "await tools.exec_command({cmd: 'git status'})")
+            .commandExecution(id: "exec-1", command: ["/bin/zsh", "-lc", "git status"], exitCode: 0)
+            .mcpToolCall(id: "exec-2", server: "browser", tool: "open", failed: true)
+            .output(callID: "call_js", text: "Script completed\nWall time 0.5 seconds\nOutput:\nok\n", custom: true)
+            .functionCall("spawn_agent", callID: "call_spawn", arguments: ["message": "Check the docs"])
+            .stringOutput(callID: "call_spawn", text: #"{"agent_id":"0190cccc-0000-7000-8000-00000000c0de"}"#)
+            .functionCall("exec_command", callID: "call_x", arguments: ["cmd": "false"])
+            .stringOutput(callID: "call_x", text: "Exit code: 1\nWall time: 0.1 seconds\nOutput:\n")
+            .tokenCount(input: 500, cached: 100, output: 50)
+            .assistant("Fixed one issue")
+            .taskComplete("t0")
+            .taskStarted("t1")
+            .prompt("Thanks", turnID: "t1")
+            .assistant("You're welcome")
+            .taskComplete("t1")
+        let url = try SessionStructureFixtures.write(
+            builder.lines,
+            to: directory.appendingPathComponent("sessions/rollout-2026-05-01T10-00-00-\(id).jsonl")
+        )
+        return summary(.codex, id: id, url: url)
+    }
+
+    /// What an outline may drop: steps, prompt text, the final answer.
+    private func outlineView(_ turns: [SessionStructure.Turn]) -> [SessionStructure.Turn] {
+        turns.map { turn in
+            var copy = turn
+            copy.steps = []
+            copy.prompt.text = nil
+            copy.finalAnswer = nil
+            return copy
+        }
+    }
+
+    func testOutlineAndSidecarKeepEveryPerTurnCounter() async throws {
+        let session = try richRollout(id: threadID(30))
+        let full = try XCTUnwrap(CodexSessionStructureParser.parse(fileURL: URL(fileURLWithPath: session.sourcePath)))
+        let counts = full.turns[0].counts
+        XCTAssertEqual(counts, SessionStructure.TurnCounts(
+            steps: 5, toolCalls: 1, commands: 2, mcpCalls: 1, subagents: 1, thinking: 1, failed: 2
+        ), "the fixture exercises every category")
+        XCTAssertEqual(full.turns[0].prompt.additionalHumanMessages, 1)
+        XCTAssertEqual(full.turns[0].prompt.injectedCount(.environmentContext), 1)
+
+        XCTAssertEqual(full.outlineOnly.turns, outlineView(full.turns))
+
+        let store = SessionStructureStore(url: storeURL)
+        let fingerprint = try XCTUnwrap(SessionFileFingerprint.of(path: session.sourcePath))
+        await store.upsert(SessionStructureRecord(structure: full, fingerprint: fingerprint))
+        let record = try await XCTUnwrapAsync(await store.record(forPath: session.sourcePath, fingerprint: fingerprint))
+        XCTAssertEqual(record.structure.turns, outlineView(full.turns))
+        XCTAssertEqual(record.structure.turns.reduce(0) { $0 + $1.prompt.humanPromptCount }, full.stats.promptCount)
+
+        // Served back by a fresh service from the sidecar alone.
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: session.sourcePath)
+        let service = SessionStructureService(store: SessionStructureStore(url: storeURL))
+        let outline = try await XCTUnwrapAsync(await service.outline(for: session))
+        XCTAssertEqual(outline.turns.map(\.counts), full.turns.map(\.counts))
+    }
+
     // MARK: - Service
 
     func testSecondServiceInstanceIsServedFromTheSidecar() async throws {
