@@ -935,9 +935,20 @@ private final class CodexStructureBuilder {
         SessionStatsBuilder.apply(turns: turns, ledger: acc.ledger, into: &stats)
         let summed = acc.ledger.totalUsage
         if options.byteRange == nil, ownCounterSeen, let lastTotals {
-            stats.totalUsage = lastTotals.usage
-            stats.totalTokens = lastCumulativeTotal ?? lastTotals.total
-            stats.usageSource = .cumulativeCounter
+            let cumulative = lastCumulativeTotal ?? lastTotals.total
+            stats.cumulativeTokensIncludingInherited = cumulative
+            if cutOrdinal != nil {
+                // The counters carry on from the copied parent history, so
+                // their last value is parent + child. What this session
+                // added is the sum of its own deltas — the per-turn ledger.
+                stats.totalUsage = summed
+                stats.totalTokens = summed.total
+                stats.usageSource = .ownCounterDeltas
+            } else {
+                stats.totalUsage = lastTotals.usage
+                stats.totalTokens = cumulative
+                stats.usageSource = .cumulativeCounter
+            }
         } else if !summed.isZero {
             stats.totalUsage = summed
             stats.totalTokens = summed.total

@@ -20,7 +20,10 @@ public struct SessionStructure: Codable, Sendable, Hashable {
     /// Bump whenever a parser change alters what an already-parsed file
     /// should say. `SessionStructureStore` drops every row stamped with an
     /// older version, so the next read re-parses.
-    public static let parserVersion = 1
+    ///
+    /// v2: a Codex session cut at its inherited-history ordinal reports its
+    /// own counter deltas as `totalTokens` (`SessionUsageSource.ownCounterDeltas`).
+    public static let parserVersion = 2
 
     /// How much of each turn was materialized.
     public enum Detail: String, Codable, Sendable, Hashable {
@@ -534,6 +537,11 @@ public enum SessionStructureRelation: String, Codable, Sendable, Hashable {
 public enum SessionUsageSource: String, Codable, Sendable, Hashable {
     /// Codex: the last cumulative `token_count` / `token_usage_record`.
     case cumulativeCounter
+    /// Codex fork / spawned subagent cut at `subagent_history_start_ordinal`:
+    /// the sum of counter deltas after the cut. Its counters continue from
+    /// the copied parent history, so their last value is not this session's
+    /// own usage (see `SessionStats.cumulativeTokensIncludingInherited`).
+    case ownCounterDeltas
     /// Claude: per-message `usage`, deduplicated by message + request id.
     case summedMessages
     /// Codex: `threads.tokens_used` in `~/.codex/state_5.sqlite` (total only).
@@ -574,6 +582,13 @@ public struct SessionStats: Codable, Sendable, Hashable {
     /// source was a total-only counter (Codex state database).
     public var totalTokens: Int
     public var usageSource: SessionUsageSource
+    /// Codex: the last cumulative counter value as the rollout wrote it —
+    /// the same basis as `threads.tokens_used` in `~/.codex/state_5.sqlite`.
+    /// Equals `totalTokens` for an ordinary session; for one cut at its
+    /// inherited-history ordinal it also counts the parent history the
+    /// counter started from, which `totalTokens` leaves out. `nil` when no
+    /// counter was read (Claude, a byte-window parse).
+    public var cumulativeTokensIncludingInherited: Int?
     /// Sum of priced model segments; `nil` when no segment had a price.
     public var estimatedCostUSD: Double?
     /// Whether some usage could not be priced (cost is then a lower bound).
@@ -619,6 +634,7 @@ public struct SessionStats: Codable, Sendable, Hashable {
         totalUsage: SessionStructure.TokenUsage = .zero,
         totalTokens: Int = 0,
         usageSource: SessionUsageSource = .none,
+        cumulativeTokensIncludingInherited: Int? = nil,
         estimatedCostUSD: Double? = nil,
         hasUnpricedUsage: Bool = false,
         startedAt: Date? = nil,
@@ -654,6 +670,7 @@ public struct SessionStats: Codable, Sendable, Hashable {
         self.totalUsage = totalUsage
         self.totalTokens = totalTokens
         self.usageSource = usageSource
+        self.cumulativeTokensIncludingInherited = cumulativeTokensIncludingInherited
         self.estimatedCostUSD = estimatedCostUSD
         self.hasUnpricedUsage = hasUnpricedUsage
         self.startedAt = startedAt

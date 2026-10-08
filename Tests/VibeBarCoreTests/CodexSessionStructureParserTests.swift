@@ -256,6 +256,7 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertEqual(structure.stats.totalTokens, 3_400)
         XCTAssertEqual(structure.stats.totalUsage.total, 3_400)
         XCTAssertEqual(structure.stats.usageSource, .cumulativeCounter)
+        XCTAssertEqual(structure.stats.cumulativeTokensIncludingInherited, 3_400, "an uncut session's counter is its own")
         XCTAssertEqual(structure.stats.models, ["gpt-5"])
         let cost = try XCTUnwrap(structure.stats.estimatedCostUSD)
         XCTAssertGreaterThan(cost, 0)
@@ -323,6 +324,12 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertEqual(structure.stats.toolCallCount, 1)
         XCTAssertEqual(structure.stats.promptCount, 0, "a subagent's task is not a human prompt")
         XCTAssertEqual(structure.turns[0].usage.total, 330, "usage is the delta past the inherited counter")
+        // The counter itself ran on from the parent's 5 500.
+        XCTAssertEqual(structure.stats.totalTokens, 330)
+        XCTAssertEqual(structure.stats.totalUsage.total, 330)
+        XCTAssertEqual(structure.stats.usageSource, .ownCounterDeltas)
+        XCTAssertEqual(structure.stats.cumulativeTokensIncludingInherited, 5_830)
+        XCTAssertEqual(structure.stats.modelUsage.reduce(0) { $0 + $1.usage.total }, 330)
     }
 
     func testUserForkWithoutHistoryOrdinalIsKeptWhole() throws {
@@ -396,6 +403,8 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertEqual(structure.stats.rootSessionID, SessionStructureFixtures.codexRootID)
         XCTAssertNil(structure.stats.forkStartOrdinal)
         XCTAssertEqual(structure.diagnostics.inheritedLinesSkipped, 0)
+        XCTAssertEqual(structure.stats.usageSource, .cumulativeCounter, "an uncut guardian keeps the counter as its total")
+        XCTAssertEqual(structure.stats.totalTokens, 420)
         XCTAssertEqual(structure.turns.count, 1)
         XCTAssertEqual(structure.turns[0].reviewedTurnID, "parent-turn-7")
         XCTAssertEqual(structure.stats.guardianDenyCount, 1)
