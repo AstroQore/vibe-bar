@@ -220,6 +220,11 @@ enum AccountDetector {
         // Mistral Vibe, Devin and Cursor each look up their cookie slots in it,
         // and the cookie stores below read it too. Dropping the cache first
         // means a credential changed since the last pass is still seen.
+        //
+        // A reload superseded before its probe even started has nothing to
+        // offer: its result is discarded, and a burst of cancelled probes
+        // would only queue Keychain passes ahead of the one that counts.
+        if Task.isCancelled { return detected }
         VibeBarCredentialVault.invalidateCache()
 
         // Chat reads the Codex OAuth login or a chatgpt.com web session;
@@ -231,6 +236,7 @@ enum AccountDetector {
         if let codex = autoDetectCodex(mode: request.codexUsageMode) {
             detected.append(codex)
         }
+        if Task.isCancelled { return detected }
         if let claude = autoDetectClaude(mode: request.claudeUsageMode) {
             detected.append(claude)
         }
