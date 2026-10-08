@@ -291,6 +291,43 @@ final class SessionStructureServiceTests: XCTestCase {
         XCTAssertNil(missing.thread(id: id))
     }
 
+    func testStateFallbackDoesNotHandACutForkItsParentsTotal() async throws {
+        let id = threadID(21)
+        let parent = threadID(22)
+        let builder = CodexRolloutBuilder()
+        builder.meta(
+            id: id, parentThreadID: parent, forkedFrom: parent,
+            source: ["subagent": ["thread_spawn": ["parent_thread_id": parent]]],
+            threadSource: "subagent", historyStart: 3
+        )
+        builder.taskStarted("parent").prompt("Parent prompt", turnID: "parent")
+        builder.taskStarted("child")
+            .functionCall("exec_command", callID: "c", arguments: ["cmd": "ls"])
+            .stringOutput(callID: "c", text: "Exit code: 0\nWall time: 0.1 seconds\nOutput:\n")
+            .assistant("Done")
+            .taskComplete("child")
+        let url = try SessionStructureFixtures.write(
+            builder.lines, to: directory.appendingPathComponent("sessions/rollout-2026-05-01T10-00-00-\(id).jsonl")
+        )
+        let stateURL = directory.appendingPathComponent("state_5.sqlite")
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(stateURL.path, &handle), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(handle, """
+            CREATE TABLE threads (id TEXT PRIMARY KEY, tokens_used INTEGER NOT NULL DEFAULT 0, model TEXT,
+                                  reasoning_effort TEXT, git_branch TEXT, thread_source TEXT);
+            INSERT INTO threads VALUES ('\(id)', 9999, 'gpt-5', NULL, 'feature/child', 'subagent');
+            """, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(handle)
+
+        let service = SessionStructureService(store: nil, codexState: CodexThreadStateReader(url: stateURL))
+        let stats = try await XCTUnwrapAsync(await service.stats(for: summary(.codex, id: id, url: url)))
+        XCTAssertEqual(stats.forkStartOrdinal, 3)
+        XCTAssertEqual(stats.usageSource, .unavailable)
+        XCTAssertEqual(stats.totalTokens, 0)
+        XCTAssertEqual(stats.cumulativeTokensIncludingInherited, 9_999)
+        XCTAssertEqual(stats.gitBranch, "feature/child", "non-token fields still come from the state database")
+    }
+
     func testUnsupportedProvidersAndMissingFilesReturnNil() async throws {
         let service = SessionStructureService(store: nil)
         let gemini = SessionSummary(provider: .gemini, sessionID: "x", sourcePath: "/Users/example/none.json")

@@ -273,8 +273,17 @@ public actor SessionStructureService {
               let state = reader.thread(id: sessionID)
         else { return }
         if needsTokens, state.tokensUsed > 0 {
-            structure.stats.totalTokens = state.tokensUsed
-            structure.stats.usageSource = .codexStateDatabase
+            if structure.stats.forkStartOrdinal != nil {
+                // `tokens_used` has the rollout counter's basis, which for a
+                // session cut at its inherited-history ordinal includes the
+                // copied parent history. Keep it as that, not as the total.
+                structure.stats.cumulativeTokensIncludingInherited = state.tokensUsed
+                structure.stats.totalTokens = 0
+                structure.stats.usageSource = .unavailable
+            } else {
+                structure.stats.totalTokens = state.tokensUsed
+                structure.stats.usageSource = .codexStateDatabase
+            }
         }
         if needsBranch { structure.stats.gitBranch = state.gitBranch }
         if needsModel, let model = state.model { structure.stats.models = [model] }

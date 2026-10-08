@@ -24,7 +24,9 @@ public struct SessionStructure: Codable, Sendable, Hashable {
     /// v2: a Codex session cut at its inherited-history ordinal reports its
     /// own counter deltas as `totalTokens` (`SessionUsageSource.ownCounterDeltas`).
     /// v3: `SessionTurnOutline` keeps every per-turn counter and prompt tally.
-    public static let parserVersion = 3
+    /// v4: a cut session with no counter of its own no longer takes the
+    /// Codex state database's inherited-inclusive total (`.unavailable`).
+    public static let parserVersion = 4
 
     /// How much of each turn was materialized.
     public enum Detail: String, Codable, Sendable, Hashable {
@@ -547,6 +549,12 @@ public enum SessionUsageSource: String, Codable, Sendable, Hashable {
     case summedMessages
     /// Codex: `threads.tokens_used` in `~/.codex/state_5.sqlite` (total only).
     case codexStateDatabase
+    /// Codex: a session cut at its inherited-history ordinal that wrote no
+    /// counter of its own. The only total on record (`tokens_used`) includes
+    /// the copied parent history, so it is kept in
+    /// `cumulativeTokensIncludingInherited` and `totalTokens` stays 0 —
+    /// read it as unknown, not as zero.
+    case unavailable
     case none
 }
 
