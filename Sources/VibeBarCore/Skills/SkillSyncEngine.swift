@@ -129,18 +129,39 @@ public struct SkillSyncEngine: Sendable {
     /// the copy Vibe Bar made (recorded hash, or a byte-identical copy of the
     /// current SSOT content). Anything else is user data and throws
     /// `directoryConflict`.
+    ///
+    /// `linkReceipt` is set for an adopted linked skill. Its shared entry is a
+    /// symlink, which is only accepted while the receipt still matches it,
+    /// and only ever projected as another symlink to the shared path — never
+    /// copied, so the linked folder is not read to make the projection.
+    /// A real directory at a linked skill's destination is always a conflict
+    /// here; `SkillsService` moves a retired copy Vibe Bar made aside first
+    /// (`stashRetiredCopy`), so it can put it back if the toggle fails.
     @discardableResult
     public func materialize(
         skillDirectoryName: String,
         into app: SkillAppTarget,
         method: SkillSyncMethod,
-        recorded: SkillMaterialization? = nil
+        recorded: SkillMaterialization? = nil,
+        linkReceipt: SkillLinkReceipt? = nil
     ) throws -> SkillMaterialization {
         guard app.supportsProjection else { throw SkillError.projectionUnsupported(app) }
         try SkillPathValidator.validate(directoryName: skillDirectoryName)
         let source = sourceDirectory(for: skillDirectoryName)
         switch SkillFileSystem.kind(of: source) {
-        case .directory: break
+        case .directory:
+            // The row says linked, but the link was replaced by a folder
+            // nobody vouched for.
+            guard linkReceipt == nil else { throw SkillError.linkReceiptMismatch(skillDirectoryName) }
+        case .symlink:
+            guard let linkReceipt else { throw SkillError.sourceNotADirectory(skillDirectoryName) }
+            return try materializeLinked(
+                skillDirectoryName: skillDirectoryName,
+                source: source,
+                into: app,
+                method: method,
+                receipt: linkReceipt
+            )
         case .missing: throw SkillError.sourceDirectoryMissing(skillDirectoryName)
         default: throw SkillError.sourceNotADirectory(skillDirectoryName)
         }
@@ -277,22 +298,37 @@ public struct SkillSyncEngine: Sendable {
     /// skill is still enabled. Symlinks must still point to this skill's SSOT
     /// directory; copies must still be real skill directories. Foreign links,
     /// replaced directories, regular files, and missing entries are all stale.
+    ///
+    /// For a linked skill (`linkReceipt` set) the shared entry is itself a
+    /// symlink; a projection pointing at it is live while the receipt still
+    /// matches that link.
     public func liveMaterialization(
         skillDirectoryName: String,
         app: SkillAppTarget,
         recorded: SkillMaterialization,
-        currentCopyHash: String? = nil
+        currentCopyHash: String? = nil,
+        linkReceipt: SkillLinkReceipt? = nil
     ) -> SkillMaterialization? {
         guard app.supportsProjection, SkillPathValidator.isValid(skillDirectoryName) else { return nil }
         let destination = destination(for: skillDirectoryName, app: app)
         switch SkillFileSystem.kind(of: destination) {
         case .symlink:
             let source = sourceDirectory(for: skillDirectoryName).standardizedFileURL
+            let sourceIsLive: Bool
+            if let linkReceipt {
+                sourceIsLive = SkillLinkInspector.check(
+                    linkReceipt,
+                    directoryName: skillDirectoryName,
+                    homeDirectory: homeDirectory
+                ) == .matches
+            } else {
+                sourceIsLive = SkillFileSystem.kind(of: source) == .directory
+                    && FileManager.default.fileExists(atPath: source.appendingPathComponent("SKILL.md").path)
+            }
             guard
                 let resolved = SkillFileSystem.lexicalSymlinkTarget(of: destination),
                 resolved.path == source.path,
-                SkillFileSystem.kind(of: source) == .directory,
-                FileManager.default.fileExists(atPath: source.appendingPathComponent("SKILL.md").path)
+                sourceIsLive
             else { return nil }
             return SkillMaterialization(method: .symlink, adopted: recorded.adopted)
         case .directory:
@@ -312,6 +348,38 @@ public struct SkillSyncEngine: Sendable {
     // MARK: - Internals
 
     var homeURL: URL { URL(fileURLWithPath: homeDirectory, isDirectory: true) }
+
+    /// A linked skill's projection: a symlink to the shared path, made only
+    /// while the receipt matches. An existing real directory at the
+    /// destination is a conflict outright — deciding whether it is a copy of
+    /// the source would mean hashing the linked folder.
+    private func materializeLinked(
+        skillDirectoryName: String,
+        source: URL,
+        into app: SkillAppTarget,
+        method: SkillSyncMethod,
+        receipt: SkillLinkReceipt
+    ) throws -> SkillMaterialization {
+        guard SkillLinkInspector.check(receipt, directoryName: skillDirectoryName, homeDirectory: homeDirectory) == .matches else {
+            throw SkillError.linkReceiptMismatch(skillDirectoryName)
+        }
+        guard method != .copy else { throw SkillError.linkedSkillUnsupported(skillDirectoryName) }
+        let appDirectory = SkillAppCatalog.skillsDirectory(for: app, homeDirectory: homeDirectory)
+        let destination = destination(for: skillDirectoryName, app: app)
+        guard SkillAppCatalog.isWriteAllowed(destination, homeDirectory: homeDirectory) else {
+            throw SkillError.writeOutsideAllowedRoots(destination.path)
+        }
+        try SkillFileSystem.ensureDirectory(appDirectory, stopAt: homeURL)
+        switch SkillFileSystem.kind(of: destination) {
+        case .missing:
+            break
+        case .symlink:
+            try FileManager.default.removeItem(at: destination)
+        case .directory, .regularFile, .other:
+            throw SkillError.directoryConflict(skillDirectoryName)
+        }
+        return try link(source: source, destination: destination)
+    }
 
     private func link(source: URL, destination: URL) throws -> SkillMaterialization {
         try FileManager.default.createSymbolicLink(

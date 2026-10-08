@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Pre-uninstall snapshots of skill directories under
@@ -14,16 +15,26 @@ import Foundation
 /// This is the only reason uninstalling a skill is safe to offer: a skill that
 /// came from a repository can be re-fetched, but a locally authored one only
 /// exists here once its SSOT directory is gone.
+///
+/// A linked skill (`SkillOrigin.linked`) is backed up as its link alone:
+/// `meta.json` records the link's target string and there is no `skill/`
+/// payload. Its files belong to the folder it points at, which unlinking
+/// leaves exactly where it is — copying that tree here would read a checkout
+/// Vibe Bar does not manage.
 public struct SkillBackupManager: Sendable {
     public struct Metadata: Codable, Sendable {
         public let skill: Skill
         public let backupCreatedAt: Date
         public let sourcePath: String
+        /// The raw target string of a linked skill's shared entry; `nil` for
+        /// a directory backup.
+        public let linkTarget: String?
 
-        public init(skill: Skill, backupCreatedAt: Date, sourcePath: String) {
+        public init(skill: Skill, backupCreatedAt: Date, sourcePath: String, linkTarget: String? = nil) {
             self.skill = skill
             self.backupCreatedAt = backupCreatedAt
             self.sourcePath = sourcePath
+            self.linkTarget = linkTarget
         }
     }
 
@@ -52,8 +63,26 @@ public struct SkillBackupManager: Sendable {
         try SkillPathValidator.validate(directoryName: skillDirectoryName)
         let source = SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
             .appendingPathComponent(skillDirectoryName, isDirectory: true)
-        guard SkillFileSystem.kind(of: source) == .directory else {
-            throw SkillError.sourceDirectoryMissing(skillDirectoryName)
+        let linkTarget: String?
+        if let receipt = skill.linkReceipt {
+            // The pointer is the backup. Only the link the receipt recorded
+            // (or none, when it is already gone) is described.
+            switch SkillFileSystem.kind(of: source) {
+            case .missing:
+                break
+            case .symlink:
+                guard (try? FileManager.default.destinationOfSymbolicLink(atPath: source.path)) == receipt.target else {
+                    throw SkillError.linkReceiptMismatch(skillDirectoryName)
+                }
+            case .directory, .regularFile, .other:
+                throw SkillError.linkReceiptMismatch(skillDirectoryName)
+            }
+            linkTarget = receipt.target
+        } else {
+            guard SkillFileSystem.kind(of: source) == .directory else {
+                throw SkillError.sourceDirectoryMissing(skillDirectoryName)
+            }
+            linkTarget = nil
         }
 
         let root = rootDirectory
@@ -66,8 +95,15 @@ public struct SkillBackupManager: Sendable {
             [.posixPermissions: 0o700],
             ofItemAtPath: backupURL.path
         )
-        try FileManager.default.copyItem(at: source, to: backupURL.appendingPathComponent("skill"))
-        let metadata = Metadata(skill: skill, backupCreatedAt: createdAt, sourcePath: source.path)
+        if linkTarget == nil {
+            try FileManager.default.copyItem(at: source, to: backupURL.appendingPathComponent("skill"))
+        }
+        let metadata = Metadata(
+            skill: skill,
+            backupCreatedAt: createdAt,
+            sourcePath: source.path,
+            linkTarget: linkTarget
+        )
         try VibeBarLocalStore.writeJSON(
             metadata,
             to: backupURL.appendingPathComponent("meta.json"),
@@ -115,6 +151,9 @@ public struct SkillBackupManager: Sendable {
         guard let metadata = metadata(at: backupURL) else {
             throw SkillError.backupCorrupted(backupURL.lastPathComponent)
         }
+        if let linkTarget = metadata.linkTarget {
+            return try restoreLink(metadata.skill, target: linkTarget)
+        }
         let payload = backupURL.appendingPathComponent("skill", isDirectory: true)
         guard SkillFileSystem.kind(of: payload) == .directory else {
             throw SkillError.backupCorrupted(backupURL.lastPathComponent)
@@ -161,6 +200,34 @@ public struct SkillBackupManager: Sendable {
     // MARK: - Internals
 
     private var homeURL: URL { URL(fileURLWithPath: homeDirectory, isDirectory: true) }
+
+    /// Recreates a linked skill's link with the exact target string it had,
+    /// and takes a fresh receipt for it. A target that is no longer a
+    /// readable skill is refused and the new link removed again, rather than
+    /// restoring a dangling one.
+    private func restoreLink(_ recorded: Skill, target: String) throws -> Skill {
+        var skill = recorded
+        try SkillPathValidator.validate(directoryName: skill.directory)
+        let ssot = SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
+        let destination = ssot.appendingPathComponent(skill.directory, isDirectory: true)
+        guard SkillAppCatalog.isWriteAllowed(destination, homeDirectory: homeDirectory) else {
+            throw SkillError.writeOutsideAllowedRoots(destination.path)
+        }
+        guard SkillFileSystem.kind(of: destination) == .missing else {
+            throw SkillError.destinationExists(skill.directory)
+        }
+        try SkillFileSystem.ensureDirectory(ssot, stopAt: homeURL)
+        try FileManager.default.createSymbolicLink(atPath: destination.path, withDestinationPath: target)
+        do {
+            let capture = try SkillLinkInspector.capture(directoryName: skill.directory, homeDirectory: homeDirectory)
+            skill.origin = .linked(capture.receipt)
+            skill.contentHash = nil
+            return skill
+        } catch {
+            _ = Darwin.unlink(destination.path)
+            throw error
+        }
+    }
 
     private func metadata(at backupURL: URL) -> Metadata? {
         guard let data = try? Data(contentsOf: backupURL.appendingPathComponent("meta.json")) else {

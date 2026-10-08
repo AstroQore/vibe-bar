@@ -29,6 +29,7 @@ final class SharedSkillDiscoveryTests: XCTestCase {
         let link = home.ssot.appendingPathComponent("a1-video-agent")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: external)
         let before = home.lstatSnapshot()
+        let externalSnapshot = home.lstatSnapshot(under: external)
         let service = SkillsService(homeDirectory: home.path)
         let inventory = await service.inventory()
         let entry = try XCTUnwrap(inventory.discoveredShared.first)
@@ -46,12 +47,29 @@ final class SharedSkillDiscoveryTests: XCTestCase {
         XCTAssertTrue(preview.contains("Synthetic linked source"))
         XCTAssertEqual(home.lstatSnapshot(), before)
         XCTAssertFalse(home.exists(VibeBarLocalStore.baseDirectory(homeDirectory: home.path)))
+        XCTAssertEqual(entry.registration, .unregistered)
+        XCTAssertTrue(entry.canAdoptLink)
+        XCTAssertEqual(entry.linkTarget, external.path)
 
-        // The existing mutation boundary continues to reject an external
-        // source. Showing it has not turned it into a managed skill.
+        // Showing a link has not turned it into a managed skill: without a
+        // receipt the mutation boundary still rejects the external source.
         XCTAssertThrowsError(try SkillSyncEngine(homeDirectory: home.path).materialize(
             skillDirectoryName: entry.directoryName, into: .claude, method: .symlink))
         XCTAssertEqual(home.lstatSnapshot(), before)
+
+        // Only the explicit adoption does, and then Claude is projected the
+        // way any managed skill is — by a link to the shared path, made when
+        // the user switches it on, never invented by the adoption itself.
+        let adopted = try await service.adoptLinkedSkill(directoryName: entry.directoryName)
+        let managedRows = await service.inventory().installed
+        let managed = try XCTUnwrap(managedRows.first)
+        XCTAssertEqual(managed.activationState(for: .claude), .notProjected)
+        XCTAssertEqual(SkillFileSystem.kind(of: home.appDirectory(.claude)), .missing)
+        _ = try await service.setActivation(adopted.id, app: .claude, action: .enable)
+        let projection = home.appDirectory(.claude).appendingPathComponent("a1-video-agent")
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: projection.path),
+                       link.standardizedFileURL.path)
+        XCTAssertEqual(home.lstatSnapshot(under: external), externalSnapshot)
     }
 
     func testARegisteredDirectoryReplacedByAnExternalLinkHasOneReadOnlyRow() async throws {
@@ -65,8 +83,27 @@ final class SharedSkillDiscoveryTests: XCTestCase {
         let inventory = await service.inventory()
         XCTAssertTrue(inventory.installed.isEmpty, "an old record does not grant write ownership over the new target")
         XCTAssertEqual(inventory.discoveredShared.map(\.directoryName), ["registered"])
+        let entry = try XCTUnwrap(inventory.discoveredShared.first)
+        XCTAssertEqual(entry.registration, .ownedRecord(.local(directory: "registered")))
+        XCTAssertTrue(entry.canAdoptLink)
         let registry = await service.store.snapshot()
         XCTAssertEqual(registry.skills.count, 1, "inventory leaves the registry record intact")
+        // Nor does it reach the native config: no switch is written for it.
+        do {
+            _ = try await service.setActivation(.local(directory: "registered"), app: .codex, action: .disableInHarness)
+            XCTFail("an owned row whose directory became a link was switched")
+        } catch {}
+        XCTAssertFalse(home.exists(home.url.appendingPathComponent(".codex/config.toml")))
+
+        // Adopting the link turns the same row into a linked one.
+        let adopted = try await service.adoptLinkedSkill(directoryName: "registered")
+        XCTAssertEqual(adopted.id, .local(directory: "registered"))
+        XCTAssertNotNil(adopted.linkReceipt)
+        let after = await service.inventory()
+        XCTAssertEqual(after.installed.map(\.directory), ["registered"])
+        XCTAssertTrue(after.discoveredShared.isEmpty)
+        let rows = await service.store.all()
+        XCTAssertEqual(rows.count, 1)
     }
 
     func testRelativeLinksAndNativeDisableAreReadFromCurrentDisk() async throws {

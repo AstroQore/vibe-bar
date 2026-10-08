@@ -113,8 +113,12 @@ public enum SkillVersionScanner {
         var versions: [SkillVersion] = []
         var seen: Set<String> = []
 
-        // Shared copy. A link in the SSOT is not a shared copy (the page lists
-        // such rows as discovered, read-only), so only a real directory counts.
+        // Shared copy. A link in the SSOT is not a shared copy, so only a real
+        // directory counts. An adopted linked skill is still listed — its
+        // shared entry and the projections pointing at it — but nothing about
+        // it is read or hashed: the folder it links to lies outside
+        // `SkillReadScope`, and every comparison with it reads `.unknown`.
+        let linked = skill.isLinked
         let sharedURL = SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
             .appendingPathComponent(skill.directory, isDirectory: true)
         let sharedReadable = SkillFileSystem.kind(of: sharedURL) == .directory
@@ -156,7 +160,12 @@ public enum SkillVersionScanner {
                 let resolved = entry.resolvingSymlinksInPath().standardizedFileURL
                 let state: SkillVersion.LinkState
                 let readable: URL?
-                if SkillFileSystem.kind(of: resolved) != .directory {
+                if linked, SkillFileSystem.lexicalSymlinkTarget(of: entry)?.path == sharedURL.standardizedFileURL.path {
+                    // A projection of the linked skill: the shared entry it
+                    // names is the source, even though it cannot be read.
+                    state = .shared
+                    readable = nil
+                } else if SkillFileSystem.kind(of: resolved) != .directory {
                     state = .broken
                     readable = nil
                 } else if let sharedReadable, resolved.path == sharedReadable.path {
@@ -171,7 +180,7 @@ public enum SkillVersionScanner {
                 }
                 let hash: String? = switch state {
                 case .shared: sharedHash
-                case .inside: readable.flatMap { try? SkillDirectoryHasher.hash(directory: $0) }
+                case .inside: linked ? nil : readable.flatMap { try? SkillDirectoryHasher.hash(directory: $0) }
                 case .outside, .broken: nil
                 }
                 versions.append(SkillVersion(
@@ -189,12 +198,12 @@ public enum SkillVersionScanner {
                 seen.insert(key)
             case .directory:
                 if let copy = otherByPath[key] {
-                    versions.append(version(for: copy, scope: scope, compare: compare))
+                    versions.append(version(for: copy, scope: scope, hashes: !linked, compare: compare))
                 } else {
                     // Vibe Bar's own `.copy` projection, kept out of
                     // `otherCopies` because the toggle already shows it.
                     let readable = scope.resolvedSkillDirectory(entry)
-                    let hash = readable.flatMap { try? SkillDirectoryHasher.hash(directory: $0) }
+                    let hash = linked ? nil : readable.flatMap { try? SkillDirectoryHasher.hash(directory: $0) }
                     versions.append(SkillVersion(
                         url: entry,
                         kind: skill.apps[app]?.method == .copy ? .managedCopy(app) : .independentCopy(app),
@@ -216,7 +225,7 @@ public enum SkillVersionScanner {
 
         // Every remaining scanned copy: differently named folders, built-ins.
         for copy in skill.otherCopies where !seen.contains(copy.url.standardizedFileURL.path) {
-            versions.append(version(for: copy, scope: scope, compare: compare))
+            versions.append(version(for: copy, scope: scope, hashes: !linked, compare: compare))
             seen.insert(copy.url.standardizedFileURL.path)
         }
 
@@ -253,13 +262,16 @@ public enum SkillVersionScanner {
         return SkillVersionInventory(versions: versions, baseline: baseline)
     }
 
+    /// `hashes` is false for a linked skill's copies: with no shared hash to
+    /// hold them against, hashing them would be work with no comparison.
     private static func version(
         for copy: SkillCopy,
         scope: SkillReadScope,
+        hashes: Bool = true,
         compare: (String?) -> SkillVersion.Comparison
     ) -> SkillVersion {
         let readable = SkillFileSystem.kind(of: copy.url) == .directory ? scope.resolvedSkillDirectory(copy.url) : nil
-        let hash = copy.contentHash ?? readable.flatMap { try? SkillDirectoryHasher.hash(directory: $0) }
+        let hash = hashes ? copy.contentHash ?? readable.flatMap { try? SkillDirectoryHasher.hash(directory: $0) } : nil
         let kind: SkillVersion.Kind = switch copy.location {
         case let .builtIn(app): .builtIn(app)
         case let .appFolder(app): .independentCopy(app)

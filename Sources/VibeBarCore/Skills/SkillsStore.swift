@@ -12,7 +12,12 @@ import Foundation
 /// this build does not know (a newer Vibe Bar learned another agent CLI) are
 /// dropped per entry in `Skill`'s decoder.
 public actor SkillsStore {
-    public static let currentSchemaVersion = 1
+    /// 2 added the optional per-row `link` receipt of an adopted linked
+    /// skill (`SkillOrigin.linked`). Nothing gates on the number: a version 1
+    /// file decodes with every row `.owned`, and a build that predates links
+    /// drops the key and sees the shared entry as a link it does not own —
+    /// read-only, never written through.
+    public static let currentSchemaVersion = 2
 
     /// Repositories the discovery browser reads by default. These are *state*,
     /// not preferences — they live here rather than in `AppSettings` because
@@ -158,7 +163,8 @@ public actor SkillsStore {
         var next = skill
         let displaced = storage.skills.filter { $0.id != skill.id && $0.directory == skill.directory }
         for old in displaced {
-            for (app, materialization) in old.apps where next.apps[app] == nil {
+            for (app, materialization) in old.apps
+            where next.apps[app] == nil && Self.mayInherit(materialization, into: next) {
                 next.apps[app] = materialization
             }
         }
@@ -255,12 +261,21 @@ public actor SkillsStore {
             }
             let (winner, loser) = touched(skill) > touched(existing) ? (skill, existing) : (existing, skill)
             var merged = winner
-            for (app, materialization) in loser.apps where merged.apps[app] == nil {
+            for (app, materialization) in loser.apps
+            where merged.apps[app] == nil && mayInherit(materialization, into: merged) {
                 merged.apps[app] = materialization
             }
             byDirectory[skill.directory] = merged
         }
         return order.compactMap { byDirectory[$0] }
+    }
+
+    /// A linked row records only links to the shared path. A copy a
+    /// displaced owned row made is not a projection of the link — carrying
+    /// it over would make the link look projected through a folder its
+    /// materialization refuses to touch.
+    private static func mayInherit(_ materialization: SkillMaterialization, into row: Skill) -> Bool {
+        !row.isLinked || materialization.method == .symlink
     }
 
     private static func touched(_ skill: Skill) -> Date {

@@ -238,6 +238,93 @@ public struct SkillMaterialization: Codable, Hashable, Sendable {
     }
 }
 
+/// What Vibe Bar recorded about a shared skill that is a symlink to a folder
+/// outside its management (a checkout, a dotfiles repository).
+///
+/// The receipt pins *which* link was adopted, not what the folder holds: the
+/// link's own target string, the directory it resolved to, and that
+/// directory's device and inode. A link re-pointed by hand, an intermediate
+/// link that moved, or a folder deleted and re-created at the same path all
+/// stop matching, and every write waits for the user to re-confirm. Edits
+/// inside the folder do not — the link is a live view of it, and Vibe Bar
+/// never hashes, copies, or writes that tree to find out what changed.
+public struct SkillLinkReceipt: Codable, Hashable, Sendable {
+    /// Raw `readlink` string of `~/.agents/skills/<directory>`.
+    public let target: String
+    /// Standardized directory the link resolved to when it was confirmed.
+    public let resolvedPath: String
+    public let device: UInt64
+    public let inode: UInt64
+    public let confirmedAt: Date
+
+    public init(target: String, resolvedPath: String, device: UInt64, inode: UInt64, confirmedAt: Date) {
+        self.target = target
+        self.resolvedPath = resolvedPath
+        self.device = device
+        self.inode = inode
+        self.confirmedAt = confirmedAt
+    }
+
+    public var resolvedURL: URL { URL(fileURLWithPath: resolvedPath, isDirectory: true) }
+
+    /// Same link and same source directory; when it was confirmed is
+    /// bookkeeping, not identity.
+    public func pinsSameSource(as other: SkillLinkReceipt) -> Bool {
+        target == other.target && resolvedPath == other.resolvedPath
+            && device == other.device && inode == other.inode
+    }
+}
+
+/// Where a registered skill's shared entry comes from.
+public enum SkillOrigin: Hashable, Sendable {
+    /// `~/.agents/skills/<directory>` is a real directory Vibe Bar wrote,
+    /// imported, or adopted.
+    case owned
+    /// `~/.agents/skills/<directory>` is a link the user made to a folder
+    /// Vibe Bar does not manage. Only the link itself is Vibe Bar's to touch.
+    case linked(SkillLinkReceipt)
+}
+
+/// Why a linked skill's receipt no longer matches the shared entry.
+public enum SkillLinkMismatch: String, Hashable, Sendable {
+    /// Nothing is at `~/.agents/skills/<directory>` any more.
+    case missing
+    /// The link was replaced by a real directory or a file.
+    case notALink
+    /// The link's own target string changed.
+    case retargeted
+    /// Same target string, but it now resolves to another directory.
+    case resolvesElsewhere
+    /// Same path, but a different directory (deleted and re-created).
+    case replaced
+    /// The link is broken, cyclic, or leads to something that is not a
+    /// readable skill.
+    case unavailable
+
+    /// Whether the entry at the shared path is still the link the receipt
+    /// recorded (or nothing at all), so removing it removes exactly what the
+    /// user adopted.
+    public var linkStillRecorded: Bool {
+        switch self {
+        case .missing, .resolvesElsewhere, .replaced, .unavailable: true
+        case .notALink, .retargeted: false
+        }
+    }
+}
+
+/// Live verification of a linked skill's receipt.
+public enum SkillLinkCheck: Hashable, Sendable {
+    case matches
+    case mismatch(SkillLinkMismatch)
+
+    public var matches: Bool { self == .matches }
+
+    public var mismatch: SkillLinkMismatch? {
+        if case let .mismatch(reason) = self { return reason }
+        return nil
+    }
+}
+
 /// A skill installed in the SSOT (`~/.agents/skills/<directory>`), plus the
 /// per-app materializations Vibe Bar knows about.
 public struct Skill: Codable, Hashable, Sendable, Identifiable {
@@ -253,6 +340,22 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
     public var contentHash: String?
     public var updatedAt: Date?
     public var apps: [SkillAppTarget: SkillMaterialization]
+    /// Owned directory or adopted external link. Persisted as the optional
+    /// `link` key, so a file written before links could be adopted decodes
+    /// every row as `.owned`.
+    public var origin: SkillOrigin
+    /// Live verification of a linked row's receipt, derived on reload and
+    /// omitted from `skills.json`. `nil` for owned rows.
+    public var linkCheck: SkillLinkCheck?
+    /// Linked rows only: harness copies Vibe Bar made for the owned row this
+    /// one replaced, by the content hash recorded when it wrote them. They
+    /// are not projections of the link — a linked row records links only —
+    /// but they are still Vibe Bar's, so switching that harness on (or
+    /// unlinking) may remove one while it still hashes to this value —
+    /// a toggle moves it aside first and puts it back if either layer
+    /// fails. An edited copy is the user's and stays a conflict. Persisted
+    /// as the optional `retiredCopies` key.
+    public var retiredCopyHashes: [SkillAppTarget: String] = [:]
     /// Live native-harness state, derived on reload and omitted from
     /// `skills.json`.
     public var nativeDisabledApps: Set<SkillAppTarget>
@@ -291,7 +394,8 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         apps: [SkillAppTarget: SkillMaterialization] = [:],
         nativeDisabledApps: Set<SkillAppTarget> = [],
         nativeStateUnknownApps: Set<SkillAppTarget> = [],
-        localContentHash: String? = nil
+        localContentHash: String? = nil,
+        origin: SkillOrigin = .owned
     ) {
         self.id = id
         self.name = name
@@ -305,7 +409,17 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         self.nativeDisabledApps = nativeDisabledApps
         self.nativeStateUnknownApps = nativeStateUnknownApps
         self.localContentHash = localContentHash
+        self.origin = origin
+        self.linkCheck = nil
     }
+
+    /// The receipt of a linked row, `nil` for an owned one.
+    public var linkReceipt: SkillLinkReceipt? {
+        if case let .linked(receipt) = origin { return receipt }
+        return nil
+    }
+
+    public var isLinked: Bool { linkReceipt != nil }
 
     public var enabledApps: [SkillAppTarget] {
         SkillAppTarget.allCases.filter { activationState(for: $0) == .enabled }
@@ -351,7 +465,8 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, description, directory, repoBranch, installedAt, contentHash, updatedAt, apps
+        case id, name, description, directory, repoBranch, installedAt, contentHash, updatedAt, apps, link
+        case retiredCopies
     }
 
     public init(from decoder: Decoder) throws {
@@ -374,6 +489,22 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
             apps[app] = value
         }
         self.apps = apps
+        // A receipt that does not decode is not evidence of a link Vibe Bar
+        // may write through: the row falls back to `.owned`, which grants
+        // nothing while its shared entry is a symlink, and the link shows up
+        // again as one the user can adopt.
+        if let receipt = try? c.decodeIfPresent(SkillLinkReceipt.self, forKey: .link) {
+            self.origin = .linked(receipt)
+        } else {
+            self.origin = .owned
+        }
+        self.linkCheck = nil
+        var retired: [SkillAppTarget: String] = [:]
+        for (key, hash) in (try? c.decodeIfPresent([String: String].self, forKey: .retiredCopies)) ?? [:] {
+            guard let app = SkillAppTarget(rawValue: key) else { continue }
+            retired[app] = hash
+        }
+        self.retiredCopyHashes = retired
         self.nativeDisabledApps = []
         self.nativeStateUnknownApps = []
         self.localContentHash = nil
@@ -392,6 +523,12 @@ public struct Skill: Codable, Hashable, Sendable, Identifiable {
         var rawApps: [String: SkillMaterialization] = [:]
         for (app, value) in apps { rawApps[app.rawValue] = value }
         try c.encode(rawApps, forKey: .apps)
+        try c.encodeIfPresent(linkReceipt, forKey: .link)
+        if !retiredCopyHashes.isEmpty {
+            var rawRetired: [String: String] = [:]
+            for (app, hash) in retiredCopyHashes { rawRetired[app.rawValue] = hash }
+            try c.encode(rawRetired, forKey: .retiredCopies)
+        }
     }
 }
 
@@ -414,6 +551,22 @@ public enum SkillError: Error, Equatable, Sendable {
     case nativeSkillDisabledByPattern(SkillAppTarget)
     case projectionUnsupported(SkillAppTarget)
     case copyOutsideScannedRoots(String)
+    /// The shared entry is not a symlink, so there is no link to adopt.
+    case notALink(String)
+    /// The link leads to something that is not a readable skill right now.
+    case linkedSourceUnavailable(String)
+    /// A linked skill's receipt no longer matches the link on disk.
+    case linkReceiptMismatch(String)
+    /// The link resolves inside, or above, a folder Vibe Bar writes: the
+    /// shared skills root or a harness skills folder.
+    case linkTargetUnsupported(String)
+    /// The operation would read, hash, or write the linked folder's files.
+    case linkedSkillUnsupported(String)
+    /// The linked folder is larger than a copy into the shared root allows.
+    case copyLimitExceeded(String)
+    /// The linked folder now names its skill differently (directory, new
+    /// name). Native switches are keyed by name, so it is not renamed.
+    case linkedSkillRenamed(String, String)
 }
 
 extension SkillError: LocalizedError {
@@ -455,6 +608,20 @@ extension SkillError: LocalizedError {
             return "\(app.displayName) reads skills from ~/.agents/skills itself; Vibe Bar never writes into its own skills folder."
         case let .copyOutsideScannedRoots(path):
             return "\(path) is not a skill copy Vibe Bar recognizes."
+        case let .notALink(name):
+            return "\"\(name)\" in ~/.agents/skills is not a link."
+        case let .linkedSourceUnavailable(name):
+            return "The folder \"\(name)\" links to is not a readable skill right now."
+        case let .linkReceiptMismatch(name):
+            return "The link for \"\(name)\" no longer points where Vibe Bar recorded it. Re-confirm its source first."
+        case let .linkTargetUnsupported(name):
+            return "\"\(name)\" links into a folder Vibe Bar already manages — ~/.agents/skills or an agent's skills folder — so it cannot be adopted as a linked skill."
+        case let .linkedSkillUnsupported(name):
+            return "\"\(name)\" links to a folder outside Vibe Bar's management. Convert it to a copy before changing its files."
+        case let .copyLimitExceeded(name):
+            return "\"\(name)\" is too large to copy into the shared library."
+        case let .linkedSkillRenamed(name, newName):
+            return "\"\(name)\" now links to a skill named \"\(newName)\". Agent switches are kept by skill name, so Vibe Bar does not rename it: unlink it and adopt the link again."
         }
     }
 }

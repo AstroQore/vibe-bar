@@ -168,12 +168,59 @@ public final class SkillCopyScanner {
 
     /// The shared copy of `directoryName`, or `nil` when it is not a real
     /// directory in the SSOT.
-    public func sharedCopy(directoryName: String) -> SkillCopy? {
+    ///
+    /// `allowingLink` admits an adopted linked skill whose receipt the caller
+    /// has just verified. Its folder is never read the way a copy is: the
+    /// link is followed only through `SharedSkillDiscoveryScanner.resolve`
+    /// (link targets and one `SKILL.md`'s metadata, which must be a regular
+    /// file within the 256 KB preview limit) and the frontmatter comes from
+    /// its bounded 16 KB read. Anything else — too large, missing,
+    /// unreadable — has no shared copy to show. The result carries no hash
+    /// and must never be passed to `withContentHash`; `SkillDirectoryHasher`
+    /// refuses a symlink root anyway.
+    public func sharedCopy(directoryName: String, allowingLink: Bool = false) -> SkillCopy? {
         guard SkillPathValidator.isValid(directoryName) else { return nil }
         let directory = SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
             .appendingPathComponent(directoryName, isDirectory: true)
-        guard SkillFileSystem.kind(of: directory) == .directory else { return nil }
-        return copy(at: directory, directoryName: directoryName, location: .shared)
+        switch SkillFileSystem.kind(of: directory) {
+        case .directory:
+            return copy(at: directory, directoryName: directoryName, location: .shared)
+        case .symlink where allowingLink:
+            return linkedSharedCopy(at: directory, directoryName: directoryName)
+        default:
+            return nil
+        }
+    }
+
+    private func linkedSharedCopy(at link: URL, directoryName: String) -> SkillCopy? {
+        let key = link.standardizedFileURL.path
+        touched.insert(key)
+        let resolution = SharedSkillDiscoveryScanner.resolve(link)
+        guard resolution.state == .ready,
+              let skillFile = resolution.skillFile,
+              let stamp = resolution.skillFileStamp
+        else {
+            cache[key] = nil
+            return nil
+        }
+        let frontmatter: SkillFrontmatterParser.Frontmatter
+        if let cached = cache[key], cached.skillFileStamp == stamp {
+            frontmatter = cached.frontmatter
+        } else {
+            guard let parsed = SharedSkillDiscoveryScanner.frontmatter(of: skillFile) else {
+                cache[key] = nil
+                return nil
+            }
+            frontmatter = parsed
+            cache[key] = Entry(skillFileStamp: stamp, frontmatter: parsed, tree: nil, contentHash: nil)
+        }
+        return SkillCopy(
+            directoryName: directoryName,
+            name: frontmatter.name ?? directoryName,
+            description: frontmatter.description,
+            location: .shared,
+            url: link
+        )
     }
 
     /// `copy` with `contentHash` and `modifiedAt` filled in. The tree's
