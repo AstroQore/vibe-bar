@@ -26,7 +26,8 @@ public struct SessionStructure: Codable, Sendable, Hashable {
     /// v3: `SessionTurnOutline` keeps every per-turn counter and prompt tally.
     /// v4: a cut session with no counter of its own no longer takes the
     /// Codex state database's inherited-inclusive total (`.unavailable`).
-    public static let parserVersion = 4
+    /// v5: a Codex counter that resets mid-session sums its epochs.
+    public static let parserVersion = 5
 
     /// How much of each turn was materialized.
     public enum Detail: String, Codable, Sendable, Hashable {
@@ -540,10 +541,13 @@ public enum SessionStructureRelation: String, Codable, Sendable, Hashable {
 public enum SessionUsageSource: String, Codable, Sendable, Hashable {
     /// Codex: the last cumulative `token_count` / `token_usage_record`.
     case cumulativeCounter
-    /// Codex fork / spawned subagent cut at `subagent_history_start_ordinal`:
-    /// the sum of counter deltas after the cut. Its counters continue from
-    /// the copied parent history, so their last value is not this session's
-    /// own usage (see `SessionStats.cumulativeTokensIncludingInherited`).
+    /// Codex: the sum of counter deltas, used when the last counter value
+    /// is not the session's own total — a fork / spawned subagent cut at
+    /// `subagent_history_start_ordinal` (its counters continue from the
+    /// copied parent history), or a counter that reset mid-session
+    /// (`SessionStats.counterResets > 0`, the last value covers only the
+    /// latest epoch). The raw last value stays in
+    /// `SessionStats.cumulativeTokensIncludingInherited`.
     case ownCounterDeltas
     /// Claude: per-message `usage`, deduplicated by message + request id.
     case summedMessages
@@ -598,6 +602,9 @@ public struct SessionStats: Codable, Sendable, Hashable {
     /// counter started from, which `totalTokens` leaves out. `nil` when no
     /// counter was read (Claude, a byte-window parse).
     public var cumulativeTokensIncludingInherited: Int?
+    /// Codex: how many times the session's own cumulative counter went
+    /// backwards. Each reset starts a new epoch; `totalTokens` sums them.
+    public var counterResets: Int
     /// Sum of priced model segments; `nil` when no segment had a price.
     public var estimatedCostUSD: Double?
     /// Whether some usage could not be priced (cost is then a lower bound).
@@ -644,6 +651,7 @@ public struct SessionStats: Codable, Sendable, Hashable {
         totalTokens: Int = 0,
         usageSource: SessionUsageSource = .none,
         cumulativeTokensIncludingInherited: Int? = nil,
+        counterResets: Int = 0,
         estimatedCostUSD: Double? = nil,
         hasUnpricedUsage: Bool = false,
         startedAt: Date? = nil,
@@ -680,6 +688,7 @@ public struct SessionStats: Codable, Sendable, Hashable {
         self.totalTokens = totalTokens
         self.usageSource = usageSource
         self.cumulativeTokensIncludingInherited = cumulativeTokensIncludingInherited
+        self.counterResets = counterResets
         self.estimatedCostUSD = estimatedCostUSD
         self.hasUnpricedUsage = hasUnpricedUsage
         self.startedAt = startedAt

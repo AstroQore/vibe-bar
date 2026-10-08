@@ -75,6 +75,8 @@ private final class CodexStructureBuilder {
     /// A counter was read from this session's own lines (not only from
     /// history it inherited).
     var ownCounterSeen = false
+    /// Times this session's own cumulative counter went backwards.
+    var counterResets = 0
     var lastTimestampRaw: String?
     var firstTimestampRaw: String?
     var humanInputs: [Int: (tentative: Int, authoritative: Int)] = [:]
@@ -861,6 +863,7 @@ private final class CodexStructureBuilder {
     }
 
     func applyCumulative(_ totals: RawTotals) {
+        let hadOwnCounter = ownCounterSeen
         ownCounterSeen = true
         lastCumulativeTotal = totals.total
         guard let last = lastTotals else {
@@ -872,7 +875,10 @@ private final class CodexStructureBuilder {
         }
         if totals == last { return }
         if totals.total < last.total {
-            // A counter that went backwards was reset; what it shows now is new.
+            // A counter that went backwards was reset; what it shows now is
+            // new. (Dropping below an *inherited* baseline is a cut fork's
+            // own counter starting, not a reset.)
+            if hadOwnCounter { counterResets += 1 }
             lastTotals = totals
             record(delta: totals)
             return
@@ -937,10 +943,13 @@ private final class CodexStructureBuilder {
         if options.byteRange == nil, ownCounterSeen, let lastTotals {
             let cumulative = lastCumulativeTotal ?? lastTotals.total
             stats.cumulativeTokensIncludingInherited = cumulative
-            if cutOrdinal != nil {
-                // The counters carry on from the copied parent history, so
-                // their last value is parent + child. What this session
-                // added is the sum of its own deltas — the per-turn ledger.
+            stats.counterResets = counterResets
+            if cutOrdinal != nil || counterResets > 0 {
+                // The last counter value is not this session's total when the
+                // counter carried on from copied parent history (parent +
+                // child) or restarted mid-session (only the latest epoch).
+                // What the session used is the sum of its deltas — the
+                // per-turn ledger.
                 stats.totalUsage = summed
                 stats.totalTokens = summed.total
                 stats.usageSource = .ownCounterDeltas

@@ -240,6 +240,13 @@ final class CodexRolloutBuilder {
         return self
     }
 
+    /// Start the cumulative counter over, as a restarted Codex process does.
+    @discardableResult
+    func resetCounter() -> Self {
+        cumulative = (0, 0, 0)
+        return self
+    }
+
     /// The newer per-response record, which repeats the cumulative counter.
     @discardableResult
     func tokenUsageRecord() -> Self {

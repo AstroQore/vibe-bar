@@ -264,6 +264,32 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertEqual(structure.stats.modelUsage.first?.usage.total, 3_400)
     }
 
+    func testCounterResetSumsEpochsInsteadOfKeepingTheLastValue() throws {
+        let builder = CodexRolloutBuilder()
+            .meta()
+            .taskStarted("t1")
+            .turnContext(model: "gpt-5")
+            .prompt("Long task", turnID: "t1")
+            .tokenCount(input: 900, cached: 0, output: 100)
+            .assistant("Part one")
+            .taskComplete("t1")
+            .resetCounter()
+            .taskStarted("t2")
+            .turnContext(model: "gpt-5")
+            .prompt("Continue", turnID: "t2")
+            .tokenCount(input: 90, cached: 0, output: 10)
+            .assistant("Part two")
+            .taskComplete("t2")
+        let structure = try parse(builder)
+        XCTAssertEqual(structure.turns.map(\.usage.total), [1_000, 100])
+        XCTAssertEqual(structure.stats.counterResets, 1)
+        XCTAssertEqual(structure.stats.totalTokens, 1_100)
+        XCTAssertEqual(structure.stats.totalUsage.total, 1_100)
+        XCTAssertEqual(structure.stats.usageSource, .ownCounterDeltas)
+        XCTAssertEqual(structure.stats.cumulativeTokensIncludingInherited, 100, "the raw last counter is kept as written")
+        XCTAssertEqual(structure.stats.modelUsage.reduce(0) { $0 + $1.usage.total }, 1_100)
+    }
+
     func testUnknownModelLeavesCostNil() throws {
         let builder = CodexRolloutBuilder()
             .meta()
@@ -329,6 +355,7 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertEqual(structure.stats.totalUsage.total, 330)
         XCTAssertEqual(structure.stats.usageSource, .ownCounterDeltas)
         XCTAssertEqual(structure.stats.cumulativeTokensIncludingInherited, 5_830)
+        XCTAssertEqual(structure.stats.counterResets, 0)
         XCTAssertEqual(structure.stats.modelUsage.reduce(0) { $0 + $1.usage.total }, 330)
     }
 
