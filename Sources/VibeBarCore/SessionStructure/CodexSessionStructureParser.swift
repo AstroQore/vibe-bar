@@ -81,6 +81,9 @@ private final class CodexStructureBuilder {
     var firstTimestampRaw: String?
     var humanInputs: [Int: (tentative: Int, authoritative: Int)] = [:]
     var reasoningDurations: [String: Int] = [:]
+    /// Verdict-shaped assistant messages read while the thread still looked
+    /// like an ordinary subagent (see `becomeGuardianIfReviewModel`).
+    var verdictCandidates: [(turn: Int, offset: Int64, timestamp: Date?, text: String)] = []
     var reasoningSteps: [String: StepLocation] = [:]
     var subagentSteps: [String: StepLocation] = [:]
     var lastLineEnd: Int64 = 0
@@ -255,6 +258,7 @@ private final class CodexStructureBuilder {
             if let current = acc.current, acc.turns[current].model == nil || !acc.currentIsClosed {
                 acc.turns[current].model = model
             }
+            becomeGuardianIfReviewModel(model)
         }
         // Same rule as the cost scanner: each turn states its tier, and a
         // turn that states none ran on the default.
@@ -489,23 +493,69 @@ private final class CodexStructureBuilder {
     func handleAssistant(_ text: String, line: SessionStructureLineReader.Line, object: [String: Any]) {
         let turn = acc.ensureTurn(offset: line.offset, timestamp: timestamp(object), model: currentModel)
         if stats.kind == .guardian, let verdict = Self.guardianVerdict(from: text) {
-            let rationale = SessionStructureText.jsonObject(fromString: text).flatMap { SessionStructureText.string($0["rationale"]) }
-            let step = Step(
-                kind: .guardianVerdict,
-                name: "guardian",
-                resultSummary: isFull ? SessionStructureText.summary(rationale) : nil,
-                isError: verdict.isDenied,
-                verdict: verdict,
-                timestamp: isFull ? timestamp(object) : nil,
-                byteOffset: line.offset
-            )
+            let (step, rationale) = verdictStep(verdict, text: text, offset: line.offset, timestamp: timestamp(object))
             acc.addStep(step, turn: turn)
-            if verdict.isDenied { stats.guardianDenyCount += 1 } else { stats.guardianAllowCount += 1 }
+            countVerdict(verdict)
             acc.setFinalAnswerIfMissing(rationale ?? text, turn: turn)
             return
         }
         guard !text.isEmpty else { return }
+        // A review thread without the guardian source tag is recognized by
+        // its model, which can surface after a verdict was already read.
+        // Remember verdict-shaped messages so they can be re-read then.
+        if stats.kind == .subagent, Self.guardianVerdict(from: text) != nil {
+            verdictCandidates.append((turn, line.offset, timestamp(object), text))
+        }
         acc.assistantText(text, offset: line.offset, timestamp: isFull ? timestamp(object) : nil, turn: turn)
+    }
+
+    func verdictStep(
+        _ verdict: SessionStructure.GuardianVerdict,
+        text: String,
+        offset: Int64,
+        timestamp: Date?
+    ) -> (Step, String?) {
+        let rationale = SessionStructureText.jsonObject(fromString: text).flatMap { SessionStructureText.string($0["rationale"]) }
+        let step = Step(
+            kind: .guardianVerdict,
+            name: "guardian",
+            resultSummary: isFull ? SessionStructureText.summary(rationale) : nil,
+            isError: verdict.isDenied,
+            verdict: verdict,
+            timestamp: isFull ? timestamp : nil,
+            byteOffset: offset
+        )
+        return (step, rationale)
+    }
+
+    func countVerdict(_ verdict: SessionStructure.GuardianVerdict) {
+        if verdict.isDenied { stats.guardianDenyCount += 1 } else { stats.guardianAllowCount += 1 }
+    }
+
+    /// The review runtime that predates the guardian source tag: a subagent
+    /// thread running the auto-review model (the kit's rule). Switch to
+    /// guardian semantics as soon as that model is seen, and re-read what
+    /// was parsed before it with those semantics.
+    func becomeGuardianIfReviewModel(_ model: String) {
+        guard stats.kind == .subagent, model.lowercased() == "codex-auto-review" else { return }
+        stats.kind = .guardian
+        stats.relation = .reviews
+        for index in acc.turns.indices where acc.turns[index].prompt.origin == .agent {
+            acc.turns[index].prompt.origin = .guardianRequest
+        }
+        for candidate in verdictCandidates {
+            guard let verdict = Self.guardianVerdict(from: candidate.text) else { continue }
+            let (step, rationale) = verdictStep(verdict, text: candidate.text, offset: candidate.offset, timestamp: candidate.timestamp)
+            acc.reinterpretAssistantMessage(
+                turn: candidate.turn,
+                offset: candidate.offset,
+                originalText: candidate.text,
+                as: step,
+                finalAnswer: rationale ?? candidate.text
+            )
+            countVerdict(verdict)
+        }
+        verdictCandidates.removeAll()
     }
 
     static func guardianVerdict(from text: String) -> SessionStructure.GuardianVerdict? {
@@ -928,12 +978,6 @@ private final class CodexStructureBuilder {
         acc.diagnostics.bytesRead = outcome.bytesRead
         acc.diagnostics.incomplete = !outcome.completed
         var turns = acc.finish(lastLineEnd: lastLineEnd)
-        // The review runtime that predates the guardian source tag: a
-        // subagent thread running the auto-review model (the kit's rule).
-        if stats.kind == .subagent, turns.contains(where: { $0.model?.lowercased() == "codex-auto-review" }) {
-            stats.kind = .guardian
-            stats.relation = .reviews
-        }
         settleHumanInputs(&turns)
         if stats.startedAt == nil {
             stats.startedAt = turns.first?.startedAt ?? firstTimestampRaw.flatMap(SessionStructureText.date)

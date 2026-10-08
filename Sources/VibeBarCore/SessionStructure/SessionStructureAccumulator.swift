@@ -213,6 +213,48 @@ final class SessionStructureAccumulator {
         }
     }
 
+    /// Re-read an assistant message as a step after the fact — a Codex
+    /// review thread recognized as a guardian only once its model was seen.
+    /// The message may still be pending, already a commentary note, or the
+    /// turn's final answer; whichever it became is replaced by `step`. In
+    /// outline detail a turn whose steps were already dropped gets the
+    /// step in its counters only.
+    func reinterpretAssistantMessage(
+        turn: Int,
+        offset: Int64,
+        originalText: String,
+        as step: Step,
+        finalAnswer: String?
+    ) {
+        guard turn < turns.count else { return }
+        if let pending = pendingAssistant, pending.turn == turn, pending.offset == offset {
+            pendingAssistant = nil
+        }
+        if droppedTurns.contains(turn) {
+            turns[turn].counts.steps += 1
+            if step.isError { turns[turn].counts.failed += 1 }
+            return
+        }
+        turns[turn].steps.removeAll { $0.kind == .note && $0.name == "commentary" && $0.byteOffset == offset }
+        var stored = step
+        if !isFull {
+            stored.argsSummary = nil
+            stored.resultSummary = nil
+        }
+        let position = turns[turn].steps.firstIndex { $0.byteOffset > offset } ?? turns[turn].steps.count
+        turns[turn].steps.insert(stored, at: position)
+        if isFull {
+            let trimmed = originalText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let previous = turns[turn].finalAnswer
+            if previous == nil || previous == SessionStructureText.capped(trimmed, limit: Turn.finalAnswerLimit) {
+                turns[turn].finalAnswer = finalAnswer.map {
+                    SessionStructureText.capped($0.trimmingCharacters(in: .whitespacesAndNewlines), limit: Turn.finalAnswerLimit)
+                }
+            }
+        }
+        recount(turn)
+    }
+
     func setFinalAnswerIfMissing(_ text: String?, turn: Int) {
         guard isFull, let text, !text.isEmpty, turns[turn].finalAnswer == nil else { return }
         if pendingAssistant?.turn == turn { return }

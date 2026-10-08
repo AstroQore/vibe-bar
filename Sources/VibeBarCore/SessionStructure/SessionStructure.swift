@@ -27,7 +27,9 @@ public struct SessionStructure: Codable, Sendable, Hashable {
     /// v4: a cut session with no counter of its own no longer takes the
     /// Codex state database's inherited-inclusive total (`.unavailable`).
     /// v5: a Codex counter that resets mid-session sums its epochs.
-    public static let parserVersion = 5
+    /// v6: a review thread recognized only by its model gets guardian
+    /// verdicts and prompt origins, not just the guardian kind.
+    public static let parserVersion = 6
 
     /// How much of each turn was materialized.
     public enum Detail: String, Codable, Sendable, Hashable {

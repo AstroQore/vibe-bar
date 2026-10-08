@@ -482,6 +482,61 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertEqual(structure.turns[0].prompt.preview, "Review the pending command")
     }
 
+    /// The review runtime that predates the guardian source tag: a plain
+    /// subagent thread recognized only by the auto-review model.
+    private func modelOnlyGuardian(modelFirst: Bool) -> CodexRolloutBuilder {
+        let builder = CodexRolloutBuilder()
+            .meta(parentThreadID: SessionStructureFixtures.codexParentID, source: ["subagent": "review"], threadSource: "subagent")
+            .taskStarted("r1")
+        if modelFirst { builder.turnContext(model: "codex-auto-review") }
+        builder.userResponseItem("Review the pending command")
+            .assistant(#"{"risk_level":"low","user_authorization":"high","outcome":"allow","rationale":"Reads only."}"#)
+            .taskComplete("r1")
+            .taskStarted("r2")
+            .turnContext(model: "codex-auto-review")
+            .userResponseItem("Review the next command")
+            .assistant(#"{"risk_level":"high","user_authorization":"low","outcome":"deny","rationale":"Deletes files."}"#)
+            .taskComplete("r2")
+        return builder
+    }
+
+    func testModelOnlyGuardianGetsGuardianSemanticsFromItsFirstTurn() throws {
+        for detail in [SessionStructure.Detail.full, .outline] {
+            let structure = try parse(modelOnlyGuardian(modelFirst: true), options: .init(detail: detail))
+            XCTAssertEqual(structure.stats.kind, .guardian, "\(detail)")
+            XCTAssertEqual(structure.stats.relation, .reviews)
+            XCTAssertEqual(structure.stats.parentID, SessionStructureFixtures.codexParentID)
+            XCTAssertEqual(structure.turns.map(\.prompt.origin), [.guardianRequest, .guardianRequest])
+            XCTAssertEqual(structure.stats.guardianAllowCount, 1)
+            XCTAssertEqual(structure.stats.guardianDenyCount, 1)
+            XCTAssertEqual(structure.turns.map(\.counts.steps), [1, 1])
+            XCTAssertEqual(structure.stats.failedToolCount, 1)
+            if detail == .full {
+                XCTAssertEqual(structure.turns[0].steps.first?.verdict?.outcome, "allow")
+                XCTAssertEqual(structure.turns[0].finalAnswer, "Reads only.")
+            }
+        }
+    }
+
+    func testModelSeenAfterAVerdictReReadsTheEarlierTurn() throws {
+        // The first turn's verdict is read before any turn_context names
+        // the review model; the second turn's context reveals it.
+        for detail in [SessionStructure.Detail.full, .outline] {
+            let structure = try parse(modelOnlyGuardian(modelFirst: false), options: .init(detail: detail))
+            XCTAssertEqual(structure.stats.kind, .guardian, "\(detail)")
+            XCTAssertEqual(structure.turns.map(\.prompt.origin), [.guardianRequest, .guardianRequest])
+            XCTAssertEqual(structure.stats.guardianAllowCount, 1, "\(detail)")
+            XCTAssertEqual(structure.stats.guardianDenyCount, 1, "\(detail)")
+            XCTAssertEqual(structure.turns.map(\.counts.steps), [1, 1], "\(detail)")
+            if detail == .full {
+                let first = structure.turns[0]
+                XCTAssertEqual(first.steps.map(\.kind), [.guardianVerdict], "the verdict replaces the plain-text reading")
+                XCTAssertEqual(first.steps.first?.verdict, .init(outcome: "allow", riskLevel: "low", userAuthorization: "high"))
+                XCTAssertEqual(first.finalAnswer, "Reads only.")
+            }
+        }
+    }
+
     func testAutomationExecAndAgentCreatedKinds() throws {
         let automation = try parse(CodexRolloutBuilder().meta(threadSource: "automation")
             .taskStarted("a").prompt("Nightly report", turnID: "a").assistant("Sent").taskComplete("a")
