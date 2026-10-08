@@ -1211,24 +1211,31 @@ struct CookieSourceControls: View {
     }
 
     private func triggerRefresh() {
-        // A dedicated provider's account is detected from its saved slots, so
-        // the import or delete that just happened changes its source; read it
-        // again before refreshing, or the panel and the Overview keep the old
-        // answer until the next global reload.
-        if tool.supportsDedicatedCard {
-            environment.reloadAccounts()
-        }
-        // A dedicated provider's account carries its own id rather than the
-        // misc instance id, so fall back to the provider's account.
-        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID)
-            ?? environment.account(for: tool)
-        else { return }
+        let environment = environment
+        let quotaService = quotaService
+        let tool = tool
+        let instanceID = instanceID
         // A dedicated provider draws its routes from the cached health check,
         // so an import or a delete has to refresh that too.
         if !PrimaryProviderRoute.routes(for: tool).isEmpty {
             environment.recheckPrimaryRouteHealth(provider: tool)
         }
-        Task { _ = await quotaService.refresh(account) }
+        Task { @MainActor in
+            // A dedicated provider's account is detected from its saved slots,
+            // so the import or delete that just happened changes its source;
+            // read it again before refreshing, or the panel and the Overview
+            // keep the old answer until the next global reload. The probe
+            // runs off the main actor; the account lookup waits for it.
+            if tool.supportsDedicatedCard {
+                await environment.reloadAccounts()
+            }
+            // A dedicated provider's account carries its own id rather than
+            // the misc instance id, so fall back to the provider's account.
+            guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID)
+                ?? environment.account(for: tool)
+            else { return }
+            _ = await quotaService.refresh(account)
+        }
     }
 }
 
