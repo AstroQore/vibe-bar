@@ -179,11 +179,13 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
 
         XCTAssertTrue(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
         XCTAssertFalse(scheduler.triggerRefreshForStaleCacheIfNeeded(now: now))
-        for _ in 0..<20 {
+        // Yielding a fixed number of times is not enough on a loaded
+        // runner; poll on the clock for the stored refresh instead.
+        for _ in 0..<300 {
             if service.cachedQuota(for: account.id)?.buckets.first?.resetAt == refreshed.resetAt {
                 break
             }
-            await Task.yield()
+            try? await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTAssertEqual(
             service.cachedQuota(for: account.id)?.buckets.first?.resetAt,
@@ -261,9 +263,9 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
         // Nothing has ever been fetched, so both accounts are stale.
         XCTAssertFalse(scheduler.triggerRefreshForStaleCacheIfNeeded(tools: []))
         XCTAssertTrue(scheduler.triggerRefreshForStaleCacheIfNeeded(tools: [.claude]))
-        for _ in 0..<40 {
+        for _ in 0..<300 {
             if claudeAdapter.fetchCount == 1 { break }
-            await Task.yield()
+            try? await Task.sleep(nanoseconds: 10_000_000)
         }
 
         XCTAssertEqual(claudeAdapter.fetchCount, 1)
@@ -324,8 +326,14 @@ final class QuotaRefreshSchedulerTests: XCTestCase {
 
         scheduler.triggerRefresh()
         await gate.waitUntilStarted()
-        for _ in 0..<100 {
-            if counter.fetchCount == 1 { break }
+        // The following account's fetch completes on the adapter before
+        // its result is stored on the main actor, so wait for the stored
+        // result and the blocking account's timeout, not just the fetch.
+        for _ in 0..<300 {
+            if counter.fetchCount == 1,
+               service.cachedQuota(for: following.id) != nil,
+               service.lastErrorByAccount[blocking.id] != nil,
+               !service.inFlightAccountIds.contains(blocking.id) { break }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
 
