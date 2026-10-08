@@ -125,6 +125,16 @@ struct SkillCopiesSheet: View {
     private func versionList(_ skill: Skill) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
+                if skill.isLinked {
+                    // Its folder lies outside every root a comparison may
+                    // read, so every version is listed and none compared.
+                    Label(L10n.Workbench.Skills.Copies.linkedNotCompared, systemImage: "link")
+                        .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(10)
+                        .workbenchFieldSurface()
+                }
                 if detail.inventory?.baseline == .unavailable {
                     Label(L10n.Workbench.Skills.Copies.baselineUnavailable, systemImage: "info.circle")
                         .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
@@ -385,7 +395,7 @@ private struct SkillVersionRow: View {
     /// Only a differing copy of the same name may become the shared copy —
     /// the service refuses a rename because native switches are name-keyed.
     private var replaceableCopy: SkillCopy? {
-        guard let copy = version.copy, version.kind != .shared,
+        guard !skill.isLinked, let copy = version.copy, version.kind != .shared,
               version.comparison == .differs, copy.name == skill.name
         else { return nil }
         return copy

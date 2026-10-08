@@ -36,7 +36,10 @@ struct SkillWiringPopover: View {
 
             wiringRow(
                 title: L10n.Workbench.Skills.Wiring.source,
-                lines: [line(L10n.Workbench.Skills.Wiring.sourceDetail)],
+                lines: [line(
+                    skill.linkReceipt.map { L10n.Workbench.Skills.sourceLinkedHelp(target: $0.target) }
+                        ?? L10n.Workbench.Skills.Wiring.sourceDetail
+                )],
                 path: skill.wiring(for: .codex).sourcePath
             )
 

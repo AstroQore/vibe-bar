@@ -314,8 +314,13 @@ struct SkillListRow: View {
     /// Opens the copies and differences sheet: every copy's path and kind,
     /// and what differs between any two versions.
     var onShowCopies: () -> Void = {}
+    /// Linked skills only: record where the link points now.
+    var onReconfirmSource: () -> Void = {}
+    /// Linked skills only: replace the link with a copy of its folder.
+    var onConvertToCopy: () -> Void = {}
 
     @State private var confirmingUninstall = false
+    @State private var confirmingConversion = false
     @State private var isHovering = false
     @State private var showingWiring = false
 
@@ -360,14 +365,33 @@ struct SkillListRow: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .confirmationDialog(
-            L10n.Workbench.Skills.uninstallConfirmTitle(skill: skill.name),
+            skill.isLinked
+                ? L10n.Workbench.Skills.unlinkConfirmTitle(skill: skill.name)
+                : L10n.Workbench.Skills.uninstallConfirmTitle(skill: skill.name),
             isPresented: $confirmingUninstall,
             titleVisibility: .visible
         ) {
-            Button(L10n.Workbench.Skills.uninstall, role: .destructive) { onUninstall() }
+            Button(
+                skill.isLinked ? L10n.Workbench.Skills.unlink : L10n.Workbench.Skills.uninstall,
+                role: .destructive
+            ) { onUninstall() }
             Button(L10n.Common.cancel, role: .cancel) {}
         } message: {
-            Text(L10n.Workbench.Skills.uninstallConfirmMessage)
+            Text(skill.isLinked
+                ? L10n.Workbench.Skills.unlinkConfirmMessage
+                : L10n.Workbench.Skills.uninstallConfirmMessage)
+        }
+        // The one action that reads the linked folder: a second, explicit
+        // confirmation after the menu pick.
+        .confirmationDialog(
+            L10n.Workbench.Skills.convertConfirmTitle(skill: skill.name),
+            isPresented: $confirmingConversion,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.Workbench.Skills.convertToCopy) { onConvertToCopy() }
+            Button(L10n.Common.cancel, role: .cancel) {}
+        } message: {
+            Text(L10n.Workbench.Skills.convertConfirmMessage)
         }
     }
 
@@ -434,7 +458,36 @@ struct SkillListRow: View {
         // wiring popover carry the information instead.
     }
 
+    @ViewBuilder
     private var sourceBadge: some View {
+        if let receipt = skill.linkReceipt {
+            linkedBadge(receipt)
+        } else {
+            ownedSourceBadge
+        }
+    }
+
+    /// Same shape as the source capsule, with the link glyph: the row is
+    /// managed, but its files are the linked folder's.
+    private func linkedBadge(_ receipt: SkillLinkReceipt) -> some View {
+        Label(L10n.Workbench.Skills.sourceLinked, systemImage: "link")
+            .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .rounded))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+            )
+            .help(L10n.Workbench.Skills.sourceLinkedHelp(target: receipt.target))
+    }
+
+    private var ownedSourceBadge: some View {
         Group {
             if let slug = skill.id.repositorySlug,
                slug.range(of: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", options: .regularExpression) != nil,
@@ -536,20 +589,37 @@ struct SkillListRow: View {
                         .appendingPathComponent(skill.directory, isDirectory: true)
                 ])
             }
-            Divider()
-            Button(
-                L10n.Workbench.Skills.menuUpdateFromRepository,
-                systemImage: "arrow.down.circle"
-            ) { onUpdate() }
-                .disabled(!skill.id.isRepositoryBacked)
-            Button(
-                L10n.Workbench.Skills.menuAcceptLocalChanges,
-                systemImage: "checkmark.seal"
-            ) { onAcceptLocalChanges() }
-                .disabled(!skill.isLocallyModified)
-            Divider()
-            Button(L10n.Workbench.Skills.menuUninstall, systemImage: "trash", role: .destructive) {
-                confirmingUninstall = true
+            if let receipt = skill.linkReceipt {
+                Button(L10n.Workbench.Skills.menuRevealSource, systemImage: "arrow.up.forward.square") {
+                    NSWorkspace.shared.activateFileViewerSelecting([receipt.resolvedURL])
+                }
+                Divider()
+                Button(L10n.Workbench.Skills.menuReconfirmSource, systemImage: "checkmark.seal") {
+                    onReconfirmSource()
+                }
+                Button(L10n.Workbench.Skills.menuConvertToCopy, systemImage: "doc.on.doc") {
+                    confirmingConversion = true
+                }
+                Divider()
+                Button(L10n.Workbench.Skills.menuUnlink, systemImage: "scissors", role: .destructive) {
+                    confirmingUninstall = true
+                }
+            } else {
+                Divider()
+                Button(
+                    L10n.Workbench.Skills.menuUpdateFromRepository,
+                    systemImage: "arrow.down.circle"
+                ) { onUpdate() }
+                    .disabled(!skill.id.isRepositoryBacked)
+                Button(
+                    L10n.Workbench.Skills.menuAcceptLocalChanges,
+                    systemImage: "checkmark.seal"
+                ) { onAcceptLocalChanges() }
+                    .disabled(!skill.isLocallyModified)
+                Divider()
+                Button(L10n.Workbench.Skills.menuUninstall, systemImage: "trash", role: .destructive) {
+                    confirmingUninstall = true
+                }
             }
         } label: {
             Image(systemName: "ellipsis")

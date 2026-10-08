@@ -461,15 +461,23 @@ struct SkillsManagerPage: View {
                             onUpdate: { model.updateSkill(skill) },
                             onAcceptLocalChanges: { model.acceptLocalChanges(skill) },
                             onUninstall: { model.uninstall(skill) },
-                            onShowCopies: { model.presentCopies(skill) }
+                            onShowCopies: { model.presentCopies(skill) },
+                            onReconfirmSource: { model.reconfirmLink(skill) },
+                            onConvertToCopy: { model.convertToCopy(skill) }
                         )
                     }
                     if !discovered.isEmpty {
                         resourceSection(L10n.Workbench.Library.discovered)
                         ForEach(discovered) { entry in
-                            SharedSkillDiscoveryRow(entry: entry, density: density) {
-                                model.previewSharedSkill(entry)
-                            }
+                            SharedSkillDiscoveryRow(
+                                entry: entry,
+                                density: density,
+                                isBusy: model.isBusy(SkillsManagerModel.BusyKey.shared(entry)),
+                                preview: { model.previewSharedSkill(entry) },
+                                onAdoptLink: { model.adoptLink(entry) },
+                                onReconfirm: { model.reconfirmLink(entry) },
+                                onUnlink: { model.unlink(entry) }
+                            )
                         }
                     }
                     // Built-ins trail the installed rows: they are the

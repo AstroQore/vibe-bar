@@ -18,9 +18,24 @@ public actor SkillsService {
         /// Per app: whether the app-side entry was actually removed. `false`
         /// means something the user could have authored was left in place.
         public let removedByApp: [SkillAppTarget: Bool]
+        /// Unlinking a linked skill also returns its native per-skill
+        /// switches to their default. Harnesses listed here kept theirs: the
+        /// config could not be patched safely, or the switch is keyed by a
+        /// name another skill on this Mac still answers to.
+        public let retainedNativeApps: [SkillAppTarget]
+
+        public init(
+            backupURL: URL,
+            removedByApp: [SkillAppTarget: Bool],
+            retainedNativeApps: [SkillAppTarget] = []
+        ) {
+            self.backupURL = backupURL
+            self.removedByApp = removedByApp
+            self.retainedNativeApps = retainedNativeApps
+        }
 
         public var retainedApps: [SkillAppTarget] {
-            SkillAppTarget.allCases.filter { removedByApp[$0] == false }
+            SkillAppTarget.allCases.filter { removedByApp[$0] == false || retainedNativeApps.contains($0) }
         }
     }
 
@@ -98,14 +113,30 @@ public actor SkillsService {
         for snapshot in snapshots {
             var reconciled = snapshot
             reconciled.localContentHash = nil
+            reconciled.linkCheck = nil
             let recordedApps = snapshot.apps
+            // A linked row is checked against its receipt — the link, its
+            // resolution, and the target directory's identity, all at stat
+            // level — and never hashed: its tree belongs to the folder it
+            // points at.
+            var liveReceipt: SkillLinkReceipt?
+            if let receipt = snapshot.linkReceipt {
+                let check = SkillLinkInspector.check(
+                    receipt,
+                    directoryName: snapshot.directory,
+                    homeDirectory: homeDirectory
+                )
+                reconciled.linkCheck = check
+                if check == .matches { liveReceipt = receipt }
+            }
             // Edits made to the shared copy outside Vibe Bar — by hand, by
             // another installer, by an agent — only show up by comparing the
             // tree against the hash recorded when Vibe Bar last wrote it.
             // lstat first: another installer may have swapped the directory
             // for a link, and hashing through it would read a tree nobody
             // registered. A link is not a shared copy and is never hashed.
-            if SkillPathValidator.isValid(snapshot.directory),
+            if !snapshot.isLinked,
+               SkillPathValidator.isValid(snapshot.directory),
                case let ssot = ssotDirectory(for: snapshot.directory),
                SkillFileSystem.kind(of: ssot) == .directory {
                 let key = ssot.standardizedFileURL.path
@@ -121,7 +152,11 @@ public actor SkillsService {
                     hashBackfills[snapshot.id] = local
                 }
             }
-            for (app, recorded) in recordedApps {
+            // A changed link is not re-read into the registry: until the user
+            // re-confirms or unlinks it, its recorded projections stay as
+            // they were, and nothing is written on its behalf.
+            let reconcilesApps = !snapshot.isLinked || liveReceipt != nil
+            for (app, recorded) in recordedApps where reconcilesApps {
                 let currentCopyHash: String?
                 if recorded.method == .copy {
                     let destination = engine.destination(for: snapshot.directory, app: app)
@@ -135,7 +170,8 @@ public actor SkillsService {
                     skillDirectoryName: snapshot.directory,
                     app: app,
                     recorded: recorded,
-                    currentCopyHash: currentCopyHash
+                    currentCopyHash: currentCopyHash,
+                    linkReceipt: liveReceipt
                 ) {
                     reconciled.apps[app] = live
                 } else {
@@ -190,6 +226,7 @@ public actor SkillsService {
             enriched.nativeDisabledApps = derived.nativeDisabledApps
             enriched.nativeStateUnknownApps = derived.nativeStateUnknownApps
             enriched.localContentHash = derived.localContentHash
+            enriched.linkCheck = derived.linkCheck
             return enriched
         }
     }
@@ -227,6 +264,9 @@ public actor SkillsService {
     @discardableResult
     public func acceptLocalChanges(_ id: SkillID) async throws -> Skill {
         guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
+        // A linked skill has no recorded content to accept: its files are the
+        // linked folder's, and recording them would mean hashing that tree.
+        guard !skill.isLinked else { throw SkillError.linkedSkillUnsupported(skill.directory) }
         try SkillPathValidator.validate(directoryName: skill.directory)
         let directory = ssotDirectory(for: skill.directory)
         // lstat, not stat: a link where the shared copy should be is not a
@@ -355,23 +395,35 @@ public actor SkillsService {
         method: SkillSyncMethod = .auto
     ) async throws -> Bool {
         guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
+        let receipt = try writableLinkReceipt(for: skill)
         if enabled {
-            let materialization = try engine.materialize(
-                skillDirectoryName: skill.directory,
-                into: app,
-                method: method,
-                recorded: skill.apps[app]
-            )
+            let stash = try stashRetiredCopy(of: skill, in: app)
+            let materialization: SkillMaterialization
+            do {
+                materialization = try engine.materialize(
+                    skillDirectoryName: skill.directory,
+                    into: app,
+                    method: receipt == nil ? method : .symlink,
+                    recorded: skill.apps[app],
+                    linkReceipt: receipt
+                )
+            } catch {
+                if let stash { restoreRetiredCopy(stash) }
+                throw error
+            }
+            if let stash { discardRetiredCopy(stash) }
             skill.apps[app] = materialization
+            skill.retiredCopyHashes[app] = nil
             try await store.upsert(skill)
             return true
         }
         let removed = try engine.unmaterialize(
             skillDirectoryName: skill.directory,
             from: app,
-            recorded: skill.apps[app]
+            recorded: skill.apps[app] ?? retiredCopy(of: skill, in: app)
         )
         skill.apps[app] = nil
+        if removed { skill.retiredCopyHashes[app] = nil }
         try await store.upsert(skill)
         return removed
     }
@@ -388,17 +440,25 @@ public actor SkillsService {
         _ id: SkillID,
         app: SkillAppTarget,
         action: SkillActivationAction,
-        method: SkillSyncMethod = .auto
+        method requested: SkillSyncMethod = .auto
     ) async throws -> Bool {
         guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
+        // Checked before either layer moves: a changed link pauses every
+        // write, native config included, until the user re-confirms it.
+        let receipt = try writableLinkReceipt(for: skill)
+        // A linked skill is only ever projected as a link to the shared path
+        // — a copy would read the linked folder — whatever the default
+        // method says.
+        let method: SkillSyncMethod = receipt == nil ? requested : .symlink
         switch action {
         case .removeProjection:
             let removed = try engine.unmaterialize(
                 skillDirectoryName: skill.directory,
                 from: app,
-                recorded: skill.apps[app]
+                recorded: skill.apps[app] ?? retiredCopy(of: skill, in: app)
             )
             skill.apps[app] = nil
+            if removed { skill.retiredCopyHashes[app] = nil }
             try await store.upsert(skill)
             return removed
 
@@ -417,43 +477,59 @@ public actor SkillsService {
                 return false
             }
             let prior = skill.apps[app]
+            // A retired copy at the destination is moved aside, not
+            // deleted, until both layers have landed: if either fails, the
+            // harness gets back exactly the folder it had.
+            let stash = app.discoversSharedSkillRoot ? nil : try stashRetiredCopy(of: skill, in: app)
             let materialization: SkillMaterialization?
-            if app.discoversSharedSkillRoot {
-                // The SSOT is already a native discovery root. Creating a
-                // second link is redundant and, in Gemini, surfaces as a
-                // conflict warning. Native state alone controls these apps.
-                materialization = prior
-            } else {
-                materialization = try engine.materialize(
-                    skillDirectoryName: skill.directory,
-                    into: app,
-                    method: method,
-                    recorded: prior
-                )
-            }
             do {
-                if app.supportsNativeSkillActivation {
-                    try harnessConfig.setNativeEnabled(
-                        action == .enable,
-                        directoryName: skill.directory,
-                        skillName: skill.name,
-                        app: app
+                if app.discoversSharedSkillRoot {
+                    // The SSOT is already a native discovery root. Creating a
+                    // second link is redundant and, in Gemini, surfaces as a
+                    // conflict warning. Native state alone controls these apps.
+                    materialization = prior
+                } else {
+                    materialization = try engine.materialize(
+                        skillDirectoryName: skill.directory,
+                        into: app,
+                        method: method,
+                        recorded: prior,
+                        linkReceipt: receipt
                     )
+                }
+                do {
+                    if app.supportsNativeSkillActivation {
+                        try harnessConfig.setNativeEnabled(
+                            action == .enable,
+                            directoryName: skill.directory,
+                            skillName: skill.name,
+                            app: app
+                        )
+                    }
+                } catch {
+                    // A newly-created projection without its matching native
+                    // state is misleading. Roll back only what this call
+                    // created; an existing projection belongs to the prior
+                    // state.
+                    if prior == nil, let materialization {
+                        _ = try? engine.unmaterialize(
+                            skillDirectoryName: skill.directory,
+                            from: app,
+                            recorded: materialization
+                        )
+                    }
+                    throw error
                 }
             } catch {
-                // A newly-created projection without its matching native
-                // state is misleading. Roll back only what this call created;
-                // an existing projection belongs to the prior state.
-                if prior == nil, let materialization {
-                    _ = try? engine.unmaterialize(
-                        skillDirectoryName: skill.directory,
-                        from: app,
-                        recorded: materialization
-                    )
-                }
+                if let stash { restoreRetiredCopy(stash) }
                 throw error
             }
-            if let materialization { skill.apps[app] = materialization }
+            if let stash { discardRetiredCopy(stash) }
+            if let materialization {
+                skill.apps[app] = materialization
+                // A link now stands where the retired copy was.
+                if materialization.method == .symlink { skill.retiredCopyHashes[app] = nil }
+            }
             try await store.upsert(skill)
             return true
         }
@@ -462,9 +538,15 @@ public actor SkillsService {
     /// Backs the skill up, unmaterializes it from every app, deletes the SSOT
     /// directory, and forgets it. The backup is taken first so a failure
     /// anywhere later still leaves the content recoverable.
+    ///
+    /// For a linked skill this is an unlink (`unlinkLinkedSkill`): the link
+    /// and its projections go, the folder it points at stays untouched.
     @discardableResult
     public func uninstall(_ id: SkillID) async throws -> UninstallResult {
         guard let skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
+        if let receipt = skill.linkReceipt {
+            return try await unlinkLinkedSkill(skill, receipt: receipt)
+        }
         let backupURL = try backups.createBackup(of: skill.directory, skill: skill)
         var removedByApp: [SkillAppTarget: Bool] = [:]
         for app in SkillAppTarget.allCases where app.supportsProjection {
@@ -602,6 +684,31 @@ public actor SkillsService {
     // MARK: - Internals
 
     var homeURL: URL { URL(fileURLWithPath: homeDirectory, isDirectory: true) }
+
+    /// The receipt a write on `skill` may proceed under: `nil` for an owned
+    /// row whose shared entry is not a link, the receipt for a linked row
+    /// that still matches. Anything else throws before a byte moves — an old
+    /// owned row whose directory became a link grants nothing over the
+    /// link's target, and a changed link waits for the user.
+    func writableLinkReceipt(for skill: Skill) throws -> SkillLinkReceipt? {
+        guard let receipt = skill.linkReceipt else {
+            if SkillPathValidator.isValid(skill.directory),
+               SkillFileSystem.kind(of: ssotDirectory(for: skill.directory)) == .symlink {
+                throw SkillError.sourceNotADirectory(skill.directory)
+            }
+            return nil
+        }
+        guard SkillLinkInspector.check(receipt, directoryName: skill.directory, homeDirectory: homeDirectory) == .matches else {
+            throw SkillError.linkReceiptMismatch(skill.directory)
+        }
+        return receipt
+    }
+
+    /// A copy retired when a link replaced an owned row, as the
+    /// materialization `unmaterialize` needs to remove it while unchanged.
+    func retiredCopy(of skill: Skill, in app: SkillAppTarget) -> SkillMaterialization? {
+        skill.retiredCopyHashes[app].map { SkillMaterialization(method: .copy, contentHashAtCopy: $0) }
+    }
 
     func ssotDirectory(for directoryName: String) -> URL {
         SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)

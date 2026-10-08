@@ -8,7 +8,8 @@ public struct SkillsInventory: Sendable, Hashable {
     /// sorted by name. Built-ins that do match are in that skill's
     /// `otherCopies` instead, so nothing is listed twice.
     public let builtIns: [SkillCopy]
-    /// Present on disk but not owned by the registry; listing is read-only.
+    /// Present on disk but not owned by the registry, plus adopted links
+    /// whose receipt no longer matches; listing is read-only.
     public let discoveredShared: [SharedSkillDiscovery]
 
     public init(installed: [Skill], builtIns: [SkillCopy], discoveredShared: [SharedSkillDiscovery] = []) {
@@ -41,11 +42,39 @@ extension SkillsService {
         let inventory = attachCopies(to: await reconciledInstalledSkills()).inventory
         // A registry record cannot vouch for ownership after another tool
         // replaces its shared directory with an external link. Keep the
-        // record intact, but expose that live entry through the read-only row.
-        let managed = inventory.installed.filter {
-            SkillFileSystem.kind(of: ssotDirectory(for: $0.directory)) != .symlink
+        // record intact, but expose that live entry through the read-only row
+        // until the user adopts the link. An adopted link stays managed while
+        // its receipt matches; a changed one drops back to the read-only list
+        // until it is re-confirmed or unlinked.
+        var managed: [Skill] = []
+        var registrations: [String: SharedSkillDiscovery.Registration] = [:]
+        var vanishedLinks: [SharedSkillDiscovery] = []
+        for skill in inventory.installed {
+            if skill.isLinked {
+                switch skill.linkCheck ?? .mismatch(.unavailable) {
+                case .matches:
+                    managed.append(skill)
+                case .mismatch(.missing):
+                    vanishedLinks.append(sharedDiscoveryScanner.missingEntry(for: skill))
+                case let .mismatch(reason):
+                    registrations[skill.directory.lowercased()] = .receiptMismatch(skill.id, reason)
+                }
+            } else if SkillFileSystem.kind(of: ssotDirectory(for: skill.directory)) == .symlink {
+                registrations[skill.directory.lowercased()] = .ownedRecord(skill.id)
+            } else {
+                managed.append(skill)
+            }
         }
         var discovered = sharedDiscoveryScanner.scan(excludingDirectories: Set(managed.map(\.directory)))
+        for index in discovered.indices {
+            if let registration = registrations[discovered[index].directoryName.lowercased()] {
+                discovered[index].registration = registration
+            }
+        }
+        if !vanishedLinks.isEmpty {
+            discovered.append(contentsOf: vanishedLinks)
+            discovered.sort { $0.directoryName < $1.directoryName }
+        }
         let candidates = discovered.filter { $0.state == .ready }.map {
             Skill(id: .local(directory: $0.directoryName), name: $0.name, directory: $0.directoryName, installedAt: .distantPast)
         }
@@ -86,7 +115,8 @@ extension SkillsService {
         for copy in scanned { byPath[copy.id] = copy }
         for skill in inventory.installed {
             for copy in skill.otherCopies { byPath[copy.id] = copy }
-            if let shared = skill.sharedCopy ?? copyScanner.sharedCopy(directoryName: skill.directory) {
+            if let shared = skill.sharedCopy
+                ?? copyScanner.sharedCopy(directoryName: skill.directory, allowingLink: skill.linkCheck == .matches) {
                 byPath[shared.id] = shared
             }
         }
@@ -108,6 +138,12 @@ extension SkillsService {
     @discardableResult
     public func replaceSharedCopy(_ id: SkillID, with copy: SkillCopy) async throws -> Skill {
         guard let existing = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
+        // A linked skill's shared entry is a link to a folder Vibe Bar does
+        // not own; replacing "its content" would write into that folder.
+        guard !existing.isLinked else { throw SkillError.linkedSkillUnsupported(existing.directory) }
+        guard SkillFileSystem.kind(of: ssotDirectory(for: existing.directory)) == .directory else {
+            throw SkillError.sourceNotADirectory(existing.directory)
+        }
         let source = try validatedCopySource(copy)
         // Claude, Gemini CLI, Grok Build, and Mistral Vibe key their
         // per-skill switch by name. Adopting a copy that calls itself
@@ -226,6 +262,25 @@ extension SkillsService {
             guard !others.isEmpty else {
                 skill.otherCopies = []
                 skill.sharedCopy = nil
+                installed[position] = skill
+                continue
+            }
+            // A linked skill is listed with its other copies but compared
+            // with none of them: its shared side is a folder Vibe Bar does
+            // not hash, so there is nothing to hold the copies against.
+            if skill.isLinked {
+                skill.otherCopies = others
+                    .map { copy in
+                        var listed = copy
+                        if case .appFolder = listed.location {
+                            listed.shadowsShared = listed.directoryName == skill.directory
+                        }
+                        return listed
+                    }
+                    .sorted(by: Self.copyOrder)
+                skill.sharedCopy = skill.linkCheck == .matches
+                    ? copyScanner.sharedCopy(directoryName: skill.directory, allowingLink: true)
+                    : nil
                 installed[position] = skill
                 continue
             }
