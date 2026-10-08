@@ -477,6 +477,91 @@ final class SessionReviewLinkingTests: XCTestCase {
                        [newest.id], "a failed lookup still loads the review the hit is in")
     }
 
+    /// A hit inside a review, on a session whose log is past the viewer's
+    /// byte bound: the bounded read shows the session alone and must not
+    /// apply the review's seq to it; "Load entire transcript" re-runs the
+    /// same request, focus included, and lands on the matched message.
+    func testAWholeLogReloadStillLandsOnTheMatchedReview() async throws {
+        try writeFixtureHome()
+        let store = try SessionIndexStore(url: databaseURL)
+        await service(store, registry: boundedRegistry).refreshIndex()
+        let parentRow = try await store.summary(provider: .codex, sessionID: parentID)
+        let reviewRow = try await store.summary(provider: .codex, sessionID: newReviewID)
+        let parent = try XCTUnwrap(parentRow)
+        let review = try XCTUnwrap(reviewRow)
+        let adapter = CodexSessionAdapter(homeDirectory: home.path)
+
+        // The hit, as search reports it: seq 1 of the review's own messages.
+        let hit = try await SessionVisibleRows.search(service(store, registry: boundedRegistry), query: "zebracrossing")
+        let folded = try XCTUnwrap(hit.hits.first)
+        XCTAssertEqual(folded.matchedReview?.id, review.id)
+        let request = SessionTranscriptMerge.Request(
+            summary: folded.hit.summary,
+            focus: SessionTranscriptMerge.Focus(seq: folded.hit.matchedSeq, review: folded.matchedReview),
+            headByteLimit: 64
+        )
+        XCTAssertEqual(request.focus.seq, 1)
+
+        func read(_ request: SessionTranscriptMerge.Request) throws -> (SessionTranscriptMerge.Result, Bool) {
+            let root = try SessionIndexingBounds.readTranscript(
+                adapter: adapter,
+                fileURL: URL(fileURLWithPath: request.summary.sourcePath),
+                headByteLimit: request.headByteLimit,
+                scratchDirectory: scratchURL
+            )
+            // The page's own rule: a cut parent is shown alone.
+            guard !root.isHeadTruncated else {
+                return (SessionTranscriptMerge.sessionOnly(root.document, focus: request.focus), true)
+            }
+            // Only the matched review, as if it sat past the 500-review bound.
+            let reviews = SessionVisibleRows.reviewsToMerge([], parentID: parentID, focused: request.focus.review)
+            let merged = try SessionTranscriptMerge.merged(
+                root: root.document,
+                reviews: reviews,
+                focus: request.focus,
+                dividerText: "Auto Review"
+            ) { review in
+                let child = try SessionIndexingBounds.readTranscript(
+                    adapter: adapter,
+                    fileURL: URL(fileURLWithPath: review.sourcePath),
+                    headByteLimit: nil,
+                    scratchDirectory: scratchURL
+                )
+                return (child.document, child.isHeadTruncated)
+            }
+            return (merged, false)
+        }
+
+        let (bounded, cut) = try read(request)
+        XCTAssertTrue(cut, "64 bytes is short of the session's log")
+        XCTAssertNil(bounded.focusSeq, "a review's seq is never applied to the session's own messages")
+
+        let whole = request.wholeLog()
+        XCTAssertNil(whole.headByteLimit)
+        XCTAssertEqual(whole.focus, request.focus, "the reload keeps the review the seq counts")
+        let (full, fullCut) = try read(whole)
+        XCTAssertFalse(fullCut)
+        let landed = try XCTUnwrap(full.focusSeq)
+        XCTAssertTrue(full.document.messages[landed].text.contains("zebracrossing"),
+                      "the merged transcript opens on the matched review message")
+        XCTAssertGreaterThan(landed, 2, "past the session's own two messages and the divider")
+        XCTAssertEqual(parent.id, request.summary.id)
+    }
+
+    func testAFocusWithoutAReviewIsTheSessionsOwnSeq() throws {
+        let root = TranscriptDocument(
+            messages: (0..<3).map { SessionMessage(seq: $0, role: .user, text: "m\($0)", timestamp: nil) },
+            totalMessageCount: 3,
+            truncated: false
+        )
+        XCTAssertEqual(SessionTranscriptMerge.sessionOnly(root, focus: .init(seq: 2)).focusSeq, 2)
+        let merged = try SessionTranscriptMerge.merged(
+            root: root, reviews: [], focus: .init(seq: 2), dividerText: "Auto Review"
+        ) { _ in nil }
+        XCTAssertEqual(merged.focusSeq, 2)
+        XCTAssertEqual(merged.document.messages.count, 3)
+    }
+
     /// The legacy index is the shape the bug produced: a self-linked row is
     /// nobody's review, and must not be counted as its own.
     func testASelfLinkedRowIsNobodysReview() async throws {

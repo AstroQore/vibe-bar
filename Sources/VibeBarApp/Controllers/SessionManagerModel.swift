@@ -297,6 +297,9 @@ final class SessionManagerModel: ObservableObject {
     /// full parses, of which two were discarded on arrival by a generation
     /// check that had already let them allocate everything.
     private var transcriptTask: Task<Void, Never>?
+    /// What the open transcript was read for — kept so "Load entire
+    /// transcript" re-reads it with the same focus.
+    private var transcriptRequest: SessionTranscriptMerge.Request?
     private var transcriptGeneration: UInt64 = 0
     private var searchGeneration: UInt64 = 0
     private var summaryGeneration: UInt64 = 0
@@ -1116,26 +1119,27 @@ final class SessionManagerModel: ObservableObject {
         focusSeq: Int? = nil,
         focusedRelated: SessionSummary? = nil
     ) {
-        load(
-            summary,
-            focusSeq: focusSeq,
-            focusedRelated: focusedRelated,
-            headByteLimit: SessionIndexingBounds.viewerHeadParseByteLimit
-        )
+        load(summary.map {
+            SessionTranscriptMerge.Request(
+                summary: $0,
+                focus: SessionTranscriptMerge.Focus(seq: focusSeq, review: focusedRelated),
+                headByteLimit: SessionIndexingBounds.viewerHeadParseByteLimit
+            )
+        })
     }
 
     /// Re-read the open session with no byte bound. Only ever reached from
     /// the banner the truncated read puts on screen: a 1.7 GB rollout parses
     /// into 1.5–1.9 GB of live objects, which is a thing to do because the
     /// user asked, never by default.
+    ///
+    /// The selection's own request is re-run, focus included. The bounded
+    /// read left the reviews out, so a hit inside one could not be shown yet;
+    /// this is the read that can show it, and it has to know which review the
+    /// hit's seq counts.
     func loadEntireTranscript() {
-        guard let selection, transcriptTruncation != nil else { return }
-        load(
-            selection,
-            focusSeq: focusSeq,
-            focusedRelated: nil,
-            headByteLimit: nil
-        )
+        guard let transcriptRequest, transcriptTruncation != nil else { return }
+        load(transcriptRequest.wholeLog())
     }
 
     /// Abandon an in-flight transcript read.
@@ -1169,26 +1173,25 @@ final class SessionManagerModel: ObservableObject {
         transcriptGeneration &+= 1
     }
 
-    private func load(
-        _ summary: SessionSummary?,
-        focusSeq: Int?,
-        focusedRelated: SessionSummary?,
-        headByteLimit: Int64?
-    ) {
+    private func load(_ request: SessionTranscriptMerge.Request?) {
         // Cancel first, and hold the new task: the generation check alone
         // only discarded a stale *result*, so clicking through three large
         // sessions ran three full parses side by side and paid for all of
         // them.
         cancelTranscriptParse()
-        selection = summary
-        self.focusSeq = focusSeq
+        transcriptRequest = request
+        selection = request?.summary
+        focusSeq = request?.focus.seq
         transcript = nil
         transcriptError = nil
         transcriptTruncation = nil
-        guard let summary else {
+        guard let request else {
             isLoadingTranscript = false
             return
         }
+        let summary = request.summary
+        let focus = request.focus
+        let headByteLimit = request.headByteLimit
         guard let adapter = registry.adapter(for: summary.provider) else {
             isLoadingTranscript = false
             transcriptError = L10n.Workbench.Sessions.Transcript.noReader(
@@ -1219,7 +1222,7 @@ final class SessionManagerModel: ObservableObject {
                 related = SessionVisibleRows.reviewsToMerge(
                     fetched,
                     parentID: reviewParentID,
-                    focused: focusedRelated
+                    focused: focus.review
                 )
             }
             guard !Task.isCancelled else { return }
@@ -1227,8 +1230,7 @@ final class SessionManagerModel: ObservableObject {
                 adapter: adapter,
                 url: url,
                 related: related,
-                requestedFocusSeq: focusSeq,
-                focusedRelatedID: focusedRelated?.id,
+                focus: focus,
                 headByteLimit: headByteLimit,
                 scratchDirectory: scratch
             )
@@ -1270,8 +1272,7 @@ final class SessionManagerModel: ObservableObject {
         adapter: any SessionProviderAdapter,
         url: URL,
         related: [SessionSummary],
-        requestedFocusSeq: Int?,
-        focusedRelatedID: String?,
+        focus: SessionTranscriptMerge.Focus,
         headByteLimit: Int64?,
         scratchDirectory: URL
     ) async -> ParsedTranscript {
@@ -1293,64 +1294,37 @@ final class SessionManagerModel: ObservableObject {
                     : nil
                 // A truncated parent already spends the budget; loading its
                 // Auto Review children on top would double it for no gain,
-                // since the pane cannot show the parent's tail either.
+                // since the pane cannot show the parent's tail either. A hit
+                // inside a review then has nowhere to land until the whole log
+                // is loaded, and `sessionOnly` does not pretend otherwise.
                 guard !related.isEmpty, truncation == nil else {
+                    let alone = SessionTranscriptMerge.sessionOnly(root, focus: focus)
                     return ParsedTranscript(
-                        document: root,
+                        document: alone.document,
                         errorMessage: nil,
-                        focusSeq: requestedFocusSeq,
+                        focusSeq: alone.focusSeq,
                         truncation: truncation
                     )
                 }
-                var messages = root.messages
-                var translatedFocus = focusedRelatedID == nil ? requestedFocusSeq : nil
-                var childTruncated = false
-                for review in related.sorted(by: {
-                    ($0.createdAt ?? .distantPast) < ($1.createdAt ?? .distantPast)
-                }) {
-                    try Task.checkCancellation()
-                    // Children are bounded on the same terms as the parent.
+                // Children are bounded on the same terms as the parent.
+                let merged = try SessionTranscriptMerge.merged(
+                    root: root,
+                    reviews: related,
+                    focus: focus,
+                    dividerText: L10n.Workbench.Sessions.Transcript.autoReviewDivider
+                ) { review in
                     guard let child = try? SessionIndexingBounds.readTranscript(
                         adapter: adapter,
                         fileURL: URL(fileURLWithPath: review.sourcePath),
                         headByteLimit: headByteLimit,
                         scratchDirectory: scratchDirectory
-                    ) else { continue }
-                    let document = child.document
-                    childTruncated = childTruncated || child.isHeadTruncated
-                    messages.append(SessionMessage(
-                        seq: messages.count,
-                        role: .system,
-                        text: L10n.Workbench.Sessions.Transcript.autoReviewDivider,
-                        timestamp: review.createdAt
-                    ))
-                    let childStart = messages.count
-                    messages.append(contentsOf: document.messages)
-                    if review.id == focusedRelatedID,
-                       let requestedFocusSeq,
-                       let childIndex = document.messages.firstIndex(where: { $0.seq == requestedFocusSeq }) {
-                        translatedFocus = childStart + childIndex
-                    }
-                }
-                // Resequencing allocates a second copy of every message, so
-                // it is worth not starting on a result nobody will read.
-                try Task.checkCancellation()
-                let resequenced = messages.enumerated().map { index, message in
-                    SessionMessage(
-                        seq: index,
-                        role: message.role,
-                        text: message.text,
-                        timestamp: message.timestamp
-                    )
+                    ) else { return nil }
+                    return (child.document, child.isHeadTruncated)
                 }
                 return ParsedTranscript(
-                    document: TranscriptDocument(
-                        messages: resequenced,
-                        totalMessageCount: resequenced.count,
-                        truncated: childTruncated
-                    ),
+                    document: merged.document,
                     errorMessage: nil,
-                    focusSeq: translatedFocus,
+                    focusSeq: merged.focusSeq,
                     truncation: nil
                 )
             } catch is CancellationError {
