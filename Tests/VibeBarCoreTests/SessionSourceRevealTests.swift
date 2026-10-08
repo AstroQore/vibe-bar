@@ -42,6 +42,9 @@ final class SessionSourceRevealTests: XCTestCase {
     private final class Probe: @unchecked Sendable {
         private let lock = NSLock()
         private var held: [CheckedContinuation<Void, Never>] = []
+        /// Sticky: a probe that arrives after `releaseAll()` must not wait
+        /// for a release that already happened.
+        private var released = false
         private var started: [String] = []
         private var startWaiters: [CheckedContinuation<Void, Never>] = []
         var target: URL? = URL(fileURLWithPath: "/Users/example/.codex/sessions/rollout.jsonl")
@@ -57,7 +60,12 @@ final class SessionSourceRevealTests: XCTestCase {
                 ready.forEach { $0.resume() }
             }
             await withCheckedContinuation { continuation in
-                lock.withLock { held.append(continuation) }
+                let immediate: Bool = lock.withLock {
+                    if released { return true }
+                    held.append(continuation)
+                    return false
+                }
+                if immediate { continuation.resume() }
             }
             return target
         }
@@ -78,6 +86,7 @@ final class SessionSourceRevealTests: XCTestCase {
 
         func releaseAll() {
             let waiting: [CheckedContinuation<Void, Never>] = lock.withLock {
+                released = true
                 let waiting = held
                 held = []
                 return waiting

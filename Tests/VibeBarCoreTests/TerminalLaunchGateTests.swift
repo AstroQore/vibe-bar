@@ -38,7 +38,15 @@ final class TerminalLaunchGateTests: XCTestCase {
             }
             if hold {
                 await withCheckedContinuation { continuation in
-                    lock.withLock { waiters.append(continuation) }
+                    // `releaseScripts()` may have run between the start
+                    // signal above and this registration; re-check under
+                    // the lock so a released script never waits forever.
+                    let immediate: Bool = lock.withLock {
+                        if !holdsScripts { return true }
+                        waiters.append(continuation)
+                        return false
+                    }
+                    if immediate { continuation.resume() }
                 }
             }
             return outcome
