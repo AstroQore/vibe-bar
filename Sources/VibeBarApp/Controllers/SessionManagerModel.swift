@@ -1495,8 +1495,9 @@ final class SessionManagerModel: ObservableObject {
         }
         Task { [weak self] in
             // Every file — review or not — through the deleter, so each one
-            // gets the same containment, symlink and re-parsed-id checks.
-            let outcomes = await Self.performDelete(deleter: deleter, registry: registry, targets: plan.all)
+            // gets the same containment, symlink and re-parsed-id checks; a
+            // session whose review could not go is kept with it.
+            let outcomes = await Self.performDelete(deleter: deleter, registry: registry, plan: plan)
             guard let self else { return }
             await self.finish(outcomes)
         }
@@ -1505,9 +1506,9 @@ final class SessionManagerModel: ObservableObject {
     private nonisolated static func performDelete(
         deleter: SessionDeleter,
         registry: SessionProviderRegistry,
-        targets: [SessionSummary]
+        plan: SessionDeletionCascade.Plan
     ) async -> [SessionDeleteOutcome] {
-        deleter.delete(targets, registry: registry)
+        SessionDeletionCascade.execute(plan) { deleter.delete($0, registry: registry) }
     }
 
     private func finish(_ outcomes: [SessionDeleteOutcome]) async {

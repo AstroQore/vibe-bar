@@ -313,10 +313,55 @@ public enum SessionDeletionCascade {
             self.totalBytes = selected.reduce(reviewBytes) { $0 + max(0, $1.sizeBytes) }
         }
 
-        /// Reviews first: a review that fails to go leaves a parent with one
-        /// fewer review, while a parent that went first would strand it.
+        /// Every file the plan names, reviews first — the order `execute`
+        /// works in.
         public var all: [SessionSummary] { reviews + selected }
         public var count: Int { selected.count + reviews.count }
+    }
+
+    /// Carry out `plan`: every review first, then each selected session
+    /// whose reviews all went.
+    ///
+    /// A review that fails a safety check or its removal keeps its session:
+    /// deleting the session anyway would leave that review hidden (it is
+    /// still a review) and attached to nothing — the stranded state this
+    /// cascade exists to prevent. The kept session is reported as failed with
+    /// the review's own reason, so what stayed, and why, reaches the user
+    /// alongside the review that stayed with it. `delete` is
+    /// `SessionDeleter.delete` in the app; it is called at most twice, with
+    /// the reviews and then with the sessions cleared to go.
+    public static func execute(
+        _ plan: Plan,
+        delete: ([SessionSummary]) -> [SessionDeleteOutcome]
+    ) -> [SessionDeleteOutcome] {
+        let reviewOutcomes = plan.reviews.isEmpty ? [] : delete(plan.reviews)
+        var reasons: [String: SessionDeleteError] = [:]
+        for outcome in reviewOutcomes where !outcome.success {
+            reasons[outcome.summary.id] = outcome.failureReason
+        }
+        let removed = Set(reviewOutcomes.filter(\.success).map(\.summary.id))
+        // Any review not reported removed blocks its session — including one
+        // the deleter returned no outcome for at all.
+        var blocked: [String: SessionDeleteError] = [:]
+        for review in plan.reviews where !removed.contains(review.id) {
+            guard let parent = SessionVisibleRows.reviewParentID(of: review), blocked[parent] == nil else {
+                continue
+            }
+            blocked[parent] = reasons[review.id] ?? .validationUnreadable
+        }
+        var cleared: [SessionSummary] = []
+        var kept: [SessionDeleteOutcome] = []
+        for target in plan.selected {
+            if target.provider == .codex,
+               SessionVisibleRows.reviewParentID(of: target) == nil,
+               let reason = blocked[target.sessionID] {
+                kept.append(.failed(target, reason))
+            } else {
+                cleared.append(target)
+            }
+        }
+        let selectedOutcomes = cleared.isEmpty ? [] : delete(cleared)
+        return reviewOutcomes + kept + selectedOutcomes
     }
 
     /// Sessions among `targets` whose reviews go with them: deletable Codex

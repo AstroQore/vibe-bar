@@ -567,7 +567,8 @@ final class SessionReviewLinkingTests: XCTestCase {
         XCTAssertEqual(plan.reviewBytes, plan.reviews.reduce(0) { $0 + $1.sizeBytes })
         XCTAssertEqual(plan.totalBytes, plan.all.reduce(0) { $0 + $1.sizeBytes })
 
-        let outcomes = SessionDeleter(homeDirectory: home.path).delete(plan.all, registry: rawRegistry)
+        let deleter = SessionDeleter(homeDirectory: home.path)
+        let outcomes = SessionDeletionCascade.execute(plan) { deleter.delete($0, registry: rawRegistry) }
         XCTAssertEqual(outcomes.filter(\.success).count, 4)
         for summary in plan.all {
             XCTAssertFalse(FileManager.default.fileExists(atPath: summary.sourcePath))
@@ -577,6 +578,73 @@ final class SessionReviewLinkingTests: XCTestCase {
         )
         XCTAssertEqual(survivors.count, 1)
         XCTAssertTrue(survivors[0].contains(orphanID), "an unrelated session is not this deletion's business")
+    }
+
+    /// A review the deleter refuses — here a symlink, one of its safety
+    /// checks — keeps its session on disk, and both are reported kept. The
+    /// session's other review and the unrelated session still go.
+    func testAReviewThatCannotBeDeletedKeepsItsSession() async throws {
+        try writeFixtureHome()
+        let store = try SessionIndexStore(url: databaseURL)
+        await service(store, registry: boundedRegistry).refreshIndex()
+        let parentRow = try await store.summary(provider: .codex, sessionID: parentID)
+        let otherRow = try await store.summary(provider: .codex, sessionID: otherID)
+        let parent = try XCTUnwrap(parentRow)
+        let other = try XCTUnwrap(otherRow)
+        let plan = await SessionDeletionCascade.plan(
+            selected: [parent, other],
+            reviewIndex: SessionReviewIndex(databaseURL: databaseURL)
+        )
+        let refused = try XCTUnwrap(plan.reviews.first { $0.sessionID == selfLinkedID })
+        // Swap the review's log for a link to a copy of itself: still inside
+        // the provider root, but the deleter never removes a symlink.
+        let copy = URL(fileURLWithPath: refused.sourcePath).deletingLastPathComponent()
+            .appendingPathComponent("held-aside.bak")
+        try FileManager.default.moveItem(atPath: refused.sourcePath, toPath: copy.path)
+        try FileManager.default.createSymbolicLink(atPath: refused.sourcePath, withDestinationPath: copy.path)
+
+        let deleter = SessionDeleter(homeDirectory: home.path)
+        let outcomes = SessionDeletionCascade.execute(plan) { deleter.delete($0, registry: rawRegistry) }
+        let removed = Set(outcomes.filter(\.success).map(\.summary.sessionID))
+        let kept = outcomes.filter { !$0.success }
+        XCTAssertEqual(removed, [newReviewID, otherID])
+        XCTAssertEqual(Set(kept.map(\.summary.sessionID)), [selfLinkedID, parentID],
+                       "the refused review and its session are both counted as kept")
+        XCTAssertEqual(kept.first { $0.summary.sessionID == parentID }?.failureReason, .symlinkedTarget,
+                       "the session is kept for the review's own reason")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: parent.sourcePath), "the session is not deleted")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: other.sourcePath))
+    }
+
+    func testExecuteNeverHandsABlockedSessionToTheDeleter() {
+        let prefix = CodexSessionAdapter.autoReviewVariantPrefix
+        func row(_ id: String, _ variant: String?) -> SessionSummary {
+            SessionSummary(provider: .codex, sessionID: id, providerVariant: variant,
+                           sourcePath: "/Users/example/.codex/sessions/\(id).jsonl")
+        }
+        let parent = row(parentID, nil)
+        let other = row(otherID, nil)
+        let failing = row(newReviewID, prefix + parentID)
+        let fine = row(selfLinkedID, prefix + parentID)
+        let otherReview = row(orphanID, prefix + otherID)
+        let plan = SessionDeletionCascade.Plan(selected: [parent, other], reviews: [failing, fine, otherReview])
+
+        var batches: [[String]] = []
+        let outcomes = SessionDeletionCascade.execute(plan) { batch in
+            batches.append(batch.map(\.sessionID))
+            return batch.map { $0.sessionID == newReviewID ? .failed($0, .removalFailed("x.jsonl")) : .succeeded($0) }
+        }
+        XCTAssertEqual(batches, [[newReviewID, selfLinkedID, orphanID], [otherID]],
+                       "reviews first; the blocked session is never asked for")
+        XCTAssertEqual(outcomes.filter { !$0.success }.map(\.summary.sessionID), [newReviewID, parentID])
+        XCTAssertEqual(outcomes.first { $0.summary.sessionID == parentID }?.failureReason, .removalFailed("x.jsonl"))
+
+        // A review the deleter returned nothing for blocks its session too.
+        let silent = SessionDeletionCascade.execute(plan) { batch in
+            batch.filter { $0.sessionID != fine.sessionID }.map { .succeeded($0) }
+        }
+        XCTAssertEqual(silent.first { $0.summary.sessionID == parentID }?.success, false)
+        XCTAssertEqual(silent.first { $0.summary.sessionID == otherID }?.success, true)
     }
 
     func testThePlanCountsEachFileOnceAndOnlyForSelectedParents() {
