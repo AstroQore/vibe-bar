@@ -101,6 +101,36 @@ public struct PrimaryProviderRouteHealth: Identifiable, Sendable, Equatable {
     }
 }
 
+extension PrimaryProviderRouteHealth {
+    /// Whether Settings would draw the two the same: same route, status and
+    /// detail, and a `checkedAt` in the same minute — the row shows the time
+    /// as hours and minutes. Every probe stamps a new `checkedAt`, so plain
+    /// equality would call every re-probe a change.
+    public func rendersSame(as other: PrimaryProviderRouteHealth) -> Bool {
+        route == other.route
+            && status == other.status
+            && detail == other.detail
+            && Self.minute(of: checkedAt) == Self.minute(of: other.checkedAt)
+    }
+
+    public static func rendersSame(
+        _ lhs: [PrimaryProviderRoute: PrimaryProviderRouteHealth],
+        _ rhs: [PrimaryProviderRoute: PrimaryProviderRouteHealth]
+    ) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        for (route, health) in lhs {
+            guard let other = rhs[route], health.rendersSame(as: other) else { return false }
+        }
+        return true
+    }
+
+    /// Whole minutes since the epoch. Time-zone offsets in use today are
+    /// whole minutes, so this changes exactly when the displayed minute does.
+    private static func minute(of date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 / 60).rounded(.down))
+    }
+}
+
 public enum PrimaryProviderRouteHealthChecker {
     public static func checkAll(now: Date = Date()) -> [PrimaryProviderRoute: PrimaryProviderRouteHealth] {
         check(PrimaryProviderRoute.allCases, now: now)
