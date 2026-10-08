@@ -21,16 +21,25 @@ public enum VisibleSecretRedactor {
         #"(?i)\b(Authorization|Cookie|Set-Cookie)\s*:\s*[^\n]+"#
     ]
 
+    /// Compiled once: building an `NSRegularExpression` costs far more than
+    /// running it, and session-structure parsing redacts thousands of short
+    /// summaries per file.
+    private static let compiledValuePatterns: [NSRegularExpression] =
+        (headerPatterns + wholeValuePatterns).compactMap { try? NSRegularExpression(pattern: $0, options: []) }
+    private static let compiledAssignmentPattern = try? NSRegularExpression(pattern: assignmentPattern, options: [])
+
     public static func redact(_ raw: String?) -> String? {
         guard var text = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty else {
             return nil
         }
 
-        for pattern in headerPatterns + wholeValuePatterns {
-            text = replacing(pattern, in: text, with: placeholder)
+        for regex in compiledValuePatterns {
+            text = replacing(regex, in: text, with: placeholder)
         }
-        text = replacing(assignmentPattern, in: text, with: "$1=\(placeholder)")
+        if let compiledAssignmentPattern {
+            text = replacing(compiledAssignmentPattern, in: text, with: "$1=\(placeholder)")
+        }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -47,8 +56,7 @@ public enum VisibleSecretRedactor {
         return redact(raw) != raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func replacing(_ pattern: String, in text: String, with replacement: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return text }
+    private static func replacing(_ regex: NSRegularExpression, in text: String, with replacement: String) -> String {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: replacement)
     }
