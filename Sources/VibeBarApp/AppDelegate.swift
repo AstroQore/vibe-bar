@@ -77,8 +77,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // parser upgrade only reaches files the index has already
             // fingerprinted if their cursors are dropped first. Behind the
             // maintenance gate, so a refresh that is already walking those
-            // files cannot skip one on the cursor this deletes.
-            await SessionIndexReparse.runIfNeededBehindGate()
+            // files cannot skip one on the cursor this deletes. A step that
+            // dropped cursors re-reads them at once: an MCP-only day never
+            // opens the Workbench, and the MCP tools back-fill only an empty
+            // index. The shared index is opened only in that case.
+            await SessionIndexReparse.runIfNeededBehindGate(refreshAfterDrop: {
+                guard let service = await MainActor.run(body: { env.sessionIndex.service }) else { return }
+                await service.refreshIndex()
+            })
             try? await Task.sleep(for: .seconds(60))
             await SessionIndexCompactor.standard.compactIfDue()
         }

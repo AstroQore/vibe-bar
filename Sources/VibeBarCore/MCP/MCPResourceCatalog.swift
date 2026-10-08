@@ -213,6 +213,13 @@ public enum MCPResourceCatalog {
           pass it to `sessions.transcript` as `around` to read that message in
           context. It always resolves, because a hit can only come from the part
           of the log the indexer read.
+        - **Codex Auto Reviews are part of the session they reviewed.** They are
+          never rows of `sessions.list` or `sessions.search`. A search match
+          inside one lands on the reviewed session with `matchedReview`
+          (`id`, `sessionId`, `matchedSeq`) instead of a row `matchedSeq`: read
+          it with `sessions.transcript` on `matchedReview.id`, around
+          `matchedReview.matchedSeq`. A session's transcript reports
+          `autoReviewCount` and names the oldest of them in `autoReviews`.
         - **The index is as fresh as the last sweep.** A session being written
           right now is searchable up to that sweep, not up to its latest message.
           Body search also needs Vibe Bar's session body indexing switched on;

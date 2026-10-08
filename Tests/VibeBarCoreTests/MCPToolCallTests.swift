@@ -294,6 +294,47 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertNil(result["totalCount"], "Search does not count past its own limit.")
     }
 
+    /// A match inside a Codex Auto Review is reported on the session it
+    /// reviewed. Its seq counts the review's messages, so it must travel with
+    /// the review's id — never as the row's own `matchedSeq`, which an agent
+    /// would read the parent at.
+    func testASearchHitInsideAnAutoReviewNamesTheReviewNotTheRowsSeq() async throws {
+        let parent = SessionSummary(
+            provider: .codex,
+            sessionID: "0199aaaa-0000-7000-8000-000000000001",
+            harness: .codex,
+            title: "Refactor the socket server",
+            sourcePath: "/Users/example/.codex/sessions/2026/01/02/rollout-parent.jsonl"
+        )
+        let review = SessionSummary(
+            provider: .codex,
+            sessionID: "0199aaaa-0000-7000-8000-000000000003",
+            providerVariant: CodexSessionAdapter.autoReviewVariantPrefix + parent.sessionID,
+            harness: .codex,
+            sourcePath: "/Users/example/.codex/sessions/2026/01/02/rollout-review.jsonl"
+        )
+        source.searchHits = [SessionSearchHit(summary: parent, snippet: "<b>verdict</b>", matchedSeq: 7)]
+        source.searchMatchedReviews = [parent.id: review]
+
+        let result = try await call("sessions.search", .object(["query": .string("verdict")]))
+        let rows = try XCTUnwrap(result["sessions"]?.arrayValue)
+        XCTAssertEqual(rows.count, 1)
+        let row = rows[0]
+        XCTAssertEqual(row["sessionId"]?.stringValue, parent.sessionID)
+        XCTAssertNil(row["matchedSeq"], "the seq belongs to the review's log")
+        XCTAssertEqual(row["snippet"]?.stringValue, "<b>verdict</b>")
+        XCTAssertEqual(row["matchedReview"]?["id"]?.stringValue, review.id)
+        XCTAssertEqual(row["matchedReview"]?["sessionId"]?.stringValue, review.sessionID)
+        XCTAssertEqual(row["matchedReview"]?["matchedSeq"]?.intValue, 7)
+    }
+
+    func testAnOrdinaryHitCarriesNoReview() async throws {
+        let result = try await call("sessions.search", .object(["query": .string("socket")]))
+        let hit = try XCTUnwrap(result["sessions"]?.arrayValue?.first)
+        XCTAssertNil(hit["matchedReview"])
+        XCTAssertEqual(hit["matchedSeq"]?.intValue, 4)
+    }
+
     func testSessionsSearchRejectsABlankQuery() async throws {
         let response = try MCPTestSupport.decode(
             await server.handle(line: MCPTestSupport.call(
@@ -467,6 +508,45 @@ final class MCPToolCallTests: XCTestCase {
         // The session it belongs to travels with it, so a caller that started
         // from a bare sessionId does not need a second round trip to label it.
         XCTAssertEqual(result["session"]?["harness"]?.stringValue, "claudeCode")
+    }
+
+    /// The Sessions page merges a Codex session's Auto Reviews into its
+    /// transcript; the agent surface names them instead, each its own log, so
+    /// every seq and cursor keeps meaning one file.
+    func testATranscriptNamesItsAutoReviews() async throws {
+        let parentID = "0199aaaa-0000-7000-8000-000000000001"
+        let reviews = (3...4).map { index in
+            SessionSummary(
+                provider: .codex,
+                sessionID: "0199aaaa-0000-7000-8000-00000000000\(index)",
+                providerVariant: CodexSessionAdapter.autoReviewVariantPrefix + parentID,
+                harness: .codex,
+                createdAt: FakeMCPDataSource.epoch,
+                sourcePath: "/Users/example/.codex/sessions/2026/01/02/rollout-review-\(index).jsonl",
+                sizeBytes: 2_048
+            )
+        }
+        source.transcriptAutoReviews = reviews
+        source.transcriptAutoReviewCount = 60
+        let result = try await call("sessions.transcript", .object([
+            "sessionId": .string(parentID),
+            "provider": .string("codex")
+        ]))
+        XCTAssertEqual(result["autoReviewCount"]?.intValue, 60)
+        let named = try XCTUnwrap(result["autoReviews"]?.arrayValue)
+        XCTAssertEqual(named.compactMap { $0["id"]?.stringValue }, reviews.map(\.id))
+        XCTAssertEqual(named.first?["sessionId"]?.stringValue, reviews[0].sessionID)
+        XCTAssertEqual(named.first?["sizeBytes"]?.intValue, 2_048)
+        XCTAssertEqual(named.first?["createdAt"]?.stringValue, "2026-01-01T00:00:00Z")
+    }
+
+    func testATranscriptWithoutReviewsOmitsBothFields() async throws {
+        let result = try await call("sessions.transcript", .object([
+            "sessionId": .string("sess-42"),
+            "provider": .string("claude")
+        ]))
+        XCTAssertNil(result["autoReviewCount"])
+        XCTAssertNil(result["autoReviews"])
     }
 
     func testTranscriptPagesWithACursor() async throws {

@@ -30,6 +30,9 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
     var transcriptReachedEndOfFile = true
     /// Non-nil makes `sessionTranscript` fail with this message.
     var transcriptFailure: String?
+    /// Auto Reviews the fake transcript names, and how many there are in all.
+    var transcriptAutoReviews: [SessionSummary] = []
+    var transcriptAutoReviewCount: Int?
 
     /// `refreshQuota` is the one method a test drives from two tasks at once,
     /// so its recording is the one that needs a lock.
@@ -322,7 +325,8 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
         lastSessionFilter = filter
         return MCPSessionSearchOutcome(
             hits: searchHits,
-            notice: searchNotice
+            notice: searchNotice,
+            matchedReviews: searchMatchedReviews
         )
     }
 
@@ -336,6 +340,8 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
         )
     ]
     var searchNotice: String?
+    /// Hits that matched inside an Auto Review, keyed by the hit's row id.
+    var searchMatchedReviews: [String: SessionSummary] = [:]
 
     func listSessions(
         filter: SessionQueryFilter,
@@ -378,7 +384,9 @@ final class FakeMCPDataSource: MCPDataSource, @unchecked Sendable {
                 reachedEndOfFile: transcriptReachedEndOfFile,
                 bytesRead: 4_096,
                 fileBytes: 4_096
-            )
+            ),
+            autoReviews: transcriptAutoReviews,
+            autoReviewCount: transcriptAutoReviewCount
         )
     }
 
