@@ -97,6 +97,7 @@ struct SessionListView: View {
             model.copyResumeCommand(for: row.summary)
         }
         .disabled(!canResume)
+        Button(L10n.Workbench.Skills.menuRevealInFinder) { model.revealInFinder(row.summary) }
         Divider()
         Button(L10n.Workbench.Sessions.deleteEllipsis, role: .destructive) {
             model.requestDelete([row.summary])
