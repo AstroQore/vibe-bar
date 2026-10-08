@@ -123,4 +123,31 @@ final class PrimaryProviderRouteHealthTests: XCTestCase {
         ))
         XCTAssertEqual(probes, 3)
     }
+
+    /// A re-probe stamps a new `checkedAt`; it is only worth publishing when
+    /// Settings would draw something different — the status, the detail, or
+    /// the hour-and-minute it prints.
+    func testRendersSameIgnoresARecheckWithinTheSameMinute() {
+        let minute = Date(timeIntervalSince1970: 1_700_000_040)
+        func health(
+            _ status: PrimaryProviderRouteHealthStatus = .ok,
+            detail: String = "Signed in",
+            at offset: TimeInterval
+        ) -> PrimaryProviderRouteHealth {
+            PrimaryProviderRouteHealth(route: .grokAuthJSON, status: status, detail: detail, checkedAt: minute.addingTimeInterval(offset))
+        }
+        let live = health(at: 1)
+        XCTAssertTrue(live.rendersSame(as: health(at: 58)))
+        XCTAssertFalse(live.rendersSame(as: health(at: 61)), "the printed minute moved")
+        XCTAssertFalse(live.rendersSame(as: health(.missing, at: 2)))
+        XCTAssertFalse(live.rendersSame(as: health(detail: "Expired", at: 2)))
+
+        let map: [PrimaryProviderRoute: PrimaryProviderRouteHealth] = [.grokAuthJSON: live]
+        XCTAssertTrue(PrimaryProviderRouteHealth.rendersSame(map, [.grokAuthJSON: health(at: 30)]))
+        XCTAssertFalse(PrimaryProviderRouteHealth.rendersSame(map, [:]))
+        XCTAssertFalse(PrimaryProviderRouteHealth.rendersSame(map, [
+            .grokAuthJSON: health(at: 30),
+            .grokBrowserCookies: PrimaryProviderRouteHealth(route: .grokBrowserCookies, status: .ok, detail: "", checkedAt: minute),
+        ]))
+    }
 }

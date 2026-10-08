@@ -76,12 +76,22 @@ final class ServiceStatusController: ObservableObject {
         if inFlight.contains(tool) { return }
         inFlight.insert(tool)
         defer { inFlight.remove(tool) }
+        // Each write below publishes even when it changes nothing — and
+        // `removeValue` publishes for a key that was never there — so every
+        // view showing a status row redrew on every poll. Write only changes.
         do {
             let snapshot = try await client.fetch(tool: tool)
-            snapshotByTool[tool] = snapshot
-            errorByTool.removeValue(forKey: tool)
+            if snapshotByTool[tool] != snapshot {
+                snapshotByTool[tool] = snapshot
+            }
+            if errorByTool[tool] != nil {
+                errorByTool.removeValue(forKey: tool)
+            }
         } catch {
-            errorByTool[tool] = error.localizedDescription
+            let message = error.localizedDescription
+            if errorByTool[tool] != message {
+                errorByTool[tool] = message
+            }
         }
     }
 
