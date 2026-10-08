@@ -17,8 +17,15 @@ import Foundation
 /// Hidden entries are skipped at every level, so `.git/` and `.DS_Store`
 /// churn does not invalidate a copy that is otherwise untouched. Empty
 /// directories contribute nothing and are therefore invisible to the digest.
+///
+/// The root itself must not be a symlink. A linked shared skill
+/// (`SkillOrigin.linked`) is exactly that, and its tree belongs to the folder
+/// it points at: walking through the link would read every byte of a
+/// checkout Vibe Bar does not manage. Callers that mean to read a resolved
+/// tree (`SkillReadScope`) pass the resolved directory instead.
 public enum SkillDirectoryHasher {
     public static func hash(directory: URL) throws -> String {
+        try refuseSymlinkRoot(directory)
         var entries: [(path: String, url: URL, isSymlink: Bool)] = []
         try collect(directory: directory, relativePath: "", into: &entries)
         entries.sort { $0.path.utf8.lexicographicallyPrecedes($1.path.utf8) }
@@ -56,6 +63,7 @@ public enum SkillDirectoryHasher {
     }
 
     public static func treeMetadata(directory: URL) throws -> TreeMetadata {
+        try refuseSymlinkRoot(directory)
         var entries: [(path: String, url: URL, isSymlink: Bool)] = []
         try collect(directory: directory, relativePath: "", into: &entries)
         entries.sort { $0.path.utf8.lexicographicallyPrecedes($1.path.utf8) }
@@ -81,6 +89,12 @@ public enum SkillDirectoryHasher {
             stamp: hasher.finalize().map { String(format: "%02x", $0) }.joined(),
             newestModification: newest
         )
+    }
+
+    private static func refuseSymlinkRoot(_ directory: URL) throws {
+        guard SkillFileSystem.kind(of: directory) != .symlink else {
+            throw SkillError.sourceNotADirectory(directory.lastPathComponent)
+        }
     }
 
     private static func collect(

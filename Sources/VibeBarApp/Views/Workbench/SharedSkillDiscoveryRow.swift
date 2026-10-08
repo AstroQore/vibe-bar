@@ -64,6 +64,7 @@ struct SharedSkillDiscoveryRow: View {
         case .missingSkillFile: L10n.Workbench.Library.missingSkillFile
         case .unreadable: L10n.Workbench.Library.unreadable
         case .tooLarge: L10n.Workbench.Library.tooLarge
+        case .missing: L10n.Workbench.Library.brokenLink
         }
     }
 

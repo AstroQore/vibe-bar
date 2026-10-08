@@ -168,11 +168,21 @@ public final class SkillCopyScanner {
 
     /// The shared copy of `directoryName`, or `nil` when it is not a real
     /// directory in the SSOT.
-    public func sharedCopy(directoryName: String) -> SkillCopy? {
+    ///
+    /// `allowingLink` admits an adopted linked skill whose receipt the caller
+    /// has just verified: its `SKILL.md` metadata is read through the link
+    /// like any other copy's, but the result must never be passed to
+    /// `withContentHash` — `SkillDirectoryHasher` refuses a symlink root, so
+    /// it would come back unhashed anyway.
+    public func sharedCopy(directoryName: String, allowingLink: Bool = false) -> SkillCopy? {
         guard SkillPathValidator.isValid(directoryName) else { return nil }
         let directory = SkillAppCatalog.ssotDirectory(homeDirectory: homeDirectory)
             .appendingPathComponent(directoryName, isDirectory: true)
-        guard SkillFileSystem.kind(of: directory) == .directory else { return nil }
+        switch SkillFileSystem.kind(of: directory) {
+        case .directory: break
+        case .symlink where allowingLink: break
+        default: return nil
+        }
         return copy(at: directory, directoryName: directoryName, location: .shared)
     }
 

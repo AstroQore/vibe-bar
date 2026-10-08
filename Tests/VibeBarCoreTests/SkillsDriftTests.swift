@@ -265,10 +265,32 @@ final class SkillsDriftTests: XCTestCase {
         let discovered = try XCTUnwrap(inventory.discoveredShared.first { $0.directoryName == "alpha" })
         XCTAssertTrue(discovered.isSymlink)
         XCTAssertEqual(discovered.state, .ready)
+        XCTAssertEqual(discovered.registration, .ownedRecord(skill.id))
         do {
             _ = try await service.acceptLocalChanges(skill.id)
             XCTFail("a link where the shared copy should be must not be accepted")
         } catch {}
+
+        // Adopted, the link is a managed row — and still never hashed, never
+        // "modified", and never acceptable: its files are the outside
+        // folder's, not a shared copy Vibe Bar records.
+        let adopted = try await service.adoptLinkedSkill(directoryName: "alpha")
+        let beforeAdopted = await service.reloadRehashCount
+        let managed = await service.installedSkills()
+        let afterAdopted = await service.reloadRehashCount
+        XCTAssertEqual(afterAdopted, beforeAdopted)
+        let row = try XCTUnwrap(managed.first)
+        XCTAssertEqual(row.linkCheck, .matches)
+        XCTAssertNil(row.localContentHash)
+        XCTAssertNil(row.contentHash)
+        XCTAssertFalse(row.isLocallyModified)
+        do {
+            _ = try await service.acceptLocalChanges(adopted.id)
+            XCTFail("a linked skill has no local changes to accept")
+        } catch let error as SkillError {
+            XCTAssertEqual(error, .linkedSkillUnsupported("alpha"))
+        }
+        XCTAssertEqual(SkillFileSystem.kind(of: shared), .symlink)
     }
 
     func testAcceptingLocalChangesRecopiesManagedCopies() async throws {

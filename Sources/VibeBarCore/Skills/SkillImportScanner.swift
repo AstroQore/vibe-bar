@@ -35,6 +35,39 @@ public struct SkillImportConflict: Sendable, Hashable {
     }
 }
 
+/// A shared entry that is a symlink to a readable skill folder outside Vibe
+/// Bar's management. Adopting one (`SkillsService.adoptLinkedSkill`) records
+/// the link and a receipt for it; nothing on disk changes.
+public struct SkillLinkCandidate: Sendable, Hashable, Identifiable {
+    public let directoryName: String
+    /// Frontmatter `name:`, falling back to the directory name.
+    public let name: String
+    public let description: String?
+    /// Raw `readlink` string of the shared entry.
+    public let linkTarget: String
+    public let resolvedURL: URL
+    /// Harnesses whose skills folder already links to the shared path.
+    public let projectedApps: [SkillAppTarget]
+
+    public var id: String { directoryName }
+
+    public init(
+        directoryName: String,
+        name: String,
+        description: String?,
+        linkTarget: String,
+        resolvedURL: URL,
+        projectedApps: [SkillAppTarget]
+    ) {
+        self.directoryName = directoryName
+        self.name = name
+        self.description = description
+        self.linkTarget = linkTarget
+        self.resolvedURL = resolvedURL
+        self.projectedApps = projectedApps
+    }
+}
+
 public struct SkillImportReport: Sendable, Hashable {
     /// SSOT skills, fully formed, with `apps` populated from the symlinks
     /// already on disk.
@@ -43,21 +76,39 @@ public struct SkillImportReport: Sendable, Hashable {
     /// SSOT directories with no SKILL.md — not skills, left alone.
     public let unrecognized: [String]
     public let conflicts: [SkillImportConflict]
+    /// SSOT entries that are links to readable skill folders elsewhere. Unlike
+    /// `adopted`, nothing here is recorded unless the user picks it.
+    public let linkedCandidates: [SkillLinkCandidate]
 
     public init(
         adopted: [Skill],
         unmanagedDirectories: [UnmanagedSkillDirectory],
         unrecognized: [String],
-        conflicts: [SkillImportConflict]
+        conflicts: [SkillImportConflict],
+        linkedCandidates: [SkillLinkCandidate] = []
     ) {
         self.adopted = adopted
         self.unmanagedDirectories = unmanagedDirectories
         self.unrecognized = unrecognized
         self.conflicts = conflicts
+        self.linkedCandidates = linkedCandidates
     }
 
     public var isEmpty: Bool {
         adopted.isEmpty && unmanagedDirectories.isEmpty && unrecognized.isEmpty && conflicts.isEmpty
+            && linkedCandidates.isEmpty
+    }
+
+    /// The same report with `linkedCandidates` narrowed, for a caller that
+    /// already manages some of the links.
+    public func withLinkedCandidates(_ candidates: [SkillLinkCandidate]) -> SkillImportReport {
+        SkillImportReport(
+            adopted: adopted,
+            unmanagedDirectories: unmanagedDirectories,
+            unrecognized: unrecognized,
+            conflicts: conflicts,
+            linkedCandidates: candidates
+        )
     }
 }
 
@@ -82,17 +133,38 @@ public enum SkillImportScanner {
 
         var candidates: [String] = []
         var unrecognized: [String] = []
+        // Links are described, never followed past their `SKILL.md`: the
+        // resolution reads link targets and one file's metadata, and the
+        // frontmatter read is bounded.
+        var linkResolutions: [(name: String, target: String, resolved: URL, frontmatter: SkillFrontmatterParser.Frontmatter)] = []
         for name in directoryEntries(at: ssot) {
             let directory = ssot.appendingPathComponent(name, isDirectory: true)
-            guard SkillFileSystem.kind(of: directory) == .directory else { continue }
-            if fm.fileExists(atPath: directory.appendingPathComponent("SKILL.md").path) {
-                candidates.append(name)
-            } else {
-                unrecognized.append(name)
+            switch SkillFileSystem.kind(of: directory) {
+            case .directory:
+                if fm.fileExists(atPath: directory.appendingPathComponent("SKILL.md").path) {
+                    candidates.append(name)
+                } else {
+                    unrecognized.append(name)
+                }
+            case .symlink:
+                guard SkillPathValidator.isValid(name),
+                      let target = try? fm.destinationOfSymbolicLink(atPath: directory.path)
+                else { continue }
+                let resolution = SharedSkillDiscoveryScanner.resolve(directory)
+                guard resolution.state == .ready,
+                      let resolved = resolution.resolvedURL,
+                      let skillFile = resolution.skillFile,
+                      let frontmatter = SharedSkillDiscoveryScanner.frontmatter(of: skillFile)
+                else { continue }
+                linkResolutions.append((name, target, resolved, frontmatter))
+            default:
+                continue
             }
         }
         let candidateNames = Set(candidates)
-        let ssotNames = candidateNames.union(unrecognized)
+        // A real folder in a harness directory named like a shared link is a
+        // conflict, not a skill to copy into a slot the link already holds.
+        let ssotNames = candidateNames.union(unrecognized).union(linkResolutions.map(\.name))
 
         var evidence: [String: [SkillAppTarget]] = [:]
         var unmanaged: [String: [SkillAppTarget]] = [:]
@@ -161,11 +233,25 @@ public enum SkillImportScanner {
             )
         }
 
+        let linkedCandidates = linkResolutions.map { link in
+            SkillLinkCandidate(
+                directoryName: link.name,
+                name: link.frontmatter.name ?? link.name,
+                description: link.frontmatter.description,
+                linkTarget: link.target,
+                resolvedURL: link.resolved,
+                projectedApps: SkillAppTarget.managedHarnesses.filter {
+                    engine.adoptionState(skillDirectoryName: link.name, app: $0) != nil
+                }
+            )
+        }
+
         return SkillImportReport(
             adopted: adopted,
             unmanagedDirectories: unmanagedDirectories,
             unrecognized: unrecognized,
-            conflicts: conflicts
+            conflicts: conflicts,
+            linkedCandidates: linkedCandidates
         )
     }
 

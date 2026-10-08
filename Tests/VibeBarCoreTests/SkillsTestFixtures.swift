@@ -103,22 +103,45 @@ final class SkillTestHome {
     /// lstat snapshot of every path under the home directory: type, inode,
     /// size, and mtime. Import must leave this byte-for-byte identical.
     func lstatSnapshot() -> [String: String] {
+        lstatSnapshot(under: url)
+    }
+
+    /// The same snapshot for one subtree — an external folder a linked skill
+    /// points at — with link targets recorded too, so a re-pointed link
+    /// inside it would show.
+    func lstatSnapshot(under root: URL, excluding excluded: Set<String> = []) -> [String: String] {
         var snapshot: [String: String] = [:]
         let fm = FileManager.default
-        var stack = [url]
+        var stack = [root]
         while let current = stack.popLast() {
+            let relative = String(current.path.dropFirst(root.path.count))
+            if excluded.contains(where: { relative == $0 || relative.hasPrefix($0 + "/") }) { continue }
             guard let attributes = try? fm.attributesOfItem(atPath: current.path) else { continue }
             let type = (attributes[.type] as? FileAttributeType)?.rawValue ?? "?"
             let inode = (attributes[.systemFileNumber] as? NSNumber)?.stringValue ?? "?"
             let size = (attributes[.size] as? NSNumber)?.stringValue ?? "?"
             let mtime = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? -1
-            let relative = String(current.path.dropFirst(url.path.count))
-            snapshot[relative] = "\(type)|\(inode)|\(size)|\(mtime)"
+            let target = type == FileAttributeType.typeSymbolicLink.rawValue
+                ? (try? fm.destinationOfSymbolicLink(atPath: current.path)) ?? "?" : ""
+            snapshot[relative] = "\(type)|\(inode)|\(size)|\(mtime)|\(target)"
             guard type == FileAttributeType.typeDirectory.rawValue else { continue }
             for name in (try? fm.contentsOfDirectory(atPath: current.path)) ?? [] {
                 stack.append(current.appendingPathComponent(name))
             }
         }
         return snapshot
+    }
+
+    /// Byte contents of every regular file under `root`, keyed by relative
+    /// path — what "the linked folder was not written" means in content.
+    func fileContents(under root: URL) -> [String: Data] {
+        var contents: [String: Data] = [:]
+        guard let enumerator = FileManager.default.enumerator(atPath: root.path) else { return [:] }
+        for case let relative as String in enumerator {
+            let file = root.appendingPathComponent(relative)
+            guard SkillFileSystem.kind(of: file) == .regularFile else { continue }
+            contents[relative] = try? Data(contentsOf: file)
+        }
+        return contents
     }
 }

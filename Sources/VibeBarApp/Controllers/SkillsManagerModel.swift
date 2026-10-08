@@ -763,7 +763,7 @@ final class SkillsManagerModel: ObservableObject {
                     case .cyclicLink: toast = L10n.Workbench.Library.cyclicLink
                     case .tooLarge: toast = L10n.Workbench.Library.tooLarge
                     case .missingSkillFile: toast = L10n.Workbench.Library.missingSkillFile
-                    case .ready, .unreadable: toast = L10n.Workbench.Library.unreadable
+                    case .ready, .unreadable, .missing: toast = L10n.Workbench.Library.unreadable
                     }
                 }
             } catch {

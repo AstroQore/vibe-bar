@@ -12,7 +12,12 @@ import Foundation
 /// this build does not know (a newer Vibe Bar learned another agent CLI) are
 /// dropped per entry in `Skill`'s decoder.
 public actor SkillsStore {
-    public static let currentSchemaVersion = 1
+    /// 2 added the optional per-row `link` receipt of an adopted linked
+    /// skill (`SkillOrigin.linked`). Nothing gates on the number: a version 1
+    /// file decodes with every row `.owned`, and a build that predates links
+    /// drops the key and sees the shared entry as a link it does not own —
+    /// read-only, never written through.
+    public static let currentSchemaVersion = 2
 
     /// Repositories the discovery browser reads by default. These are *state*,
     /// not preferences — they live here rather than in `AppSettings` because

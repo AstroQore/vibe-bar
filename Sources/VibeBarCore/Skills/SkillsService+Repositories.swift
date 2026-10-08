@@ -386,7 +386,7 @@ extension SkillsService {
     /// written by an older build — is computed here and written back, so the
     /// next check has it.
     public func checkForUpdates() async -> [SkillUpdateState] {
-        let installed = await store.all().filter { $0.id.isRepositoryBacked }
+        let installed = await store.all().filter { $0.id.isRepositoryBacked && !$0.isLinked }
         guard !installed.isEmpty else { return [] }
 
         var groups: [String: (ref: SkillRepoRef, skills: [Skill])] = [:]
@@ -476,6 +476,9 @@ extension SkillsService {
     @discardableResult
     public func update(_ id: SkillID) async throws -> Skill {
         guard let existing = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
+        // Replacing a linked skill's shared entry would write into the
+        // folder it links to.
+        guard !existing.isLinked else { throw SkillError.linkedSkillUnsupported(existing.directory) }
         guard
             case let .repo(owner, repo, _) = id,
             let ref = SkillRepoRef(owner: owner, repo: repo, branch: existing.repoBranch)
