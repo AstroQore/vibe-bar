@@ -96,15 +96,16 @@ extension SkillsService {
         _ id: SkillID,
         budget: SkillLinkConversionBudget = .standard
     ) async throws -> Skill {
-        try await convertLinkedSkill(id, budget: budget, afterCopy: {})
+        try await convertLinkedSkill(id, budget: budget, afterCopy: { _ in })
     }
 
-    /// `afterCopy` runs between the copy and the swap; tests use it to
-    /// change the disk at the one moment the receipt is checked again.
+    /// `afterCopy` runs right after the copy, with the staging directory,
+    /// before anything about the copy or the link is checked again; tests
+    /// use it to change the disk at exactly that moment.
     func convertLinkedSkill(
         _ id: SkillID,
         budget: SkillLinkConversionBudget,
-        afterCopy: @Sendable () throws -> Void
+        afterCopy: @Sendable (URL) throws -> Void
     ) async throws -> Skill {
         guard var skill = await store.skill(with: id) else { throw SkillError.notInstalled(id) }
         guard let receipt = skill.linkReceipt else { throw SkillError.notALink(skill.directory) }
@@ -127,6 +128,11 @@ extension SkillsService {
         try? fm.removeItem(at: staging)
         defer { try? fm.removeItem(at: staging) }
         try fm.copyItem(at: source, to: staging)
+        try afterCopy(staging)
+        // The preflight bounded the folder as it was before the copy; files
+        // added or grown while it ran would still land. What is actually
+        // about to be installed is held to the same budget.
+        try budget.check(staging, directoryName: skill.directory)
         guard SkillTreeScanner.isSkillDirectory(staging) else { throw SkillError.missingSkillMD(skill.directory) }
         // The same rule as re-confirming: the copy keeps the name the native
         // switches were written for, or the link stays as it is.
@@ -134,7 +140,6 @@ extension SkillsService {
         let copiedName = frontmatter.name ?? skill.directory
         guard copiedName == skill.name else { throw SkillError.linkedSkillRenamed(skill.directory, copiedName) }
 
-        try afterCopy()
         // The copy took time. The link must still be the one the receipt
         // pins, and still lead to the same directory: a folder deleted and
         // re-created at the same path keeps the target string but not the

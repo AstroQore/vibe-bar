@@ -698,7 +698,7 @@ final class LinkedSkillTests: XCTestCase {
 
         // Same path, same link target string, different directory.
         await assertRefused(.linkReceiptMismatch(skillName)) {
-            try await service.convertLinkedSkill(skill.id, budget: .standard) {
+            try await service.convertLinkedSkill(skill.id, budget: .standard) { _ in
                 try FileManager.default.removeItem(at: external)
                 try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
                 try "---\nname: \(name)\n---\nreplacement\n".write(
@@ -716,6 +716,41 @@ final class LinkedSkillTests: XCTestCase {
         XCTAssertEqual(home.contents(of: external.appendingPathComponent("SKILL.md")), "---\nname: \(name)\n---\nreplacement\n")
         let discovered = await service.inventory().discoveredShared
         XCTAssertEqual(discovered.first?.registration, .receiptMismatch(skill.id, .replaced))
+    }
+
+    func testACopyThatOutgrewTheBudgetWhileCopyingIsNotInstalled() async throws {
+        let fixture = try makeFixture()
+        let service = fixture.service
+        let home = fixture.home
+        let skill = try await service.adoptLinkedSkill(directoryName: skillName)
+        let target = try rawTarget(fixture.link)
+        let externalBefore = home.lstatSnapshot(under: fixture.repository)
+        // The folder holds five entries; the preflight passes at six.
+        let budget = SkillLinkConversionBudget(maxEntries: 6)
+
+        await assertRefused(.copyLimitExceeded(skillName)) {
+            try await service.convertLinkedSkill(skill.id, budget: budget) { staging in
+                // Files that appeared while the copy ran.
+                for index in 0..<3 {
+                    try "late \(index)".write(
+                        to: staging.appendingPathComponent("late-\(index).md"), atomically: true, encoding: .utf8
+                    )
+                }
+            }
+        }
+
+        XCTAssertEqual(SkillFileSystem.kind(of: fixture.link), .symlink)
+        XCTAssertEqual(try rawTarget(fixture.link), target)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: home.ssot.path), [skillName],
+                       "the oversized staging copy is discarded")
+        let stored = await service.store.skill(with: skill.id)
+        XCTAssertEqual(stored?.linkReceipt, skill.linkReceipt)
+        XCTAssertEqual(home.lstatSnapshot(under: fixture.repository), externalBefore)
+
+        // Within budget, the same conversion goes through.
+        let converted = try await service.convertLinkedSkill(skill.id, budget: budget) { _ in }
+        XCTAssertNil(converted.linkReceipt)
+        XCTAssertEqual(SkillFileSystem.kind(of: fixture.link), .directory)
     }
 
     // MARK: - Never hashed, never compared
