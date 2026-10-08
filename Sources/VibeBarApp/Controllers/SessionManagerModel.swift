@@ -1480,10 +1480,25 @@ final class SessionManagerModel: ObservableObject {
         deletionPlanTask?.cancel()
         let reviewIndex = self.reviewIndex
         deletionPlanTask = Task { [weak self] in
-            let plan = await SessionDeletionCascade.plan(selected: deletable, reviewIndex: reviewIndex)
+            // A plan that could not collect every review is refused rather
+            // than shown: confirming it would strand the reviews it missed.
+            let plan: SessionDeletionCascade.Plan?
+            let refusal: String?
+            do {
+                plan = try await SessionDeletionCascade.plan(selected: deletable, reviewIndex: reviewIndex)
+                refusal = nil
+            } catch {
+                plan = nil
+                refusal = (error as? SessionDeletionCascade.PlanError)?.message
+                    ?? SessionDeletionCascade.PlanError.reviewLookupFailed.message
+            }
             guard let self, !Task.isCancelled else { return }
             self.deletionPlanTask = nil
-            self.pendingDeletion = plan
+            if let plan {
+                self.pendingDeletion = plan
+            } else if let refusal {
+                self.show(toast: refusal)
+            }
         }
     }
 

@@ -423,24 +423,53 @@ public enum SessionDeletionCascade {
     /// from turning the confirmation into an unbounded read.
     public static let reviewLimit = 20_000
 
+    /// Why a deletion was refused before anything was removed.
+    public enum PlanError: Error, Equatable, Sendable {
+        /// The selection owns more reviews than one deletion collects.
+        case tooManyReviews(limit: Int)
+        /// The review index could not answer.
+        case reviewLookupFailed
+
+        /// The sentence the Sessions page shows, the way it shows the
+        /// deleter's own refusals.
+        public var message: String {
+            switch self {
+            case let .tooManyReviews(limit):
+                "These sessions have more than \(limit) Auto Reviews between them, more than one "
+                    + "deletion takes. Nothing was deleted; delete fewer sessions at a time."
+            case .reviewLookupFailed:
+                "Their Auto Reviews could not be looked up, so nothing was deleted. "
+                    + "Try again once the session index has refreshed."
+            }
+        }
+    }
+
     /// The plan for `selected`, with its reviews read from `reviewIndex`.
-    /// A review index that cannot answer yields a plan without reviews —
-    /// the selection itself is still the user's to delete.
+    ///
+    /// Complete or refused, never partial: a plan missing some reviews would
+    /// delete their sessions and strand them. So the read asks for one row
+    /// past `limit` — getting it means the list was cut, and the deletion is
+    /// refused (`tooManyReviews`) — and a review index that cannot answer
+    /// refuses too (`reviewLookupFailed`). A selection with no Codex
+    /// sessions has no reviews to find and never asks.
     public static func plan(
         selected: [SessionSummary],
-        reviewIndex: SessionReviewIndex
-    ) async -> Plan {
+        reviewIndex: SessionReviewIndex,
+        limit: Int = reviewLimit
+    ) async throws -> Plan {
         let parents = parentIDs(of: selected)
         guard !parents.isEmpty else { return Plan(selected: selected, reviews: []) }
+        let reviews: [SessionSummary]
         do {
-            let reviews = try await reviewIndex.reviews(forParents: parents, limit: reviewLimit)
-            if reviews.count >= reviewLimit {
-                SafeLog.warn("Session delete: Auto Review lookup stopped at \(reviewLimit) rows")
-            }
-            return plan(selected: selected, reviews: reviews)
+            reviews = try await reviewIndex.reviews(forParents: parents, limit: limit + 1)
         } catch {
-            SafeLog.warn("Session delete: Auto Review lookup failed; deleting the selection alone")
-            return Plan(selected: selected, reviews: [])
+            SafeLog.warn("Session delete: Auto Review lookup failed; refusing the cascade")
+            throw PlanError.reviewLookupFailed
         }
+        guard reviews.count <= limit else {
+            SafeLog.warn("Session delete: more than \(limit) Auto Reviews selected; refusing the cascade")
+            throw PlanError.tooManyReviews(limit: limit)
+        }
+        return plan(selected: selected, reviews: reviews)
     }
 }

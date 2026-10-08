@@ -596,7 +596,7 @@ final class SessionReviewLinkingTests: XCTestCase {
         let parent = try XCTUnwrap(parentRow)
         let other = try XCTUnwrap(otherRow)
 
-        let plan = await SessionDeletionCascade.plan(
+        let plan = try await SessionDeletionCascade.plan(
             selected: [parent, other],
             reviewIndex: SessionReviewIndex(databaseURL: databaseURL)
         )
@@ -631,7 +631,7 @@ final class SessionReviewLinkingTests: XCTestCase {
         let otherRow = try await store.summary(provider: .codex, sessionID: otherID)
         let parent = try XCTUnwrap(parentRow)
         let other = try XCTUnwrap(otherRow)
-        let plan = await SessionDeletionCascade.plan(
+        let plan = try await SessionDeletionCascade.plan(
             selected: [parent, other],
             reviewIndex: SessionReviewIndex(databaseURL: databaseURL)
         )
@@ -711,15 +711,56 @@ final class SessionReviewLinkingTests: XCTestCase {
         XCTAssertEqual(SessionDeletionCascade.parentIDs(of: [parent, parent]), [parentID])
     }
 
-    func testAPlanWithoutAReviewIndexStillDeletesTheSelection() async throws {
+    /// No plan rather than a partial one: reviews the plan missed would be
+    /// stranded when their sessions went.
+    func testAPlanThatCannotSeeEveryReviewIsRefused() async throws {
         let parent = SessionSummary(provider: .codex, sessionID: parentID,
                                     sourcePath: "/Users/example/.codex/sessions/p.jsonl")
-        let plan = await SessionDeletionCascade.plan(
-            selected: [parent],
+        // The review index cannot answer at all.
+        do {
+            _ = try await SessionDeletionCascade.plan(
+                selected: [parent],
+                reviewIndex: SessionReviewIndex(databaseURL: databaseURL)
+            )
+            XCTFail("expected a refusal")
+        } catch let error as SessionDeletionCascade.PlanError {
+            XCTAssertEqual(error, .reviewLookupFailed)
+            XCTAssertFalse(error.message.isEmpty)
+        }
+        // A selection with no Codex session has nothing to look up.
+        let claude = SessionSummary(provider: .claude, sessionID: "c-1",
+                                    sourcePath: "/Users/example/.claude/projects/demo/c-1.jsonl")
+        let alone = try await SessionDeletionCascade.plan(
+            selected: [claude],
             reviewIndex: SessionReviewIndex(databaseURL: databaseURL)
         )
-        XCTAssertEqual(plan.all.map(\.sessionID), [parentID])
-        XCTAssertTrue(plan.reviews.isEmpty)
+        XCTAssertEqual(alone.all.map(\.sessionID), ["c-1"])
+
+        // More reviews than one deletion collects: the extra row the read
+        // asks for proves the list was cut.
+        let store = try SessionIndexStore(url: databaseURL)
+        let prefix = CodexSessionAdapter.autoReviewVariantPrefix
+        var entries: [SessionIndexStore.IndexBatchEntry] = []
+        for index in 0..<6 {
+            let id = String(format: "0199eeee-0000-7000-8000-%012d", index)
+            let path = "/Users/example/.codex/sessions/2026/01/02/rollout-\(id).jsonl"
+            entries.append(SessionIndexStore.IndexBatchEntry(
+                summary: SessionSummary(provider: .codex, sessionID: id, providerVariant: prefix + parentID,
+                                        harness: .codex, sourcePath: path),
+                pathHash: id, path: path, provider: .codex, mtimeNanos: Int64(index), size: 1, excerpts: nil
+            ))
+        }
+        try await store.applyIndexBatch(entries)
+        let reviews = SessionReviewIndex(databaseURL: databaseURL)
+        do {
+            _ = try await SessionDeletionCascade.plan(selected: [parent], reviewIndex: reviews, limit: 5)
+            XCTFail("expected a refusal past the limit")
+        } catch let error as SessionDeletionCascade.PlanError {
+            XCTAssertEqual(error, .tooManyReviews(limit: 5))
+        }
+        // Exactly at the limit is complete, and allowed.
+        let full = try await SessionDeletionCascade.plan(selected: [parent], reviewIndex: reviews, limit: 6)
+        XCTAssertEqual(full.reviews.count, 6)
     }
 }
 
