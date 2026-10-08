@@ -98,15 +98,28 @@ public enum SessionIndexReparse {
     /// leaving the conversation on the old reading until the next refresh.
     /// A gate that cannot be claimed leaves the stamp alone, so the next
     /// launch tries again.
+    ///
+    /// Dropping a cursor only makes the next indexing pass re-read the file;
+    /// it does not run one. Nothing else may: the Workbench refreshes when it
+    /// is opened, and the MCP tools back-fill only an index that has never
+    /// held a row, so on a Mac where only agents read sessions the rows would
+    /// keep their old reading indefinitely. So when any step dropped a cursor,
+    /// `refreshAfterDrop` — one indexing pass — runs straight away, inside
+    /// the same hold of the gate, and owes nothing to the Workbench's own
+    /// rescan throttle.
     @discardableResult
     public static func runIfNeededBehindGate(
         databaseURL: URL = VibeBarLocalStore.sessionIndexURL,
         stampURL: URL = VibeBarLocalStore.sessionIndexReparseStampURL,
         steps: [Step] = SessionIndexReparse.steps,
-        gate: SessionIndexMaintenanceGate = .shared
+        gate: SessionIndexMaintenanceGate = .shared,
+        refreshAfterDrop: (@Sendable () async -> Void)? = nil
     ) async -> Outcome? {
         do { try await gate.acquire() } catch { return nil }
         let outcome = runIfNeeded(databaseURL: databaseURL, stampURL: stampURL, steps: steps)
+        if let refreshAfterDrop, (outcome?.cursorsDropped ?? 0) > 0 {
+            await refreshAfterDrop()
+        }
         await gate.release()
         return outcome
     }

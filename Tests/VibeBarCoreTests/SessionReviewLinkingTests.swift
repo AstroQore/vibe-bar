@@ -238,9 +238,13 @@ final class SessionReviewLinkingTests: XCTestCase {
                      "stamped: a relaunch does not re-read them again")
 
         // The rows survived the reparse — nothing vanished meanwhile — and
-        // the next pass rewrites them.
+        // until the re-read lands, nobody who opens no Workbench sees them as
+        // sessions: not the list, not search.
         let rowsAfterReparse = try await store.sessionCount()
         XCTAssertEqual(rowsAfterReparse, 5)
+        try await assertSelfLinkedReviewsAreNotRows(store)
+
+        // The next pass rewrites them.
         await service(store, registry: boundedRegistry).refreshIndex()
         let after = try await variants(store)
         XCTAssertEqual(after[selfLinkedID], .some(prefix + parentID))
@@ -248,6 +252,95 @@ final class SessionReviewLinkingTests: XCTestCase {
         XCTAssertEqual(after[newReviewID], .some(prefix + parentID))
         XCTAssertEqual(after[parentID], .some(nil))
         XCTAssertEqual(after.count, 5, "re-read in place, not duplicated")
+    }
+
+    /// What `sessions.list` / `sessions.search` (and the Sessions page) see
+    /// of the legacy rows before they are re-read: nothing of their own.
+    private func assertSelfLinkedReviewsAreNotRows(
+        _ store: SessionIndexStore,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let index = service(store, registry: boundedRegistry)
+        let page = try await SessionVisibleRows.page(index, limit: 100)
+        XCTAssertEqual(Set(page.summaries.map(\.sessionID)), [parentID, otherID], file: file, line: line)
+        for needle in ["quokkaparade", "narwhalbanner"] {
+            let result = try await SessionVisibleRows.search(index, query: needle)
+            XCTAssertEqual(result.rankedCount, 1, "the index still finds \(needle)", file: file, line: line)
+            XCTAssertTrue(result.hits.isEmpty, "but no row stands for it", file: file, line: line)
+        }
+        // A review that already names its parent still folds onto it.
+        let folded = try await SessionVisibleRows.search(index, query: "zebracrossing")
+        XCTAssertEqual(folded.hits.map(\.hit.summary.sessionID), [parentID], file: file, line: line)
+    }
+
+    func testSelfLinkedReviewsAreNeverRowsBeforeTheyAreReRead() async throws {
+        let store = try await legacyIndex()
+        try await assertSelfLinkedReviewsAreNotRows(store)
+    }
+
+    /// The launch path: a step that dropped cursors re-reads them inside the
+    /// same hold of the gate, without waiting for the Workbench to be opened.
+    func testAReparseThatDropsCursorsRefreshesTheIndexStraightAway() async throws {
+        let store = try await legacyIndex()
+        let index = service(store, registry: boundedRegistry)
+        let refreshes = RefreshCounter()
+        let gate = SessionIndexMaintenanceGate()
+        try Data(#"{"version":1}"#.utf8).write(to: stampURL)
+
+        let outcome = await SessionIndexReparse.runIfNeededBehindGate(
+            databaseURL: databaseURL,
+            stampURL: stampURL,
+            gate: gate,
+            refreshAfterDrop: {
+                await refreshes.increment()
+                await index.refreshIndex()
+            }
+        )
+        XCTAssertEqual(outcome?.cursorsDropped, 2)
+        let count = await refreshes.value
+        XCTAssertEqual(count, 1)
+        let reclaimed = await gate.tryAcquire()
+        XCTAssertTrue(reclaimed, "the gate is handed back after the refresh")
+        await gate.release()
+
+        let prefix = CodexSessionAdapter.autoReviewVariantPrefix
+        let after = try await variants(store)
+        XCTAssertEqual(after[selfLinkedID], .some(prefix + parentID))
+        XCTAssertEqual(after[orphanID], .some(nil))
+        let repaired = try await SessionVisibleRows.search(index, query: "quokkaparade")
+        XCTAssertEqual(repaired.hits.map(\.hit.summary.sessionID), [parentID])
+        XCTAssertEqual(repaired.hits.first?.matchedReview?.sessionID, selfLinkedID)
+        let unlinked = try await SessionVisibleRows.search(index, query: "narwhalbanner")
+        XCTAssertEqual(unlinked.hits.map(\.hit.summary.sessionID), [orphanID], "now a session of its own")
+
+        // Stamped and nothing left to drop: no second pass on the next launch.
+        let again = await SessionIndexReparse.runIfNeededBehindGate(
+            databaseURL: databaseURL,
+            stampURL: stampURL,
+            gate: gate,
+            refreshAfterDrop: { await refreshes.increment() }
+        )
+        XCTAssertNil(again)
+        let finalCount = await refreshes.value
+        XCTAssertEqual(finalCount, 1)
+    }
+
+    func testAReparseThatDropsNothingDoesNotRefresh() async throws {
+        try writeFixtureHome()
+        let store = try SessionIndexStore(url: databaseURL)
+        await service(store, registry: boundedRegistry).refreshIndex()
+        let refreshes = RefreshCounter()
+        try Data(#"{"version":1}"#.utf8).write(to: stampURL)
+        let outcome = await SessionIndexReparse.runIfNeededBehindGate(
+            databaseURL: databaseURL,
+            stampURL: stampURL,
+            gate: SessionIndexMaintenanceGate(),
+            refreshAfterDrop: { await refreshes.increment() }
+        )
+        XCTAssertEqual(outcome?.cursorsDropped, 0, "a fresh index has no self-linked rows to drop")
+        let count = await refreshes.value
+        XCTAssertEqual(count, 0)
     }
 
     private func remainingCursorCount() -> Int {
@@ -429,15 +522,22 @@ final class SessionReviewLinkingTests: XCTestCase {
                                     sourcePath: "/Users/example/.codex/sessions/r.jsonl")
         let orphan = SessionSummary(provider: .codex, sessionID: selfLinkedID, providerVariant: prefix + otherID,
                                     sourcePath: "/Users/example/.codex/sessions/o.jsonl")
+        let selfLinked = SessionSummary(provider: .codex, sessionID: orphanID, providerVariant: prefix + orphanID,
+                                        sourcePath: "/Users/example/.codex/sessions/s.jsonl")
+        XCTAssertTrue(SessionVisibleRows.isSelfLinkedReview(selfLinked))
+        XCTAssertFalse(SessionVisibleRows.isSelfLinkedReview(orphan))
+        XCTAssertFalse(SessionVisibleRows.isSelfLinkedReview(parent))
         let hits = [
             SessionSearchHit(summary: review, snippet: "in review", matchedSeq: 3),
+            SessionSearchHit(summary: selfLinked, snippet: "waiting on a re-read", matchedSeq: 2),
             SessionSearchHit(summary: parent, snippet: "in parent", matchedSeq: 1),
             SessionSearchHit(summary: orphan, snippet: "orphan", matchedSeq: 0)
         ]
         XCTAssertEqual(SessionVisibleRows.reviewParentIDs(in: hits), [parentID, otherID])
         let folded = SessionVisibleRows.fold(hits, parents: [parentID: parent])
         XCTAssertEqual(folded.map(\.hit.summary.sessionID), [parentID, selfLinkedID],
-                       "parent once, at the review's better rank; an unresolvable review stands alone")
+                       "parent once, at the review's better rank; a self-linked review is dropped; "
+                           + "an unresolvable review stands alone")
         XCTAssertEqual(folded[0].hit.snippet, "in review")
         XCTAssertEqual(folded[0].hit.matchedSeq, 3)
         XCTAssertEqual(folded[0].matchedReview?.sessionID, newReviewID)
@@ -515,3 +615,7 @@ final class SessionReviewLinkingTests: XCTestCase {
     }
 }
 
+private actor RefreshCounter {
+    private(set) var value = 0
+    func increment() { value += 1 }
+}

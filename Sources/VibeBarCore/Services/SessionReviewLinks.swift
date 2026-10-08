@@ -27,17 +27,30 @@ public enum SessionVisibleRows {
 
     /// The session an Auto Review row belongs to, or `nil` for anything else.
     ///
-    /// Also `nil` for a row that names *itself*: Codex before 0.142 wrote the
-    /// guardian's own id into `session_meta.session_id`, so the kit linked
-    /// those rows to themselves. `CodexReviewLinkRepair` rewrites them at
-    /// index time; until a row has been re-read, folding it into itself
-    /// would only make it vanish.
+    /// Also `nil` for a row that names *itself* — see `isSelfLinkedReview`:
+    /// a row cannot be folded into itself.
     public static func reviewParentID(of summary: SessionSummary) -> String? {
         guard summary.provider == .codex,
               let parent = CodexSessionAdapter.autoReviewParentSessionID(providerVariant: summary.providerVariant),
               parent.caseInsensitiveCompare(summary.sessionID) != .orderedSame
         else { return nil }
         return parent
+    }
+
+    /// An Auto Review row the kit linked to itself.
+    ///
+    /// Codex before 0.142 wrote the guardian's own id into
+    /// `session_meta.session_id`. `CodexReviewLinkRepair` rewrites those rows
+    /// at index time, and `SessionIndexReparse` v2 has them re-read — but a
+    /// row indexed before that stays in this shape until the re-read lands.
+    /// Until then it is still a review, not a session: hidden from the list by
+    /// the same SQL exclusion as any other, and dropped from search by `fold`,
+    /// so neither the Sessions page nor an agent sees it as a row of its own.
+    public static func isSelfLinkedReview(_ summary: SessionSummary) -> Bool {
+        guard summary.provider == .codex,
+              let parent = CodexSessionAdapter.autoReviewParentSessionID(providerVariant: summary.providerVariant)
+        else { return false }
+        return parent.caseInsensitiveCompare(summary.sessionID) == .orderedSame
     }
 
     // MARK: - Listing
@@ -114,9 +127,11 @@ public enum SessionVisibleRows {
     /// A parent that is not in the index (its rollout was removed outside
     /// Vibe Bar) leaves the review standing as a row of its own: that file is
     /// the only record left of the work, and a search that silently drops it
-    /// cannot be told apart from one that found nothing. A row reached twice
-    /// — the parent and one of its reviews both matched — is kept once, at
-    /// its best rank.
+    /// cannot be told apart from one that found nothing. A self-linked review
+    /// (`isSelfLinkedReview`) is dropped instead: it is waiting on the re-read
+    /// that gives it a parent or makes it a session, and what it will become
+    /// is not knowable from the row. A row reached twice — the parent and one
+    /// of its reviews both matched — is kept once, at its best rank.
     public static func fold(
         _ hits: [SessionSearchHit],
         parents: [String: SessionSummary]
@@ -125,6 +140,7 @@ public enum SessionVisibleRows {
         var seen: Set<String> = []
         out.reserveCapacity(hits.count)
         for hit in hits {
+            if isSelfLinkedReview(hit.summary) { continue }
             if let parentID = reviewParentID(of: hit.summary),
                let parent = parents[parentID],
                isListed(parent) {

@@ -546,7 +546,9 @@ reviewed. Such a hit carries `matchedReview` (`id`, `sessionId`,
 `matchedSeq`) and no row `matchedSeq` of its own — the seq counts the
 review's messages, and handing it out on the parent would send an agent to
 the wrong place in the wrong file. A review whose session is no longer in the
-index stands as a row of its own rather than vanishing. `sessions.transcript`
+index stands as a row of its own rather than vanishing; a review the kit
+linked to itself (`isSelfLinkedReview`, Codex before 0.142) is dropped from
+search until its re-read gives it a parent or makes it a session. `sessions.transcript`
 does not merge reviews into the parent the way the Workbench viewer does:
 each stays its own log, so every `seq` and `nextFrom` means one file. The
 parent's response says how many it has in `autoReviewCount` and names the
@@ -1123,7 +1125,11 @@ newer than its stamp, in order, behind `SessionIndexMaintenanceGate`, and
 stamps each step only after every one of its deletes reports `SQLITE_DONE`,
 so a pass that is already walking those files cannot skip one on a cursor
 being deleted, and a refusal is retried on the next launch rather than
-recorded as done.
+recorded as done. A dropped cursor only marks a file for re-reading, so when
+any step dropped one, the launch runs an indexing pass right away inside the
+same hold of the gate (`refreshAfterDrop`): the Workbench refreshes only when
+it is opened, and the MCP tools back-fill only an empty index, so without it
+an agents-only Mac would keep the old reading indefinitely.
 
 ### 7.1 Provider and harness naming
 
