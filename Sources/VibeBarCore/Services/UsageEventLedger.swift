@@ -1890,6 +1890,7 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// skipped.
     public func requestPage(
         _ filter: UsageQueryFilter,
+        project: String? = nil,
         after cursor: UsageRequestCursor? = nil,
         pageSize: Int,
         includeTotal: Bool = true
@@ -1898,7 +1899,11 @@ public actor UsageEventLedger: CostUsageEventSink {
         // statistics exist for, so never serve one without them.
         optimizeStorage()
         let size = min(max(1, pageSize), 1_000)
-        let detail = detailPredicate(filter)
+        var detail = detailPredicate(filter)
+        // The Usage page's project filter; `UsageQueryFilter` predates it.
+        if let project {
+            detail = Predicate(sql: detail.sql + " AND project = ?", bindings: detail.bindings + [.text(project)])
+        }
 
         // COUNT(*) has to visit every matched row, so it costs the same
         // whether it answers for page 0 or page 40 — and it answers the same
@@ -2550,5 +2555,425 @@ public actor UsageEventLedger: CostUsageEventSink {
     private func columnText(_ statement: OpaquePointer, _ index: Int32) -> String? {
         guard let raw = sqlite3_column_text(statement, index) else { return nil }
         return String(cString: raw)
+    }
+}
+
+// MARK: - Usage dashboard (read-only)
+
+extension UsageEventLedger {
+    /// Request-level groupings behind the Workbench Usage page, for one
+    /// filter. Read-only: one streaming pass over the detail rows the filter
+    /// selects plus, when no project narrows the query, two `GROUP BY`s over
+    /// the daily rollups. `project` narrows detail rows to one directory; rollups carry
+    /// no project, so a project filter leaves them out.
+    ///
+    /// Session totals are a separate call (`dashboardSessionTotals`) because
+    /// they do not depend on the filter, only on the ledger's content.
+    public func dashboardFacts(_ filter: UsageQueryFilter, project: String? = nil) throws -> UsageLedgerDashboardFacts {
+        var facts = UsageLedgerDashboardFacts()
+        var detail = detailPredicate(filter)
+        if let project {
+            detail = Predicate(sql: detail.sql + " AND project = ?", bindings: detail.bindings + [.text(project)])
+        }
+        let rollup = project == nil ? rollupPredicate(filter) : nil
+        facts.includesRollups = project == nil
+        let tokensSQL = "(fresh_input + output + cache_read + cache_creation)"
+        let slot = UsageLedgerDashboardFacts.slotSeconds
+
+        // One streaming pass over the detail rows, aggregated here rather
+        // than in four `GROUP BY`s: each of those sorted every row in the
+        // range through a temp B-tree, which measured ~300 ms for 30 days of
+        // a busy ledger. Strings are interned by their bytes, so a row costs
+        // a few hash lookups and no allocation.
+        var interner = DashboardInterner()
+        var slots: [DashboardSlotKey: UsageLedgerDashboardFacts.SlotRow] = [:]
+        var projects: [DashboardGroupKey: UsageLedgerDashboardFacts.GroupRow] = [:]
+        var models: [DashboardGroupKey: UsageLedgerDashboardFacts.GroupRow] = [:]
+        var buckets: [DashboardGroupKey: UsageLedgerDashboardFacts.PromptBucketRow] = [:]
+        var detailDays: [DashboardGroupKey: UsageLedgerDashboardFacts.DayRow] = [:]
+        var harnessByPair: [Int: Harness?] = [:]
+        let bucketWidth = UsageLedgerDashboardFacts.promptBucketTokens
+        try forEachDashboardRow(
+            """
+            SELECT ts, tool, harness, model, project, fresh_input, output, cache_read, cache_creation, cost_micros, day
+              FROM usage_events WHERE \(detail.sql)
+            """,
+            detail.bindings
+        ) { statement in
+            let toolID = interner.id(statement, 1)
+            let harnessID = interner.id(statement, 2)
+            let pair = toolID &* 4_096 &+ harnessID
+            let resolved: Harness?
+            if let cached = harnessByPair[pair] {
+                resolved = cached
+            } else {
+                resolved = dashboardHarness(statement, tool: 1, harness: 2)
+                harnessByPair[pair] = resolved
+            }
+            guard let harness = resolved else { return }
+            let tokens = dashboardSplit(statement, from: 5)
+            let priced = sqlite3_column_type(statement, 9) != SQLITE_NULL
+            let cost = priced ? sqlite3_column_int64(statement, 9) : 0
+            let unpriced = priced ? 0 : 1
+
+            let slotStart = (sqlite3_column_int64(statement, 0) / slot) * slot
+            let slotKey = DashboardSlotKey(start: slotStart, harness: harness)
+            if var row = slots[slotKey] {
+                row.requests += 1
+                row.tokens += tokens
+                row.costMicros += cost
+                row.unpriced += unpriced
+                slots[slotKey] = row
+            } else {
+                slots[slotKey] = UsageLedgerDashboardFacts.SlotRow(
+                    start: slotStart, harness: harness, requests: 1, tokens: tokens, costMicros: cost, unpriced: unpriced
+                )
+            }
+
+            // Days by the row's own `day` key — what `summary` and `trend`
+            // read — so the page's daily totals match theirs exactly, even
+            // for a row ingested in another time zone.
+            let dayID = interner.id(statement, 10)
+            let dayKey = DashboardGroupKey(id: Int64(dayID), harness: harness)
+            if var row = detailDays[dayKey] {
+                row.requests += 1
+                row.tokens += tokens
+                row.costMicros += cost
+                row.unpriced += unpriced
+                detailDays[dayKey] = row
+            } else if let day = interner.text(dayID) {
+                detailDays[dayKey] = UsageLedgerDashboardFacts.DayRow(
+                    day: day, harness: harness, requests: 1, tokens: tokens, costMicros: cost, unpriced: unpriced
+                )
+            }
+
+            func add(
+                _ table: inout [DashboardGroupKey: UsageLedgerDashboardFacts.GroupRow],
+                column: Int32,
+                blank: DashboardInterner.Blank
+            ) {
+                guard let id = interner.nonBlankID(statement, column, blank: blank) else { return }
+                let key = DashboardGroupKey(id: Int64(id), harness: harness)
+                if var row = table[key] {
+                    row.requests += 1
+                    row.tokens += tokens.total
+                    row.costMicros += cost
+                    row.unpriced += unpriced
+                    table[key] = row
+                } else if let text = interner.text(id) {
+                    table[key] = UsageLedgerDashboardFacts.GroupRow(
+                        key: text, harness: harness, requests: 1, tokens: tokens.total, costMicros: cost, unpriced: unpriced
+                    )
+                }
+            }
+            // The same blank rules as `projectStats` (SQL `TRIM`, spaces) and
+            // `modelStats` (whitespace and newlines).
+            add(&projects, column: 4, blank: .spaces)
+            add(&models, column: 3, blank: .whitespaceAndNewlines)
+
+            let prompt = tokens.prompt
+            if prompt > 0 {
+                let key = DashboardGroupKey(id: prompt / bucketWidth, harness: harness)
+                if var row = buckets[key] {
+                    row.requests += 1
+                    row.maxPrompt = max(row.maxPrompt, prompt)
+                    buckets[key] = row
+                } else {
+                    buckets[key] = UsageLedgerDashboardFacts.PromptBucketRow(
+                        harness: harness, bucket: prompt / bucketWidth, requests: 1, maxPrompt: prompt
+                    )
+                }
+            }
+        }
+        facts.slots = Array(slots.values)
+        facts.days = Array(detailDays.values)
+        facts.projects = Array(projects.values)
+        facts.models = Array(models.values)
+        facts.promptBuckets = Array(buckets.values)
+
+        if let rollup {
+            try forEachDashboardRow(
+                """
+                SELECT day, tool, harness, COALESCE(SUM(requests), 0),
+                       COALESCE(SUM(fresh_input), 0), COALESCE(SUM(output), 0),
+                       COALESCE(SUM(cache_read), 0), COALESCE(SUM(cache_creation), 0),
+                       COALESCE(SUM(cost_micros), 0), COALESCE(SUM(unpriced), 0)
+                  FROM usage_daily_rollups WHERE \(rollup.sql)
+                 GROUP BY 1, 2, 3
+                """,
+                rollup.bindings
+            ) { statement in
+                guard let day = columnText(statement, 0),
+                      let harness = dashboardHarness(statement, tool: 1, harness: 2)
+                else { return }
+                facts.days.append(UsageLedgerDashboardFacts.DayRow(
+                    day: day,
+                    harness: harness,
+                    requests: Int(sqlite3_column_int64(statement, 3)),
+                    tokens: dashboardSplit(statement, from: 4),
+                    costMicros: sqlite3_column_int64(statement, 8),
+                    unpriced: Int(sqlite3_column_int64(statement, 9))
+                ))
+            }
+        }
+
+        if let rollup {
+            try forEachDashboardRow(
+                """
+                SELECT model, tool, harness, COALESCE(SUM(requests), 0), COALESCE(SUM(\(tokensSQL)), 0),
+                       COALESCE(SUM(cost_micros), 0), COALESCE(SUM(unpriced), 0)
+                  FROM usage_daily_rollups WHERE \(rollup.sql)
+                 GROUP BY 1, 2, 3
+                """,
+                rollup.bindings
+            ) { statement in
+                guard let key = columnText(statement, 0),
+                      !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      let harness = dashboardHarness(statement, tool: 1, harness: 2)
+                else { return }
+                facts.models.append(dashboardGroup(statement, key: key, harness: harness))
+            }
+        }
+
+        // The newest floor across tools: past it every tool still has detail.
+        facts.detailFloorDay = try scalarText(
+            "SELECT MAX(value) FROM ledger_meta WHERE key LIKE ?",
+            [.text(Self.floorKeyPrefix + "%")]
+        )
+        return facts
+    }
+
+    /// Session ids with at least one detail row inside `filter` (and
+    /// `project`). The caller joins these against `dashboardSessionTotals`.
+    public func dashboardSessionIDs(_ filter: UsageQueryFilter, project: String? = nil) throws -> Set<String> {
+        var detail = detailPredicate(filter)
+        if let project {
+            detail = Predicate(sql: detail.sql + " AND project = ?", bindings: detail.bindings + [.text(project)])
+        }
+        var ids: Set<String> = []
+        try forEachDashboardRow(
+            "SELECT DISTINCT session_id FROM usage_events WHERE \(detail.sql) AND session_id IS NOT NULL",
+            detail.bindings
+        ) { statement in
+            if let id = columnText(statement, 0) { ids.insert(id) }
+        }
+        return ids
+    }
+
+    /// Whole-session totals for every session id the detail rows carry
+    /// (Claude Code, Grok Build, AntiGravity, Devin, Muse Code, Mistral
+    /// Vibe; Codex and Cursor rows have none). Depends only on the ledger's
+    /// content, so callers cache it against `contentRevision()`.
+    public func dashboardSessionTotals() throws -> [UsageLedgerDashboardFacts.SessionRow] {
+        let promptSQL = "(fresh_input + cache_read + cache_creation)"
+        let activity = UsageLedgerDashboardFacts.sessionActivitySlotSeconds
+        var rows: [String: UsageLedgerDashboardFacts.SessionRow] = [:]
+        func key(_ id: String, _ harness: Harness) -> String { harness.rawValue + "|" + id }
+
+        try forEachDashboardRow(
+            """
+            SELECT session_id, tool, harness, COUNT(*), MIN(ts), MAX(ts),
+                   COALESCE(SUM(fresh_input), 0), COALESCE(SUM(output), 0),
+                   COALESCE(SUM(cache_read), 0), COALESCE(SUM(cache_creation), 0),
+                   COALESCE(SUM(cost_micros), 0),
+                   COALESCE(SUM(CASE WHEN cost_micros IS NULL THEN 1 ELSE 0 END), 0),
+                   COALESCE(MAX(\(promptSQL)), 0), COUNT(DISTINCT ts / \(activity)), MAX(project)
+              FROM usage_events WHERE session_id IS NOT NULL
+             GROUP BY 1, 2, 3
+            """,
+            []
+        ) { statement in
+            guard let id = columnText(statement, 0),
+                  let harness = dashboardHarness(statement, tool: 1, harness: 2)
+            else { return }
+            let row = UsageLedgerDashboardFacts.SessionRow(
+                sessionID: id,
+                harness: harness,
+                requests: Int(sqlite3_column_int64(statement, 3)),
+                firstAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 4))),
+                lastAt: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 5))),
+                tokens: dashboardSplit(statement, from: 6),
+                costMicros: sqlite3_column_int64(statement, 10),
+                unpriced: Int(sqlite3_column_int64(statement, 11)),
+                firstPrompt: nil,
+                maxPrompt: sqlite3_column_int64(statement, 12),
+                activeSlots: Int(sqlite3_column_int64(statement, 13)),
+                model: nil,
+                project: columnText(statement, 14)
+            )
+            if var existing = rows[key(id, harness)] {
+                // Two tools reporting one harness under one id: fold them.
+                existing.requests += row.requests
+                existing.firstAt = min(existing.firstAt, row.firstAt)
+                existing.lastAt = max(existing.lastAt, row.lastAt)
+                existing.tokens += row.tokens
+                existing.costMicros += row.costMicros
+                existing.unpriced += row.unpriced
+                existing.maxPrompt = max(existing.maxPrompt, row.maxPrompt)
+                existing.activeSlots += row.activeSlots
+                rows[key(id, harness)] = existing
+            } else {
+                rows[key(id, harness)] = row
+            }
+        }
+
+        // SQLite returns a bare column from the row that produced a lone
+        // MIN(): the first main-thread request's prompt, without a window.
+        try forEachDashboardRow(
+            """
+            SELECT session_id, tool, harness, MIN(ts * 1000000 + (id % 1000000)), \(promptSQL)
+              FROM usage_events
+             WHERE session_id IS NOT NULL AND COALESCE(is_sidechain, 0) = 0 AND \(promptSQL) > 0
+             GROUP BY 1, 2, 3
+            """,
+            []
+        ) { statement in
+            guard let id = columnText(statement, 0),
+                  let harness = dashboardHarness(statement, tool: 1, harness: 2)
+            else { return }
+            rows[key(id, harness)]?.firstPrompt = sqlite3_column_int64(statement, 4)
+        }
+
+        var modelCounts: [String: (model: String, count: Int64)] = [:]
+        try forEachDashboardRow(
+            """
+            SELECT session_id, tool, harness, model, COUNT(*)
+              FROM usage_events WHERE session_id IS NOT NULL AND TRIM(model) <> ''
+             GROUP BY 1, 2, 3, 4
+            """,
+            []
+        ) { statement in
+            guard let id = columnText(statement, 0),
+                  let harness = dashboardHarness(statement, tool: 1, harness: 2),
+                  let model = columnText(statement, 3)
+            else { return }
+            let count = sqlite3_column_int64(statement, 4)
+            let rowKey = key(id, harness)
+            if let current = modelCounts[rowKey],
+               current.count > count || (current.count == count && current.model < model) {
+                return
+            }
+            modelCounts[rowKey] = (model, count)
+        }
+        for (rowKey, entry) in modelCounts { rows[rowKey]?.model = entry.model }
+        return Array(rows.values)
+    }
+
+    // MARK: Plumbing
+
+    private func forEachDashboardRow(
+        _ sql: String,
+        _ bindings: [Binding],
+        _ body: (OpaquePointer) -> Void
+    ) throws {
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        bindAll(bindings, to: statement)
+        while true {
+            let step = sqlite3_step(statement)
+            if step == SQLITE_DONE { return }
+            guard step == SQLITE_ROW else { throw UsageLedgerError.statement }
+            body(statement)
+        }
+    }
+
+    /// The row's harness, or its tool's default for a row (or a rollup's
+    /// empty-string key) written before the dimension existed.
+    private func dashboardHarness(_ statement: OpaquePointer, tool: Int32, harness: Int32) -> Harness? {
+        if let raw = columnText(statement, harness), let value = Harness(rawValue: raw) { return value }
+        guard let rawTool = columnText(statement, tool), let toolType = ToolType(rawValue: rawTool) else { return nil }
+        return Harness.defaultHarness(for: toolType)
+    }
+
+    private func dashboardSplit(_ statement: OpaquePointer, from offset: Int32) -> UsageTokenSplit {
+        UsageTokenSplit(
+            input: sqlite3_column_int64(statement, offset),
+            output: sqlite3_column_int64(statement, offset + 1),
+            cacheRead: sqlite3_column_int64(statement, offset + 2),
+            cacheWrite: sqlite3_column_int64(statement, offset + 3)
+        )
+    }
+
+    private func dashboardGroup(_ statement: OpaquePointer, key: String, harness: Harness) -> UsageLedgerDashboardFacts.GroupRow {
+        UsageLedgerDashboardFacts.GroupRow(
+            key: key,
+            harness: harness,
+            requests: Int(sqlite3_column_int64(statement, 3)),
+            tokens: sqlite3_column_int64(statement, 4),
+            costMicros: sqlite3_column_int64(statement, 5),
+            unpriced: Int(sqlite3_column_int64(statement, 6))
+        )
+    }
+}
+
+private struct DashboardSlotKey: Hashable {
+    let start: Int64
+    let harness: Harness
+}
+
+private struct DashboardGroupKey: Hashable {
+    let id: Int64
+    let harness: Harness
+}
+
+/// Interns a text column's bytes into small integers without building a
+/// Swift `String` per row: a 64-bit FNV-1a hash of the bytes, confirmed by a
+/// byte comparison, picks the id. Columns here are low-cardinality (tool,
+/// harness, model, project), so the table stays tiny.
+private struct DashboardInterner {
+    private var buckets: [UInt64: [(bytes: [UInt8], id: Int)]] = [:]
+    private var texts: [String] = []
+    private var blankSpaces: Set<Int> = []
+    private var blankWhitespace: Set<Int> = []
+
+    enum Blank {
+        /// SQL `TRIM`: spaces only.
+        case spaces
+        /// `CharacterSet.whitespacesAndNewlines`.
+        case whitespaceAndNewlines
+    }
+    /// Id for SQL NULL.
+    static let nullID = 0
+
+    init() {
+        texts.append("")
+        blankSpaces.insert(Self.nullID)
+        blankWhitespace.insert(Self.nullID)
+    }
+
+    mutating func id(_ statement: OpaquePointer, _ column: Int32) -> Int {
+        guard let raw = sqlite3_column_text(statement, column) else { return Self.nullID }
+        let count = Int(sqlite3_column_bytes(statement, column))
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for index in 0..<count {
+            hash = (hash ^ UInt64(raw[index])) &* 0x0000_0100_0000_01b3
+        }
+        if let chain = buckets[hash] {
+            for entry in chain where entry.bytes.count == count
+                && entry.bytes.withUnsafeBufferPointer({ memcmp($0.baseAddress, raw, count) == 0 }) {
+                return entry.id
+            }
+        }
+        let bytes = Array(UnsafeBufferPointer(start: raw, count: count))
+        let text = String(decoding: bytes, as: UTF8.self)
+        let id = texts.count
+        texts.append(text)
+        if text.trimmingCharacters(in: CharacterSet(charactersIn: " ")).isEmpty { blankSpaces.insert(id) }
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { blankWhitespace.insert(id) }
+        buckets[hash, default: []].append((bytes, id))
+        return id
+    }
+
+    /// The id, or `nil` for NULL or a blank string.
+    mutating func nonBlankID(_ statement: OpaquePointer, _ column: Int32, blank: Blank) -> Int? {
+        let value = id(statement, column)
+        switch blank {
+        case .spaces: return blankSpaces.contains(value) ? nil : value
+        case .whitespaceAndNewlines: return blankWhitespace.contains(value) ? nil : value
+        }
+    }
+
+    func text(_ id: Int) -> String? {
+        id > 0 && id < texts.count ? texts[id] : nil
     }
 }
