@@ -331,4 +331,55 @@ final class SessionWorkbenchTests: XCTestCase {
         XCTAssertNil(ClaudeSubagentFiles.summary(agentID: "../x", parent: parent))
         XCTAssertNil(ClaudeSubagentFiles.directory(forParentLog: folder.appendingPathComponent("agent-a1.jsonl").path))
     }
+
+    // MARK: - List stats requests
+
+    private func logSummary(_ name: String, size: Int64 = 100, provider: SessionProvider = .codex) -> SessionSummary {
+        SessionSummary(provider: provider, sessionID: name, sourcePath: "/Users/example/\(name).jsonl", sizeBytes: size)
+    }
+
+    func testAStoppedBatchIsAskedForAgain() {
+        var requests = SessionListingRequests()
+        let rows = (0..<5).map { logSummary("s\($0)") }
+        XCTAssertTrue(requests.enqueue(rows, atFront: true))
+        XCTAssertFalse(requests.enqueue(rows, atFront: true), "asked once per size")
+        let batch = requests.takeBatch(limit: 3)
+        XCTAssertEqual(batch.map(\.sessionID), ["s0", "s1", "s2"])
+        XCTAssertEqual(requests.inFlight.count, 3)
+        XCTAssertEqual(requests.queue.count, 2)
+        // The Workbench closes mid-batch: nothing of it was answered.
+        requests.cancel()
+        XCTAssertTrue(requests.queue.isEmpty)
+        XCTAssertTrue(requests.inFlight.isEmpty)
+        XCTAssertFalse(rows.contains(where: requests.isRequested))
+        // Reopening asks for every row again, the in-flight ones included.
+        XCTAssertTrue(requests.enqueue(rows, atFront: true))
+        XCTAssertEqual(requests.queue.map(\.sessionID), ["s0", "s1", "s2", "s3", "s4"])
+    }
+
+    func testAnsweredRowsAreNotAskedAgainUntilTheyGrow() {
+        var requests = SessionListingRequests()
+        let rows = [logSummary("a"), logSummary("b"), logSummary("g", provider: .gemini)]
+        requests.enqueue(rows, atFront: false)
+        XCTAssertEqual(requests.queue.map(\.sessionID), ["a", "b"], "only what the sidecar can describe")
+        _ = requests.takeBatch(limit: 10)
+        requests.finishBatch()
+        requests.cancel()
+        XCTAssertFalse(requests.enqueue(rows, atFront: true), "an answered batch stays answered")
+        XCTAssertTrue(requests.enqueue([logSummary("a", size: 200)], atFront: true), "a session that grew is asked again")
+    }
+
+    func testAFresherPageTakesTheRestOfABatchsPlace() {
+        var requests = SessionListingRequests()
+        requests.enqueue((0..<4).map { logSummary("old\($0)") }, atFront: false)
+        let batch = requests.takeBatch(limit: 4)
+        requests.enqueue([logSummary("new")], atFront: true)
+        requests.requeue(Array(batch[2...]))
+        XCTAssertEqual(requests.inFlight.map(\.sessionID), ["old0", "old1"])
+        XCTAssertEqual(requests.queue.map(\.sessionID), ["new", "old2", "old3"])
+        requests.finishBatch()
+        requests.cancel()
+        XCTAssertTrue(requests.isRequested(logSummary("old0")), "answered before the stop")
+        XCTAssertFalse(requests.isRequested(logSummary("old2")), "handed back and never read")
+    }
 }

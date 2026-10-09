@@ -350,10 +350,8 @@ final class SessionListModel {
     /// Claude subagent transcripts by parent row id, listed on expansion.
     @ObservationIgnored private var claudeChildren: [String: [SessionSummary]] = [:]
     @ObservationIgnored private var loadingChildren: Set<String> = []
-    /// The size each path was asked about at, so a session that grew is
-    /// asked again.
-    @ObservationIgnored private var requested: [String: Int64] = [:]
-    @ObservationIgnored private var queue: [SessionSummary] = []
+    /// What has been asked of the sidecar and what is waiting.
+    @ObservationIgnored private var requests = SessionListingRequests()
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var rebuildTask: Task<Void, Never>?
     @ObservationIgnored private var coalesceTask: Task<Void, Never>?
@@ -385,9 +383,9 @@ final class SessionListModel {
         rebuildTask?.cancel()
         coalesceTask?.cancel()
         coalesceTask = nil
-        // What was queued but not read is asked for again next time.
-        for summary in queue { requested.removeValue(forKey: summary.sourcePath) }
-        queue.removeAll()
+        // What was queued or being read, and not answered, is asked for
+        // again next time — the batch in flight included.
+        requests.cancel()
     }
 
     func listing(for summary: SessionSummary) -> SessionStructureListing? {
@@ -438,14 +436,7 @@ final class SessionListModel {
     // MARK: Stats
 
     private func enqueue(_ summaries: [SessionSummary], atFront: Bool) {
-        var fresh: [SessionSummary] = []
-        for summary in summaries where SessionStructureService.supports(summary.provider) {
-            if let asked = requested[summary.sourcePath], asked == summary.sizeBytes { continue }
-            requested[summary.sourcePath] = summary.sizeBytes
-            fresh.append(summary)
-        }
-        guard !fresh.isEmpty else { return }
-        if atFront { queue.insert(contentsOf: fresh, at: 0) } else { queue.append(contentsOf: fresh) }
+        guard requests.enqueue(summaries, atFront: atFront) else { return }
         startWorker()
     }
 
@@ -453,14 +444,16 @@ final class SessionListModel {
         guard worker == nil else { return }
         worker = Task { [weak self] in
             await self?.drain()
-            self?.worker = nil
+            // A stopped worker leaves the slot alone: `stop()` cleared it,
+            // and a newer worker may hold it by now.
+            guard let self, !Task.isCancelled else { return }
+            self.worker = nil
         }
     }
 
     private func drain() async {
-        while !Task.isCancelled, !queue.isEmpty {
-            let batch = Array(queue.prefix(Self.lookupBatch))
-            queue.removeFirst(batch.count)
+        while !Task.isCancelled, requests.hasQueued {
+            let batch = requests.takeBatch(limit: Self.lookupBatch)
             let cached = await structure.listings(for: batch)
             guard !Task.isCancelled else { return }
             merge(cached)
@@ -474,11 +467,12 @@ final class SessionListModel {
                 guard !Task.isCancelled else { return }
                 merge(await structure.listings(for: chunk))
                 // A fresher page asked for its rows first; serve it.
-                if let next = queue.first, !batch.contains(where: { $0.sourcePath == next.sourcePath }) {
-                    queue.append(contentsOf: misses[start...])
+                if let next = requests.queue.first, !batch.contains(where: { $0.sourcePath == next.sourcePath }) {
+                    requests.requeue(Array(misses[start...]))
                     break
                 }
             }
+            requests.finishBatch()
         }
     }
 
