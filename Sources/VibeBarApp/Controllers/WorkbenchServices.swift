@@ -49,7 +49,7 @@ final class WorkbenchServices: ObservableObject {
 
     var usageStats: UsageStatsViewModel {
         if let usageStatsStorage { return usageStatsStorage }
-        let model = UsageStatsViewModel(ledger: usageLedger, costService: costService)
+        let model = UsageStatsViewModel(ledger: usageLedger, sessionIndex: sessionIndex)
         usageStatsStorage = model
         return model
     }

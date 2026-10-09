@@ -63,6 +63,22 @@ struct SessionModelLedger {
 
     var hasUnpriced: Bool { entries.values.contains(where: \.unpriced) }
 
+    /// Add an already-aggregated segment (usage priced request by request).
+    mutating func merge(model: String?, usage: SessionStructure.TokenUsage, cost: Double, priced: Bool, unpriced: Bool) {
+        guard !usage.isZero else { return }
+        let key = model ?? "unknown"
+        if entries[key] == nil {
+            order.append(key)
+            entries[key] = (.zero, 0, false, false)
+        }
+        entries[key]!.usage += usage
+        if priced {
+            entries[key]!.cost += cost
+            entries[key]!.priced = true
+        }
+        if unpriced { entries[key]!.unpriced = true }
+    }
+
     var totalUsage: SessionStructure.TokenUsage {
         entries.values.reduce(.zero) { $0 + $1.usage }
     }
@@ -92,6 +108,7 @@ final class SessionStructureAccumulator {
     private var openCalls: [String] = []
     private var callIDsByTurn: [Int: [String]] = [:]
     private var droppedTurns: Set<Int> = []
+    private var turnsWithUsage: Set<Int> = []
     private var pendingAssistant: (text: String, offset: Int64, timestamp: Date?, turn: Int)?
     /// Whether the current turn's prompt came from a mirror record that a
     /// later, more authoritative record may replace without counting twice.
@@ -149,7 +166,13 @@ final class SessionStructureAccumulator {
         guard let current else { return false }
         let turn = turns[current]
         return !turn.steps.isEmpty || turn.finalAnswer != nil || pendingAssistant?.turn == current
-            || turn.counts.steps > 0 || !turn.usage.isZero
+            || turn.counts.steps > 0 || !turn.usage.isZero || turnsWithUsage.contains(current)
+    }
+
+    /// Usage was reported for the current turn but is attributed later
+    /// (Codex picks between two usage records per turn at the end).
+    func noteUsage() {
+        if let current { turnsWithUsage.insert(current) }
     }
 
     // MARK: Prompt & injected context

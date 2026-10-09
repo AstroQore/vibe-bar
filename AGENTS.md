@@ -425,11 +425,24 @@ Vibe Bar persists derived data under the user's **real** home directory:
 ├── cost_history.json
 ├── mini_window_geometry.json
 ├── session_structure.sqlite3   (derived turn/step outline + stats, see below)
+├── session_activity.sqlite3    (derived tool / skill counts for the Usage page, see below)
 └── mcp.sock          (socket, 0600, only while the app runs — see § 5.1)
 ```
 
 If you are debugging odd behavior, that directory is the place to look.
 Deleting it resets the app to first-run state.
+
+`session_activity.sqlite3` is the Usage page's second sidecar, written by
+`SessionActivityStore` (`Sources/VibeBarCore/UsageDashboard/`): one row per
+scanned session file holding its tool-call counts by tool name and
+category, its skill invocations and its 5-minute activity slots — counts
+and names only, never a prompt or a result. `SessionActivityScanner` fills
+it in the background while the Usage page is visible, under a per-round
+budget (64 files / 384 MB, files over 1 GB skipped), and it follows the
+same invalidation rules as `session_structure.sqlite3`: a row is keyed by
+`source_path`, valid only for the `(mtime_ns, size)` it was scanned at and
+the current scanner version, and deleting the file costs a re-scan and
+nothing else.
 
 `session_structure.sqlite3` is the host-side sidecar written by
 `SessionStructureStore` (`Sources/VibeBarCore/SessionStructure/`): one row

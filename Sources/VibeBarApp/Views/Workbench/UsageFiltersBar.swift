@@ -1,30 +1,46 @@
+import AppKit
 import SwiftUI
 import VibeBarCore
 
-/// Everything that narrows the Usage Stats page: harness chips, a model
-/// picker, the date range, and how often the page re-queries.
+/// Everything that narrows the Usage page: the range, one chip per harness,
+/// and pickers for a model and a project.
 ///
 /// This is a usage surface, so the unit is the **harness** — the CLI or app
-/// that produced the tokens — and the company is a section head inside the
-/// picker that toggles its harnesses in one click. The picker is the same
-/// one the Sessions page opens (`FilterPickerList`): type to find a harness
-/// by any of its names, tick several without the list closing, ⌥-click to
-/// keep only one. See AGENTS.md § 7.1.
+/// that produced the tokens (AGENTS.md § 7.1). Chips come from the snapshot's
+/// options, which are computed before the harness filter, so narrowing to one
+/// harness never retires the others. ⌥-click keeps only the clicked harness.
 struct UsageFiltersBar: View {
     let density: Theme.Density
-    @ObservedObject var model: UsageStatsViewModel
-
-    @State private var showsCustomRange = false
+    let model: UsageStatsViewModel
 
     var body: some View {
-        Group {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    harnessPicker
-                    modelPicker
-                    controls
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                UsagePillPicker(
+                    options: UsageDashboardRange.allCases,
+                    title: Self.title(for:),
+                    selection: Binding(get: { model.range }, set: { model.setRange($0) }),
+                    accessibilityLabel: L10n.Usage.Filters.rangeMenu
+                )
+                Spacer(minLength: 8)
+                modelPicker
+                projectPicker
+                if model.hasActiveFilters {
+                    Button {
+                        model.clearFilters()
+                    } label: {
+                        Label(L10n.Common.clear, systemImage: "xmark")
+                            .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(minHeight: 22)
+                    }
+                    .buttonStyle(WorkbenchPillButtonStyle())
+                    .help(L10n.Workbench.Usage.Filter.clearHelp)
                 }
-                .padding(.vertical, 1)
+            }
+            ScrollView(.horizontal) {
+                harnessChips
+                    .padding(.vertical, 1)
             }
             .scrollIndicators(.never)
         }
@@ -33,54 +49,58 @@ struct UsageFiltersBar: View {
         .workbenchToolbarSurface()
     }
 
-    // MARK: - Harnesses and models
-
-    private var harnessPicker: some View {
-        let stats = Dictionary(model.harnessStats.map { ($0.harness, $0) }, uniquingKeysWith: { first, _ in first })
-        return FilterPickerButton(
-            density: density,
-            systemImage: "terminal",
-            title: L10n.Usage.Table.Column.harness,
-            detail: harnessSummary,
-            prominent: model.selectedHarnesses != nil,
-            accessibilityLabel: L10n.Usage.Table.Column.harness
-        ) {
-            FilterPickerList(
-                density: density,
-                sections: HarnessPickerRows.sections(
-                    groups: model.harnessChipGroups,
-                    density: density,
-                    // Tokens in the current range, for the harnesses the query
-                    // already covers; a harness outside it has no number yet.
-                    detail: { stats[$0].map { UsageFormatting.compactTokens($0.totalTokens) } }
-                ),
-                searchPlaceholder: L10n.Workbench.Filter.searchHarnesses,
-                isSelected: { model.selectedHarnesses?.contains($0) ?? true },
-                toggle: { model.toggleHarness($0) },
-                solo: { model.soloHarness($0) },
-                toggleGroup: { model.toggleHarnesses(Set($0)) },
-                selectAll: { model.setSelectedHarnesses(nil) },
-                selectNone: { model.setSelectedHarnesses([]) }
-            )
+    static func title(for range: UsageDashboardRange) -> String {
+        switch range {
+        case .today: L10n.Cost.Timeframe.today
+        case .week: L10n.Cost.Timeframe.week
+        case .month: L10n.Cost.Timeframe.month
+        case .quarter: L10n.Workbench.Usage.Range.quarter
+        case .all: L10n.Cost.ModelRanking.allTime
         }
     }
 
-    private var harnessSummary: String {
-        let options = model.harnessOptions
-        guard let selected = model.selectedHarnesses else { return L10n.Common.all }
-        return L10n.Workbench.Sessions.fraction(
-            shown: options.count(where: selected.contains), total: options.count
-        )
+    // MARK: Harness chips
+
+    private var harnessChips: some View {
+        let options = model.snapshot.options.harnesses
+        let allSelected = model.selectedHarnesses == nil
+        return HStack(spacing: 6) {
+            UsageHarnessChip(
+                title: L10n.Common.all,
+                icon: nil,
+                detail: nil,
+                isSelected: allSelected,
+                tint: WorkbenchPorcelain.accent
+            ) { _ in
+                model.toggleAllHarnesses()
+            }
+            .help(allSelected ? L10n.Usage.Filters.allHarnessesHelpNone : L10n.Usage.Filters.allHarnessesHelpEvery)
+            ForEach(options) { option in
+                UsageHarnessChip(
+                    title: option.harness.displayName,
+                    icon: option.harness,
+                    detail: option.tokens > 0 ? UsageDashboardFormat.tokens(option.tokens) : nil,
+                    // `nil` is every harness, so every chip is lit until one is narrowed.
+                    isSelected: model.isHarnessSelected(option.harness),
+                    tint: option.harness.usageTint
+                ) { solo in
+                    if solo { model.soloHarness(option.harness) } else { model.toggleHarness(option.harness) }
+                }
+                .help(L10n.Usage.Filters.harnessHelp(company: option.harness.companyName, harness: option.harness.displayName))
+            }
+        }
     }
 
-    /// The model picker is one flat list; models have no company head.
+    // MARK: Pickers
+
     private var modelPicker: some View {
-        FilterPickerButton(
+        let selected = model.selectedModel
+        return FilterPickerButton(
             density: density,
             systemImage: "cpu",
-            title: L10n.Usage.Breakdown.models,
-            detail: modelSummary,
-            prominent: model.selectedModels != nil,
+            title: L10n.Usage.Table.Column.model,
+            detail: selected.map(UsageDashboardFormat.modelName) ?? L10n.Common.all,
+            prominent: selected != nil,
             accessibilityLabel: L10n.Usage.Filters.modelsMenuLabel
         ) {
             FilterPickerList(
@@ -88,17 +108,17 @@ struct UsageFiltersBar: View {
                 sections: [
                     FilterPickerSection(
                         id: "models",
-                        rows: model.availableModels.map { name in
+                        rows: model.snapshot.options.models.map { name in
                             FilterPickerRow(
                                 id: name,
-                                title: UsageModelNaming.canonicalDisplayName(name),
+                                title: UsageDashboardFormat.modelName(name),
                                 accent: .accentColor,
                                 icon: AnyView(
                                     Image(systemName: "cpu")
                                         .font(.system(size: density.segmentedFontSize - 1))
                                         .foregroundStyle(.secondary)
                                 ),
-                                searchKeys: [name, UsageModelNaming.canonicalDisplayName(name)]
+                                searchKeys: [name, UsageDashboardFormat.modelName(name)]
                             )
                         }
                     )
@@ -106,179 +126,107 @@ struct UsageFiltersBar: View {
                 searchPlaceholder: L10n.Workbench.Filter.searchModels,
                 emptyMessage: L10n.Usage.Filters.noModelsInRange,
                 showsNone: false,
-                isSelected: { model.selectedModels?.contains($0) ?? true },
-                toggle: { model.toggleModel($0) },
-                solo: { model.setSelectedModels([$0]) },
+                isSelected: { selected == nil || selected == $0 },
+                toggle: { name in model.setModel(selected == name ? nil : name) },
+                solo: { model.setModel($0) },
                 toggleGroup: { _ in },
-                selectAll: { model.setSelectedModels(nil) },
+                selectAll: { model.setModel(nil) },
                 selectNone: {}
             )
         }
     }
 
-    // MARK: - Controls
-
-    private var controls: some View {
-        HStack(spacing: 8) {
-            rangeMenu
-            refreshMenu
-            if model.selectedTools != nil
-                || model.selectedHarnesses != nil
-                || model.selectedModels != nil {
-                Button {
-                    // Harnesses first: `setSelectedTools` prunes any harness
-                    // whose company just left the query, so clearing tools
-                    // ahead of it would leave a stale, half-applied filter.
-                    model.setSelectedHarnesses(nil)
-                    model.setSelectedTools(nil)
-                    model.setSelectedModels(nil)
-                } label: {
-                    Label(L10n.Common.clear, systemImage: "xmark")
-                        .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(minHeight: 22)
-                }
-                .buttonStyle(WorkbenchPillButtonStyle())
-                .help(L10n.Usage.Filters.clearHelp)
-            }
+    private var projectPicker: some View {
+        let selected = model.selectedProject
+        let options = model.snapshot.options.projects
+        return FilterPickerButton(
+            density: density,
+            systemImage: "folder",
+            title: L10n.Workbench.Usage.Filter.project,
+            detail: selected.map(UsageProjectIdentity.displayName(for:)) ?? L10n.Common.all,
+            prominent: selected != nil,
+            accessibilityLabel: L10n.Workbench.Usage.Filter.project
+        ) {
+            FilterPickerList(
+                density: density,
+                sections: [
+                    FilterPickerSection(
+                        id: "projects",
+                        rows: options.map { option in
+                            FilterPickerRow(
+                                id: option.path,
+                                title: option.name,
+                                detail: option.tokens > 0 ? UsageDashboardFormat.tokens(option.tokens) : nil,
+                                accent: .accentColor,
+                                icon: AnyView(
+                                    Image(systemName: "folder")
+                                        .font(.system(size: density.segmentedFontSize - 1))
+                                        .foregroundStyle(.secondary)
+                                ),
+                                searchKeys: [option.name, option.path]
+                            )
+                        }
+                    )
+                ],
+                searchPlaceholder: L10n.Workbench.Usage.Filter.searchProjects,
+                emptyMessage: L10n.Workbench.Usage.Ranking.emptyProjects,
+                showsNone: false,
+                isSelected: { selected == nil || selected == $0 },
+                toggle: { path in model.setProject(selected == path ? nil : path) },
+                solo: { model.setProject($0) },
+                toggleGroup: { _ in },
+                selectAll: { model.setProject(nil) },
+                selectNone: {}
+            )
         }
-        .fixedSize(horizontal: true, vertical: false)
+        .help(L10n.Workbench.Usage.Filter.projectHelp)
     }
+}
 
-    private var rangeMenu: some View {
-        Menu {
-            ForEach(UsageStatsViewModel.RangePreset.allCases) { preset in
-                Button {
-                    model.rangePreset = preset
-                    if preset == .custom { showsCustomRange = true }
-                } label: {
-                    Label(preset.title, systemImage: preset.systemImage)
-                }
-            }
-            Divider()
-            Button(L10n.Usage.Filters.editCustomRange) {
-                model.rangePreset = .custom
-                showsCustomRange = true
-            }
+/// One harness chip: mark, name, tokens in the range. Selection is a tint
+/// fill; the click hands back whether ⌥ was held.
+private struct UsageHarnessChip: View {
+    let title: String
+    let icon: Harness?
+    let detail: String?
+    let isSelected: Bool
+    let tint: Color
+    let action: (_ solo: Bool) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Button {
+            action(NSEvent.modifierFlags.contains(.option))
         } label: {
-            menuLabel(systemImage: "calendar", title: model.rangePreset.title, detail: rangeSummary)
-        }
-        .menuStyle(.button)
-        .buttonStyle(WorkbenchPillButtonStyle())
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .popover(isPresented: $showsCustomRange, arrowEdge: .bottom) {
-            customRangeEditor
-                // A native form: no initial selection, but the system focus
-                // ring comes back for its date pickers.
-                .vibeBarNoInitialFocus()
-                .vibeBarSystemControlFocus()
-        }
-        .accessibilityLabel(L10n.Usage.Filters.rangeMenu)
-    }
-
-    private var customRangeEditor: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.Usage.Filters.customRangeTitle)
-                .font(.system(size: max(8, density.subtitleFontSize - 2), weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .tracking(0.4)
-            DatePicker(
-                L10n.Usage.Filters.customRangeFrom,
-                selection: $model.customStart,
-                in: ...Date(),
-                displayedComponents: [.date, .hourAndMinute]
-            )
-            DatePicker(
-                L10n.Usage.Filters.customRangeTo,
-                selection: $model.customEnd,
-                displayedComponents: [.date, .hourAndMinute]
-            )
-            Text(L10n.Usage.Filters.customRangeHint)
-                .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
-                .foregroundStyle(.tertiary)
-        }
-        .datePickerStyle(.compact)
-        .padding(14)
-        .frame(width: 300)
-    }
-
-    private var refreshMenu: some View {
-        Menu {
-            Picker(L10n.Usage.Filters.autoRefresh, selection: $model.refreshInterval) {
-                ForEach(UsageStatsViewModel.RefreshInterval.allCases) { interval in
-                    Text(interval == .off
-                        ? L10n.Common.off
-                        : L10n.Usage.Filters.refreshInterval(seconds: interval.rawValue))
-                        .tag(interval)
+            HStack(spacing: 5) {
+                if let icon {
+                    HarnessBrandIconView(harness: icon, size: 12, brandColored: isSelected)
+                        .opacity(isSelected ? 1 : 0.7)
+                }
+                Text(title)
+                    .font(.system(size: 11.5, weight: isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.tertiary)
                 }
             }
-            .pickerStyle(.inline)
-        } label: {
-            menuLabel(
-                systemImage: model.refreshInterval == .off ? "pause.circle" : "arrow.clockwise.circle",
-                title: L10n.Common.auto,
-                detail: model.refreshInterval.title
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .frame(minHeight: 24)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isSelected ? tint.opacity(colorScheme == .dark ? 0.24 : 0.14) : WorkbenchPorcelain.toolbarFill(for: colorScheme))
             )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(isSelected ? tint.opacity(0.5) : WorkbenchPorcelain.hairline(for: colorScheme), lineWidth: Theme.Card.hairlineWidth)
+            )
+            .contentShape(Capsule(style: .continuous))
         }
-        .menuStyle(.button)
-        .buttonStyle(WorkbenchPillButtonStyle())
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel(L10n.Usage.Filters.autoMenuLabel)
+        .buttonStyle(.vibeBar(cornerRadius: 12))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
-
-    // MARK: - Labels
-
-    private func menuLabel(systemImage: String, title: String, detail: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: systemImage)
-                .font(.system(size: max(10, density.segmentedFontSize - 2), weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text(title.uppercased())
-                .font(.system(size: max(10, density.segmentedFontSize - 3), weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .tracking(0.4)
-            Text(detail)
-                .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold, design: .rounded)
-                    .monospacedDigit())
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-        }
-        .frame(minHeight: 22)
-    }
-
-    private func modelBinding(_ name: String) -> Binding<Bool> {
-        Binding(
-            get: { model.selectedModels?.contains(name) ?? true },
-            set: { _ in model.toggleModel(name) }
-        )
-    }
-
-    private var rangeSummary: String {
-        if model.rangePreset == .all { return L10n.Cost.ModelRanking.allTime }
-        let range = model.range
-        let formatter = range.duration <= 86_400 ? Self.hourFormatter : Self.dayFormatter
-        return L10n.Usage.Filters.rangeSpan(
-            start: formatter.string(from: range.start),
-            end: formatter.string(from: range.end)
-        )
-    }
-
-    private static var hourFormatter: DateFormatter {
-        AppLocale.dateFormatter(template: "MMMdHHmm")
-    }
-    private static var dayFormatter: DateFormatter {
-        AppLocale.dateFormatter(template: "MMMd")
-    }
-
-
-    private var modelSummary: String {
-        guard let selected = model.selectedModels else { return L10n.Common.all }
-        if selected.count == 1, let only = selected.first {
-            return UsageModelNaming.canonicalDisplayName(only)
-        }
-        return L10n.Usage.Filters.modelsSelected(count: selected.count)
-    }
-
 }

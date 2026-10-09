@@ -185,7 +185,34 @@ That is the whole recipe. Then:
 - Do not add `.shadow`, `.glassEffect`, or a material. Do not draw a
   second surface under a view the caller already wrapped in a card.
 
-## 7. Review checklist
+## 7. Usage page charts
+
+The Workbench Usage page (`Views/Workbench/Usage*.swift`) is the densest
+surface in the app, so its charts follow one recipe that keeps a filter
+change and a hover cheap:
+
+- **One snapshot, many `Equatable` cards.** `UsageDashboardAggregator`
+  (Core) answers a query with one `UsageDashboardSnapshot`; every card takes
+  its slice of it and is `.equatable()`, so a change re-lays out only the
+  cards whose numbers moved. The page stack is a `LazyVStack`: a card below
+  the fold is neither built nor measured when a snapshot lands.
+- **Hover lives in an overlay of its own.** A chart's marks are an
+  `Equatable` view; its crosshair and tooltip are a separate view under
+  `.chartOverlay` (or `.overlay` for a `Canvas`) that owns the hover state —
+  `UsageTrendHover`, `UsageHeatmapHover`, as `QuotaChartHoverOverlay`
+  already does. A pointer move re-renders the overlay and nothing above it.
+- **Derived values are planned once.** What a card draws from its slice —
+  the trend's segments and legend, a search result — is computed in
+  `onChange` of its inputs (`UsageTrendPlan`), never in `body`.
+- **Dense marks are one drawing.** The by-hour grid (168 cells), the weekly
+  tool stacks and every segmented share bar are a single `Canvas`; share
+  bars are `UsageFractionShape`, sized by their own rect, so a list of them
+  adds no `GeometryReader` pass. A Swift Charts view stays under ~1 000 marks
+  (the trend: ≤ 120 bars × ≤ 7 parts).
+- **Tooltips are opaque** (`UsageTooltip` → `workbenchOverlaySurface`), as
+  § 2 asks of anything that sits over content.
+
+## 8. Review checklist
 
 - `grep -rln "glassEffect\|regularMaterial\|ultraThinMaterial" Sources/`
   returns exactly two files: `MiniQuotaWindowView` and
