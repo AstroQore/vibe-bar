@@ -80,7 +80,8 @@ struct UsageFiltersBar: View {
                     title: option.harness.displayName,
                     icon: option.harness,
                     detail: option.tokens > 0 ? UsageDashboardFormat.tokens(option.tokens) : nil,
-                    isSelected: model.selectedHarnesses?.contains(option.harness) ?? false,
+                    // `nil` is every harness, so every chip is lit until one is narrowed.
+                    isSelected: model.isHarnessSelected(option.harness),
                     tint: option.harness.usageTint
                 ) { solo in
                     if solo { model.soloHarness(option.harness) } else { model.toggleHarness(option.harness) }
