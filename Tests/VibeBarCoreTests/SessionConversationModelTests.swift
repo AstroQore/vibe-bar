@@ -304,6 +304,37 @@ final class SessionConversationModelTests: XCTestCase {
         try await settle(model) { model.phase == .ready && model.loadedTurnIndices.count == 2 }
     }
 
+    func testTheRawTranscriptFollowsTheSessionThePaneShows() async throws {
+        let source = FakeSource(turns: 2)
+        source.children["child-1"] = summary("child")
+        let model = SessionConversationModel(source: source)
+        var shown: [String?] = []
+        model.onShow = { shown.append($0?.sessionID) }
+        model.open(summary())
+        try await settle(model) { model.phase == .ready && model.loadedTurnIndices.count == 2 }
+        model.openChild("child-1")
+        try await settle(model) { model.summary?.sessionID == "child" }
+        model.openThread(summary("sub"), from: summary())
+        model.back()
+        XCTAssertEqual(shown, ["s", "child", "sub", "s"], "every switch of the pane is announced, threads included")
+
+        // The selection stays on the parent while a thread is shown; the
+        // Raw view reads the thread itself, not the parent under its name.
+        let parent = SessionTranscriptMerge.Request(
+            summary: summary(),
+            focus: SessionTranscriptMerge.Focus(seq: 7),
+            headByteLimit: 1_000
+        )
+        let forThread = SessionTranscriptMerge.Request.forShown(summary("sub"), selection: parent, headByteLimit: 1_000)
+        XCTAssertEqual(forThread.summary.sessionID, "sub")
+        XCTAssertEqual(forThread.focus, .none)
+        XCTAssertEqual(forThread.headByteLimit, 1_000)
+        // Back on the selection, its own request — the search hit's focus
+        // included — is read again.
+        XCTAssertEqual(SessionTranscriptMerge.Request.forShown(summary(), selection: parent, headByteLimit: 1_000), parent)
+        XCTAssertEqual(SessionTranscriptMerge.Request.forShown(summary(), selection: nil, headByteLimit: nil).summary.sessionID, "s")
+    }
+
     func testUnsupportedProvidersAndChildNavigation() async throws {
         let source = FakeSource(turns: 2)
         source.children["child-1"] = summary("child")

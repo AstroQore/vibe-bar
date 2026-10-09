@@ -23,14 +23,16 @@ struct TranscriptView: View {
 
     var body: some View {
         Group {
-            if let summary = model.selection {
+            // The session the transcript is of: the selection, or a thread
+            // the conversation pane opened from it.
+            if let summary = model.transcriptSubject {
                 content(for: summary)
             } else {
                 placeholder
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: model.selection?.id) { _, _ in resetReadingState() }
+        .onChange(of: model.transcriptSubject?.id) { _, _ in resetReadingState() }
     }
 
     // MARK: - Content
@@ -290,7 +292,7 @@ struct TranscriptView: View {
     private var findKey: FindKey {
         FindKey(
             query: query,
-            selectionID: model.selection?.id,
+            selectionID: model.transcriptSubject?.id,
             messageCount: model.transcript?.messages.count ?? 0,
             truncated: model.transcript?.truncated ?? false
         )
@@ -301,7 +303,7 @@ struct TranscriptView: View {
     private var transcriptIdentity: FindKey {
         FindKey(
             query: "",
-            selectionID: model.selection?.id,
+            selectionID: model.transcriptSubject?.id,
             messageCount: model.transcript?.messages.count ?? 0,
             truncated: model.transcript?.truncated ?? false
         )

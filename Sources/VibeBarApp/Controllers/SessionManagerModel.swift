@@ -226,6 +226,9 @@ final class SessionManagerModel: ObservableObject {
     }
 
     @Published private(set) var selection: SessionSummary?
+    /// The session `transcript` is of. The selection, unless the
+    /// conversation pane opened a thread from it (`loadTranscript(for:)`).
+    @Published private(set) var transcriptSubject: SessionSummary?
     /// Message the transcript should open on, when the row was picked out of
     /// a full-text result. Cleared by the pane once it has scrolled.
     @Published private(set) var focusSeq: Int?
@@ -261,7 +264,7 @@ final class SessionManagerModel: ObservableObject {
     /// Sessions page answers no for a provider its turn view can read —
     /// that view parses the log its own way, and reading it twice would pay
     /// for the same file twice — and the transcript is then read only when
-    /// the Raw view asks for it (`loadTranscriptForSelection`).
+    /// the Raw view asks for it (`loadTranscript(for:)`).
     var loadsTranscriptOnSelect: @MainActor (SessionSummary) -> Bool = { _ in true }
 
     /// A demo launch opens a session so a capture has a conversation in it.
@@ -312,6 +315,9 @@ final class SessionManagerModel: ObservableObject {
     /// What the open transcript was read for — kept so "Load entire
     /// transcript" re-reads it with the same focus.
     private var transcriptRequest: SessionTranscriptMerge.Request?
+    /// What the selection asked for, kept apart from `transcriptRequest`:
+    /// the transcript may be showing a thread opened from the selection.
+    private var selectionRequest: SessionTranscriptMerge.Request?
     private var transcriptGeneration: UInt64 = 0
     private var searchGeneration: UInt64 = 0
     private var summaryGeneration: UInt64 = 0
@@ -1152,7 +1158,9 @@ final class SessionManagerModel: ObservableObject {
     /// hit's seq counts.
     func loadEntireTranscript() {
         guard let transcriptRequest, transcriptTruncation != nil else { return }
-        load(transcriptRequest.wholeLog())
+        let whole = transcriptRequest.wholeLog()
+        if whole.summary.id == selectionRequest?.summary.id { selectionRequest = whole }
+        read(whole, force: true)
     }
 
     /// Abandon an in-flight transcript read.
@@ -1186,15 +1194,24 @@ final class SessionManagerModel: ObservableObject {
         transcriptGeneration &+= 1
     }
 
-    private func load(_ request: SessionTranscriptMerge.Request?, force: Bool = false) {
+    /// Select `request`'s session and read its transcript (when the page
+    /// wants it on selection).
+    private func load(_ request: SessionTranscriptMerge.Request?) {
+        selectionRequest = request
+        selection = request?.summary
+        focusSeq = request?.focus.seq
+        read(request, force: false)
+    }
+
+    /// Read `request`'s transcript; the selection is not touched.
+    private func read(_ request: SessionTranscriptMerge.Request?, force: Bool) {
         // Cancel first, and hold the new task: the generation check alone
         // only discarded a stale *result*, so clicking through three large
         // sessions ran three full parses side by side and paid for all of
         // them.
         cancelTranscriptParse()
         transcriptRequest = request
-        selection = request?.summary
-        focusSeq = request?.focus.seq
+        transcriptSubject = request?.summary
         transcript = nil
         transcriptError = nil
         transcriptTruncation = nil
@@ -1265,12 +1282,18 @@ final class SessionManagerModel: ObservableObject {
         focusSeq = nil
     }
 
-    /// Read the selection's flat transcript now — the Raw view, for a
-    /// session whose selection skipped it. The request is the one the
-    /// selection made, so a search hit still lands on its message.
-    func loadTranscriptForSelection() {
-        guard let transcriptRequest, transcript == nil, !isLoadingTranscript else { return }
-        load(transcriptRequest, force: true)
+    /// Read the flat transcript of `shown` — the session the conversation
+    /// pane shows — for the Raw view, unless it is already read or being
+    /// read. For the selection that is the request it made, so a search hit
+    /// still lands on its message; a thread opened from the selection (the
+    /// selection stays put) is read for itself, not as its parent.
+    func loadTranscript(for shown: SessionSummary) {
+        if transcriptRequest?.summary.id == shown.id, transcript != nil || isLoadingTranscript { return }
+        read(SessionTranscriptMerge.Request.forShown(
+            shown,
+            selection: selectionRequest,
+            headByteLimit: SessionIndexingBounds.viewerHeadParseByteLimit
+        ), force: true)
     }
 
     /// A Codex session's Auto Review rollouts and their count, for the

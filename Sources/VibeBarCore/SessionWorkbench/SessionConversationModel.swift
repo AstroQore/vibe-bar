@@ -153,6 +153,9 @@ public final class SessionConversationModel {
     /// The sizes turn text is built at; the pane sets its density's.
     @ObservationIgnored public private(set) var textStyle = SessionRichTextStyle()
     @ObservationIgnored private let source: any SessionConversationSource
+    /// Told after the pane switches sessions — the selection's, or a thread
+    /// opened from it — so what follows the pane (the Raw transcript) can.
+    @ObservationIgnored public var onShow: (@MainActor (SessionSummary?) -> Void)?
 
     // MARK: Private state
 
@@ -277,6 +280,7 @@ public final class SessionConversationModel {
     }
 
     private func show(_ summary: SessionSummary?, trail: [SessionSummary]) {
+        defer { onShow?(summary) }
         loadTask?.cancel()
         turnsTask?.cancel()
         verdictTask?.cancel()

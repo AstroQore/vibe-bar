@@ -33,8 +33,8 @@ final class SessionsPageController {
     /// turn view cannot read always shows the transcript.
     var viewMode: ViewMode = .turns {
         didSet {
-            guard viewMode != oldValue, viewMode == .raw else { return }
-            manager.loadTranscriptForSelection()
+            guard viewMode != oldValue else { return }
+            transcriptFollowsPane()
         }
     }
 
@@ -71,6 +71,7 @@ final class SessionsPageController {
             guard let self else { return true }
             return self.viewMode == .raw || !SessionStructureService.supports(summary.provider)
         }
+        conversation.onShow = { [weak self] _ in self?.transcriptFollowsPane() }
         list.onListingsChanged = { [weak self] in self?.navigation.scheduleThreadCountRefresh() }
         list.onRowsChanged = { [weak self] rows in self?.selectFirstRowInDemo(rows) }
         manager.selectsFirstSummaryInDemo = false
@@ -134,6 +135,15 @@ final class SessionsPageController {
 
     /// The session the conversation pane shows — the list highlights it.
     var displayedID: String? { conversation.summary?.id }
+
+    /// The Raw view reads the session the pane shows, which is not the
+    /// selection while a thread opened from it is on screen: reading the
+    /// selection put the parent's log under the thread's masthead.
+    private func transcriptFollowsPane() {
+        guard let shown = conversation.summary else { return }
+        guard viewMode == .raw || !SessionStructureService.supports(shown.provider) else { return }
+        manager.loadTranscript(for: shown)
+    }
 
     func select(_ row: SessionListModel.DisplayRow) {
         guard ClaudeSubagentFiles.isSubagentSummary(row.summary) else {

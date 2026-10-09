@@ -44,6 +44,16 @@ public enum SessionTranscriptMerge {
         public func wholeLog() -> Request {
             Request(summary: summary, focus: focus, headByteLimit: nil)
         }
+
+        /// The read for the session a conversation pane shows. That is the
+        /// selection's own request when it is the selection (a search hit's
+        /// focus included); a thread opened from the selection — which
+        /// leaves the selection where it was — is read for itself, with the
+        /// same byte bound and no focus.
+        public static func forShown(_ shown: SessionSummary, selection: Request?, headByteLimit: Int64?) -> Request {
+            if let selection, selection.summary.id == shown.id { return selection }
+            return Request(summary: shown, headByteLimit: headByteLimit)
+        }
     }
 
     public struct Result: Sendable {
