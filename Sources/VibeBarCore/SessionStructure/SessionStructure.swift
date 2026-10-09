@@ -31,7 +31,10 @@ public struct SessionStructure: Codable, Sendable, Hashable {
     /// verdicts and prompt origins, not just the guardian kind.
     /// v7: a guardian request with only `retained_source` keeps its
     /// reviewed turn.
-    public static let parserVersion = 7
+    /// v8: Codex `token_usage_record` and `token_count` are read as two
+    /// separate usage series, never as one counter (see
+    /// `SessionUsageSource.responseRecords`).
+    public static let parserVersion = 8
 
     /// How much of each turn was materialized.
     public enum Detail: String, Codable, Sendable, Hashable {
@@ -553,6 +556,14 @@ public enum SessionUsageSource: String, Codable, Sendable, Hashable {
     /// latest epoch). The raw last value stays in
     /// `SessionStats.cumulativeTokensIncludingInherited`.
     case ownCounterDeltas
+    /// Codex: per-response `token_usage_record.usage`, summed. Newer
+    /// rollouts write one record per response next to `token_count`, but
+    /// the two counters do not share a basis: `token_count.total_token_usage`
+    /// can restart inside a thread (measured after a resume) and can lag
+    /// responses it never reported, while `thread_token_usage` keeps
+    /// counting. A turn with records is read from them; `token_count`
+    /// fills only turns that have none.
+    case responseRecords
     /// Claude: per-message `usage`, deduplicated by message + request id.
     case summedMessages
     /// Codex: `threads.tokens_used` in `~/.codex/state_5.sqlite` (total only).

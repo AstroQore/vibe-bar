@@ -11,9 +11,13 @@ import Foundation
 /// enriches that call (exit code, duration); any other completed
 /// `CommandExecution` / `McpToolCall` / … becomes a step nested under the
 /// innermost call still open — that is how a code-mode `exec` script's
-/// commands are recorded. Usage is the delta between successive cumulative
-/// counters (`token_count.total_token_usage`, or `token_usage_record`'s
-/// `thread_token_usage`), priced per delta with the model from
+/// commands are recorded. Usage comes from two series that are never mixed:
+/// each `token_usage_record`'s per-response `usage`, and the deltas of
+/// `token_count.total_token_usage` against its own previous value. Their
+/// counters do not share a basis — `token_count` can restart inside a
+/// thread while the records' `thread_token_usage` keeps counting — so a
+/// turn is read from its records when it has any and from `token_count`
+/// otherwise. Each request is priced as it arrives, with the model from
 /// `turn_context`.
 ///
 /// Inherited history: a forked / thread-spawned subagent rollout begins with
@@ -70,8 +74,18 @@ private final class CodexStructureBuilder {
     var promptsSeen = 0
     var currentModel: String?
     var currentTier: String?
+    /// `token_count` series: its cumulative counter and what it last read.
     var lastTotals: RawTotals?
     var lastCumulativeTotal: Int?
+    /// This session's own `token_count` lines carried a counter.
+    var counterSeen = false
+    /// `token_usage_record` series, kept apart from `token_count` — the two
+    /// counters have different bases and must never be differenced
+    /// against each other.
+    var lastRecordThread: RawTotals?
+    var lastRecordThreadTotal: Int?
+    var counterSeries = UsageSeries()
+    var recordSeries = UsageSeries()
     /// A counter was read from this session's own lines (not only from
     /// history it inherited).
     var ownCounterSeen = false
@@ -163,11 +177,7 @@ private final class CodexStructureBuilder {
         case "compacted":
             addNote("compaction", line: line, object: object)
         case "token_usage_record":
-            if let totals = payload["thread_token_usage"] as? [String: Any] {
-                applyCumulative(RawTotals(totals))
-            } else if let usage = payload["usage"] as? [String: Any] {
-                applyIncrement(RawTotals(usage))
-            }
+            applyUsageRecord(payload)
         default:
             break
         }
@@ -920,15 +930,46 @@ private final class CodexStructureBuilder {
         }
     }
 
+    /// One reading of the session's usage, bucketed by turn (`-1` before
+    /// the first) and model, each request priced as it arrived.
+    struct UsageEntry {
+        var usage = SessionStructure.TokenUsage.zero
+        var cost = 0.0
+        var priced = false
+        var unpriced = false
+    }
+
+    struct UsageSeries {
+        var byTurn: [Int: [String: UsageEntry]] = [:]
+
+        mutating func add(turn: Int, model: String?, usage: SessionStructure.TokenUsage, cost: Double?) {
+            let key = model ?? ""
+            var entry = byTurn[turn]?[key] ?? UsageEntry()
+            entry.usage += usage
+            if let cost, cost.isFinite {
+                entry.cost += cost
+                entry.priced = true
+            } else {
+                entry.unpriced = true
+            }
+            byTurn[turn, default: [:]][key] = entry
+        }
+    }
+
+    enum UsageSource { case counter, record }
+
+    /// `token_count.total_token_usage`: a cumulative counter, differenced
+    /// against its own previous value only.
     func applyCumulative(_ totals: RawTotals) {
-        let hadOwnCounter = ownCounterSeen
+        let hadOwnCounter = counterSeen
         ownCounterSeen = true
+        counterSeen = true
         lastCumulativeTotal = totals.total
         guard let last = lastTotals else {
             lastTotals = totals
             // A window that starts mid-file has no baseline: the first
             // counter it sees is the history before it, not one request.
-            if (options.byteRange?.lowerBound ?? 0) == 0 { record(delta: totals) }
+            if (options.byteRange?.lowerBound ?? 0) == 0 { record(delta: totals, source: .counter) }
             return
         }
         if totals == last { return }
@@ -938,18 +979,42 @@ private final class CodexStructureBuilder {
             // own counter starting, not a reset.)
             if hadOwnCounter { counterResets += 1 }
             lastTotals = totals
-            record(delta: totals)
+            record(delta: totals, source: .counter)
             return
         }
         lastTotals = totals
-        record(delta: totals.minus(last))
+        record(delta: totals.minus(last), source: .counter)
     }
 
     func applyIncrement(_ increment: RawTotals) {
         ownCounterSeen = true
+        counterSeen = true
         lastTotals = (lastTotals ?? RawTotals()).plus(increment)
         lastCumulativeTotal = lastTotals?.total
-        record(delta: increment)
+        record(delta: increment, source: .counter)
+    }
+
+    /// `token_usage_record`: its `usage` is the one response's tokens, so it
+    /// needs no baseline; `thread_token_usage` is differenced only against
+    /// earlier records when `usage` is missing.
+    func applyUsageRecord(_ payload: [String: Any]) {
+        let thread = (payload["thread_token_usage"] as? [String: Any]).map(RawTotals.init)
+        if let thread { lastRecordThreadTotal = thread.total }
+        if let usage = payload["usage"] as? [String: Any] {
+            ownCounterSeen = true
+            if let thread { lastRecordThread = thread }
+            record(delta: RawTotals(usage), source: .record)
+            return
+        }
+        guard let thread else { return }
+        ownCounterSeen = true
+        defer { lastRecordThread = thread }
+        guard let last = lastRecordThread else {
+            if (options.byteRange?.lowerBound ?? 0) == 0 { record(delta: thread, source: .record) }
+            return
+        }
+        if thread == last { return }
+        record(delta: thread.total < last.total ? thread : thread.minus(last), source: .record)
     }
 
     func trackInheritedTotals(_ object: [String: Any]) {
@@ -959,11 +1024,11 @@ private final class CodexStructureBuilder {
             lastTotals = RawTotals(total)
         } else if object["type"] as? String == "token_usage_record",
                   let total = payload["thread_token_usage"] as? [String: Any] {
-            lastTotals = RawTotals(total)
+            lastRecordThread = RawTotals(total)
         }
     }
 
-    func record(delta: RawTotals) {
+    func record(delta: RawTotals, source: UsageSource) {
         let usage = delta.usage
         guard !usage.isZero else { return }
         var cost: Double?
@@ -976,7 +1041,42 @@ private final class CodexStructureBuilder {
                 serviceTier: currentTier
             )
         }
-        acc.addUsage(usage, model: currentModel, cost: cost)
+        let turn = acc.current ?? -1
+        acc.noteUsage()
+        switch source {
+        case .counter: counterSeries.add(turn: turn, model: currentModel, usage: usage, cost: cost)
+        case .record: recordSeries.add(turn: turn, model: currentModel, usage: usage, cost: cost)
+        }
+    }
+
+    /// Attribute usage turn by turn: from the per-response records when the
+    /// turn has any, from `token_count` otherwise. Returns whether records
+    /// were used.
+    func attributeUsage(to turns: inout [SessionStructure.Turn]) -> Bool {
+        var usedRecords = false
+        let keys = Set(counterSeries.byTurn.keys).union(recordSeries.byTurn.keys).sorted()
+        for key in keys {
+            let entries: [String: UsageEntry]
+            if let fromRecords = recordSeries.byTurn[key] {
+                entries = fromRecords
+                usedRecords = true
+            } else {
+                entries = counterSeries.byTurn[key] ?? [:]
+            }
+            for model in entries.keys.sorted() {
+                guard let entry = entries[model] else { continue }
+                let name = model.isEmpty ? nil : model
+                if key >= 0, key < turns.count {
+                    turns[key].usage += entry.usage
+                    if turns[key].model == nil { turns[key].model = name }
+                } else {
+                    acc.unattributedUsage += entry.usage
+                }
+                acc.ledger.merge(model: name, usage: entry.usage, cost: entry.cost,
+                                 priced: entry.priced, unpriced: entry.unpriced)
+            }
+        }
+        return usedRecords
     }
 
     // MARK: Finish
@@ -985,6 +1085,7 @@ private final class CodexStructureBuilder {
         acc.diagnostics.bytesRead = outcome.bytesRead
         acc.diagnostics.incomplete = !outcome.completed
         var turns = acc.finish(lastLineEnd: lastLineEnd)
+        let usedRecords = attributeUsage(to: &turns)
         settleHumanInputs(&turns)
         if stats.startedAt == nil {
             stats.startedAt = turns.first?.startedAt ?? firstTimestampRaw.flatMap(SessionStructureText.date)
@@ -992,10 +1093,18 @@ private final class CodexStructureBuilder {
         stats.endedAt = lastTimestampRaw.flatMap(SessionStructureText.date) ?? turns.last?.endedAt
         SessionStatsBuilder.apply(turns: turns, ledger: acc.ledger, into: &stats)
         let summed = acc.ledger.totalUsage
-        if options.byteRange == nil, ownCounterSeen, let lastTotals {
+        stats.counterResets = counterResets
+        if options.byteRange == nil, ownCounterSeen {
+            // Same basis as `threads.tokens_used`: the last `token_count`
+            // value as written, else the last record's thread total.
+            stats.cumulativeTokensIncludingInherited = (counterSeen ? lastCumulativeTotal : nil) ?? lastRecordThreadTotal
+        }
+        if usedRecords {
+            stats.totalUsage = summed
+            stats.totalTokens = summed.total
+            stats.usageSource = .responseRecords
+        } else if options.byteRange == nil, counterSeen, let lastTotals {
             let cumulative = lastCumulativeTotal ?? lastTotals.total
-            stats.cumulativeTokensIncludingInherited = cumulative
-            stats.counterResets = counterResets
             if cutOrdinal != nil || counterResets > 0 {
                 // The last counter value is not this session's total when the
                 // counter carried on from copied parent history (parent +
