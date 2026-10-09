@@ -6,7 +6,10 @@ import VibeBarCore
 enum UsageTrendMetric: String, CaseIterable, Identifiable {
     case tokens
     case output
-    case messages
+    /// Request-level ledger rows — model calls, not transcript messages: a
+    /// turn can make several requests (and retries), so this is named for
+    /// what it counts.
+    case requests
     case sessions
     case cost
     case active
@@ -17,7 +20,7 @@ enum UsageTrendMetric: String, CaseIterable, Identifiable {
         switch self {
         case .tokens: L10n.Usage.Tokens.title
         case .output: L10n.Workbench.Usage.Trend.Metric.output
-        case .messages: L10n.Workbench.Usage.Trend.Metric.messages
+        case .requests: L10n.Usage.Breakdown.requests
         case .sessions: L10n.Workbench.Page.Sessions.title
         case .cost: L10n.Cost.title
         case .active: L10n.Workbench.Usage.Trend.Metric.active
@@ -28,7 +31,7 @@ enum UsageTrendMetric: String, CaseIterable, Identifiable {
         switch self {
         case .tokens: WorkbenchPorcelain.accent
         case .output: .green
-        case .messages: .teal
+        case .requests: .teal
         case .sessions: Color(red: 20 / 255, green: 169 / 255, blue: 124 / 255)
         case .cost: .orange
         case .active: .purple
@@ -43,7 +46,7 @@ enum UsageTrendMetric: String, CaseIterable, Identifiable {
         switch self {
         case .tokens, .output: UsageDashboardFormat.tokens(Int64(value.rounded()))
         case .cost: UsageFormatting.compactUSD(Int64(value.rounded()))
-        case .messages, .sessions, .active: AppLocale.number(Int(value.rounded()))
+        case .requests, .sessions, .active: AppLocale.number(Int(value.rounded()))
         }
     }
 }
@@ -148,7 +151,7 @@ struct UsageTrendPlan: Equatable {
                     ]
                 case .output:
                     bar = [UsageTrendSegment(start: point.start, key: "out", label: metric.title, value: Double(point.outputTokens), tint: metric.tint.opacity(0.85))]
-                case .messages:
+                case .requests:
                     bar = [UsageTrendSegment(start: point.start, key: "n", label: metric.title, value: Double(point.requests), tint: metric.tint.opacity(0.85))]
                 case .sessions:
                     bar = [UsageTrendSegment(start: point.start, key: "n", label: metric.title, value: Double(point.sessions), tint: metric.tint.opacity(0.85))]
@@ -172,7 +175,7 @@ struct UsageTrendPlan: Equatable {
         switch metric {
         case .tokens: subtitle = UsageDashboardFormat.tokens(points.reduce(0) { $0 + $1.totalTokens })
         case .output: subtitle = UsageDashboardFormat.tokens(points.reduce(0) { $0 + $1.outputTokens })
-        case .messages: subtitle = L10n.Workbench.Sessions.Row.messageCount(count: points.reduce(0) { $0 + $1.requests })
+        case .requests: subtitle = L10n.Usage.requestCount(count: AppLocale.number(points.reduce(0) { $0 + $1.requests }))
         // Sessions span days: a sum of daily counts would count one many times.
         case .sessions: subtitle = nil
         case .cost: subtitle = UsageFormatting.compactUSD(points.reduce(0) { $0 + $1.costMicros })
