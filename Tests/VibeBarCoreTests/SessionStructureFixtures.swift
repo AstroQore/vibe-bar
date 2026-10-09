@@ -52,6 +52,8 @@ final class CodexRolloutBuilder {
     private var ordinal = 0
     private var clock = 0
     private var cumulative = (input: 0, cached: 0, output: 0)
+    private var thread = (input: 0, cached: 0, output: 0)
+    private var lastIncrement = (input: 0, cached: 0, output: 0)
     var includeOrdinals = true
 
     /// Emits keys in Codex's own order — `timestamp`, `ordinal`, `type`,
@@ -223,9 +225,17 @@ final class CodexRolloutBuilder {
     }
 
     /// Cumulative counter; pass the per-request increment.
+    /// `catchUp` is growth the counter absorbs on top of this response —
+    /// replies it skipped earlier — without reporting it in `last_token_usage`.
     @discardableResult
-    func tokenCount(input: Int, cached: Int, output: Int) -> Self {
-        cumulative = (cumulative.input + input, cumulative.cached + cached, cumulative.output + output)
+    func tokenCount(
+        input: Int, cached: Int, output: Int,
+        catchUp: (input: Int, cached: Int, output: Int) = (0, 0, 0)
+    ) -> Self {
+        lastIncrement = (input, cached, output)
+        cumulative = (cumulative.input + input + catchUp.input,
+                      cumulative.cached + cached + catchUp.cached,
+                      cumulative.output + output + catchUp.output)
         let total: [String: Any] = [
             "input_tokens": cumulative.input, "cached_input_tokens": cumulative.cached,
             "cache_write_input_tokens": 0, "output_tokens": cumulative.output, "reasoning_output_tokens": 0,
@@ -240,22 +250,35 @@ final class CodexRolloutBuilder {
         return self
     }
 
-    /// Start the cumulative counter over, as a restarted Codex process does.
+    /// Start the `token_count` counter over, as a resumed Codex process
+    /// does; the per-response records' thread counter carries on.
     @discardableResult
     func resetCounter() -> Self {
         cumulative = (0, 0, 0)
         return self
     }
 
-    /// The newer per-response record, which repeats the cumulative counter.
+    /// The newer per-response record for the last `tokenCount`'s request:
+    /// `usage` is that one response, `thread_token_usage` its own running
+    /// total (which, unlike `token_count`'s, does not restart).
     @discardableResult
     func tokenUsageRecord() -> Self {
-        let total: [String: Any] = [
-            "input_tokens": cumulative.input, "cached_input_tokens": cumulative.cached,
-            "cache_write_input_tokens": 0, "output_tokens": cumulative.output, "reasoning_output_tokens": 0,
-            "total_tokens": cumulative.input + cumulative.output
-        ]
-        emit("token_usage_record", ["thread_token_usage": total, "turn_token_usage": total, "usage": total])
+        usageRecord(input: lastIncrement.input, cached: lastIncrement.cached, output: lastIncrement.output)
+    }
+
+    /// A per-response record with no matching `token_count`.
+    @discardableResult
+    func usageRecord(input: Int, cached: Int, output: Int) -> Self {
+        thread = (thread.input + input, thread.cached + cached, thread.output + output)
+        func block(_ value: (input: Int, cached: Int, output: Int)) -> [String: Any] {
+            ["input_tokens": value.input, "cached_input_tokens": value.cached, "cache_write_input_tokens": 0,
+             "output_tokens": value.output, "reasoning_output_tokens": 0, "total_tokens": value.input + value.output]
+        }
+        emit("token_usage_record", [
+            "thread_token_usage": block(thread),
+            "turn_token_usage": block((input, cached, output)),
+            "usage": block((input, cached, output))
+        ])
         return self
     }
 

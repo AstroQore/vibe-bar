@@ -292,13 +292,13 @@ final class CodexSessionStructureParserTests: XCTestCase {
 
     func testUsageIsPerTurnDeltaAndTotalMatchesTheLastCounter() throws {
         let structure = try parse(twoTurnRollout())
-        // Turn A: 1000 in (200 cached) + 100 out; the token_usage_record
-        // repeats the same cumulative counter and adds nothing.
+        // Turn A: 1000 in (200 cached) + 100 out, read from its
+        // token_usage_record; turn B has only token_count and is read from it.
         XCTAssertEqual(structure.turns[0].usage, .init(input: 800, cacheWrite: 0, cacheRead: 200, output: 100))
         XCTAssertEqual(structure.turns[1].usage, .init(input: 500, cacheWrite: 0, cacheRead: 1_500, output: 300))
         XCTAssertEqual(structure.stats.totalTokens, 3_400)
         XCTAssertEqual(structure.stats.totalUsage.total, 3_400)
-        XCTAssertEqual(structure.stats.usageSource, .cumulativeCounter)
+        XCTAssertEqual(structure.stats.usageSource, .responseRecords)
         XCTAssertEqual(structure.stats.cumulativeTokensIncludingInherited, 3_400, "an uncut session's counter is its own")
         XCTAssertEqual(structure.stats.models, ["gpt-5"])
         let cost = try XCTUnwrap(structure.stats.estimatedCostUSD)
@@ -331,6 +331,90 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertEqual(structure.stats.usageSource, .ownCounterDeltas)
         XCTAssertEqual(structure.stats.cumulativeTokensIncludingInherited, 100, "the raw last counter is kept as written")
         XCTAssertEqual(structure.stats.modelUsage.reduce(0) { $0 + $1.usage.total }, 1_100)
+    }
+
+    /// The shape behind a 22.73 B-token session: `token_usage_record` and
+    /// `token_count` interleave, and after a resume `token_count`'s total
+    /// restarts while the records' thread total keeps counting. Read as one
+    /// counter, every record-after-count step looked like growth and every
+    /// count-after-record like a reset, adding the whole thread total again
+    /// on each response.
+    func testInterleavedRecordsAndRestartedCounterAreNotOneCounter() throws {
+        let builder = CodexRolloutBuilder()
+            .meta()
+            .taskStarted("t1").turnContext(model: "gpt-5").prompt("Before the resume", turnID: "t1")
+        // Real order: the record first, then the count for the same response.
+        builder.usageRecord(input: 900, cached: 0, output: 100).tokenCount(input: 900, cached: 0, output: 100)
+        builder.usageRecord(input: 450, cached: 0, output: 50).tokenCount(input: 450, cached: 0, output: 50)
+        builder.assistant("One").taskComplete("t1")
+            .resetCounter()
+            .taskStarted("t2").turnContext(model: "gpt-5").prompt("After the resume", turnID: "t2")
+        for _ in 0..<40 {
+            builder.usageRecord(input: 180, cached: 0, output: 20).tokenCount(input: 180, cached: 0, output: 20)
+        }
+        builder.assistant("Two").taskComplete("t2")
+        let structure = try parse(builder)
+
+        XCTAssertEqual(structure.turns.map(\.usage.total), [1_500, 8_000])
+        XCTAssertEqual(structure.stats.totalTokens, 9_500)
+        XCTAssertEqual(structure.stats.usageSource, .responseRecords)
+        XCTAssertEqual(structure.stats.cumulativeTokensIncludingInherited, 8_000, "token_count's last value, as state_5 records it")
+        XCTAssertEqual(structure.stats.counterResets, 1)
+        XCTAssertEqual(structure.stats.modelUsage.reduce(0) { $0 + $1.usage.total }, 9_500)
+        let cost = try XCTUnwrap(structure.stats.estimatedCostUSD)
+        let reference = try XCTUnwrap(CostUsagePricing.codexCostUSD(model: "gpt-5", inputTokens: 9_500 - 950, cachedInputTokens: 0, outputTokens: 950))
+        XCTAssertEqual(cost, reference, accuracy: 1e-9)
+    }
+
+    func testRecordsCoverResponsesTheCounterNeverReported() throws {
+        let builder = CodexRolloutBuilder()
+            .meta()
+            .taskStarted("t1").turnContext(model: "gpt-5").prompt("Compact and continue", turnID: "t1")
+        builder.usageRecord(input: 900, cached: 0, output: 100).tokenCount(input: 900, cached: 0, output: 100)
+        builder.usageRecord(input: 400, cached: 0, output: 100) // e.g. a compaction request
+        builder.assistant("Done").taskComplete("t1")
+        let structure = try parse(builder)
+        XCTAssertEqual(structure.stats.totalTokens, 1_500)
+        XCTAssertEqual(structure.stats.cumulativeTokensIncludingInherited, 1_000)
+        XCTAssertEqual(structure.stats.counterResets, 0)
+    }
+
+    /// A reply only a record covered in turn A, absorbed by the counter in
+    /// turn B — which has no records and falls back to the counter — must
+    /// not be counted twice.
+    func testCounterCatchUpForRecordedRepliesIsNotCountedAgain() throws {
+        func rollout(_ turnB: (CodexRolloutBuilder) -> Void) throws -> SessionStructure {
+            let builder = CodexRolloutBuilder()
+                .meta()
+                .taskStarted("a").turnContext(model: "gpt-5").prompt("A", turnID: "a")
+            builder.usageRecord(input: 900, cached: 0, output: 100).tokenCount(input: 900, cached: 0, output: 100)
+            builder.usageRecord(input: 450, cached: 0, output: 50) // the counter skips this reply
+            builder.assistant("A done").taskComplete("a")
+                .taskStarted("b").turnContext(model: "gpt-5").prompt("B", turnID: "b")
+            turnB(builder)
+            builder.assistant("B done").taskComplete("b")
+            return try parse(builder)
+        }
+
+        // The counter absorbs the skipped 500 in B: cumulative 1,000 → 2,000
+        // while B's own reply is 500.
+        let absorbed = try rollout { $0.tokenCount(input: 450, cached: 0, output: 50, catchUp: (450, 0, 50)) }
+        XCTAssertEqual(absorbed.turns.map(\.usage.total), [1_500, 500])
+        XCTAssertEqual(absorbed.stats.totalTokens, 2_000)
+        XCTAssertEqual(absorbed.stats.modelUsage.reduce(0) { $0 + $1.usage.total }, 2_000)
+        XCTAssertEqual(absorbed.stats.cumulativeTokensIncludingInherited, 2_000)
+        let reference = try XCTUnwrap(CostUsagePricing.codexCostUSD(model: "gpt-5", inputTokens: 1_800, cachedInputTokens: 0, outputTokens: 200))
+        XCTAssertEqual(try XCTUnwrap(absorbed.stats.estimatedCostUSD), reference, accuracy: 1e-9)
+
+        // A counter that never catches up (what local rollouts show) is read as is.
+        let never = try rollout { $0.tokenCount(input: 450, cached: 0, output: 50) }
+        XCTAssertEqual(never.turns.map(\.usage.total), [1_500, 500])
+        XCTAssertEqual(never.stats.totalTokens, 2_000)
+
+        // A reset ends the epoch the skipped reply could be absorbed in.
+        let restarted = try rollout { $0.resetCounter().tokenCount(input: 450, cached: 0, output: 50) }
+        XCTAssertEqual(restarted.turns.map(\.usage.total), [1_500, 500])
+        XCTAssertEqual(restarted.stats.totalTokens, 2_000)
     }
 
     func testUnknownModelLeavesCostNil() throws {
