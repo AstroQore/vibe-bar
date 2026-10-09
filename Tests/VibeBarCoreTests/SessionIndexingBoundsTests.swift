@@ -436,6 +436,15 @@ final class SessionIndexingBoundsTests: XCTestCase {
     func testAcquireOnAFreeGateStillHonoursAnAlreadyCancelledTask() async {
         let gate = SessionIndexMaintenanceGate()
         let task = Task { () -> Bool in
+            // A new task can start running before the cancel below lands,
+            // and a free gate then simply grants the claim — what failed on
+            // a loaded CI runner. Poll on the clock until the cancel has
+            // landed, so `acquire` always runs on an already-cancelled task.
+            var polls = 0
+            while !Task.isCancelled, polls < 300 {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+                polls += 1
+            }
             do {
                 try await gate.acquire()
                 return false
