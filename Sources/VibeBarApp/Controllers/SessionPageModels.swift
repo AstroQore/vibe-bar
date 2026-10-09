@@ -48,6 +48,7 @@ final class SessionsPageController {
     @ObservationIgnored var pageWidth: CGFloat = 0
 
     @ObservationIgnored private var cancellables: Set<AnyCancellable> = []
+    @ObservationIgnored private var paging = SessionListAutoPaging()
 
     init(manager: SessionManagerModel, structure: SessionStructureService) {
         self.manager = manager
@@ -75,6 +76,9 @@ final class SessionsPageController {
         conversation.onShow = { [weak self] _ in self?.transcriptFollowsPane() }
         list.onListingsChanged = { [weak self] in self?.navigation.scheduleThreadCountRefresh() }
         list.onRowsChanged = { [weak self] rows in self?.selectFirstRowInDemo(rows) }
+        list.onRebuilt = { [weak self] given, shown, firstID in
+            self?.continuePaging(given: given, shown: shown, firstID: firstID)
+        }
         manager.selectsFirstSummaryInDemo = false
         wire()
     }
@@ -132,6 +136,15 @@ final class SessionsPageController {
         list.stop()
         conversation.stop()
         navigation.stop()
+    }
+
+    /// A page the thread filters hid entirely brings no new last row into
+    /// view to ask for the next one; ask for it here.
+    private func continuePaging(given: Int, shown: Int, firstID: String?) {
+        let searching = !manager.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if paging.shouldLoadMore(sourceCount: given, visibleCount: shown, firstID: firstID, hasMore: manager.hasMoreSummaries && !searching) {
+            manager.loadMoreSummaries()
+        }
     }
 
     /// The session the conversation pane shows — the list highlights it.
@@ -369,6 +382,9 @@ final class SessionListModel {
 
     @ObservationIgnored var onListingsChanged: (() -> Void)?
     @ObservationIgnored var onRowsChanged: (([DisplayRow]) -> Void)?
+    /// After every rebuild, changed or not: the rows given, the rows shown,
+    /// and the first given row's id.
+    @ObservationIgnored var onRebuilt: ((_ given: Int, _ shown: Int, _ firstID: String?) -> Void)?
     @ObservationIgnored private let structure: SessionStructureService
     @ObservationIgnored private var source: [SessionManagerModel.Row] = []
     @ObservationIgnored private var listings: [String: SessionStructureListing] = [:]
@@ -564,6 +580,7 @@ final class SessionListModel {
             if self.hiddenCounts != output.hidden { self.hiddenCounts = output.hidden }
             if self.hasThreads != output.hasThreads { self.hasThreads = output.hasThreads }
             self.parentByID = output.parents
+            self.onRebuilt?(input.rows.count, output.rows.count, input.rows.first?.id)
         }
     }
 

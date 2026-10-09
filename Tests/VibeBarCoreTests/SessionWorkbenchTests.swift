@@ -407,4 +407,44 @@ final class SessionWorkbenchTests: XCTestCase {
         // Two backticks are inline code, not a fence.
         guard case .paragraph = SessionMarkdown.document(from: "``x``").blocks.first else { return XCTFail() }
     }
+
+    // MARK: - List paging
+
+    func testPagesTheFiltersHideEntirelyAskForTheNextOne() {
+        var paging = SessionListAutoPaging()
+        // A first page of exec runs only: nothing to show, so no row to come
+        // into view.
+        XCTAssertTrue(paging.shouldLoadMore(sourceCount: 250, visibleCount: 0, firstID: "a", hasMore: true))
+        // Rebuilt for another reason (stats landed): nothing new arrived.
+        XCTAssertFalse(paging.shouldLoadMore(sourceCount: 250, visibleCount: 0, firstID: "a", hasMore: true))
+        // The next page is hidden too.
+        XCTAssertTrue(paging.shouldLoadMore(sourceCount: 500, visibleCount: 0, firstID: "a", hasMore: true))
+        // This one shows rows: from here the last row pages as usual.
+        XCTAssertFalse(paging.shouldLoadMore(sourceCount: 750, visibleCount: 40, firstID: "a", hasMore: true))
+        XCTAssertFalse(paging.shouldLoadMore(sourceCount: 750, visibleCount: 40, firstID: "a", hasMore: true))
+        // A visible page followed by a hidden one asks again.
+        XCTAssertTrue(paging.shouldLoadMore(sourceCount: 1_000, visibleCount: 40, firstID: "a", hasMore: true))
+        // Nothing more in the index: done.
+        XCTAssertFalse(paging.shouldLoadMore(sourceCount: 1_250, visibleCount: 40, firstID: "a", hasMore: false))
+    }
+
+    func testAutomaticPagingStopsAfterABoundedRun() {
+        var paging = SessionListAutoPaging()
+        var asked = 0
+        for page in 1...20 where paging.shouldLoadMore(sourceCount: page * 250, visibleCount: 0, firstID: "a", hasMore: true) {
+            asked += 1
+        }
+        XCTAssertEqual(asked, SessionListAutoPaging.maximumConsecutivePages)
+    }
+
+    func testANewQueryIsJudgedFromItsFirstPage() {
+        var paging = SessionListAutoPaging()
+        XCTAssertFalse(paging.shouldLoadMore(sourceCount: 500, visibleCount: 120, firstID: "a", hasMore: true))
+        // The filter changed: a fresh first page, as long as the old list,
+        // all of it hidden.
+        XCTAssertTrue(paging.shouldLoadMore(sourceCount: 500, visibleCount: 0, firstID: "b", hasMore: true))
+        // A shorter list is a new query too.
+        XCTAssertFalse(paging.shouldLoadMore(sourceCount: 250, visibleCount: 30, firstID: "b", hasMore: true))
+        XCTAssertTrue(paging.shouldLoadMore(sourceCount: 100, visibleCount: 0, firstID: "b", hasMore: true))
+    }
 }

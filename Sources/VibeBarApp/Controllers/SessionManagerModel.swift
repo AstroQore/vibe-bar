@@ -374,6 +374,11 @@ final class SessionManagerModel: ObservableObject {
         summaries.count < min(totalSessionCount, Self.maximumLoadedSummaries)
     }
 
+    /// Sessions the list can still page in, within the ceiling.
+    var remainingSummaryCount: Int {
+        max(0, min(totalSessionCount, Self.maximumLoadedSummaries) - summaries.count)
+    }
+
     /// True when the list stops short of the index because of the ceiling
     /// above rather than because that is all there is.
     var isSummaryListCapped: Bool {

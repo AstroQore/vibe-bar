@@ -76,6 +76,9 @@ struct SessionListView: View {
                                 rowView(row, isLast: row.id == lastID, displayedID: displayedID)
                             }
                         }
+                        if model.hasMoreSummaries, model.searchText.isEmpty {
+                            moreRow
+                        }
                         if model.isSummaryListCapped, model.searchText.isEmpty {
                             capNotice
                         }
@@ -130,6 +133,27 @@ struct SessionListView: View {
     /// The list stops at `maximumLoadedSummaries` because a `LazyVStack`
     /// builds rows lazily and then keeps every one of them. Saying so beats
     /// letting the scroll quietly end short of an 11 000-session index.
+    /// The next page on request, and how many loaded rows the thread
+    /// filters hide: the way on when a page held nothing to show and so no
+    /// new last row came into view to ask for more.
+    private var moreRow: some View {
+        let hidden = list.hiddenCounts.filter { $0.key != .guardian }.values.reduce(0, +)
+        return HStack(spacing: 8) {
+            Button(L10n.Usage.Table.loadMore(remaining: model.remainingSummaryCount)) {
+                model.loadMoreSummaries()
+            }
+            .buttonStyle(WorkbenchPillButtonStyle())
+            .disabled(model.isLoadingSummaries)
+            if hidden > 0 {
+                Text(L10n.Workbench.Sessions.Threads.hidden(count: AppLocale.number(hidden)))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .font(.system(size: max(10, density.resetCountdownFontSize)))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+
     private var capNotice: some View {
         Text(L10n.Workbench.Sessions.List.capNotice(
             shown: SessionManagerModel.maximumLoadedSummaries,
