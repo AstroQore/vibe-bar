@@ -55,20 +55,22 @@ public struct SessionTurnWindow: Sendable, Hashable {
 
     public func contains(_ index: Int) -> Bool { range.contains(index) }
 
-    /// Grow one page toward the start. Returns the turns that joined.
+    /// Grow one page (or `turns` turns) toward the start. Returns the turns
+    /// that joined.
     @discardableResult
-    public mutating func extendEarlier() -> Range<Int> {
-        let newLower = max(0, lowerBound - pageSize)
+    public mutating func extendEarlier(by turns: Int? = nil) -> Range<Int> {
+        let newLower = max(0, lowerBound - max(1, turns ?? pageSize))
         let added = newLower..<lowerBound
         lowerBound = newLower
         if count > maxSpan { upperBound = lowerBound + maxSpan }
         return added
     }
 
-    /// Grow one page toward the end. Returns the turns that joined.
+    /// Grow one page (or `turns` turns) toward the end. Returns the turns
+    /// that joined.
     @discardableResult
-    public mutating func extendLater() -> Range<Int> {
-        let newUpper = min(total, upperBound + pageSize)
+    public mutating func extendLater(by turns: Int? = nil) -> Range<Int> {
+        let newUpper = min(total, upperBound + max(1, turns ?? pageSize))
         let added = upperBound..<newUpper
         upperBound = newUpper
         if count > maxSpan { lowerBound = upperBound - maxSpan }

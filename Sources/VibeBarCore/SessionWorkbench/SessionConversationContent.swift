@@ -17,6 +17,11 @@ public struct SessionConversationTOCEntry: Sendable, Hashable, Identifiable {
     /// Human prompts the turn contributes to `SessionStats.promptCount`.
     public var humanPrompts: Int
     public var status: SessionStructure.TurnStatus
+    /// The preview's width on one line in the contents column's font
+    /// (`previewFont`), measured off the main actor with the entries
+    /// (`measuredEntries`); the column sizes its rows from it. 0 when not
+    /// measured.
+    public var previewWidth: Double = 0
 
     public var id: Int { turnIndex }
 
@@ -89,13 +94,21 @@ public struct SessionTurnPresentation: Sendable, Hashable {
     public var isPromptLong = false
     public var steps: [SessionStepRow]
     public var answer: SessionMarkdownDocument?
+    /// `prompt` and `answer` as the text the pane draws, at the model's
+    /// `SessionRichTextStyle`.
+    public var promptText: SessionRichText?
+    public var answerText: SessionRichText?
 
     /// Notes the parser records only as markers, with nothing to read in
     /// them, are not listed: a Codex rollout has one `commentary` note per
     /// interim message and a hundred of them say nothing.
     static let silentNotes: Set<String> = ["commentary"]
 
-    public static func make(_ turn: SessionStructure.Turn, markdown: SessionMarkdownCache) -> SessionTurnPresentation {
+    public static func make(
+        _ turn: SessionStructure.Turn,
+        markdown: SessionMarkdownCache,
+        style: SessionRichTextStyle = SessionRichTextStyle()
+    ) -> SessionTurnPresentation {
         let promptText = turn.prompt.text?.trimmingCharacters(in: .whitespacesAndNewlines)
         let answerText = turn.finalAnswer?.trimmingCharacters(in: .whitespacesAndNewlines)
         var rows: [SessionStepRow] = []
@@ -107,12 +120,16 @@ public struct SessionTurnPresentation: Sendable, Hashable {
         let isLong = promptText.map {
             $0.count > longPromptCharacters || $0.reduce(0) { $1 == "\n" ? $0 + 1 : $0 } >= longPromptLines
         } ?? false
+        let prompt = promptText.flatMap { $0.isEmpty ? nil : $0 }
+        let answer = answerText.flatMap { $0.isEmpty ? nil : $0 }
         return SessionTurnPresentation(
             index: turn.index,
-            prompt: (promptText?.isEmpty ?? true) ? nil : markdown.document(for: promptText!),
+            prompt: prompt.map { markdown.document(for: $0) },
             isPromptLong: isLong,
             steps: rows,
-            answer: (answerText?.isEmpty ?? true) ? nil : markdown.document(for: answerText!)
+            answer: answer.map { markdown.document(for: $0) },
+            promptText: prompt.map { markdown.richText(for: $0, size: style.promptSize) },
+            answerText: answer.map { markdown.richText(for: $0, size: style.answerSize) }
         )
     }
 }
@@ -142,6 +159,8 @@ public struct SessionTurnPrompt: Sendable, Hashable {
     public var preview: String?
     /// Long enough to open folded (`SessionTurnPresentation.isPromptLong`).
     public var isLong: Bool = false
+    /// `document` as drawn; nil while the turn loads.
+    public var text: SessionRichText?
 }
 
 /// The collapsible "what the agent did" row.
@@ -165,6 +184,8 @@ public struct SessionTurnStep: Sendable, Hashable {
 public struct SessionTurnAnswer: Sendable, Hashable {
     public var turn: Int
     public var document: SessionMarkdownDocument
+    /// `document` as drawn.
+    public var text: SessionRichText?
 }
 
 /// A turn in the window whose full detail has not arrived.
@@ -243,6 +264,9 @@ public struct SessionConversationLayoutInput: Sendable {
     public var presentations: [Int: SessionTurnPresentation]
     public var expandedTurns: Set<Int>
     public var expandedSteps: Set<String>
+    /// For a process being opened, how many of its steps to list yet (the
+    /// rest follow a frame later).
+    public var stepLimits: [Int: Int]
     public var verdictsByTurnID: [String: [SessionStructure.GuardianVerdict]]
     public var showsModelPerTurn: Bool
     public var isLoadingEarlier: Bool
@@ -256,6 +280,7 @@ public struct SessionConversationLayoutInput: Sendable {
         presentations: [Int: SessionTurnPresentation] = [:],
         expandedTurns: Set<Int> = [],
         expandedSteps: Set<String> = [],
+        stepLimits: [Int: Int] = [:],
         verdictsByTurnID: [String: [SessionStructure.GuardianVerdict]] = [:],
         showsModelPerTurn: Bool = false,
         isLoadingEarlier: Bool = false,
@@ -268,6 +293,7 @@ public struct SessionConversationLayoutInput: Sendable {
         self.presentations = presentations
         self.expandedTurns = expandedTurns
         self.expandedSteps = expandedSteps
+        self.stepLimits = stepLimits
         self.verdictsByTurnID = verdictsByTurnID
         self.showsModelPerTurn = showsModelPerTurn
         self.isLoadingEarlier = isLoadingEarlier
@@ -309,7 +335,8 @@ public enum SessionConversationLayout {
                     origin: outline.origin,
                     document: presentation?.prompt,
                     preview: outline.promptPreview,
-                    isLong: presentation?.isPromptLong ?? false
+                    isLong: presentation?.isPromptLong ?? false,
+                    text: presentation?.promptText
                 )))
             }
             guard let presentation else {
@@ -328,7 +355,8 @@ public enum SessionConversationLayout {
                     rowCount: presentation.steps.count
                 )))
                 if expanded {
-                    for row in presentation.steps {
+                    let limit = input.stepLimits[index] ?? presentation.steps.count
+                    for row in presentation.steps.prefix(limit) {
                         out.append(.step(SessionTurnStep(
                             turn: index,
                             row: row,
@@ -338,7 +366,7 @@ public enum SessionConversationLayout {
                 }
             }
             if let answer = presentation.answer {
-                out.append(.answer(SessionTurnAnswer(turn: index, document: answer)))
+                out.append(.answer(SessionTurnAnswer(turn: index, document: answer, text: presentation.answerText)))
             }
         }
         if window.hasLater {

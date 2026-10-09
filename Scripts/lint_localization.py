@@ -114,6 +114,8 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/Workbench/SessionConversationView.swift",
     "Sources/VibeBarApp/Views/Workbench/SessionConversationRows.swift",
     "Sources/VibeBarApp/Views/Workbench/SessionConversationOutline.swift",
+    "Sources/VibeBarApp/Views/Workbench/SessionOutlineTable.swift",
+    "Sources/VibeBarApp/Views/Workbench/SessionRichTextView.swift",
     "Sources/VibeBarApp/Controllers/SessionPageModels.swift",
     "Sources/VibeBarApp/Controllers/SessionManagerModel.swift",
     "Sources/VibeBarApp/Controllers/SkillsManagerModel.swift",

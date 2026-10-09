@@ -49,6 +49,9 @@ struct SessionConversationView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: density.subtitleFontSize, initial: true) { _, size in
+            conversation.setTextStyle(SessionRichTextStyle(promptSize: size + 0.5, answerSize: size + 1))
+        }
         .onChange(of: conversation.notice) { _, notice in
             guard let notice else { return }
             switch notice {
@@ -63,60 +66,33 @@ struct SessionConversationView: View {
         conversation.phase == .unsupported || controller.viewMode == .raw
     }
 
+    /// The turn list stays mounted whatever the pane shows — the raw
+    /// transcript, a loading or error message — so moving between sessions
+    /// never builds a new one; those states are drawn over it.
     @ViewBuilder
     private func content(for summary: SessionSummary) -> some View {
-        if showsRaw {
-            TranscriptView(density: density, model: controller.manager)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            switch conversation.phase {
-            case .idle, .unsupported:
-                Color.clear
-            case .ready where !conversation.items.isEmpty, .loading:
-                // One scroll view for every session the pane shows: a new
-                // one per session paid for a fresh hosting scroll view and
-                // its initial-offset layout on every click.
-                SessionTurnList(
-                    density: density,
-                    conversation: conversation,
-                    accent: summary.provider.accent,
-                    actions: actions
-                )
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    if conversation.phase == .ready, controller.hasSearchFocus {
-                        searchHitBanner
-                    }
+        let raw = showsRaw
+        ZStack {
+            SessionTurnList(
+                density: density,
+                conversation: conversation,
+                accent: summary.provider.accent,
+                actions: actions
+            )
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if conversation.phase == .ready, controller.hasSearchFocus {
+                    searchHitBanner
                 }
-                .overlay {
-                    if conversation.phase == .loading {
-                        stateMessage(
-                            systemImage: nil,
-                            text: L10n.Workbench.Sessions.Conversation.loadingOutline
-                        ) {
-                            Button(L10n.Common.cancel) { conversation.cancelLoading() }
-                        }
-                        .background(WorkbenchPorcelain.windowFill(for: colorScheme))
-                        .background(.background)
-                    }
-                }
-            case .unreadable:
-                stateMessage(
-                    systemImage: "exclamationmark.triangle",
-                    text: L10n.Workbench.Sessions.Conversation.unreadable
-                ) {
-                    Button(L10n.Workbench.Sessions.Conversation.viewRaw) { controller.viewMode = .raw }
-                }
-            case .cancelled:
-                stateMessage(
-                    systemImage: "pause.circle",
-                    text: L10n.Workbench.Sessions.Conversation.cancelled
-                ) {
-                    Button(L10n.Common.retry) { conversation.reload() }
-                }
-            case .ready:
-                stateMessage(systemImage: "text.alignleft", text: L10n.Workbench.Sessions.Conversation.empty) {
-                    EmptyView()
-                }
+            }
+            .overlay {
+                SessionConversationStateOverlay(density: density, controller: controller, conversation: conversation)
+            }
+            .opacity(raw ? 0 : 1)
+            .allowsHitTesting(!raw)
+            .accessibilityHidden(raw)
+            if raw {
+                TranscriptView(density: density, model: controller.manager)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
@@ -196,6 +172,86 @@ struct SessionConversationView: View {
     }
 }
 
+/// What covers the turn list when it has nothing current to show. Its own
+/// view: it reads whether the list is empty, and the pane around it should
+/// not redraw on every change of the rows. Opaque, since the list may still
+/// hold the previous session's rows.
+private struct SessionConversationStateOverlay: View {
+    let density: Theme.Density
+    let controller: SessionsPageController
+    let conversation: SessionConversationModel
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        switch conversation.phase {
+        case .idle, .unsupported:
+            EmptyView()
+        case .loading:
+            covered(SessionStateMessage(density: density, systemImage: nil, text: L10n.Workbench.Sessions.Conversation.loadingOutline) {
+                Button(L10n.Common.cancel) { conversation.cancelLoading() }
+            })
+        case .unreadable:
+            covered(SessionStateMessage(
+                density: density,
+                systemImage: "exclamationmark.triangle",
+                text: L10n.Workbench.Sessions.Conversation.unreadable
+            ) {
+                Button(L10n.Workbench.Sessions.Conversation.viewRaw) { controller.viewMode = .raw }
+            })
+        case .cancelled:
+            covered(SessionStateMessage(
+                density: density,
+                systemImage: "pause.circle",
+                text: L10n.Workbench.Sessions.Conversation.cancelled
+            ) {
+                Button(L10n.Common.retry) { conversation.reload() }
+            })
+        case .ready:
+            if conversation.items.isEmpty {
+                covered(SessionStateMessage(density: density, systemImage: "text.alignleft", text: L10n.Workbench.Sessions.Conversation.empty) {
+                    EmptyView()
+                })
+            }
+        }
+    }
+
+    private func covered(_ content: some View) -> some View {
+        content
+            .background(WorkbenchPorcelain.windowFill(for: colorScheme))
+            .background(.background)
+    }
+}
+
+/// A centred message with an icon (or a spinner) and its actions.
+private struct SessionStateMessage<Actions: View>: View {
+    let density: Theme.Density
+    let systemImage: String?
+    let text: String
+    @ViewBuilder let actions: () -> Actions
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 24, weight: .light))
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+            Text(text)
+                .font(.system(size: density.subtitleFontSize))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            actions()
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .frame(maxWidth: 360)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 // MARK: - Turn list
 
 /// The scrolling column of rows.
@@ -223,9 +279,10 @@ private struct SessionTurnList: View {
     @MainActor
     private final class ReadingPosition {
         var above: Set<Int> = []
-        /// The session and build of the rows `above` describes; a report
+        /// The build and session of the rows `above` describes; a report
         /// for another one starts the set over.
-        var key = ""
+        var token = -1
+        var session: String?
         var pending: Task<Void, Never>?
         static let settle = Duration.milliseconds(120)
         /// A header this close to the top edge counts as the turn being read.
@@ -262,7 +319,7 @@ private struct SessionTurnList: View {
             // A session published whole gets a scroll view built on its
             // final rows, so the initial offset lands on the end of the
             // conversation without a scroll-to-end pass.
-            .id(conversation.contentToken)
+            .id(conversation.listToken)
             // Paging is driven by a boolean that changes only when the
             // viewport comes within reach of an end — not by a per-row
             // visibility report, which fired hundreds of times while a
@@ -312,9 +369,11 @@ private struct SessionTurnList: View {
             } action: { isAbove in
                 // Reset here rather than from a task: a task runs after the
                 // first reports of the new rows and would wipe them.
-                let key = "\(conversation.contentToken)|\(conversation.summary?.id ?? "")"
-                if tracker.key != key {
-                    tracker.key = key
+                let token = conversation.listToken
+                let session = conversation.summary?.id
+                if tracker.token != token || tracker.session != session {
+                    tracker.token = token
+                    tracker.session = session
                     tracker.above.removeAll()
                 }
                 if isAbove { tracker.above.insert(header.turn) } else { tracker.above.remove(header.turn) }
@@ -471,17 +530,7 @@ private struct SessionConversationHeader: View {
     @ViewBuilder
     private var turnControls: some View {
         HStack(spacing: 8) {
-            Picker(L10n.Workbench.Sessions.View.help, selection: Binding(
-                get: { controller.viewMode },
-                set: { controller.viewMode = $0 }
-            )) {
-                Text(L10n.Workbench.Sessions.View.turns).tag(SessionsPageController.ViewMode.turns)
-                Text(L10n.Workbench.Sessions.View.raw).tag(SessionsPageController.ViewMode.raw)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .help(L10n.Workbench.Sessions.View.help)
+            SessionViewModePicker(controller: controller)
             if controller.viewMode == .turns {
                 if let progress = conversation.progress {
                     ProgressView(value: Double(progress.done), total: Double(max(1, progress.total)))
@@ -526,6 +575,26 @@ private struct SessionConversationHeader: View {
                 Spacer(minLength: 0)
             }
         }
+    }
+}
+
+/// Turns or the raw transcript. Its own view, so the masthead redrawing for
+/// a new session's facts does not rebuild the segmented control.
+private struct SessionViewModePicker: View {
+    let controller: SessionsPageController
+
+    var body: some View {
+        Picker(L10n.Workbench.Sessions.View.help, selection: Binding(
+            get: { controller.viewMode },
+            set: { controller.viewMode = $0 }
+        )) {
+            Text(L10n.Workbench.Sessions.View.turns).tag(SessionsPageController.ViewMode.turns)
+            Text(L10n.Workbench.Sessions.View.raw).tag(SessionsPageController.ViewMode.raw)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .help(L10n.Workbench.Sessions.View.help)
     }
 }
 

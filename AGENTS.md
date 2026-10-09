@@ -1141,22 +1141,38 @@ capture against § 8 before committing it — a screenshot is source content.
     header-row `onGeometryChange` booleans, coalesced.
   - Open at the end by the initial offset of a scroll view built on the
     final rows (`contentToken`), not by a scroll-to-end, which on a lazy
-    list lays out every row in between; open on `initialTurns` (4), not a
-    page.
-  - Keep responders few: no hover state on rows that repeat by the hundred
-    (steps, contents entries); copy buttons exist only while hovered. With
-    an accessibility client attached, SwiftUI walks every responder on each
-    update (`AccessibilityNode.updateFocus`).
-  - Merge prose into one `Text` per run (`SessionMarkdownDocument.segments`)
-    and let code wrap; a text view per paragraph inside stacks, and
-    horizontal scroll views per code block, were measured several times a
-    pass.
-  Opening a long conversation is still the page's one budget miss:
-  ~115–130 ms on a 23 MB, 1 247-message Codex rollout (scrolling, paging,
-  hover and expansion stay ≤ 16 ms). The cost is the first layout of the
-  window's turns plus the accessibility focus walk; the next step is a
-  turn renderer that is one view per turn (TextKit), not more SwiftUI
-  tuning.
+    list lays out every row in between.
+  - Spread work over frames, never one big one: an open publishes the
+    masthead and contents, then the newest turn, then the rest of
+    `initialTurns` a turn a frame (`loadWhole`, `nextFrame`); a page of a
+    file held in memory joins a turn a frame (`grow`); an opening process
+    lists `firstFrameSteps` steps, the rest a frame later. A scroll view
+    resting on its end stays there while content grows above it, so none
+    of this needs a scroll request.
+  - Prompts and answers are one TextKit 1 text view each
+    (`SessionRichTextView` over `SessionRichText`): the attributed string —
+    headings, prose, code and tables as rounded cards (`NSTextBlock`,
+    `NSTextTable`) — is built off the main actor with the presentation and
+    cached per text and size; the view measures once per width. A SwiftUI
+    text per run of prose and a grid cell per table cell were hundreds of
+    views per open. It also makes the text selectable.
+  - The contents column is an AppKit table (`SessionOutlineTable`) whose
+    row heights come from widths measured off the main actor
+    (`measuredEntries`), and it stays mounted while a session loads; so
+    does the turn list under the raw transcript. Building either per open
+    was most of what opening cost.
+  - Keep responders few: no hover state on rows that repeat (steps,
+    contents entries), one tooltip per list row instead of one per chip,
+    none on per-turn headers or badges. With an accessibility client
+    attached, SwiftUI walks every responder on each update
+    (`AccessibilityNode.updateFocus`), and the window walks them again for
+    drag regions.
+  Measured on a release build with a run-loop probe: opening a 66-turn,
+  25 MB synthetic rollout shaped like the 23 MB / 1 247-record one the
+  page was first profiled on (its last turns answer with tables) runs no
+  single main-thread callout much past 16 ms of CPU, against ~115–130 ms
+  before; paging, expansion, scrolling and hover stay in that range. The
+  raw transcript (the legacy `TranscriptView`) is the slowest open left.
 - **JSONL parsing must be O(n).** Go through
   `CostUsageScanner.forEachJSONLLine`, which forwards to the package's
   `JSONLLineScanner.forEachLine`: a moving cursor, not `removeSubrange`.

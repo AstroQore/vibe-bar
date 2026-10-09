@@ -129,6 +129,11 @@ public final class SessionConversationModel {
     /// final content, which can open at the bottom by its initial offset —
     /// no scroll-to-end, which on a lazy list measures every row between.
     public private(set) var contentToken = 0
+    /// Changes whenever the turn list should be built anew rather than
+    /// diffed: with `contentToken`, and on a jump out of the window, where
+    /// replacing every row of the old window one by one cost more than a
+    /// new list.
+    public private(set) var listToken = 0
     public private(set) var subagentLinks: [SessionSubagentLink] = []
     public private(set) var verdictTotals = VerdictTotals()
     public private(set) var notice: Notice?
@@ -140,8 +145,13 @@ public final class SessionConversationModel {
     /// landing on the end of a lazy list lays out every row between, so the
     /// first window is what opening a session costs.
     public let initialTurns: Int
+    /// Of those, the turns the first frame draws; the rest follow a frame
+    /// later, above them.
+    public let firstFrameTurns: Int
     public let maxSpan: Int
     public let markdown: SessionMarkdownCache
+    /// The sizes turn text is built at; the pane sets its density's.
+    @ObservationIgnored public private(set) var textStyle = SessionRichTextStyle()
     @ObservationIgnored private let source: any SessionConversationSource
 
     // MARK: Private state
@@ -152,6 +162,7 @@ public final class SessionConversationModel {
     @ObservationIgnored private var unavailableTurns: Set<Int> = []
     @ObservationIgnored private var expandedTurns: Set<Int> = []
     @ObservationIgnored private var expandedSteps: Set<String> = []
+    @ObservationIgnored private var stepLimits: [Int: Int] = [:]
     @ObservationIgnored private var verdictsByTurnID: [String: [SessionStructure.GuardianVerdict]] = [:]
     @ObservationIgnored private var showsModelPerTurn = false
     @ObservationIgnored private var isLoadingEarlier = false
@@ -171,12 +182,14 @@ public final class SessionConversationModel {
         source: any SessionConversationSource,
         pageSize: Int = 10,
         initialTurns: Int = 4,
+        firstFrameTurns: Int = 1,
         maxSpan: Int = 60,
         markdown: SessionMarkdownCache = SessionMarkdownCache()
     ) {
         self.source = source
         self.pageSize = max(1, pageSize)
         self.initialTurns = max(1, min(initialTurns, pageSize))
+        self.firstFrameTurns = max(1, firstFrameTurns)
         self.maxSpan = max(pageSize, maxSpan)
         self.markdown = markdown
         self.window = .tail(total: 0, pageSize: pageSize, maxSpan: maxSpan)
@@ -282,7 +295,10 @@ public final class SessionConversationModel {
         // in the next — two expensive frames where one suffices. Nothing
         // else of the old session survives: the masthead and contents show
         // only the new one's facts.
-        if summary == nil || !source.supports(summary!.provider) {
+        // A session the turn view cannot read shows the raw transcript over
+        // the (hidden) turn list, so its rows can wait there too: tearing them
+        // down in the click's frame only made opening the raw view slower.
+        if summary == nil {
             update(\.items, [])
         }
         update(\.progress, nil)
@@ -297,6 +313,7 @@ public final class SessionConversationModel {
         unavailableTurns = []
         expandedTurns = []
         expandedSteps = []
+        stepLimits = [:]
         verdictsByTurnID = [:]
         showsModelPerTurn = false
         isLoadingEarlier = false
@@ -334,7 +351,9 @@ public final class SessionConversationModel {
             return
         }
         guard generation == self.generation, !Task.isCancelled else { return }
-        adopt(outline)
+        let toc = await Self.contents(of: outline.outline)
+        guard generation == self.generation, !Task.isCancelled else { return }
+        adopt(outline, toc: toc)
         window = .tail(total: outlineTurns.count, pageSize: pageSize, maxSpan: maxSpan, initial: initialTurns)
         phase = .ready
         rebuildItems()
@@ -343,36 +362,88 @@ public final class SessionConversationModel {
     }
 
     /// A file within the full-parse limit is read, sliced and presented
-    /// before anything is published, and then published in one assignment:
-    /// the pane's first layout is its final one, so it opens at the end of
-    /// the conversation instead of settling there through a placeholder
-    /// pass. (The outline call above already parsed the file in full and
-    /// left it in the service's cache, so this read is a cache hit.)
+    /// before anything is published, and then published in three frames,
+    /// none of which lays out more than its share:
+    ///
+    /// 1. the masthead's facts and the contents column;
+    /// 2. the last `firstFrameTurns` turns, in a scroll view built on them
+    ///    so it opens at the end of the conversation without a
+    ///    scroll-to-end pass;
+    /// 3. the rest of the first window, a turn a frame, above them.
+    ///
+    /// (The outline call above already parsed the file in full and left it
+    /// in the service's cache, so this read is a cache hit.)
     private func loadWhole(_ summary: SessionSummary, outline: SessionStructure, generation: UInt64) async -> Bool {
         guard let full = await source.fullStructure(for: summary), full.detail == .full else { return false }
         guard generation == self.generation, !Task.isCancelled else { return true }
         let tail = SessionTurnWindow.tail(total: full.turns.count, pageSize: pageSize, maxSpan: maxSpan, initial: initialTurns)
         let turns = tail.range.map { full.turns[$0] }
-        let built = await Self.present(turns, markdown: markdown)
+        async let presented = Self.present(turns, markdown: markdown, style: textStyle)
+        let toc = await Self.contents(of: full.outline)
+        let built = await presented
         guard generation == self.generation, !Task.isCancelled else { return true }
+
         fullTurns = full.turns
-        adopt(full)
+        adopt(full, toc: toc)
         update(\.subagentLinks, Self.subagentLinks(in: full.turns))
-        update(\.window, tail)
-        presentations = built
-        for index in tail.range where built[index] == nil { unavailableTurns.insert(index) }
+        await Self.nextFrame()
+        guard generation == self.generation, !Task.isCancelled else { return true }
+
+        let first = SessionTurnWindow.tail(
+            total: full.turns.count, pageSize: pageSize, maxSpan: maxSpan,
+            initial: min(firstFrameTurns, initialTurns)
+        )
+        update(\.window, first)
+        for index in first.range {
+            if let presentation = built[index] { presentations[index] = presentation } else { unavailableTurns.insert(index) }
+        }
         update(\.phase, .ready)
         rebuildItems()
         initialScrollPending = false
         contentToken &+= 1
+        listToken &+= 1
+
+        // The rest of the first window, a turn a frame, above what is on
+        // screen. The view rests on the end of the conversation, which a
+        // scroll view keeps still while content grows above it.
+        var window = first
+        while window.range.lowerBound > tail.range.lowerBound {
+            await Self.nextFrame()
+            // Not if the reader has moved the window meanwhile (a jump from
+            // the contents, a page): the window is theirs now.
+            guard generation == self.generation, !Task.isCancelled, self.window == window else { return true }
+            window = SessionTurnWindow(
+                total: window.total,
+                lowerBound: window.range.lowerBound - 1,
+                upperBound: window.range.upperBound,
+                pageSize: pageSize,
+                maxSpan: maxSpan
+            )
+            let index = window.range.lowerBound
+            if let presentation = built[index] { presentations[index] = presentation } else { unavailableTurns.insert(index) }
+            update(\.window, window)
+            rebuildItems()
+        }
         return true
     }
 
-    private func adopt(_ structure: SessionStructure) {
+    /// The contents column's entries, measured off the main actor.
+    nonisolated static func contents(of outline: [SessionTurnOutline]) async -> [SessionConversationTOCEntry] {
+        await Task.detached(priority: .userInitiated) {
+            SessionConversationTOCEntry.measuredEntries(from: outline)
+        }.value
+    }
+
+    /// Let the run loop draw what was just published before publishing more.
+    static func nextFrame() async {
+        try? await Task.sleep(for: .milliseconds(30))
+    }
+
+    private func adopt(_ structure: SessionStructure, toc: [SessionConversationTOCEntry]? = nil) {
         update(\.stats, structure.stats)
         outlineTurns = structure.outline
-        update(\.toc, SessionConversationTOCEntry.entries(from: outlineTurns))
-        update(\.tocTotals, SessionConversationTOCEntry.totals(toc))
+        update(\.toc, toc ?? SessionConversationTOCEntry.measuredEntries(from: outlineTurns))
+        update(\.tocTotals, SessionConversationTOCEntry.totals(self.toc))
         showsModelPerTurn = Set(outlineTurns.compactMap(\.model)).count > 1
     }
 
@@ -418,7 +489,7 @@ public final class SessionConversationModel {
             }
             if let fullTurns {
                 let turns = wanted.filter { fullTurns.indices.contains($0) }.map { fullTurns[$0] }
-                let built = await Self.present(turns, markdown: markdown)
+                let built = await Self.present(turns, markdown: markdown, style: textStyle)
                 guard generation == self.generation, !Task.isCancelled else { return }
                 for (index, presentation) in built { presentations[index] = presentation }
                 for index in wanted where built[index] == nil { unavailableTurns.insert(index) }
@@ -434,7 +505,7 @@ public final class SessionConversationModel {
             let turn = await source.turn(at: index, for: summary)
             guard !Task.isCancelled, generation == self.generation else { return }
             if let turn {
-                let built = await Self.present([turn], markdown: markdown)
+                let built = await Self.present([turn], markdown: markdown, style: textStyle)
                 guard generation == self.generation else { return }
                 if let presentation = built.values.first {
                     var placed = presentation
@@ -460,14 +531,15 @@ public final class SessionConversationModel {
 
     nonisolated static func present(
         _ turns: [SessionStructure.Turn],
-        markdown: SessionMarkdownCache
+        markdown: SessionMarkdownCache,
+        style: SessionRichTextStyle
     ) async -> [Int: SessionTurnPresentation] {
         guard !turns.isEmpty else { return [:] }
         let handle = Task.detached(priority: .userInitiated) { () -> [Int: SessionTurnPresentation] in
             var out: [Int: SessionTurnPresentation] = [:]
             for turn in turns {
                 if Task.isCancelled { break }
-                out[turn.index] = SessionTurnPresentation.make(turn, markdown: markdown)
+                out[turn.index] = SessionTurnPresentation.make(turn, markdown: markdown, style: style)
             }
             return out
         }
@@ -521,6 +593,11 @@ public final class SessionConversationModel {
 
     public func loadEarlier() {
         guard phase == .ready, window.hasEarlier, !isLoadingEarlier else { return }
+        if !isWindowed, fullTurns != nil {
+            var page = window
+            grow(page.extendEarlier(), earlier: true)
+            return
+        }
         let added = window.extendEarlier()
         trimPresentations()
         isLoadingEarlier = true
@@ -534,6 +611,11 @@ public final class SessionConversationModel {
 
     public func loadLater() {
         guard phase == .ready, window.hasLater, !isLoadingLater else { return }
+        if !isWindowed, fullTurns != nil {
+            var page = window
+            grow(page.extendLater(), earlier: false)
+            return
+        }
         let added = window.extendLater()
         trimPresentations()
         isLoadingLater = true
@@ -545,18 +627,93 @@ public final class SessionConversationModel {
         }
     }
 
+    /// A page of a file held in memory: presented off the main actor while
+    /// the edge row shows it is coming, then let into the window a turn a
+    /// frame, the one next to what is on screen first — a page at once was
+    /// forty rows for one frame to lay out.
+    private func grow(_ added: Range<Int>, earlier: Bool) {
+        guard let fullTurns, !added.isEmpty else { return }
+        if earlier { isLoadingEarlier = true } else { isLoadingLater = true }
+        rebuildItems()
+        let turns = added.filter { fullTurns.indices.contains($0) }.map { fullTurns[$0] }
+        let order = earlier ? Array(added.reversed()) : Array(added)
+        let generation = self.generation
+        let previous = turnsTask
+        turnsTask = Task { [weak self] in
+            await previous?.value
+            guard let self, !Task.isCancelled, generation == self.generation else { return }
+            let built = await Self.present(turns, markdown: self.markdown, style: self.textStyle)
+            for (position, index) in order.enumerated() {
+                if position > 0 { await Self.nextFrame() }
+                guard !Task.isCancelled, generation == self.generation else { return }
+                // A jump from the contents replaced the window meanwhile:
+                // the rest of this page is no longer next to it.
+                guard index == (earlier ? self.window.range.lowerBound - 1 : self.window.range.upperBound) else { break }
+                if earlier { self.window.extendEarlier(by: 1) } else { self.window.extendLater(by: 1) }
+                if let presentation = built[index] { self.presentations[index] = presentation } else { self.unavailableTurns.insert(index) }
+                self.trimPresentations()
+                self.rebuildItems()
+            }
+            if earlier { self.isLoadingEarlier = false } else { self.isLoadingLater = false }
+            self.rebuildItems()
+        }
+    }
+
     /// Bring `turn` into the window and ask the view to scroll to it.
     public func reveal(turn: Int) {
         guard phase == .ready, outlineTurns.indices.contains(turn) else { return }
         if !window.contains(turn) {
-            let added = window.reveal(turn)
-            trimPresentations()
-            rebuildItems()
-            enqueueTurns(added)
+            if !isWindowed, let fullTurns {
+                jump(to: turn, in: fullTurns)
+            } else {
+                let added = window.reveal(turn)
+                trimPresentations()
+                rebuildItems()
+                enqueueTurns(added)
+            }
         }
         initialScrollPending = false
         currentTurn = turn
         requestScroll(to: SessionConversationItem.headerID(turn), anchor: .top)
+    }
+
+    /// A jump out of the window of a file held in memory. The window starts
+    /// over at the turn — drawn first, at the top — and the page under it
+    /// joins a turn a frame; the turns before it page in as the reader
+    /// scrolls up. A whole page replaced in one frame was the slowest thing
+    /// the contents column could ask for.
+    private func jump(to turn: Int, in fullTurns: [SessionStructure.Turn]) {
+        let upper = min(outlineTurns.count, turn + pageSize)
+        window = SessionTurnWindow(total: outlineTurns.count, lowerBound: turn, upperBound: turn + 1, pageSize: pageSize, maxSpan: maxSpan)
+        trimPresentations()
+        isLoadingEarlier = false
+        isLoadingLater = upper > turn + 1
+        rebuildItems()
+        listToken &+= 1
+        let turns = (turn..<upper).filter { fullTurns.indices.contains($0) }.map { fullTurns[$0] }
+        let generation = self.generation
+        let previous = turnsTask
+        turnsTask = Task { [weak self] in
+            await previous?.value
+            guard let self, !Task.isCancelled, generation == self.generation else { return }
+            let built = await Self.present(turns, markdown: self.markdown, style: self.textStyle)
+            for index in turn..<upper {
+                if index > turn { await Self.nextFrame() }
+                guard !Task.isCancelled, generation == self.generation else { return }
+                if index > turn {
+                    // Another jump or a page moved the window meanwhile.
+                    guard index == self.window.range.upperBound else { break }
+                    self.window.extendLater(by: 1)
+                } else if !self.window.contains(index) {
+                    break
+                }
+                if let presentation = built[index] { self.presentations[index] = presentation } else { self.unavailableTurns.insert(index) }
+                self.trimPresentations()
+                self.rebuildItems()
+            }
+            self.isLoadingLater = false
+            self.rebuildItems()
+        }
     }
 
     /// Back to the end of the conversation.
@@ -575,17 +732,46 @@ public final class SessionConversationModel {
 
     // MARK: - Expansion
 
+    /// Steps an opening process lists in its first frame; the rest follow
+    /// in the next, so opening one never lays out a screenful of rows at
+    /// once.
+    public static let firstFrameSteps = 6
+
     public func toggleProcess(turn: Int) {
         let opening = expandedTurns.remove(turn) == nil
         if opening { expandedTurns.insert(turn) }
+        let staged = opening && (presentations[turn]?.steps.count ?? 0) > Self.firstFrameSteps
+        if staged { stepLimits[turn] = Self.firstFrameSteps } else { stepLimits[turn] = nil }
         rebuildItems()
         // Opening a process brings its row to the top with the steps under
         // it. Left alone, a view resting at the end of the conversation
         // keeps its bottom still and pushes the row it just opened upward.
         if opening { requestScroll(to: "x\(turn)", anchor: .top) }
+        guard staged else { return }
+        let generation = self.generation
+        Task { [weak self] in
+            await Self.nextFrame()
+            guard let self, generation == self.generation, self.stepLimits[turn] != nil else { return }
+            self.stepLimits[turn] = nil
+            self.rebuildItems()
+        }
     }
 
     public func isProcessExpanded(turn: Int) -> Bool { expandedTurns.contains(turn) }
+
+    // MARK: - Text style
+
+    /// Build turn text at `style` from now on. The turns already presented
+    /// are built again at it (a density change; the first call, made before
+    /// anything opens, costs nothing).
+    public func setTextStyle(_ style: SessionRichTextStyle) {
+        guard style != textStyle else { return }
+        textStyle = style
+        guard phase == .ready, !presentations.isEmpty else { return }
+        presentations = [:]
+        rebuildItems()
+        enqueueTurns(window.range)
+    }
 
     public func toggleStep(turn: Int, position: Int) {
         let key = SessionConversationLayout.stepKey(turn: turn, position: position)
@@ -596,6 +782,7 @@ public final class SessionConversationModel {
     /// Expand or collapse every loaded turn's process at once.
     public func setAllProcesses(expanded: Bool) {
         expandedTurns = expanded ? Set(presentations.keys) : []
+        stepLimits = [:]
         rebuildItems()
     }
 
@@ -629,6 +816,7 @@ public final class SessionConversationModel {
             presentations: presentations,
             expandedTurns: expandedTurns,
             expandedSteps: expandedSteps,
+            stepLimits: stepLimits,
             verdictsByTurnID: verdictsByTurnID,
             showsModelPerTurn: showsModelPerTurn,
             isLoadingEarlier: isLoadingEarlier,

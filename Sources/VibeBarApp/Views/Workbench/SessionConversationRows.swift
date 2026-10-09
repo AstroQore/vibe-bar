@@ -124,7 +124,6 @@ private struct SessionTurnHeaderRow: View {
                 Text(L10n.Workbench.Sessions.Turn.injected(count: header.injectedCount))
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
-                    .help(L10n.Workbench.Sessions.Turn.injectedHelp)
             }
             if header.additionalHumanMessages > 0 {
                 Text(L10n.Workbench.Sessions.Turn.followUps(count: header.additionalHumanMessages))
@@ -151,9 +150,19 @@ private struct SessionTurnHeaderRow: View {
         .padding(.top, header.ordinal == 1 ? 6 : 22)
         .padding(.bottom, 6)
         .opacity(header.status == .abandoned ? 0.55 : 1)
+        // Tooltips only where they explain something rare (an abandoned
+        // turn): each one is a responder, and a header is drawn per turn.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.Workbench.Sessions.Turn.ordinal(number: AppLocale.number(header.ordinal)))
+        .accessibilityHint(accessibilityHint)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    private var accessibilityHint: String {
+        var parts: [String] = []
+        if header.injectedCount > 0 { parts.append(L10n.Workbench.Sessions.Turn.injectedHelp) }
+        if !header.verdicts.isEmpty { parts.append(L10n.Workbench.Sessions.Verdict.help) }
+        return parts.joined(separator: " ")
     }
 
     private var statusLabel: (text: String, color: Color, help: String?)? {
@@ -190,7 +199,6 @@ private struct SessionVerdictBadge: View {
         .padding(.horizontal, 5)
         .frame(minHeight: 15)
         .background(Capsule().fill(color.opacity(0.12)))
-        .help(L10n.Workbench.Sessions.Verdict.help)
     }
 }
 
@@ -205,47 +213,29 @@ private struct SessionPromptRow: View {
     let accent: Color
     let copy: (String, String) -> Void
 
-    @State private var isHovering = false
     @State private var isUnfolded = false
 
     var body: some View {
         if prompt.origin == .human {
             // A trailing frame, not an `HStack` with a spacer: the stack would
             // measure the bubble's text at several widths to settle the
-            // spacer, which on a long prompt is most of the turn's layout.
-            content
+            // spacer.
+            content(hugging: true)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(accent.opacity(0.13))
                 )
-                .overlay(alignment: .topLeading) {
-                    // Only while hovered: a hidden button is still a focus
-                    // responder the accessibility engine visits on every
-                    // update, two per turn.
-                    if isHovering { copyButton.offset(x: -28) }
-                }
                 .padding(.leading, 56)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .onHover { isHovering = $0 }
-            // One element with the prompt as its label: an accessibility
-            // client walking the column would otherwise resolve every run
-            // of every Markdown block on each update.
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(prompt.document?.source ?? prompt.preview ?? "")
-            .accessibilityAction(named: L10n.Workbench.Sessions.Turn.copyPrompt) {
-                if let text = prompt.document?.source ?? prompt.preview {
-                    copy(text, L10n.Workbench.Sessions.Turn.promptCopied)
-                }
-            }
         } else {
             VStack(alignment: .leading, spacing: 5) {
                 Label(originLabel, systemImage: originSymbol)
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(.secondary)
-                if prompt.document != nil || prompt.preview != nil {
-                    content
+                if prompt.text != nil || prompt.preview != nil {
+                    content(hugging: false)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -259,21 +249,19 @@ private struct SessionPromptRow: View {
     }
 
     @ViewBuilder
-    private var content: some View {
-        if let document = prompt.document, prompt.isLong, !isUnfolded {
-            // Folded: the source as plain text, cut at a few lines — laying
-            // out a pasted log in full is the costliest thing a turn draws.
-            VStack(alignment: .leading, spacing: 5) {
-                Text(document.source)
-                    .font(.system(size: density.subtitleFontSize + 0.5))
-                    .lineLimit(8)
-                foldButton(count: document.source.count)
-            }
-        } else if let document = prompt.document {
-            VStack(alignment: .leading, spacing: 5) {
-                SessionMarkdownView(document: document, fontSize: density.subtitleFontSize + 0.5)
-                    .equatable()
-                if prompt.isLong { foldButton(count: document.source.count) }
+    private func content(hugging: Bool) -> some View {
+        if let text = prompt.text {
+            // Folded, a long prompt shows its first lines: a pasted log is a
+            // page the reader usually came to skip.
+            let folded = prompt.isLong && !isUnfolded
+            VStack(alignment: .trailing, spacing: 5) {
+                SessionRichTextView(
+                    text: text,
+                    hugsWidth: hugging,
+                    maximumLines: folded ? 8 : 0,
+                    copyTitle: L10n.Workbench.Sessions.Turn.copyPrompt
+                ) { copy($0, L10n.Workbench.Sessions.Turn.promptCopied) }
+                if prompt.isLong { foldButton(count: text.source.count) }
             }
         } else if let preview = prompt.preview {
             Text(preview)
@@ -291,22 +279,6 @@ private struct SessionPromptRow: View {
         .buttonStyle(.vibeBar)
         .font(.system(size: max(9, density.resetCountdownFontSize), weight: .semibold))
         .foregroundStyle(accent)
-    }
-
-    private var copyButton: some View {
-        Button {
-            if let text = prompt.document?.source ?? prompt.preview {
-                copy(text, L10n.Workbench.Sessions.Turn.promptCopied)
-            }
-        } label: {
-            Image(systemName: "doc.on.doc")
-                .font(.system(size: 10.5, weight: .semibold))
-                .frame(width: 22, height: 22)
-        }
-        .buttonStyle(.vibeBar)
-        .foregroundStyle(.tertiary)
-        .help(L10n.Workbench.Sessions.Turn.copyPrompt)
-        .accessibilityLabel(L10n.Workbench.Sessions.Turn.copyPrompt)
     }
 
     private var originLabel: String {
@@ -380,7 +352,7 @@ private struct SessionProcessRow: View {
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { toggle() }
-        .help(process.isExpanded ? L10n.Workbench.Sessions.Turn.hideSteps : L10n.Workbench.Sessions.Turn.showSteps)
+        .accessibilityHint(process.isExpanded ? L10n.Workbench.Sessions.Turn.hideSteps : L10n.Workbench.Sessions.Turn.showSteps)
         .accessibilityValue(process.isExpanded
             ? L10n.Workbench.Sessions.Details.expanded
             : L10n.Workbench.Sessions.Details.collapsed)
@@ -458,7 +430,7 @@ private struct SessionStepRowView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 10))
                 .frame(width: 16)
-            Text(text)
+            Text(verbatim: text)
                 .lineLimit(1)
         }
         .font(.system(size: 11))
@@ -467,42 +439,32 @@ private struct SessionStepRowView: View {
         .frame(minHeight: 22, alignment: .leading)
     }
 
+    /// Two marks and one text — the name and arguments are runs of one
+    /// attributed string — and the duration: a process opens a screenful
+    /// of these at once, and a stack of separate texts and shapes per row
+    /// was most of what that cost.
     private var actionLine: some View {
         Button(action: toggle) {
             HStack(spacing: 7) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 6, height: 6)
-                    .overlay(Circle().stroke(Color.secondary.opacity(0.5), lineWidth: value.pairing == .pending ? 0.8 : 0))
+                Image(systemName: value.pairing == .pending ? "circle" : "circle.fill")
+                    .font(.system(size: 6.5))
+                    .foregroundStyle(value.pairing == .pending ? Color.secondary.opacity(0.6) : statusColor)
                 Image(systemName: symbol)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(width: 16)
-                Text(value.name)
-                    .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundStyle(.primary.opacity(0.85))
+                Text(summaryText)
                     .lineLimit(1)
-                    .fixedSize()
-                if let args = value.argsSummary {
-                    Text(args)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+                    .truncationMode(.tail)
                 Spacer(minLength: 6)
                 if let duration = value.durationMs {
-                    Text(SessionDurationText.step(milliseconds: duration))
+                    Text(verbatim: SessionDurationText.step(milliseconds: duration))
                         .font(.system(size: 10.5).monospacedDigit())
                         .foregroundStyle(.tertiary)
                         .fixedSize()
                 }
-                // No hover state: a turn can list a hundred steps, and each
-                // hover region is one more responder for the accessibility
-                // engine to walk on every update.
-                Image(systemName: "chevron.right")
+                Image(systemName: step.isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 8.5, weight: .bold))
-                    .rotationEffect(.degrees(step.isExpanded ? 90 : 0))
                     .foregroundStyle(.quaternary)
             }
             .padding(.horizontal, 8)
@@ -515,6 +477,17 @@ private struct SessionStepRowView: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { toggle() }
         .accessibilityValue(value.isError ? L10n.Workbench.Sessions.Step.failed : L10n.Workbench.Sessions.Step.succeeded)
+    }
+
+    private var summaryText: AttributedString {
+        var name = AttributedString(value.name)
+        name.font = .system(size: 11.5, weight: .semibold)
+        name.foregroundColor = Color.primary.opacity(0.85)
+        guard let args = value.argsSummary else { return name }
+        var rest = AttributedString("  " + args)
+        rest.font = .system(size: 11, design: .monospaced)
+        rest.foregroundColor = .secondary
+        return name + rest
     }
 
     @ViewBuilder
@@ -608,34 +581,19 @@ private struct SessionAnswerRow: View {
     let density: Theme.Density
     let copy: (String, String) -> Void
 
-    @State private var isHovering = false
-
     var body: some View {
-        SessionMarkdownView(document: answer.document, fontSize: density.subtitleFontSize + 1)
-            .equatable()
-            .padding(.trailing, 28)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .topTrailing) {
-                if isHovering {
-                    Button {
-                        copy(answer.document.source, L10n.Workbench.Sessions.Turn.answerCopied)
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10.5, weight: .semibold))
-                            .frame(width: 22, height: 22)
-                    }
-                    .buttonStyle(.vibeBar)
-                    .foregroundStyle(.tertiary)
-                    .help(L10n.Workbench.Sessions.Turn.copyAnswer)
-                    .accessibilityLabel(L10n.Workbench.Sessions.Turn.copyAnswer)
+        Group {
+            if let text = answer.text {
+                SessionRichTextView(text: text, copyTitle: L10n.Workbench.Sessions.Turn.copyAnswer) {
+                    copy($0, L10n.Workbench.Sessions.Turn.answerCopied)
                 }
+            } else {
+                Text(answer.document.source)
+                    .font(.system(size: density.subtitleFontSize + 1))
             }
-        .onHover { isHovering = $0 }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(answer.document.source)
-        .accessibilityAction(named: L10n.Workbench.Sessions.Turn.copyAnswer) {
-            copy(answer.document.source, L10n.Workbench.Sessions.Turn.answerCopied)
         }
+        .padding(.trailing, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -672,121 +630,5 @@ private struct SessionPendingRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.03))
         )
-    }
-}
-
-// MARK: - Markdown
-
-/// A parsed Markdown document, drawn block by block. The parse happened off
-/// the main actor (`SessionMarkdownCache`); this only lays out what it got.
-struct SessionMarkdownView: View, Equatable {
-    let document: SessionMarkdownDocument
-    let fontSize: CGFloat
-    var selectable = false
-
-    var body: some View {
-        let content = VStack(alignment: .leading, spacing: 8) {
-            ForEach(document.segments.indices, id: \.self) { index in
-                segment(document.segments[index])
-            }
-        }
-        // The column is a lazy list of these; text selection on all of them
-        // measured at a third of the cost of opening a conversation, so it
-        // is opt-in per view (the copy buttons cover the common case).
-        if selectable {
-            content.textSelection(.enabled)
-        } else {
-            content
-        }
-    }
-
-    /// One text per run of prose (`SessionMarkdownDocument.segments`): no
-    /// stacks of per-paragraph texts for the layout to measure and re-measure.
-    @ViewBuilder
-    private func segment(_ segment: SessionMarkdownDocument.Segment) -> some View {
-        switch segment {
-        case let .heading(level, text):
-            Text(text)
-                .font(.system(size: fontSize + headingBump(level), weight: level <= 2 ? .bold : .semibold))
-                .padding(.top, level <= 2 ? 4 : 2)
-        case let .prose(text):
-            Text(text)
-                .font(.system(size: fontSize))
-                .lineSpacing(2.5)
-        case let .code(language, text):
-            codeBlock(language: language, text: text)
-        case let .table(header, rows):
-            tableBlock(header: header, rows: rows)
-        case .rule:
-            Divider().padding(.vertical, 2)
-        }
-    }
-
-    /// Code wraps rather than scrolling sideways: a horizontal scroll view
-    /// in a lazy list is measured for its content's ideal width on every
-    /// layout pass, which for a long block is a full text layout each time.
-    private func codeBlock(language: String?, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let language {
-                Text(language)
-                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-            }
-            Text(text)
-                .font(.system(size: fontSize - 1.5, design: .monospaced))
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: Theme.Card.hairlineWidth)
-        )
-    }
-
-    /// A pipe table as a grid whose cells wrap, for the same reason code
-    /// does.
-    private func tableBlock(header: [AttributedString], rows: [[AttributedString]]) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 5) {
-            GridRow {
-                ForEach(header.indices, id: \.self) { column in
-                    Text(header[column])
-                        .font(.system(size: fontSize - 0.5, weight: .semibold))
-                }
-            }
-            Divider().gridCellUnsizedAxes(.horizontal)
-            ForEach(rows.indices, id: \.self) { row in
-                GridRow {
-                    ForEach(rows[row].indices, id: \.self) { column in
-                        Text(rows[row][column])
-                            .font(.system(size: fontSize - 0.5))
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: Theme.Card.hairlineWidth)
-        )
-    }
-
-    private func headingBump(_ level: Int) -> CGFloat {
-        switch level {
-        case 1: 5
-        case 2: 3
-        case 3: 1.5
-        default: 0.5
-        }
     }
 }

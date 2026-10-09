@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import VibeBarCore
 
@@ -18,9 +19,10 @@ final class SessionConversationModelTests: XCTestCase {
         private var _turnReads: [Int] = []
         private var _fullReads = 0
 
-        init(turns: Int, size: Int64 = 500) {
+        init(turns: Int, size: Int64 = 500, extraSteps: Int = 0) {
             var built: [SessionStructure.Turn] = []
             for index in 0..<turns {
+                let extra = (0..<extraSteps).map { SessionStructure.Step(kind: .command, name: "command", argsSummary: "ls \($0)") }
                 built.append(SessionStructure.Turn(
                     index: index,
                     turnID: "t\(index)",
@@ -29,8 +31,8 @@ final class SessionConversationModelTests: XCTestCase {
                     steps: [
                         SessionStructure.Step(kind: .command, name: "command", argsSummary: "echo \(index)"),
                         SessionStructure.Step(kind: .subagent, name: "spawn_agent", argsSummary: "Task \(index)", childSessionID: "child-\(index)"),
-                    ],
-                    counts: SessionStructure.TurnCounts(steps: 2, commands: 1, subagents: 1),
+                    ] + extra,
+                    counts: SessionStructure.TurnCounts(steps: 2 + extraSteps, commands: 1 + extraSteps, subagents: 1),
                     // Every third answer repeats, so the cache has something to hit.
                     finalAnswer: "Answer **\(index % 3)**",
                     model: "gpt-5"
@@ -170,6 +172,114 @@ final class SessionConversationModelTests: XCTestCase {
 
         model.noteVisible(["x2", "a1", "h1"])
         XCTAssertEqual(model.currentTurn, 1)
+    }
+
+    func testTheFirstTurnsArriveOneFrameAtATime() async throws {
+        let source = FakeSource(turns: 12)
+        let model = SessionConversationModel(source: source, pageSize: 10, initialTurns: 4, firstFrameTurns: 1)
+        model.open(summary())
+        // The masthead and the contents come first, the conversation still
+        // covered by its loading state.
+        try await settle(model) { !model.toc.isEmpty }
+        XCTAssertEqual(model.toc.count, 12)
+        XCTAssertNotNil(model.stats)
+        // Then the newest turn alone, in a scroll view built on it...
+        try await settle(model) { model.phase == .ready }
+        XCTAssertEqual(model.window.range, 11..<12)
+        XCTAssertEqual(model.contentToken, 1)
+        // ...and the rest of the first window above it, a turn a frame.
+        var seen: Set<Int> = [model.window.count]
+        try await settle(model) {
+            seen.insert(model.window.count)
+            return model.window.count == 4
+        }
+        XCTAssertEqual(model.window.range, 8..<12)
+        XCTAssertEqual(model.loadedTurnIndices, [8, 9, 10, 11])
+        XCTAssertTrue(seen.isSubset(of: [1, 2, 3, 4]))
+        XCTAssertEqual(model.contentToken, 1, "growing the window keeps the scroll view")
+        XCTAssertNil(model.scrollRequest, "the view stays on the end without being asked")
+    }
+
+    func testAPageArrivesATurnAtATimeNearestFirst() async throws {
+        let source = FakeSource(turns: 20)
+        let model = SessionConversationModel(source: source, pageSize: 5, initialTurns: 2, firstFrameTurns: 2)
+        model.open(summary())
+        try await settle(model) { model.loadedTurnIndices == [18, 19] }
+        model.loadEarlier()
+        XCTAssertTrue(model.items.first.map { if case let .earlier(edge) = $0 { edge.isLoading } else { false } } ?? false,
+                      "the edge row says a page is coming")
+        var lowerBounds: [Int] = []
+        try await settle(model) {
+            if lowerBounds.last != model.window.range.lowerBound { lowerBounds.append(model.window.range.lowerBound) }
+            return model.window.range == 13..<20 && !model.items.contains(where: Self.isLoadingEdge)
+        }
+        XCTAssertEqual(lowerBounds.first, 18)
+        XCTAssertEqual(lowerBounds, lowerBounds.sorted(by: >), "turns join next to what is on screen first")
+        XCTAssertEqual(model.loadedTurnIndices, Array(13..<20))
+        XCTAssertFalse(model.items.contains { if case .pending = $0 { true } else { false } }, "no placeholders for a file held in memory")
+    }
+
+    func testAJumpStartsAtItsTurnAndFillsTheTurnsUnderIt() async throws {
+        let source = FakeSource(turns: 30)
+        let model = SessionConversationModel(source: source, pageSize: 6, initialTurns: 2)
+        model.open(summary())
+        try await settle(model) { model.loadedTurnIndices == [28, 29] }
+        let tokens = (content: model.contentToken, list: model.listToken)
+        model.reveal(turn: 5)
+        XCTAssertEqual(model.window.range, 5..<6, "the turn alone first")
+        XCTAssertEqual(model.listToken, tokens.list + 1, "a new list rather than every old row replaced")
+        XCTAssertEqual(model.contentToken, tokens.content, "the same session: the contents column stays put")
+        XCTAssertEqual(model.currentTurn, 5)
+        XCTAssertEqual(model.scrollRequest?.itemID, "h5")
+        XCTAssertEqual(model.scrollRequest?.anchor, .top)
+        try await settle(model) { model.window.range == 5..<11 && !model.items.contains(where: Self.isLoadingLaterEdge) }
+        XCTAssertEqual(model.loadedTurnIndices, Array(5..<11))
+        XCTAssertEqual(source.fullReads, 1)
+    }
+
+    private static func isLoadingLaterEdge(_ item: SessionConversationItem) -> Bool {
+        if case let .later(edge) = item { return edge.isLoading }
+        return false
+    }
+
+    private static func isLoadingEdge(_ item: SessionConversationItem) -> Bool {
+        if case let .earlier(edge) = item { return edge.isLoading }
+        return false
+    }
+
+    func testAnOpeningProcessListsItsFirstStepsFirst() async throws {
+        let source = FakeSource(turns: 2, extraSteps: 10)
+        let model = SessionConversationModel(source: source)
+        model.open(summary())
+        try await settle(model) { model.loadedTurnIndices.count == 2 }
+        model.toggleProcess(turn: 1)
+        XCTAssertEqual(model.items.filter { $0.id.hasPrefix("s1.") }.count, SessionConversationModel.firstFrameSteps)
+        try await settle(model) { model.items.filter { $0.id.hasPrefix("s1.") }.count == 12 }
+        model.toggleProcess(turn: 1)
+        XCTAssertFalse(model.items.contains { $0.id.hasPrefix("s1.") })
+        // Expand all lists every step at once.
+        model.setAllProcesses(expanded: true)
+        XCTAssertEqual(model.items.filter { $0.id.hasPrefix("s1.") }.count, 12)
+    }
+
+    func testTurnTextIsBuiltAtThePanesSizes() async throws {
+        let source = FakeSource(turns: 2)
+        let model = SessionConversationModel(source: source)
+        model.setTextStyle(SessionRichTextStyle(promptSize: 12, answerSize: 15))
+        model.open(summary())
+        try await settle(model) { model.loadedTurnIndices.count == 2 }
+        func answerSize() -> CGFloat? {
+            for item in model.items {
+                if case let .answer(answer) = item, let text = answer.text {
+                    return (text.attributed.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize
+                }
+            }
+            return nil
+        }
+        XCTAssertEqual(answerSize(), 15)
+        model.setTextStyle(SessionRichTextStyle(promptSize: 12, answerSize: 17))
+        try await settle(model) { answerSize() == 17 }
+        XCTAssertEqual(model.loadedTurnIndices, [0, 1])
     }
 
     func testUnsupportedProvidersAndChildNavigation() async throws {

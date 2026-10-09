@@ -144,7 +144,9 @@ only where content needs a surface — code, tables, a step's detail. The
 person's prompt is the one tinted bubble (the provider accent at 13 %),
 on the right; everything the agent did is quiet and on the left, and the
 single primary action is the resume button in the masthead, in the
-provider accent. `SessionPageLayout` decides the column widths: the
+provider accent. A prompt or an answer is one selectable text, with its
+code blocks and tables set in it as rounded hairline cards.
+`SessionPageLayout` decides the column widths: the
 contents column shows before the harness column gets its labels back, and
 below 1 104 pt the contents open as a popover from the toolbar.
 

@@ -362,6 +362,13 @@ public final class SessionMarkdownCache: Sendable {
         var documents: [String: SessionMarkdownDocument] = [:]
         var order: [String] = []
         var counters = Counters()
+        var texts: [RichKey: SessionRichText] = [:]
+        var textOrder: [RichKey] = []
+    }
+
+    private struct RichKey: Hashable {
+        var text: String
+        var size: CGFloat
     }
 
     public let capacity: Int
@@ -373,9 +380,15 @@ public final class SessionMarkdownCache: Sendable {
 
     /// The document for `text`, parsed on a miss.
     public func document(for text: String) -> SessionMarkdownDocument {
+        document(for: text, counted: true)
+    }
+
+    /// `counted: false` is the rich-text path asking for the document it
+    /// builds from — not a second request for the same Markdown.
+    private func document(for text: String, counted: Bool) -> SessionMarkdownDocument {
         if let hit = state.withLock({ state -> SessionMarkdownDocument? in
             guard let found = state.documents[text] else { return nil }
-            state.counters.hits += 1
+            if counted { state.counters.hits += 1 }
             if let position = state.order.lastIndex(of: text), position != state.order.count - 1 {
                 state.order.remove(at: position)
                 state.order.append(text)
@@ -390,7 +403,7 @@ public final class SessionMarkdownCache: Sendable {
         let parsed = SessionMarkdown.document(from: text)
         let capacity = self.capacity
         state.withLock { state in
-            state.counters.misses += 1
+            if counted { state.counters.misses += 1 }
             if state.documents.updateValue(parsed, forKey: text) == nil {
                 state.order.append(text)
             }
@@ -400,6 +413,36 @@ public final class SessionMarkdownCache: Sendable {
             }
         }
         return parsed
+    }
+
+    /// `text` as one attributed string at `size` (`SessionRichText`), built
+    /// on a miss from the cached document. Called off the main actor.
+    public func richText(for text: String, size: CGFloat) -> SessionRichText {
+        let key = RichKey(text: text, size: size)
+        if let hit = state.withLock({ state -> SessionRichText? in
+            guard let found = state.texts[key] else { return nil }
+            if let position = state.textOrder.lastIndex(of: key), position != state.textOrder.count - 1 {
+                state.textOrder.remove(at: position)
+                state.textOrder.append(key)
+            }
+            return found
+        }) {
+            return hit
+        }
+        let built = SessionRichText.make(document(for: text, counted: false), fontSize: size)
+        let capacity = self.capacity
+        return state.withLock { state in
+            // A racing builder may have stored one first; keep that one so
+            // every caller holds the same string.
+            if let stored = state.texts[key] { return stored }
+            state.texts[key] = built
+            state.textOrder.append(key)
+            while state.textOrder.count > capacity {
+                let evicted = state.textOrder.removeFirst()
+                state.texts.removeValue(forKey: evicted)
+            }
+            return built
+        }
     }
 
     public var counters: Counters { state.withLock { $0.counters } }

@@ -295,6 +295,10 @@ struct SessionRow: View, Equatable {
             .contentShape(Rectangle())
         }
         .buttonStyle(.vibeBar)
+        // One tooltip for the row's facts rather than one per chip: every
+        // tooltip is a responder the window walks on each update, and a
+        // list of rows with five each was a walk of a hundred.
+        .help(helpText)
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
         // One label for the row, built here, instead of `.combine` over a
@@ -330,6 +334,22 @@ struct SessionRow: View, Equatable {
         }
         if row.threadCount > 0 { parts.append(L10n.Workbench.Sessions.List.threadCount(count: row.threadCount)) }
         return parts.joined(separator: ", ")
+    }
+
+    private var helpText: String {
+        var lines: [String] = []
+        if let model = summary.model ?? modelLabel { lines.append(model) }
+        if !isThread, let project = summary.projectDir { lines.append(project) }
+        if let tokens = row.listing?.displayTokens {
+            lines.append(L10n.Workbench.Sessions.List.tokensHelp(tokens: UsageFormatting.compactTokens(Int64(tokens))))
+        }
+        if let cost = row.listing?.stats.estimatedCostUSD, cost > 0 {
+            lines.append(L10n.Workbench.Sessions.List.costHelp(cost: UsageFormatting.compactUSD(Int64((cost * 1_000_000).rounded()))))
+        }
+        if row.row.reviewCount > 0 {
+            lines.append(L10n.Workbench.Sessions.Row.autoReviewsMerged(count: row.row.reviewCount))
+        }
+        return lines.joined(separator: "\n")
     }
 
     private var rowFill: Color {
@@ -397,14 +417,12 @@ struct SessionRow: View, Equatable {
                     .padding(.horizontal, 5)
                     .frame(minHeight: 15)
                     .background(Capsule().fill(Color.primary.opacity(0.07)))
-                    .help(summary.model ?? modelLabel)
                     .layoutPriority(-1)
             }
             if summary.projectDir != nil, !isThread {
                 Label(SessionManagerModel.projectTitle(for: summary), systemImage: "folder")
                     .labelStyle(.titleAndIcon)
                     .lineLimit(1)
-                    .help(summary.projectDir ?? "")
                     .layoutPriority(-2)
             }
             if let tokens = row.listing?.displayTokens {
@@ -413,7 +431,6 @@ struct SessionRow: View, Equatable {
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize()
-                    .help(L10n.Workbench.Sessions.List.tokensHelp(tokens: figure))
             }
             if let cost = row.listing?.stats.estimatedCostUSD, cost > 0 {
                 let figure = UsageFormatting.compactUSD(Int64((cost * 1_000_000).rounded()))
@@ -421,14 +438,12 @@ struct SessionRow: View, Equatable {
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize()
-                    .help(L10n.Workbench.Sessions.List.costHelp(cost: figure))
             }
             Spacer(minLength: 0)
             if row.row.reviewCount > 0 {
                 Label(AppLocale.number(row.row.reviewCount), systemImage: "checkmark.bubble")
                     .labelStyle(.titleAndIcon)
                     .fixedSize()
-                    .help(L10n.Workbench.Sessions.Row.autoReviewsMerged(count: row.row.reviewCount))
             }
             if row.threadCount > 0 {
                 threadCapsule
@@ -456,9 +471,6 @@ struct SessionRow: View, Equatable {
         }
         .buttonStyle(.vibeBar)
         .fixedSize()
-        .help(row.isExpanded
-            ? L10n.Workbench.Sessions.List.collapseThreads
-            : L10n.Workbench.Sessions.List.expandThreads)
     }
 
     private static var relative: RelativeDateTimeFormatter {
