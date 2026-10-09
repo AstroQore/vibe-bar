@@ -3,7 +3,8 @@ import SwiftUI
 import VibeBarCore
 
 /// A prompt or an answer: one read-only, selectable text view over the
-/// `SessionRichText` the model built off the main actor.
+/// attributed string the model had `SessionRichTextBuilder` build off the
+/// main actor (carried as a `SessionRenderedText`).
 ///
 /// One platform view per document replaces a SwiftUI text per run of prose
 /// and a grid cell per table cell. Opening a conversation used to build and
@@ -11,7 +12,7 @@ import VibeBarCore
 /// width and keeps the result. The text is selectable, a right click offers
 /// "copy all", and accessibility sees one text element.
 struct SessionRichTextView: NSViewRepresentable {
-    let text: SessionRichText
+    let text: SessionRenderedText
     /// Report the width the text uses (a bubble) instead of the width
     /// offered (a column).
     var hugsWidth = false
@@ -25,8 +26,12 @@ struct SessionRichTextView: NSViewRepresentable {
         SessionTextView()
     }
 
+    private var attributed: NSAttributedString {
+        text.object as? NSAttributedString ?? NSAttributedString(string: text.source)
+    }
+
     func updateNSView(_ view: SessionTextView, context: Context) {
-        view.show(text.attributed, maximumLines: maximumLines)
+        view.show(attributed, maximumLines: maximumLines)
         view.copyTitle = copyTitle
         let source = text.source
         let copy = self.copy
@@ -34,7 +39,7 @@ struct SessionRichTextView: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: SessionTextView, context: Context) -> CGSize? {
-        view.show(text.attributed, maximumLines: maximumLines)
+        view.show(attributed, maximumLines: maximumLines)
         let offered = proposal.width ?? .infinity
         // A probe for the ideal width (nil or infinite) gets the unwrapped
         // width, capped; a probe for the minimum (zero) the same as a

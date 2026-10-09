@@ -17,10 +17,10 @@ public struct SessionConversationTOCEntry: Sendable, Hashable, Identifiable {
     /// Human prompts the turn contributes to `SessionStats.promptCount`.
     public var humanPrompts: Int
     public var status: SessionStructure.TurnStatus
-    /// The preview's width on one line in the contents column's font
-    /// (`previewFont`), measured off the main actor with the entries
-    /// (`measuredEntries`); the column sizes its rows from it. 0 when not
-    /// measured.
+    /// The preview's width on one line in the contents column's font,
+    /// measured off the main actor with the entries (`measuredEntries`, by
+    /// the pane's `SessionConversationRendering`); the column sizes its rows
+    /// from it. 0 when not measured.
     public var previewWidth: Double = 0
 
     public var id: Int { turnIndex }
@@ -94,10 +94,10 @@ public struct SessionTurnPresentation: Sendable, Hashable {
     public var isPromptLong = false
     public var steps: [SessionStepRow]
     public var answer: SessionMarkdownDocument?
-    /// `prompt` and `answer` as the text the pane draws, at the model's
-    /// `SessionRichTextStyle`.
-    public var promptText: SessionRichText?
-    public var answerText: SessionRichText?
+    /// `prompt` and `answer` as the pane draws them, at the model's
+    /// `SessionRichTextStyle`; nil without a renderer.
+    public var promptText: SessionRenderedText?
+    public var answerText: SessionRenderedText?
 
     /// Notes the parser records only as markers, with nothing to read in
     /// them, are not listed: a Codex rollout has one `commentary` note per
@@ -107,7 +107,8 @@ public struct SessionTurnPresentation: Sendable, Hashable {
     public static func make(
         _ turn: SessionStructure.Turn,
         markdown: SessionMarkdownCache,
-        style: SessionRichTextStyle = SessionRichTextStyle()
+        style: SessionRichTextStyle = SessionRichTextStyle(),
+        render: (@Sendable (SessionMarkdownDocument, CGFloat) -> AnyObject)? = nil
     ) -> SessionTurnPresentation {
         let promptText = turn.prompt.text?.trimmingCharacters(in: .whitespacesAndNewlines)
         let answerText = turn.finalAnswer?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -128,8 +129,8 @@ public struct SessionTurnPresentation: Sendable, Hashable {
             isPromptLong: isLong,
             steps: rows,
             answer: answer.map { markdown.document(for: $0) },
-            promptText: prompt.map { markdown.richText(for: $0, size: style.promptSize) },
-            answerText: answer.map { markdown.richText(for: $0, size: style.answerSize) }
+            promptText: render.flatMap { render in prompt.map { markdown.rendered(for: $0, size: style.promptSize, render: render) } },
+            answerText: render.flatMap { render in answer.map { markdown.rendered(for: $0, size: style.answerSize, render: render) } }
         )
     }
 }
@@ -160,7 +161,7 @@ public struct SessionTurnPrompt: Sendable, Hashable {
     /// Long enough to open folded (`SessionTurnPresentation.isPromptLong`).
     public var isLong: Bool = false
     /// `document` as drawn; nil while the turn loads.
-    public var text: SessionRichText?
+    public var text: SessionRenderedText?
 }
 
 /// The collapsible "what the agent did" row.
@@ -185,7 +186,7 @@ public struct SessionTurnAnswer: Sendable, Hashable {
     public var turn: Int
     public var document: SessionMarkdownDocument
     /// `document` as drawn.
-    public var text: SessionRichText?
+    public var text: SessionRenderedText?
 }
 
 /// A turn in the window whose full detail has not arrived.

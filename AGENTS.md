@@ -1163,15 +1163,19 @@ capture against § 8 before committing it — a screenshot is source content.
     resting on its end stays there while content grows above it, so none
     of this needs a scroll request.
   - Prompts and answers are one TextKit 1 text view each
-    (`SessionRichTextView` over `SessionRichText`): the attributed string —
-    headings, prose, code and tables as rounded cards (`NSTextBlock`,
-    `NSTextTable`) — is built off the main actor with the presentation and
-    cached per text and size; the view measures once per width. A SwiftUI
-    text per run of prose and a grid cell per table cell were hundreds of
-    views per open. It also makes the text selectable.
+    (`SessionRichTextView`): the attributed string — headings, prose, code
+    and tables as rounded cards (`NSTextBlock`, `NSTextTable`) — is built by
+    `SessionRichTextBuilder` (App), which the page hands the model as a
+    `SessionConversationRendering`; the model runs it off the main actor
+    with the presentation and caches the result per text and size, carried
+    through Core as an opaque `SessionRenderedText` so Core stays free of
+    AppKit. The view measures once per width. A SwiftUI text per run of
+    prose and a grid cell per table cell were hundreds of views per open.
+    It also makes the text selectable.
   - The contents column is an AppKit table (`SessionOutlineTable`) whose
     row heights come from widths measured off the main actor
-    (`measuredEntries`), and it stays mounted while a session loads; so
+    (`measuredEntries`, with the rendering's measure), and it stays mounted
+    while a session loads; so
     does the turn list under the raw transcript. Building either per open
     was most of what opening cost.
   - Keep responders few: no hover state on rows that repeat (steps,

@@ -65,7 +65,8 @@ final class SessionsPageController {
                 indexedSummary: { [weak manager] provider, sessionID in
                     await manager?.indexedSummary(provider: provider, sessionID: sessionID)
                 }
-            )
+            ),
+            rendering: SessionConversationTextRendering.pane
         )
         manager.loadsTranscriptOnSelect = { [weak self] summary in
             guard let self else { return true }

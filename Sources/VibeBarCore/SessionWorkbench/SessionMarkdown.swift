@@ -365,7 +365,7 @@ public final class SessionMarkdownCache: Sendable {
         var documents: [String: SessionMarkdownDocument] = [:]
         var order: [String] = []
         var counters = Counters()
-        var texts: [RichKey: SessionRichText] = [:]
+        var texts: [RichKey: SessionRenderedText] = [:]
         var textOrder: [RichKey] = []
     }
 
@@ -386,7 +386,7 @@ public final class SessionMarkdownCache: Sendable {
         document(for: text, counted: true)
     }
 
-    /// `counted: false` is the rich-text path asking for the document it
+    /// `counted: false` is the rendering path asking for the document it
     /// builds from — not a second request for the same Markdown.
     private func document(for text: String, counted: Bool) -> SessionMarkdownDocument {
         if let hit = state.withLock({ state -> SessionMarkdownDocument? in
@@ -418,11 +418,15 @@ public final class SessionMarkdownCache: Sendable {
         return parsed
     }
 
-    /// `text` as one attributed string at `size` (`SessionRichText`), built
-    /// on a miss from the cached document. Called off the main actor.
-    public func richText(for text: String, size: CGFloat) -> SessionRichText {
+    /// `text` as the pane draws it at `size` — built by `render` from the
+    /// cached document on a miss, then shared. Called off the main actor.
+    public func rendered(
+        for text: String,
+        size: CGFloat,
+        render: (SessionMarkdownDocument, CGFloat) -> AnyObject
+    ) -> SessionRenderedText {
         let key = RichKey(text: text, size: size)
-        if let hit = state.withLock({ state -> SessionRichText? in
+        if let hit = state.withLock({ state -> SessionRenderedText? in
             guard let found = state.texts[key] else { return nil }
             if let position = state.textOrder.lastIndex(of: key), position != state.textOrder.count - 1 {
                 state.textOrder.remove(at: position)
@@ -432,11 +436,11 @@ public final class SessionMarkdownCache: Sendable {
         }) {
             return hit
         }
-        let built = SessionRichText.make(document(for: text, counted: false), fontSize: size)
+        let built = SessionRenderedText(object: render(document(for: text, counted: false), size), source: text)
         let capacity = self.capacity
         return state.withLock { state in
             // A racing builder may have stored one first; keep that one so
-            // every caller holds the same string.
+            // every caller holds the same object.
             if let stored = state.texts[key] { return stored }
             state.texts[key] = built
             state.textOrder.append(key)

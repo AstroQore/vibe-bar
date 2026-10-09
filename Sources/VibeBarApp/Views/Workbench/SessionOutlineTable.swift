@@ -178,7 +178,7 @@ struct SessionOutlineTable: NSViewRepresentable {
                 var natural = CGFloat(entry.previewWidth)
                 if natural <= 0 {
                     natural = (OutlineCell.previewText(for: entry) as NSString)
-                        .size(withAttributes: [.font: SessionConversationTOCEntry.previewFont]).width
+                        .size(withAttributes: [.font: SessionOutlineMetrics.previewFont]).width
                 }
                 return natural > width
             }
@@ -379,7 +379,7 @@ final class OutlineCell: NSTableCellView {
     }
 
     private static let previewRegularFont = NSFont.systemFont(ofSize: 11.5)
-    private static let previewCurrentFont = SessionConversationTOCEntry.previewFont
+    private static let previewCurrentFont = SessionOutlineMetrics.previewFont
     private static let detailFont = NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .regular)
     private static let ordinalFont: NSFont = {
         let base = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold)

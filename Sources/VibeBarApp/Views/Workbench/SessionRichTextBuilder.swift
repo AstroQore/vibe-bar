@@ -1,56 +1,37 @@
 import AppKit
 import Foundation
+import VibeBarCore
 
-/// The point sizes the conversation pane draws prompts and answers at. The
-/// pane hands its density's sizes to the model, which builds every turn's
-/// text at them off the main actor.
-public struct SessionRichTextStyle: Sendable, Hashable {
-    public var promptSize: CGFloat
-    public var answerSize: CGFloat
-
-    public init(promptSize: CGFloat = 13, answerSize: CGFloat = 13.5) {
-        self.promptSize = promptSize
-        self.answerSize = answerSize
-    }
+/// How the conversation pane's text is drawn: Markdown documents become one
+/// attributed string each (`SessionRichTextBuilder`), and the contents
+/// column's previews are measured in its font. Handed to
+/// `SessionConversationModel`, which calls both off the main actor while it
+/// prepares a session, so neither costs the main thread anything.
+enum SessionConversationTextRendering {
+    static let pane = SessionConversationRendering(
+        text: { document, size in
+            var builder = SessionRichTextBuilder(fontSize: size)
+            return builder.build(document)
+        },
+        previewWidth: { preview in
+            Double(ceil((preview as NSString).size(withAttributes: [.font: SessionOutlineMetrics.previewFont]).width))
+        }
+    )
 }
 
-/// A parsed Markdown document as one attributed string: headings, prose,
-/// code blocks, tables and rules, laid out by a single text view.
-///
-/// One text view per prompt or answer instead of a SwiftUI text per run of
-/// prose and a grid cell per table cell: opening a conversation built and
-/// measured hundreds of those views in one frame. The string is built once
-/// per text and size (`SessionMarkdownCache.richText`), off the main actor;
-/// it holds AppKit fonts, dynamic colours and text blocks and is never
-/// mutated after it is built, which is what makes sharing it safe.
-public struct SessionRichText: @unchecked Sendable, Hashable {
-    public let attributed: NSAttributedString
-    /// The Markdown it was built from, for copying.
-    public let source: String
-
-    public init(attributed: NSAttributedString, source: String) {
-        self.attributed = attributed
-        self.source = source
-    }
-
-    /// Identity, not contents: a text is built once per source and size, so
-    /// two values for the same turn share the string.
-    public static func == (lhs: SessionRichText, rhs: SessionRichText) -> Bool {
-        lhs.attributed === rhs.attributed
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(ObjectIdentifier(attributed))
-    }
-
-    public static func make(_ document: SessionMarkdownDocument, fontSize: CGFloat) -> SessionRichText {
-        var builder = SessionRichTextBuilder(fontSize: fontSize)
-        return SessionRichText(attributed: builder.build(document), source: document.source)
-    }
+/// The contents column's preview font, at its widest (the current entry's
+/// weight) — what rows are measured with.
+enum SessionOutlineMetrics {
+    static let previewFont = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
 }
 
 // MARK: - Builder
 
+/// A parsed Markdown document as one attributed string: headings, prose,
+/// code blocks, tables and rules, laid out by a single text view. The string
+/// holds AppKit fonts, dynamic colours and text blocks and is never mutated
+/// after it is built, which is what makes sharing it between threads and
+/// views safe.
 struct SessionRichTextBuilder {
     let fontSize: CGFloat
     private let out = NSMutableAttributedString()
@@ -455,26 +436,5 @@ final class SessionCardTextTable: NSTextTable {
         if corners.topLeft { path.appendArc(withCenter: NSPoint(x: rect.minX + r, y: rect.minY + r), radius: r, startAngle: 180, endAngle: 270) }
         path.close()
         return path
-    }
-}
-
-// MARK: - Contents column metrics
-
-extension SessionConversationTOCEntry {
-    /// The contents column's preview font, at its widest (the current
-    /// entry's weight).
-    nonisolated(unsafe) public static let previewFont = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
-
-    /// `entries(from:)` with each preview's one-line width measured, so the
-    /// column knows every row's height without laying any row out. Called
-    /// off the main actor.
-    public static func measuredEntries(from outline: [SessionTurnOutline]) -> [SessionConversationTOCEntry] {
-        var out = entries(from: outline)
-        let attributes: [NSAttributedString.Key: Any] = [.font: previewFont]
-        for index in out.indices {
-            guard let preview = out[index].preview else { continue }
-            out[index].previewWidth = Double(ceil((preview as NSString).size(withAttributes: attributes).width))
-        }
-        return out
     }
 }

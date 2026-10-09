@@ -152,6 +152,8 @@ public final class SessionConversationModel {
     public let markdown: SessionMarkdownCache
     /// The sizes turn text is built at; the pane sets its density's.
     @ObservationIgnored public private(set) var textStyle = SessionRichTextStyle()
+    /// What turn text and contents previews are drawn with.
+    public let rendering: SessionConversationRendering
     @ObservationIgnored private let source: any SessionConversationSource
     /// Told after the pane switches sessions — the selection's, or a thread
     /// opened from it — so what follows the pane (the Raw transcript) can.
@@ -187,7 +189,8 @@ public final class SessionConversationModel {
         initialTurns: Int = 4,
         firstFrameTurns: Int = 1,
         maxSpan: Int = 60,
-        markdown: SessionMarkdownCache = SessionMarkdownCache()
+        markdown: SessionMarkdownCache = SessionMarkdownCache(),
+        rendering: SessionConversationRendering = .none
     ) {
         self.source = source
         self.pageSize = max(1, pageSize)
@@ -195,6 +198,7 @@ public final class SessionConversationModel {
         self.firstFrameTurns = max(1, firstFrameTurns)
         self.maxSpan = max(pageSize, maxSpan)
         self.markdown = markdown
+        self.rendering = rendering
         self.window = .tail(total: 0, pageSize: pageSize, maxSpan: maxSpan)
     }
 
@@ -355,7 +359,7 @@ public final class SessionConversationModel {
             return
         }
         guard generation == self.generation, !Task.isCancelled else { return }
-        let toc = await Self.contents(of: outline.outline)
+        let toc = await contents(of: outline.outline)
         guard generation == self.generation, !Task.isCancelled else { return }
         adopt(outline, toc: toc)
         window = .tail(total: outlineTurns.count, pageSize: pageSize, maxSpan: maxSpan, initial: initialTurns)
@@ -382,8 +386,8 @@ public final class SessionConversationModel {
         guard generation == self.generation, !Task.isCancelled else { return true }
         let tail = SessionTurnWindow.tail(total: full.turns.count, pageSize: pageSize, maxSpan: maxSpan, initial: initialTurns)
         let turns = tail.range.map { full.turns[$0] }
-        async let presented = Self.present(turns, markdown: markdown, style: textStyle)
-        let toc = await Self.contents(of: full.outline)
+        async let presented = Self.present(turns, markdown: markdown, style: textStyle, render: rendering.text)
+        let toc = await contents(of: full.outline)
         let built = await presented
         guard generation == self.generation, !Task.isCancelled else { return true }
 
@@ -432,9 +436,10 @@ public final class SessionConversationModel {
     }
 
     /// The contents column's entries, measured off the main actor.
-    nonisolated static func contents(of outline: [SessionTurnOutline]) async -> [SessionConversationTOCEntry] {
-        await Task.detached(priority: .userInitiated) {
-            SessionConversationTOCEntry.measuredEntries(from: outline)
+    func contents(of outline: [SessionTurnOutline]) async -> [SessionConversationTOCEntry] {
+        let measure = rendering.previewWidth
+        return await Task.detached(priority: .userInitiated) {
+            SessionConversationTOCEntry.measuredEntries(from: outline, measure: measure)
         }.value
     }
 
@@ -446,7 +451,7 @@ public final class SessionConversationModel {
     private func adopt(_ structure: SessionStructure, toc: [SessionConversationTOCEntry]? = nil) {
         update(\.stats, structure.stats)
         outlineTurns = structure.outline
-        update(\.toc, toc ?? SessionConversationTOCEntry.measuredEntries(from: outlineTurns))
+        update(\.toc, toc ?? SessionConversationTOCEntry.measuredEntries(from: outlineTurns, measure: rendering.previewWidth))
         update(\.tocTotals, SessionConversationTOCEntry.totals(self.toc))
         showsModelPerTurn = Set(outlineTurns.compactMap(\.model)).count > 1
     }
@@ -493,7 +498,7 @@ public final class SessionConversationModel {
             }
             if let fullTurns {
                 let turns = wanted.filter { fullTurns.indices.contains($0) }.map { fullTurns[$0] }
-                let built = await Self.present(turns, markdown: markdown, style: textStyle)
+                let built = await Self.present(turns, markdown: markdown, style: textStyle, render: rendering.text)
                 guard generation == self.generation, !Task.isCancelled else { return }
                 for (index, presentation) in built { presentations[index] = presentation }
                 for index in wanted where built[index] == nil { unavailableTurns.insert(index) }
@@ -509,7 +514,7 @@ public final class SessionConversationModel {
             let turn = await source.turn(at: index, for: summary)
             guard !Task.isCancelled, generation == self.generation else { return }
             if let turn {
-                let built = await Self.present([turn], markdown: markdown, style: textStyle)
+                let built = await Self.present([turn], markdown: markdown, style: textStyle, render: rendering.text)
                 guard generation == self.generation else { return }
                 if let presentation = built.values.first {
                     var placed = presentation
@@ -536,14 +541,15 @@ public final class SessionConversationModel {
     nonisolated static func present(
         _ turns: [SessionStructure.Turn],
         markdown: SessionMarkdownCache,
-        style: SessionRichTextStyle
+        style: SessionRichTextStyle,
+        render: (@Sendable (SessionMarkdownDocument, CGFloat) -> AnyObject)?
     ) async -> [Int: SessionTurnPresentation] {
         guard !turns.isEmpty else { return [:] }
         let handle = Task.detached(priority: .userInitiated) { () -> [Int: SessionTurnPresentation] in
             var out: [Int: SessionTurnPresentation] = [:]
             for turn in turns {
                 if Task.isCancelled { break }
-                out[turn.index] = SessionTurnPresentation.make(turn, markdown: markdown, style: style)
+                out[turn.index] = SessionTurnPresentation.make(turn, markdown: markdown, style: style, render: render)
             }
             return out
         }
@@ -646,7 +652,7 @@ public final class SessionConversationModel {
         turnsTask = Task { [weak self] in
             await previous?.value
             guard let self, !Task.isCancelled, generation == self.generation else { return }
-            let built = await Self.present(turns, markdown: self.markdown, style: self.textStyle)
+            let built = await Self.present(turns, markdown: self.markdown, style: self.textStyle, render: self.rendering.text)
             for (position, index) in order.enumerated() {
                 if position > 0 { await Self.nextFrame() }
                 guard !Task.isCancelled, generation == self.generation else { return }
@@ -700,7 +706,7 @@ public final class SessionConversationModel {
         turnsTask = Task { [weak self] in
             await previous?.value
             guard let self, !Task.isCancelled, generation == self.generation else { return }
-            let built = await Self.present(turns, markdown: self.markdown, style: self.textStyle)
+            let built = await Self.present(turns, markdown: self.markdown, style: self.textStyle, render: self.rendering.text)
             for index in turn..<upper {
                 if index > turn { await Self.nextFrame() }
                 guard !Task.isCancelled, generation == self.generation else { return }

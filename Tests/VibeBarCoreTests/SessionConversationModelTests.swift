@@ -1,4 +1,4 @@
-import AppKit
+import CoreGraphics
 import XCTest
 @testable import VibeBarCore
 
@@ -263,20 +263,26 @@ final class SessionConversationModelTests: XCTestCase {
     }
 
     func testTurnTextIsBuiltAtThePanesSizes() async throws {
+        final class Rendered: @unchecked Sendable {
+            let size: CGFloat
+            init(size: CGFloat) { self.size = size }
+        }
         let source = FakeSource(turns: 2)
-        let model = SessionConversationModel(source: source)
+        let rendering = SessionConversationRendering(text: { _, size in Rendered(size: size) }, previewWidth: { Double($0.count) })
+        let model = SessionConversationModel(source: source, rendering: rendering)
         model.setTextStyle(SessionRichTextStyle(promptSize: 12, answerSize: 15))
         model.open(summary())
         try await settle(model) { model.loadedTurnIndices.count == 2 }
         func answerSize() -> CGFloat? {
             for item in model.items {
                 if case let .answer(answer) = item, let text = answer.text {
-                    return (text.attributed.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize
+                    return (text.object as? Rendered)?.size
                 }
             }
             return nil
         }
         XCTAssertEqual(answerSize(), 15)
+        XCTAssertEqual(model.toc.first?.previewWidth, Double("Question 0".count), "previews measured with the entries")
         model.setTextStyle(SessionRichTextStyle(promptSize: 12, answerSize: 17))
         try await settle(model) { answerSize() == 17 }
         XCTAssertEqual(model.loadedTurnIndices, [0, 1])
