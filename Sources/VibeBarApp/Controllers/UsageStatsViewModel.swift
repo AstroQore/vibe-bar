@@ -66,7 +66,6 @@ final class UsageStatsViewModel {
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
     @ObservationIgnored private var generation: UInt64 = 0
     @ObservationIgnored private var hasLoadedOnce = false
-    @ObservationIgnored private var didAttemptIndexBackfill = false
     /// How long a sweep waits when nothing is left to fill.
     @ObservationIgnored private let idleInterval: Duration = .seconds(45)
 
@@ -112,7 +111,7 @@ final class UsageStatsViewModel {
     /// Fill the session caches while the page is visible. `UsageStatsPage`
     /// awaits this in its `.task`, so SwiftUI cancels it when the page goes.
     func pollWhileVisible() async {
-        await backfillIndexIfNeeded()
+        await refreshIndexIfDue()
         while !Task.isCancelled {
             // The query on screen; a filter change lands in the next sweep.
             let report = await aggregator.enrich(snapshot.query)
@@ -129,8 +128,10 @@ final class UsageStatsViewModel {
             }
             if !report.hasMore {
                 // Idle wake-up: pick up whatever a cost scan or a CLI wrote
-                // meanwhile. A snapshot equal to the one on screen is not
-                // assigned, so this costs no render.
+                // meanwhile — re-scanning the index once its ten minutes are
+                // up. A snapshot equal to the one on screen is not assigned,
+                // so this costs no render.
+                await refreshIndexIfDue()
                 await aggregator.invalidateSessions()
                 reload(silently: true)
             }
@@ -323,29 +324,24 @@ final class UsageStatsViewModel {
         await aggregator.warm(queries)
     }
 
-    /// The MCP tools' rule, applied here: an index that has never been built
-    /// is built once per process, behind the same gate every indexer takes.
-    private func backfillIndexIfNeeded() async {
-        guard !didAttemptIndexBackfill else { return }
-        didAttemptIndexBackfill = true
+    /// Re-scan the session index on activation and while the page stays
+    /// open, on the Sessions page's terms: at most every ten minutes, one
+    /// sweep at a time, behind the maintenance gate
+    /// (`SessionIndexRefreshThrottle`). Sessions a CLI wrote since the last
+    /// scan would otherwise never reach these cards unless the user opened
+    /// Sessions first.
+    private func refreshIndexIfDue() async {
         _ = aggregator
         guard let service = indexService,
-              await SessionIndexDashboardSource(service: service).totalSessionCount() == 0
+              await SessionIndexRefreshThrottle.shared.isDue
         else { return }
-        isBuildingIndex = true
-        defer { isBuildingIndex = false }
-        let gate = SessionIndexMaintenanceGate.shared
-        do {
-            try await gate.acquire()
-        } catch {
-            return
+        let isEmpty = await SessionIndexDashboardSource(service: service).totalSessionCount() == 0
+        if isEmpty { isBuildingIndex = true }
+        let refreshed = await SessionIndexRefreshThrottle.shared.refreshIfDue {
+            await service.refreshIndex()
         }
-        guard !Task.isCancelled else {
-            await gate.release()
-            return
-        }
-        await service.refreshIndex()
-        await gate.release()
+        isBuildingIndex = false
+        guard refreshed, !Task.isCancelled else { return }
         await aggregator.invalidateSessions()
         reload(silently: true)
     }
