@@ -447,4 +447,59 @@ final class SessionWorkbenchTests: XCTestCase {
         XCTAssertFalse(paging.shouldLoadMore(sourceCount: 250, visibleCount: 30, firstID: "b", hasMore: true))
         XCTAssertTrue(paging.shouldLoadMore(sourceCount: 100, visibleCount: 0, firstID: "b", hasMore: true))
     }
+
+    // MARK: - Fallback titles
+
+    func testACachedRowFallsBackToTheSameFirstPromptAsAFreshParse() async throws {
+        let directory = try SessionStructureFixtures.temporaryDirectory("first-prompt")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        func turn(_ index: Int, _ preview: String?, _ origin: SessionStructure.PromptOrigin, _ status: SessionStructure.TurnStatus = .completed) -> SessionStructure.Turn {
+            SessionStructure.Turn(
+                index: index,
+                turnID: "t\(index)",
+                status: status,
+                prompt: SessionStructure.Prompt(origin: origin, text: preview, preview: preview),
+                steps: [],
+                counts: SessionStructure.TurnCounts()
+            )
+        }
+        func structure(_ name: String, _ turns: [SessionStructure.Turn]) -> SessionStructure {
+            SessionStructure(provider: .codex, sessionID: name, sourcePath: "/Users/example/\(name).jsonl", detail: .full, turns: turns, stats: SessionStats())
+        }
+        // The person's first live prompt comes after three turns that are
+        // not it: an automation, a rewound prompt, another agent's task.
+        let late = structure("late", [
+            turn(0, "Nightly sweep", .automation),
+            turn(1, "Rewound ask", .human, .abandoned),
+            turn(2, "Parent's task", .agent),
+            turn(3, nil, .human),
+            turn(4, "The real question", .human),
+        ])
+        // No live prompt of the person's: the first live one of any origin.
+        let noHuman = structure("no-human", [
+            turn(0, "Rewound ask", .human, .abandoned),
+            turn(1, "Nightly sweep", .automation),
+        ])
+        let nothing = structure("nothing", [turn(0, "Rewound ask", .human, .abandoned)])
+
+        let store = SessionStructureStore(url: directory.appendingPathComponent("s.sqlite3"))
+        let fingerprint = SessionFileFingerprint(mtimeNs: 42, size: 7)
+        var entries: [(path: String, fingerprint: SessionFileFingerprint)] = []
+        for item in [late, noHuman, nothing] {
+            await store.upsert(SessionStructureRecord(structure: item, fingerprint: fingerprint))
+            entries.append((item.sourcePath, fingerprint))
+        }
+        let cached = await store.listings(for: entries)
+        XCTAssertEqual(cached.count, 3)
+        for item in [late, noHuman, nothing] {
+            XCTAssertEqual(
+                cached[item.sourcePath]?.firstPromptPreview,
+                SessionStructureListing(structure: item).firstPromptPreview,
+                "\(item.sessionID ?? "") reads the same from the sidecar as from the parse"
+            )
+        }
+        XCTAssertEqual(cached[late.sourcePath]?.firstPromptPreview, "The real question")
+        XCTAssertEqual(cached[noHuman.sourcePath]?.firstPromptPreview, "Nightly sweep")
+        XCTAssertNil(cached[nothing.sourcePath]?.firstPromptPreview)
+    }
 }

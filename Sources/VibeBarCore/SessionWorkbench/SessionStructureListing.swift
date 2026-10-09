@@ -14,10 +14,40 @@ public struct SessionStructureListing: Sendable, Hashable {
 
     public init(structure: SessionStructure) {
         self.stats = structure.stats
-        let live = structure.turns.filter { $0.status != .abandoned }
-        let human = live.first { $0.prompt.origin == .human && !($0.prompt.preview ?? "").isEmpty }
-        let any = live.first { !($0.prompt.preview ?? "").isEmpty }
-        self.firstPromptPreview = (human ?? any)?.prompt.preview
+        // The outline, not the turns: the sidecar keeps the outline, so a
+        // fresh parse and a cached row read the same previews.
+        self.firstPromptPreview = Self.firstPromptPreview(in: structure.outline.lazy.map(PromptCandidate.init(outline:)))
+    }
+
+    /// One turn as the fallback title reads it.
+    public struct PromptCandidate: Sendable, Hashable {
+        public var preview: String?
+        public var origin: SessionStructure.PromptOrigin?
+        public var status: SessionStructure.TurnStatus?
+
+        public init(preview: String?, origin: SessionStructure.PromptOrigin?, status: SessionStructure.TurnStatus?) {
+            self.preview = preview
+            self.origin = origin
+            self.status = status
+        }
+
+        public init(outline: SessionTurnOutline) {
+            self.init(preview: outline.promptPreview, origin: outline.origin, status: outline.status)
+        }
+    }
+
+    /// The fallback title's source, on one rule for a fresh parse and a
+    /// sidecar row: over every turn not rewound away (`abandoned`), the
+    /// first prompt the person typed that has a preview, else the first
+    /// prompt of any origin that has one.
+    public static func firstPromptPreview<Turns: Sequence>(in turns: Turns) -> String? where Turns.Element == PromptCandidate {
+        var fallback: String?
+        for turn in turns where turn.status != .abandoned {
+            guard let preview = turn.preview, !preview.isEmpty else { continue }
+            if turn.origin == .human { return preview }
+            if fallback == nil { fallback = preview }
+        }
+        return fallback
     }
 
     /// The best title the parse can offer: the session's own, then its

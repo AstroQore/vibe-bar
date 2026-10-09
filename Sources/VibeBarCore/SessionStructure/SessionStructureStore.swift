@@ -165,9 +165,12 @@ public actor SessionStructureStore {
     }
 
     /// What the Sessions list shows for each fresh row — its stats and its
-    /// first prompt preview — read without decoding the turn outline, in one
-    /// prepared statement for the whole batch. Rows parsed at another
-    /// fingerprint or by another parser are left out.
+    /// first prompt preview — in one prepared statement for the whole
+    /// batch, reading only each outline entry's preview, origin and status
+    /// rather than decoding the outline. The preview is picked by the rule a
+    /// fresh parse uses (`SessionStructureListing.firstPromptPreview`), over
+    /// the whole outline. Rows parsed at another fingerprint or by another
+    /// parser are left out.
     public func listings(
         for entries: [(path: String, fingerprint: SessionFileFingerprint)]
     ) -> [String: SessionStructureListing] {
@@ -175,9 +178,11 @@ public actor SessionStructureStore {
               let database = openIfNeeded(),
               let statement = database.prepare("""
                 SELECT mtime_ns, size, parser_version, stats_json,
-                       json_extract(outline_json, '$[0].promptPreview'), json_extract(outline_json, '$[0].origin'),
-                       json_extract(outline_json, '$[1].promptPreview'), json_extract(outline_json, '$[1].origin'),
-                       json_extract(outline_json, '$[2].promptPreview'), json_extract(outline_json, '$[2].origin')
+                       (SELECT json_group_array(json_array(
+                                   json_extract(entry.value, '$.promptPreview'),
+                                   json_extract(entry.value, '$.origin'),
+                                   json_extract(entry.value, '$.status')))
+                        FROM (SELECT value FROM json_each(outline_json) ORDER BY key) AS entry)
                 FROM session_structure WHERE source_path = ?1
                 """)
         else { return [:] }
@@ -194,13 +199,19 @@ public actor SessionStructureStore {
                   let statsJSON = database.columnText(statement, 3),
                   let stats = try? decoder.decode(SessionStats.self, from: Data(statsJSON.utf8))
             else { continue }
-            var previews: [(String?, String?)] = []
-            for column in stride(from: Int32(4), to: 10, by: 2) {
-                previews.append((database.columnText(statement, column), database.columnText(statement, column + 1)))
+            let entries = database.columnText(statement, 4)
+                .flatMap { try? decoder.decode([[String?]].self, from: Data($0.utf8)) } ?? []
+            let candidates = entries.lazy.map { fields in
+                SessionStructureListing.PromptCandidate(
+                    preview: fields.first ?? nil,
+                    origin: fields.count > 1 ? fields[1].flatMap(SessionStructure.PromptOrigin.init(rawValue:)) : nil,
+                    status: fields.count > 2 ? fields[2].flatMap(SessionStructure.TurnStatus.init(rawValue:)) : nil
+                )
             }
-            let human = previews.first { $0.1 == SessionStructure.PromptOrigin.human.rawValue && !($0.0 ?? "").isEmpty }
-            let any = previews.first { !($0.0 ?? "").isEmpty }
-            out[entry.path] = SessionStructureListing(stats: stats, firstPromptPreview: (human ?? any)?.0)
+            out[entry.path] = SessionStructureListing(
+                stats: stats,
+                firstPromptPreview: SessionStructureListing.firstPromptPreview(in: candidates)
+            )
         }
         return out
     }
