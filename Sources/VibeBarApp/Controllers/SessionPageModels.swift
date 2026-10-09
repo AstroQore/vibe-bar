@@ -101,7 +101,14 @@ final class SessionsPageController {
         manager.$selection
             .removeDuplicates { $0?.id == $1?.id }
             .receive(on: RunLoop.main)
-            .sink { [weak self] selection in self?.conversation.open(selection) }
+            .sink { [weak self] selection in
+                guard let self else { return }
+                // A click on a Claude subagent row selects its parent and
+                // opens the thread in the same turn; the parent arriving
+                // here a turn later must not replace that thread.
+                if let selection, self.conversation.trail.last?.id == selection.id { return }
+                self.conversation.open(selection)
+            }
             .store(in: &cancellables)
     }
 
@@ -130,7 +137,14 @@ final class SessionsPageController {
 
     func select(_ row: SessionListModel.DisplayRow) {
         guard ClaudeSubagentFiles.isSubagentSummary(row.summary) else {
-            manager.select(row.row)
+            switch SessionRowClick.route(rowID: row.id, selectedID: manager.selection?.id, shownID: displayedID) {
+            case .select:
+                manager.select(row.row)
+            case .reopen:
+                // The pane shows a thread opened from this session; the
+                // selection is already this row, so it will not fire again.
+                conversation.open(manager.selection ?? row.summary)
+            }
             return
         }
         // Not an indexed session: the pane opens it as a thread of its

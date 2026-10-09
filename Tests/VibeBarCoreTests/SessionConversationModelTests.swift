@@ -282,6 +282,28 @@ final class SessionConversationModelTests: XCTestCase {
         XCTAssertEqual(model.loadedTurnIndices, [0, 1])
     }
 
+    func testAClickOnTheSelectedParentLeavesItsThread() async throws {
+        // The list's selection stays on the parent while the pane shows a
+        // thread opened from it; the click is routed to the pane directly.
+        XCTAssertEqual(SessionRowClick.route(rowID: "p", selectedID: "p", shownID: "child"), .reopen)
+        XCTAssertEqual(SessionRowClick.route(rowID: "p", selectedID: "p", shownID: "p"), .select)
+        XCTAssertEqual(SessionRowClick.route(rowID: "q", selectedID: "p", shownID: "child"), .select)
+        XCTAssertEqual(SessionRowClick.route(rowID: "p", selectedID: nil, shownID: nil), .select)
+
+        let source = FakeSource(turns: 2)
+        source.children["child-1"] = summary("child")
+        let model = SessionConversationModel(source: source)
+        model.open(summary())
+        try await settle(model) { model.phase == .ready && model.loadedTurnIndices.count == 2 }
+        model.openChild("child-1")
+        try await settle(model) { model.summary?.sessionID == "child" }
+        // What `.reopen` does: opening the parent again leaves the thread.
+        model.open(summary())
+        XCTAssertEqual(model.summary?.sessionID, "s")
+        XCTAssertTrue(model.trail.isEmpty)
+        try await settle(model) { model.phase == .ready && model.loadedTurnIndices.count == 2 }
+    }
+
     func testUnsupportedProvidersAndChildNavigation() async throws {
         let source = FakeSource(turns: 2)
         source.children["child-1"] = summary("child")
