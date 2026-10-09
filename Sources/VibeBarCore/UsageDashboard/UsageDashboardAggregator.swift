@@ -148,7 +148,8 @@ public actor UsageDashboardAggregator {
     private var factsOrder: [FactsKey] = []
     private var sessionTotals: (revision: UInt64, rows: [UsageLedgerDashboardFacts.SessionRow])?
     private var sessionIDCache: [FactsKey: Set<String>] = [:]
-    private var projectOptionCache: [FactsKey: [String: Int64]] = [:]
+    /// Raw ledger project values by folded project, per unfiltered range.
+    private var projectVariantCache: [FactsKey: [String: [String: Int64]]] = [:]
     private var cacheRevision: UInt64?
     private var sessionList: (since: Date, readAt: Date, rows: [SessionSummary])?
 
@@ -202,7 +203,7 @@ public actor UsageDashboardAggregator {
                 factsCache.removeAll()
                 factsOrder.removeAll()
                 sessionIDCache.removeAll()
-                projectOptionCache.removeAll()
+                projectVariantCache.removeAll()
             }
             let key = FactsKey(query)
             inputs.ledger = await facts(for: query, ledger: ledger)
@@ -211,7 +212,8 @@ public actor UsageDashboardAggregator {
                 inputs.ledgerSessionIDsInQuery = await sessionIDs(for: query, key: key, ledger: ledger)
             }
             inputs.availableModels = (try? await ledger.availableModels(harnesses: query.harnesses)) ?? []
-            inputs.projectOptions = await projectOptions(for: query, facts: inputs.ledger, ledger: ledger)
+            inputs.projectOptions = await projectVariants(for: query, ledger: ledger)
+                .mapValues { $0.values.reduce(0, +) }
         }
         let sessions = await sessionsInRange(query.interval, now: now)
         inputs.sessions = sessions
@@ -288,7 +290,7 @@ public actor UsageDashboardAggregator {
             .filter { summary in
                 query.includes(summary.effectiveHarness)
                     && (SessionStructureService.supports(summary.provider) || SessionActivityScanner.supports(summary.provider))
-                    && (query.project.map { UsageProjectIdentity.normalizedPath(summary.projectDir) == $0 } ?? true)
+                    && (query.project.map { UsageProjectIdentity.normalizedPath(summary.projectDir) == Self.projectKey($0) } ?? true)
             }
             .sorted { ($0.lastActiveAt ?? .distantPast) > ($1.lastActiveAt ?? .distantPast) }
     }
@@ -347,7 +349,8 @@ public actor UsageDashboardAggregator {
         allHarnesses.harnesses = nil
         let key = FactsKey(allHarnesses)
         if let cached = factsCache[key] { return cached }
-        let facts = (try? await ledger.dashboardFacts(query.ledgerFilterAllHarnesses, project: query.project))
+        let projects = await rawProjects(for: query, ledger: ledger)
+        let facts = (try? await ledger.dashboardFacts(query.ledgerFilterAllHarnesses, projects: projects))
             ?? UsageLedgerDashboardFacts()
         factsCache[key] = facts
         factsOrder.append(key)
@@ -366,28 +369,58 @@ public actor UsageDashboardAggregator {
 
     private func sessionIDs(for query: UsageDashboardQuery, key: FactsKey, ledger: UsageEventLedger) async -> Set<String> {
         if let cached = sessionIDCache[key] { return cached }
-        let ids = (try? await ledger.dashboardSessionIDs(query.ledgerFilter, project: query.project)) ?? []
+        let projects = await rawProjects(for: query, ledger: ledger)
+        let ids = (try? await ledger.dashboardSessionIDs(query.ledgerFilter, projects: projects)) ?? []
         sessionIDCache[key] = ids
         return ids
     }
 
-    private func projectOptions(
-        for query: UsageDashboardQuery,
-        facts: UsageLedgerDashboardFacts,
-        ledger: UsageEventLedger
-    ) async -> [String: Int64] {
-        guard query.project != nil else {
-            return facts.projects.reduce(into: [:]) { $0[$1.key, default: 0] += $1.tokens }
-        }
+    /// The one spelling a project is filtered and ranked by: the ledger's
+    /// raw value folded through `UsageProjectIdentity.normalizedPath`, the
+    /// same function a session's directory goes through. Codex and Claude
+    /// rows arrive folded already; Devin's and Mistral Vibe's do not, so a
+    /// trailing slash, a `..` or an agent worktree would otherwise be a
+    /// project of its own that no session row could match.
+    public static func projectKey(_ raw: String) -> String {
+        UsageProjectIdentity.normalizedPath(raw) ?? raw
+    }
+
+    /// Every raw ledger value the query's project folds from, for the SQL
+    /// `IN`, or `nil` without a project filter.
+    public func ledgerProjects(for query: UsageDashboardQuery) async -> [String]? {
+        guard let ledger else { return query.project.map { [$0] } }
+        return await rawProjects(for: query, ledger: ledger)
+    }
+
+    private func rawProjects(for query: UsageDashboardQuery, ledger: UsageEventLedger) async -> [String]? {
+        guard let project = query.project else { return nil }
+        let key = Self.projectKey(project)
+        var raws = Set(await projectVariants(for: query, ledger: ledger)[key]?.keys.map { $0 } ?? [])
+        raws.insert(project)
+        raws.insert(key)
+        return raws.sorted()
+    }
+
+    /// Raw project values with their tokens, grouped by folded project, for
+    /// the range with no project and no harness filter.
+    private func projectVariants(for query: UsageDashboardQuery, ledger: UsageEventLedger) async -> [String: [String: Int64]] {
         var unfiltered = query
         unfiltered.project = nil
         unfiltered.harnesses = nil
         let key = FactsKey(unfiltered)
-        if let cached = projectOptionCache[key] { return cached }
-        let stats = (try? await ledger.projectStats(unfiltered.ledgerFilterAllHarnesses)) ?? []
-        let options = Dictionary(stats.map { ($0.path, $0.totalTokens) }, uniquingKeysWith: +)
-        projectOptionCache[key] = options
-        return options
+        if let cached = projectVariantCache[key] { return cached }
+        let rows: [(String, Int64)]
+        if let facts = factsCache[key] {
+            rows = facts.projects.map { ($0.key, $0.tokens) }
+        } else {
+            rows = ((try? await ledger.projectStats(unfiltered.ledgerFilterAllHarnesses)) ?? []).map { ($0.path, $0.totalTokens) }
+        }
+        var variants: [String: [String: Int64]] = [:]
+        for (raw, tokens) in rows {
+            variants[Self.projectKey(raw), default: [:]][raw, default: 0] += tokens
+        }
+        projectVariantCache[key] = variants
+        return variants
     }
 }
 

@@ -127,7 +127,7 @@ final class UsageLedgerDashboardFactsTests: XCTestCase {
     func testProjectFilterNarrowsDetailAndDropsRollups() async throws {
         let (ledger, directory) = try await makeLedger()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let facts = try await ledger.dashboardFacts(filter, project: "/Users/example/Code/alpha")
+        let facts = try await ledger.dashboardFacts(filter, projects: ["/Users/example/Code/alpha"])
         XCTAssertFalse(facts.includesRollups)
         XCTAssertEqual(facts.slots.map(\.harness), [.codex])
         // Request days only, and only the project's.

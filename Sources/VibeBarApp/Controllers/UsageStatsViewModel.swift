@@ -226,10 +226,12 @@ final class UsageStatsViewModel {
         requestTask?.cancel()
         isLoadingRequests = true
         if reset { requestQuery = query }
+        let aggregator = self.aggregator
         requestTask = Task { [weak self] in
+            let projects = await aggregator.ledgerProjects(for: query)
             let page = try? await ledger.requestPage(
                 query.ledgerFilter,
-                project: query.project,
+                projects: projects,
                 after: cursor,
                 pageSize: Self.requestPageSize,
                 includeTotal: reset

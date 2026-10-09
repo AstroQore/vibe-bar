@@ -61,6 +61,65 @@ final class UsageDashboardAggregatorTests: XCTestCase {
         XCTAssertNil(snapshot.recentSessions.first?.tokens)
     }
 
+    func testProjectSpellingsFoldIntoOneProject() async throws {
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("AggregatorProjects")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let start = ISO8601DateFormatter().date(from: "2026-05-01T10:00:00Z")!
+        func event(_ offset: TimeInterval, session: String, project: String, harness: Harness, id: String) -> PricedUsageEvent {
+            PricedUsageEvent(
+                event: CostUsageScanCache.ParsedEvent(
+                    date: start.addingTimeInterval(offset), model: "claude-sonnet-4-5", input: 100, output: 10, cache: 0,
+                    sessionId: session, messageId: id, requestId: id, harness: harness, projectPath: project
+                ),
+                costUSD: 0.01
+            )
+        }
+        // Devin keeps its working directory as written (here, a trailing
+        // slash); a Claude session ran in an agent worktree of the same repo.
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .devin, path: "/Users/example/.devin/sessions.db",
+            events: [event(0, session: "dev-1", project: "/Users/example/Code/beta/", harness: .devin, id: "d1")]
+        ))
+        try await ledger.ingest(UsageLedgerFixtures.batch(
+            tool: .claude, path: "/Users/example/.claude/projects/beta/cl-1.jsonl",
+            events: [
+                event(60, session: "cl-1", project: "/Users/example/Code/beta/.agents/worktrees/fix", harness: .claudeCode, id: "c1"),
+                event(120, session: "cl-1", project: "/Users/example/Code/alpha", harness: .claudeCode, id: "c2"),
+            ]
+        ))
+        let devin = SessionSummary(
+            provider: .devin, sessionID: "dev-1", harness: .devin, projectDir: "/Users/example/Code/beta/",
+            createdAt: start, lastActiveAt: start.addingTimeInterval(30), sourcePath: "/Users/example/.devin/dev-1"
+        )
+        let claude = SessionSummary(
+            provider: .claude, sessionID: "cl-1", harness: .claudeCode,
+            projectDir: "/Users/example/Code/beta/.agents/worktrees/fix",
+            createdAt: start, lastActiveAt: start.addingTimeInterval(130), sourcePath: "/Users/example/.claude/cl-1.jsonl"
+        )
+        let aggregator = UsageDashboardAggregator(
+            ledger: ledger, sessions: FixedSessions(rows: [devin, claude]), structures: nil, activity: nil
+        )
+        let now = start.addingTimeInterval(3_600)
+        let interval = await aggregator.interval(for: .week, harnesses: nil, now: now)
+
+        let all = await aggregator.snapshot(UsageDashboardQuery(range: .week, interval: interval), now: now)
+        XCTAssertEqual(all.options.projects.map(\.path), ["/Users/example/Code/beta", "/Users/example/Code/alpha"])
+        XCTAssertEqual(all.projects.rows.first?.id, "/Users/example/Code/beta")
+        XCTAssertEqual(all.projects.rows.first?.tokens, 220)
+        XCTAssertEqual(all.projects.rows.first?.sessions, 2)
+        XCTAssertEqual(all.hero.projectCount, 2)
+
+        let beta = UsageDashboardQuery(range: .week, interval: interval, project: "/Users/example/Code/beta")
+        let raws = await aggregator.ledgerProjects(for: beta)
+        XCTAssertEqual(Set(raws ?? []), ["/Users/example/Code/beta", "/Users/example/Code/beta/", "/Users/example/Code/beta/.agents/worktrees/fix"])
+        let narrowed = await aggregator.snapshot(beta, now: now)
+        XCTAssertEqual(narrowed.hero.requests, 2, "both spellings' rows, not alpha's")
+        XCTAssertEqual(narrowed.hero.tokens.total, 220)
+        XCTAssertEqual(Set(narrowed.recentSessions.map(\.summary.sessionID)), ["dev-1", "cl-1"])
+        let page = try await ledger.requestPage(beta.ledgerFilter, projects: raws, pageSize: 10)
+        XCTAssertEqual(page.rows.count, 2)
+    }
+
     private func codexRollout() -> [String] {
         let builder = CodexRolloutBuilder()
         builder.meta()

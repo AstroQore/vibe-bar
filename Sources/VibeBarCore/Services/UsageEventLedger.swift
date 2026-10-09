@@ -1890,7 +1890,7 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// skipped.
     public func requestPage(
         _ filter: UsageQueryFilter,
-        project: String? = nil,
+        projects: [String]? = nil,
         after cursor: UsageRequestCursor? = nil,
         pageSize: Int,
         includeTotal: Bool = true
@@ -1899,11 +1899,8 @@ public actor UsageEventLedger: CostUsageEventSink {
         // statistics exist for, so never serve one without them.
         optimizeStorage()
         let size = min(max(1, pageSize), 1_000)
-        var detail = detailPredicate(filter)
         // The Usage page's project filter; `UsageQueryFilter` predates it.
-        if let project {
-            detail = Predicate(sql: detail.sql + " AND project = ?", bindings: detail.bindings + [.text(project)])
-        }
+        let detail = dashboardDetailPredicate(filter, projects: projects)
 
         // COUNT(*) has to visit every matched row, so it costs the same
         // whether it answers for page 0 or page 40 — and it answers the same
@@ -2564,19 +2561,16 @@ extension UsageEventLedger {
     /// Request-level groupings behind the Workbench Usage page, for one
     /// filter. Read-only: one streaming pass over the detail rows the filter
     /// selects plus, when no project narrows the query, two `GROUP BY`s over
-    /// the daily rollups. `project` narrows detail rows to one directory; rollups carry
-    /// no project, so a project filter leaves them out.
+    /// the daily rollups. `projects` narrows detail rows to those raw project
+    /// values; rollups carry no project, so a project filter leaves them out.
     ///
     /// Session totals are a separate call (`dashboardSessionTotals`) because
     /// they do not depend on the filter, only on the ledger's content.
-    public func dashboardFacts(_ filter: UsageQueryFilter, project: String? = nil) throws -> UsageLedgerDashboardFacts {
+    public func dashboardFacts(_ filter: UsageQueryFilter, projects: [String]? = nil) throws -> UsageLedgerDashboardFacts {
         var facts = UsageLedgerDashboardFacts()
-        var detail = detailPredicate(filter)
-        if let project {
-            detail = Predicate(sql: detail.sql + " AND project = ?", bindings: detail.bindings + [.text(project)])
-        }
-        let rollup = project == nil ? rollupPredicate(filter) : nil
-        facts.includesRollups = project == nil
+        let detail = dashboardDetailPredicate(filter, projects: projects)
+        let rollup = projects == nil ? rollupPredicate(filter) : nil
+        facts.includesRollups = projects == nil
         let tokensSQL = "(fresh_input + output + cache_read + cache_creation)"
         let slot = UsageLedgerDashboardFacts.slotSeconds
 
@@ -2745,11 +2739,8 @@ extension UsageEventLedger {
 
     /// Session ids with at least one detail row inside `filter` (and
     /// `project`). The caller joins these against `dashboardSessionTotals`.
-    public func dashboardSessionIDs(_ filter: UsageQueryFilter, project: String? = nil) throws -> Set<String> {
-        var detail = detailPredicate(filter)
-        if let project {
-            detail = Predicate(sql: detail.sql + " AND project = ?", bindings: detail.bindings + [.text(project)])
-        }
+    public func dashboardSessionIDs(_ filter: UsageQueryFilter, projects: [String]? = nil) throws -> Set<String> {
+        let detail = dashboardDetailPredicate(filter, projects: projects)
         var ids: Set<String> = []
         try forEachDashboardRow(
             "SELECT DISTINCT session_id FROM usage_events WHERE \(detail.sql) AND session_id IS NOT NULL",
@@ -2860,6 +2851,21 @@ extension UsageEventLedger {
     }
 
     // MARK: Plumbing
+
+    /// `detailPredicate` narrowed to the rows whose `project` is one of
+    /// `projects` — every raw spelling the ledger holds for one project
+    /// (a worktree, a trailing slash), which the caller has already folded
+    /// together with `UsageProjectIdentity.normalizedPath`. An empty list
+    /// matches nothing.
+    private func dashboardDetailPredicate(_ filter: UsageQueryFilter, projects: [String]?) -> Predicate {
+        let detail = detailPredicate(filter)
+        guard let projects else { return detail }
+        guard !projects.isEmpty else { return Predicate(sql: "0", bindings: []) }
+        return Predicate(
+            sql: detail.sql + " AND project IN (\(placeholders(projects.count)))",
+            bindings: detail.bindings + projects.map { .text($0) }
+        )
+    }
 
     private func forEachDashboardRow(
         _ sql: String,

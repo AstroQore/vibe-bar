@@ -314,7 +314,9 @@ private struct Context {
                     || inputs.ledgerSessionIDsInQuery.contains(summary.sessionID)
                 guard matches else { continue }
             }
-            if let project = query.project, row.projectPath != project { continue }
+            // Both sides folded by the one function: the picker's value and
+            // the session's directory (`UsageDashboardAggregator.projectKey`).
+            if let project = query.project, row.projectPath != UsageDashboardAggregator.projectKey(project) { continue }
             rows.append(row)
         }
         return rows
@@ -518,19 +520,23 @@ private struct Context {
         var sessions = 0
     }
 
-    /// Ledger project totals — the rows `UsageEventLedger.projectStats` sums
-    /// — with how many of the range's sessions ran there. A harness whose
+    /// Ledger project totals — the rows `UsageEventLedger.projectStats` sums,
+    /// folded by `UsageDashboardAggregator.projectKey` — with how many of the
+    /// range's sessions ran there. A harness whose
     /// rows name no project (AntiGravity, Grok Build, Cursor) is simply not
     /// in this ranking, as in `projectStats`.
     func projectTotals(rows: [UsageDashboardSnapshot.SessionRow]) -> [String: GroupTotal] {
         var totals: [String: GroupTotal] = [:]
         for row in facts.projects {
-            var total = totals[row.key] ?? GroupTotal()
+            // Raw spellings of one project fold into one row, keyed as the
+            // session rows are, so the sessions below can find it.
+            let key = UsageDashboardAggregator.projectKey(row.key)
+            var total = totals[key] ?? GroupTotal()
             total.tokens += row.tokens
             total.costMicros += row.costMicros
             total.requests += row.requests
             total.unpriced += row.unpriced
-            totals[row.key] = total
+            totals[key] = total
         }
         for row in rows {
             guard let path = row.projectPath, totals[path] != nil else { continue }
@@ -862,7 +868,9 @@ private struct Context {
         for row in inputs.ledger.days { harnessTokens[row.harness, default: 0] += row.tokens.total }
         let harnesses = Set(harnessTokens.filter { $0.value > 0 }.keys).union(sessionCounts.keys)
         var projects = inputs.projectOptions
-        if let selected = query.project, projects[selected] == nil { projects[selected] = 0 }
+        if let selected = query.project.map(UsageDashboardAggregator.projectKey), projects[selected] == nil {
+            projects[selected] = 0
+        }
         return UsageDashboardSnapshot.FilterOptions(
             harnesses: harnesses
                 .map {
