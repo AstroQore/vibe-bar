@@ -56,12 +56,15 @@ enum UsageDashboardFormat {
     /// "Mon 14:00" / "周一 14:00", for a Monday-first weekday and an hour.
     static func slot(weekday: Int, hour: Int) -> String {
         var components = DateComponents()
-        // 2024-01-01 was a Monday; only the weekday and the hour are shown.
+        // 2024-01-01 was a Monday in the Gregorian calendar — the page's
+        // (`UsageDashboardCalendar`), not the Mac's, which may read the same
+        // components as another day. Only the weekday and the hour are shown,
+        // and an instant's weekday is the same in every calendar.
         components.year = 2024
         components.month = 1
         components.day = 1 + max(0, min(6, weekday))
         components.hour = max(0, min(23, hour))
-        guard let date = Calendar.current.date(from: components) else { return "" }
+        guard let date = UsageDashboardCalendar.local.date(from: components) else { return "" }
         return AppLocale.string(date, template: "EEEHHmm")
     }
 
@@ -71,7 +74,7 @@ enum UsageDashboardFormat {
         components.month = 1
         components.day = 1
         components.hour = max(0, min(23, hour))
-        guard let date = Calendar.current.date(from: components) else { return "" }
+        guard let date = UsageDashboardCalendar.local.date(from: components) else { return "" }
         return AppLocale.string(date, template: "HH")
     }
 
