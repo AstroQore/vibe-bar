@@ -1,11 +1,11 @@
 import SwiftUI
 import VibeBarCore
 
-/// The Sessions page's right column: one session, read top to bottom.
-///
-/// The transcript is the only place in this page that touches a session file,
-/// and it is deliberately a plain vertical stack of cards rather than a chat
-/// mock-up — these are logs being reviewed, not a conversation being had.
+/// The raw view of the Sessions page's conversation column: every message
+/// of the log in order, for a harness the turn view cannot read and on
+/// request. The column draws the session's masthead; this is the body —
+/// deliberately a plain vertical stack of cards rather than a chat mock-up,
+/// because these are logs being reviewed.
 struct TranscriptView: View {
     let density: Theme.Density
     @ObservedObject var model: SessionManagerModel
@@ -42,9 +42,6 @@ struct TranscriptView: View {
                 // reviewing a long log. The scroll view below is intentionally
                 // limited to transcript content; the header is a stable reading
                 // anchor rather than another item in the transcript.
-                SessionMetadataHeader(density: density, model: model, summary: summary)
-                    .padding(.horizontal, density.popoverPaddingH)
-                    .padding(.top, density.popoverPaddingV)
 
                 HStack(spacing: 8) {
                     searchBar(proxy: proxy)
@@ -55,6 +52,7 @@ struct TranscriptView: View {
 
                 Divider().opacity(0.45)
 
+                LazyScrollContainer {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: density.cardSpacing) {
                     if model.isLoadingTranscript {
@@ -102,11 +100,9 @@ struct TranscriptView: View {
                     .padding(.vertical, density.popoverPaddingV)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .cardSurface(density: density)
-            .padding(.trailing, density.popoverPaddingH)
-            .padding(.bottom, density.popoverPaddingV)
             // Keyed on an identity, not on the document: `TranscriptDocument`
             // is `Equatable`, and `onChange` would compare two
             // hundred-thousand-message values on every body evaluation.
@@ -508,329 +504,6 @@ struct TranscriptView: View {
                     preview: TranscriptFormatting.clip(line, limit: 50)
                 )
             }
-    }
-}
-
-/// The transcript's masthead: who wrote this session, where, and how to get
-/// back into it.
-struct SessionMetadataHeader: View {
-    let density: Theme.Density
-    @ObservedObject var model: SessionManagerModel
-    let summary: SessionSummary
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showsDetails = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: max(7, density.cardSpacing)) {
-            HStack(alignment: .center, spacing: 10) {
-                HarnessBrandBadge(
-                    harness: summary.effectiveHarness,
-                    iconSize: 20,
-                    containerSize: 26,
-                    brandColored: true
-                )
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.system(size: density.titleFontSize, weight: .semibold))
-                        .lineLimit(1)
-                    compactMetadata
-                    sessionIDLine
-                }
-                Spacer(minLength: 0)
-                headerActions
-            }
-            if showsDetails {
-                Divider().opacity(0.42)
-                facts
-                if summary.provider == .antigravity {
-                    notice
-                }
-                resumeRow
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var compactMetadata: some View {
-        HStack(spacing: 6) {
-            Text(providerLabel)
-                .font(.system(size: max(10, density.subtitleFontSize - 2), weight: .semibold))
-                .padding(.horizontal, 7)
-                .frame(minHeight: 18)
-                .background(Capsule().fill(summary.provider.accent.opacity(0.16)))
-            if let project = summary.projectDir {
-                Label(SessionManagerModel.projectTitle(for: summary), systemImage: "folder")
-                    .lineLimit(1)
-                    .help(project)
-            }
-            if summary.hasKnownMessageCount {
-                Text(L10n.Workbench.Sessions.Row.messageCount(count: summary.messageCount))
-                    .monospacedDigit()
-            }
-        }
-        .font(.system(size: max(10, density.resetCountdownFontSize - 1), design: .rounded))
-        .foregroundStyle(.secondary)
-    }
-
-    /// The session id is what AQ reaches for first — to resume, to grep a
-    /// log, to hand to another agent — so it lives under the title, always
-    /// visible, and the whole line is a copy button.
-    private var sessionIDLine: some View {
-        Button {
-            model.copyToClipboard(
-                summary.sessionID,
-                note: L10n.Workbench.Sessions.Toast.sessionIDCopied
-            )
-        } label: {
-            HStack(spacing: 5) {
-                Text(summary.sessionID)
-                    .font(.system(size: max(10, density.subtitleFontSize - 1), design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: max(9, density.resetCountdownFontSize - 1), weight: .semibold))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.primary.opacity(0.05))
-            )
-        }
-        .buttonStyle(.vibeBar)
-        .help(L10n.Workbench.Sessions.copySessionID)
-        .accessibilityLabel(L10n.Workbench.Sessions.copySessionIDLabel(id: summary.sessionID))
-    }
-
-    private var headerActions: some View {
-        HStack(spacing: 6) {
-            if model.resumeShellLine(for: summary) != nil {
-                Button {
-                    model.copyResumeCommand(for: summary)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .frame(width: 16, height: 16)
-                }
-                .help(L10n.Workbench.Sessions.copyResumeCommand)
-                .accessibilityLabel(L10n.Workbench.Sessions.copyResumeCommand)
-
-                Button {
-                    model.resumeInTerminal(summary)
-                } label: {
-                    Label(L10n.Common.`open`, systemImage: "terminal")
-                        .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                }
-                .help(L10n.Workbench.Sessions.runInHelp(
-                    terminal: model.preferredTerminal.displayName
-                ))
-            }
-
-            Button {
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
-                    showsDetails.toggle()
-                }
-            } label: {
-                Label(L10n.Workbench.Sessions.details, systemImage: "chevron.down")
-                    .font(.system(size: max(10, density.segmentedFontSize - 1), weight: .semibold))
-                    .labelStyle(.titleAndIcon)
-            }
-            .accessibilityValue(showsDetails
-                ? L10n.Workbench.Sessions.Details.expanded
-                : L10n.Workbench.Sessions.Details.collapsed)
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .fixedSize()
-    }
-
-    private var title: String {
-        if let title = summary.title, !title.isEmpty { return title }
-        if let text = summary.summary, !text.isEmpty { return text }
-        return summary.sessionID
-    }
-
-    private var providerLabel: String {
-        guard let variant = summary.providerVariant, !variant.isEmpty else {
-            return summary.effectiveHarness.displayName
-        }
-        return "\(summary.effectiveHarness.displayName) · \(variant)"
-    }
-
-    // MARK: - Facts
-
-    private var facts: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            factRow(
-                label: L10n.Workbench.Sessions.Fact.id,
-                monospaced: true,
-                value: summary.sessionID,
-                copyHelp: L10n.Workbench.Sessions.copySessionID
-            ) {
-                model.copyToClipboard(
-                    summary.sessionID,
-                    note: L10n.Workbench.Sessions.Toast.sessionIDCopied
-                )
-            }
-            if let project = summary.projectDir {
-                let projectless = SessionManagerModel.isGeneratedProjectlessPath(project)
-                factRow(
-                    label: L10n.Workbench.Sessions.Fact.cwd,
-                    monospaced: !projectless,
-                    value: projectless ? L10n.Workbench.Sessions.Project.projectless : project,
-                    copyHelp: L10n.Workbench.Sessions.copyWorkingDirectory
-                ) {
-                    model.copyToClipboard(
-                        project,
-                        note: L10n.Workbench.Sessions.Toast.cwdCopied
-                    )
-                }
-            }
-            if let created = summary.createdAt {
-                factRow(
-                    label: L10n.Workbench.Sessions.Fact.created,
-                    value: Self.stamp.string(from: created),
-                    copy: nil
-                )
-            }
-            if let active = summary.lastActiveAt {
-                factRow(
-                    label: L10n.Workbench.Sessions.Fact.lastActive,
-                    value: Self.stamp.string(from: active),
-                    copy: nil
-                )
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                factLabel(L10n.Workbench.Sessions.Fact.source)
-                Text(summary.sourcePath)
-                    .font(.system(size: max(9, density.resetCountdownFontSize - 1), design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(summary.sourcePath)
-                BorderlessIconButton(
-                    systemImage: "doc.on.doc",
-                    help: L10n.Workbench.Sessions.copySourcePath
-                ) {
-                    model.copyToClipboard(
-                        summary.sourcePath,
-                        note: L10n.Workbench.Sessions.Toast.sourcePathCopied
-                    )
-                }
-                BorderlessIconButton(
-                    systemImage: "folder",
-                    help: L10n.Workbench.Skills.menuRevealInFinder
-                ) {
-                    model.revealInFinder(summary)
-                }
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    /// `copyHelp` is passed rather than assembled from `label`: "Copy " plus
-    /// a field name is a sentence built by concatenation, and the two halves
-    /// do not stay in that order in every language.
-    private func factRow(
-        label: String,
-        monospaced: Bool = false,
-        value: String,
-        copyHelp: String? = nil,
-        copy: (() -> Void)?
-    ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            factLabel(label)
-            Text(value)
-                .font(.system(
-                    size: density.subtitleFontSize - 1,
-                    design: monospaced ? .monospaced : .default
-                ))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            if let copy, let copyHelp {
-                BorderlessIconButton(systemImage: "doc.on.doc", help: copyHelp, action: copy)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func factLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
-            .foregroundStyle(.tertiary)
-            .tracking(0.4)
-            .frame(width: 74, alignment: .leading)
-    }
-
-    private var notice: some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "info.circle")
-                .font(.system(size: density.subtitleFontSize - 1))
-            Text(L10n.Workbench.Sessions.antigravityNotice)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.system(size: max(9, density.resetCountdownFontSize)))
-        .foregroundStyle(.secondary)
-    }
-
-    // MARK: - Resume
-
-    @ViewBuilder
-    private var resumeRow: some View {
-        if let line = model.resumeShellLine(for: summary) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.Workbench.Sessions.Resume.heading)
-                    .font(.system(size: max(10, density.resetCountdownFontSize - 2), weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .tracking(0.4)
-                Text(line)
-                    .font(.system(size: density.subtitleFontSize - 1, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.primary.opacity(0.045))
-                    )
-                HStack(spacing: 8) {
-                    Button {
-                        model.copyResumeCommand(for: summary)
-                    } label: {
-                        Label(L10n.Common.copy, systemImage: "doc.on.doc")
-                            .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
-                    }
-                    .buttonStyle(.bordered)
-                    .frame(minHeight: 28)
-                    Button {
-                        model.resumeInTerminal(summary)
-                    } label: {
-                        Label(L10n.Workbench.Sessions.openInTerminal, systemImage: "terminal")
-                            .font(.system(size: density.segmentedFontSize - 1, weight: .semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(minHeight: 28)
-                    .help(L10n.Workbench.Sessions.runInHelp(
-                        terminal: model.preferredTerminal.displayName
-                    ))
-                    Spacer(minLength: 0)
-                }
-            }
-        } else {
-            Text(L10n.Workbench.Sessions.Resume.none)
-                .font(.system(size: max(9, density.resetCountdownFontSize)))
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    // Built per language rather than once per process: a formatter
-    // parked in a `static let` keeps the language it was created in.
-    private static var stamp: DateFormatter {
-        AppLocale.dateFormatter(dateStyle: .medium, timeStyle: .short)
     }
 }
 
