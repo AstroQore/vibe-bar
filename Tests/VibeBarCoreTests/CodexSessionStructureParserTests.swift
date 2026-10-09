@@ -379,6 +379,44 @@ final class CodexSessionStructureParserTests: XCTestCase {
         XCTAssertEqual(structure.stats.counterResets, 0)
     }
 
+    /// A reply only a record covered in turn A, absorbed by the counter in
+    /// turn B — which has no records and falls back to the counter — must
+    /// not be counted twice.
+    func testCounterCatchUpForRecordedRepliesIsNotCountedAgain() throws {
+        func rollout(_ turnB: (CodexRolloutBuilder) -> Void) throws -> SessionStructure {
+            let builder = CodexRolloutBuilder()
+                .meta()
+                .taskStarted("a").turnContext(model: "gpt-5").prompt("A", turnID: "a")
+            builder.usageRecord(input: 900, cached: 0, output: 100).tokenCount(input: 900, cached: 0, output: 100)
+            builder.usageRecord(input: 450, cached: 0, output: 50) // the counter skips this reply
+            builder.assistant("A done").taskComplete("a")
+                .taskStarted("b").turnContext(model: "gpt-5").prompt("B", turnID: "b")
+            turnB(builder)
+            builder.assistant("B done").taskComplete("b")
+            return try parse(builder)
+        }
+
+        // The counter absorbs the skipped 500 in B: cumulative 1,000 → 2,000
+        // while B's own reply is 500.
+        let absorbed = try rollout { $0.tokenCount(input: 450, cached: 0, output: 50, catchUp: (450, 0, 50)) }
+        XCTAssertEqual(absorbed.turns.map(\.usage.total), [1_500, 500])
+        XCTAssertEqual(absorbed.stats.totalTokens, 2_000)
+        XCTAssertEqual(absorbed.stats.modelUsage.reduce(0) { $0 + $1.usage.total }, 2_000)
+        XCTAssertEqual(absorbed.stats.cumulativeTokensIncludingInherited, 2_000)
+        let reference = try XCTUnwrap(CostUsagePricing.codexCostUSD(model: "gpt-5", inputTokens: 1_800, cachedInputTokens: 0, outputTokens: 200))
+        XCTAssertEqual(try XCTUnwrap(absorbed.stats.estimatedCostUSD), reference, accuracy: 1e-9)
+
+        // A counter that never catches up (what local rollouts show) is read as is.
+        let never = try rollout { $0.tokenCount(input: 450, cached: 0, output: 50) }
+        XCTAssertEqual(never.turns.map(\.usage.total), [1_500, 500])
+        XCTAssertEqual(never.stats.totalTokens, 2_000)
+
+        // A reset ends the epoch the skipped reply could be absorbed in.
+        let restarted = try rollout { $0.resetCounter().tokenCount(input: 450, cached: 0, output: 50) }
+        XCTAssertEqual(restarted.turns.map(\.usage.total), [1_500, 500])
+        XCTAssertEqual(restarted.stats.totalTokens, 2_000)
+    }
+
     func testUnknownModelLeavesCostNil() throws {
         let builder = CodexRolloutBuilder()
             .meta()

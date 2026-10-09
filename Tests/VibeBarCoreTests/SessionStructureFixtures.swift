@@ -225,10 +225,17 @@ final class CodexRolloutBuilder {
     }
 
     /// Cumulative counter; pass the per-request increment.
+    /// `catchUp` is growth the counter absorbs on top of this response —
+    /// replies it skipped earlier — without reporting it in `last_token_usage`.
     @discardableResult
-    func tokenCount(input: Int, cached: Int, output: Int) -> Self {
+    func tokenCount(
+        input: Int, cached: Int, output: Int,
+        catchUp: (input: Int, cached: Int, output: Int) = (0, 0, 0)
+    ) -> Self {
         lastIncrement = (input, cached, output)
-        cumulative = (cumulative.input + input, cumulative.cached + cached, cumulative.output + output)
+        cumulative = (cumulative.input + input + catchUp.input,
+                      cumulative.cached + cached + catchUp.cached,
+                      cumulative.output + output + catchUp.output)
         let total: [String: Any] = [
             "input_tokens": cumulative.input, "cached_input_tokens": cumulative.cached,
             "cache_write_input_tokens": 0, "output_tokens": cumulative.output, "reasoning_output_tokens": 0,

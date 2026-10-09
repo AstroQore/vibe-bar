@@ -34,7 +34,9 @@ public struct SessionStructure: Codable, Sendable, Hashable {
     /// v8: Codex `token_usage_record` and `token_count` are read as two
     /// separate usage series, never as one counter (see
     /// `SessionUsageSource.responseRecords`).
-    public static let parserVersion = 8
+    /// v9: a turn read from `token_count` drops catch-up growth for replies
+    /// already counted from an earlier turn's records.
+    public static let parserVersion = 9
 
     /// How much of each turn was materialized.
     public enum Detail: String, Codable, Sendable, Hashable {
@@ -146,6 +148,14 @@ extension SessionStructure {
                 cacheWrite: lhs.cacheWrite - rhs.cacheWrite,
                 cacheRead: lhs.cacheRead - rhs.cacheRead,
                 output: lhs.output - rhs.output
+            )
+        }
+
+        /// The smaller of each bucket.
+        public func bucketMin(_ other: TokenUsage) -> TokenUsage {
+            TokenUsage(
+                input: min(input, other.input), cacheWrite: min(cacheWrite, other.cacheWrite),
+                cacheRead: min(cacheRead, other.cacheRead), output: min(output, other.output)
             )
         }
 

@@ -85,6 +85,12 @@ private final class CodexStructureBuilder {
     var lastRecordThread: RawTotals?
     var lastRecordThreadTotal: Int?
     var counterSeries = UsageSeries()
+    /// The part of a `token_count` step beyond the response it reports
+    /// (`last_token_usage`): growth from replies the counter skipped
+    /// earlier and is only now absorbing. Kept apart so a turn that falls
+    /// back to the counter can drop what records already counted.
+    var counterCatchUpSeries = UsageSeries()
+    var counterResetTurns: Set<Int> = []
     var recordSeries = UsageSeries()
     /// A counter was read from this session's own lines (not only from
     /// history it inherited).
@@ -321,7 +327,7 @@ private final class CodexStructureBuilder {
                 currentTier = CostUsagePricing.normalizedCodexServiceTier(tier)
             }
             if let total = info["total_token_usage"] as? [String: Any] {
-                applyCumulative(RawTotals(total))
+                applyCumulative(RawTotals(total), response: (info["last_token_usage"] as? [String: Any]).map(RawTotals.init))
             } else if let last = info["last_token_usage"] as? [String: Any] {
                 applyIncrement(RawTotals(last))
             }
@@ -908,6 +914,16 @@ private final class CodexStructureBuilder {
             return delta
         }
 
+        /// Each field capped at `limit`'s.
+        func clamped(to limit: RawTotals) -> RawTotals {
+            var capped = RawTotals()
+            capped.input = min(input, max(0, limit.input))
+            capped.cached = min(cached, max(0, limit.cached))
+            capped.cacheWrite = min(cacheWrite, max(0, limit.cacheWrite))
+            capped.output = min(output, max(0, limit.output))
+            return capped
+        }
+
         func plus(_ other: RawTotals) -> RawTotals {
             var sum = RawTotals()
             sum.input = input + other.input
@@ -942,6 +958,28 @@ private final class CodexStructureBuilder {
     struct UsageSeries {
         var byTurn: [Int: [String: UsageEntry]] = [:]
 
+        static func total(_ entries: [String: UsageEntry]?) -> SessionStructure.TokenUsage {
+            (entries ?? [:]).values.reduce(.zero) { $0 + $1.usage }
+        }
+
+        /// `entries` less `amount` (bucket by bucket, models in order), each
+        /// entry's cost scaled with what is left of its tokens.
+        static func removing(_ amount: SessionStructure.TokenUsage, from entries: [String: UsageEntry]) -> [String: UsageEntry] {
+            guard !amount.isZero else { return entries }
+            var remaining = amount
+            var result = entries
+            for model in entries.keys.sorted() {
+                guard var entry = result[model], !entry.usage.isZero else { continue }
+                let before = entry.usage.total
+                let taken = entry.usage.bucketMin(remaining)
+                entry.usage = entry.usage - taken
+                remaining = remaining - taken
+                if before > 0 { entry.cost *= Double(entry.usage.total) / Double(before) }
+                result[model] = entry
+            }
+            return result
+        }
+
         mutating func add(turn: Int, model: String?, usage: SessionStructure.TokenUsage, cost: Double?) {
             let key = model ?? ""
             var entry = byTurn[turn]?[key] ?? UsageEntry()
@@ -956,11 +994,13 @@ private final class CodexStructureBuilder {
         }
     }
 
-    enum UsageSource { case counter, record }
+    enum UsageSource { case counter, counterCatchUp, record }
 
     /// `token_count.total_token_usage`: a cumulative counter, differenced
-    /// against its own previous value only.
-    func applyCumulative(_ totals: RawTotals) {
+    /// against its own previous value only. `response` is the record's
+    /// `last_token_usage`; growth beyond it is catch-up for replies the
+    /// counter skipped before.
+    func applyCumulative(_ totals: RawTotals, response: RawTotals? = nil) {
         let hadOwnCounter = counterSeen
         ownCounterSeen = true
         counterSeen = true
@@ -977,13 +1017,23 @@ private final class CodexStructureBuilder {
             // A counter that went backwards was reset; what it shows now is
             // new. (Dropping below an *inherited* baseline is a cut fork's
             // own counter starting, not a reset.)
-            if hadOwnCounter { counterResets += 1 }
+            if hadOwnCounter {
+                counterResets += 1
+                counterResetTurns.insert(acc.current ?? -1)
+            }
             lastTotals = totals
             record(delta: totals, source: .counter)
             return
         }
         lastTotals = totals
-        record(delta: totals.minus(last), source: .counter)
+        let delta = totals.minus(last)
+        guard let response else {
+            record(delta: delta, source: .counter)
+            return
+        }
+        let own = delta.clamped(to: response)
+        record(delta: own, source: .counter)
+        record(delta: delta.minus(own), source: .counterCatchUp)
     }
 
     func applyIncrement(_ increment: RawTotals) {
@@ -1045,6 +1095,7 @@ private final class CodexStructureBuilder {
         acc.noteUsage()
         switch source {
         case .counter: counterSeries.add(turn: turn, model: currentModel, usage: usage, cost: cost)
+        case .counterCatchUp: counterCatchUpSeries.add(turn: turn, model: currentModel, usage: usage, cost: cost)
         case .record: recordSeries.add(turn: turn, model: currentModel, usage: usage, cost: cost)
         }
     }
@@ -1052,19 +1103,25 @@ private final class CodexStructureBuilder {
     /// Attribute usage turn by turn: from the per-response records when the
     /// turn has any, from `token_count` otherwise. Returns whether records
     /// were used.
+    ///
+    /// The counter can skip a reply that a record covers and absorb it in a
+    /// later step. If that later step falls in a turn read from the counter,
+    /// the absorbed growth was already counted from the records, so it is
+    /// dropped there. `pending` is the record-only growth the counter has
+    /// not absorbed yet; a counter reset ends the epoch it could be absorbed
+    /// in. Absorption is recognized only as growth beyond the step's own
+    /// `last_token_usage` — a counter that never catches up (what local
+    /// rollouts show) costs nothing here.
     func attributeUsage(to turns: inout [SessionStructure.Turn]) -> Bool {
         var usedRecords = false
-        let keys = Set(counterSeries.byTurn.keys).union(recordSeries.byTurn.keys).sorted()
-        for key in keys {
-            let entries: [String: UsageEntry]
-            if let fromRecords = recordSeries.byTurn[key] {
-                entries = fromRecords
-                usedRecords = true
-            } else {
-                entries = counterSeries.byTurn[key] ?? [:]
-            }
+        var pending = SessionStructure.TokenUsage.zero
+        let keys = Set(counterSeries.byTurn.keys)
+            .union(counterCatchUpSeries.byTurn.keys)
+            .union(recordSeries.byTurn.keys)
+            .sorted()
+        func add(_ entries: [String: UsageEntry], turn key: Int) {
             for model in entries.keys.sorted() {
-                guard let entry = entries[model] else { continue }
+                guard let entry = entries[model], !entry.usage.isZero else { continue }
                 let name = model.isEmpty ? nil : model
                 if key >= 0, key < turns.count {
                     turns[key].usage += entry.usage
@@ -1074,6 +1131,22 @@ private final class CodexStructureBuilder {
                 }
                 acc.ledger.merge(model: name, usage: entry.usage, cost: entry.cost,
                                  priced: entry.priced, unpriced: entry.unpriced)
+            }
+        }
+        for key in keys {
+            if counterResetTurns.contains(key) { pending = .zero }
+            let counterOwn = UsageSeries.total(counterSeries.byTurn[key])
+            let catchUp = UsageSeries.total(counterCatchUpSeries.byTurn[key])
+            if let fromRecords = recordSeries.byTurn[key] {
+                usedRecords = true
+                add(fromRecords, turn: key)
+                pending = (pending - pending.bucketMin(catchUp))
+                    + (UsageSeries.total(fromRecords) - counterOwn).clampedNonNegative
+            } else {
+                add(counterSeries.byTurn[key] ?? [:], turn: key)
+                let absorbed = pending.bucketMin(catchUp)
+                pending = pending - absorbed
+                add(UsageSeries.removing(absorbed, from: counterCatchUpSeries.byTurn[key] ?? [:]), turn: key)
             }
         }
         return usedRecords
