@@ -889,15 +889,26 @@ private struct Context {
         for row in rows {
             let provider = row.summary.provider
             let path = row.summary.sourcePath
-            let unreachable = inputs.unreachablePaths.contains(path)
-            if SessionStructureService.supports(provider) {
+            let wantsStructure = SessionStructureService.supports(provider)
+            let wantsActivity = SessionActivityScanner.supports(provider)
+            guard wantsStructure || wantsActivity else { continue }
+            coverage.analyzable += 1
+            let hasStructure = inputs.structures[path] != nil
+            let hasActivity = inputs.activity[path] != nil
+            if wantsStructure {
                 coverage.structureEligible += 1
-                if inputs.structures[path] != nil { coverage.structureReady += 1 }
+                if hasStructure { coverage.structureReady += 1 }
             }
-            if SessionActivityScanner.supports(provider) {
+            if wantsActivity {
                 coverage.activityEligible += 1
-                if inputs.activity[path] != nil { coverage.activityReady += 1 }
-                else if unreachable { coverage.skipped += 1 }
+                if hasActivity { coverage.activityReady += 1 }
+            }
+            if (!wantsStructure || hasStructure) && (!wantsActivity || hasActivity) {
+                coverage.analyzed += 1
+            } else if inputs.unreachablePaths.contains(path) {
+                // A Codex session above the structure cap keeps blank tokens
+                // and cost; counting it here is what tells the page so.
+                coverage.skipped += 1
             }
         }
         coverage.hourlyFrom = hourlyFrom()

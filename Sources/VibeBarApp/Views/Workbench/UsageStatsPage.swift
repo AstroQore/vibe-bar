@@ -162,10 +162,9 @@ struct UsageStatusLine: View, Equatable {
         if isBuildingIndex {
             notes.append(("arrow.triangle.2.circlepath", L10n.Workbench.Usage.Status.indexEmpty))
         }
-        let total = max(0, coverage.activityEligible - coverage.skipped)
-        let ready = min(coverage.structureReady, coverage.activityReady)
-        if isEnriching, total > 0, ready < total {
-            notes.append(("hourglass", L10n.Workbench.Usage.Status.analyzing(ready: ready, total: total)))
+        let total = max(0, coverage.analyzable - coverage.skipped)
+        if isEnriching, coverage.pending > 0 {
+            notes.append(("hourglass", L10n.Workbench.Usage.Status.analyzing(ready: coverage.analyzed, total: total)))
         }
         if coverage.skipped > 0 {
             notes.append(("exclamationmark.circle", L10n.Workbench.Usage.Status.skipped(count: coverage.skipped)))

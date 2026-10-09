@@ -14,6 +14,53 @@ final class UsageDashboardAggregatorTests: XCTestCase {
         func totalSessionCount() async -> Int { rows.count }
     }
 
+    /// A sidecar with a tiny size cap and nothing in it.
+    private actor TinyStructures: UsageDashboardStructureSource {
+        nonisolated let maxFileBytes: Int64 = 1_024
+        private(set) var filled: [String] = []
+        func freshStats(for summaries: [SessionSummary]) async -> [String: SessionStats] { [:] }
+        func fill(_ summaries: [SessionSummary]) async -> Int {
+            filled += summaries.map(\.sourcePath)
+            return 0
+        }
+    }
+
+    func testASessionAboveTheStructureCapIsCountedAsSkipped() async throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let directory = try SessionStructureFixtures.temporaryDirectory("AggregatorCap")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Larger than the structure cap, far below the activity cap.
+        let lines = codexRollout() + Array(repeating: codexRollout()[3], count: 40)
+        let url = try SessionStructureFixtures.write(lines, to: directory.appendingPathComponent("codex/rollout-big.jsonl"))
+        let start = ISO8601DateFormatter().date(from: "2026-05-01T10:00:00Z")!
+        let codex = SessionSummary(
+            provider: .codex, sessionID: SessionStructureFixtures.codexThreadID, harness: .codex,
+            createdAt: start, lastActiveAt: start.addingTimeInterval(600),
+            // The index still has the size from before the file grew.
+            sourcePath: url.path, sizeBytes: 512
+        )
+        let structures = TinyStructures()
+        let aggregator = UsageDashboardAggregator(
+            ledger: nil,
+            sessions: FixedSessions(rows: [codex]),
+            structures: structures,
+            activity: SessionActivityStore(url: nil, calendar: utc),
+            calendar: utc
+        )
+        let now = start.addingTimeInterval(3_600)
+        let query = UsageDashboardQuery(range: .week, interval: await aggregator.interval(for: .week, harnesses: nil, now: now))
+        let report = await aggregator.enrich(query, now: now)
+        XCTAssertFalse(report.hasMore, "nothing the fill can still do")
+        let snapshot = await aggregator.snapshot(query, now: now)
+        XCTAssertEqual(snapshot.coverage.analyzable, 1)
+        XCTAssertEqual(snapshot.coverage.activityReady, 1, "the activity scan reaches it")
+        XCTAssertEqual(snapshot.coverage.structureReady, 0)
+        XCTAssertEqual(snapshot.coverage.skipped, 1, "its structure never will, so it is skipped, not pending")
+        XCTAssertTrue(snapshot.coverage.isComplete)
+        XCTAssertNil(snapshot.recentSessions.first?.tokens)
+    }
+
     private func codexRollout() -> [String] {
         let builder = CodexRolloutBuilder()
         builder.meta()

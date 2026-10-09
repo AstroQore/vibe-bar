@@ -377,7 +377,20 @@ final class UsageDashboardBuilderTests: XCTestCase {
         XCTAssertEqual(snapshot.coverage.structureReady, 1)
         XCTAssertEqual(snapshot.coverage.activityEligible, 2)
         XCTAssertEqual(snapshot.coverage.activityReady, 2)
+        XCTAssertEqual(snapshot.coverage.analyzable, 2)
+        XCTAssertEqual(snapshot.coverage.analyzed, 1, "B still waits for its structure row")
+        XCTAssertEqual(snapshot.coverage.skipped, 0)
+        XCTAssertEqual(snapshot.coverage.pending, 1)
         XCTAssertEqual(snapshot.coverage.hourlyFrom, date("2026-05-02T00:00:00Z"))
+    }
+
+    func testASessionMissingAReadingItCannotGetIsSkipped() {
+        var input = inputs()
+        input.unreachablePaths = [sessionB.sourcePath]
+        let coverage = UsageDashboardBuilder.build(input).coverage
+        XCTAssertEqual(coverage.skipped, 1)
+        XCTAssertEqual(coverage.pending, 0)
+        XCTAssertTrue(coverage.isComplete)
     }
 
     func testFiltersNarrowTheSessions() {

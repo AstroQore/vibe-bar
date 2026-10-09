@@ -764,7 +764,14 @@ public struct UsageDashboardSnapshot: Sendable, Equatable {
         public var structureReady: Int = 0
         public var activityEligible: Int = 0
         public var activityReady: Int = 0
-        /// Sessions left out of the background fill (above its size or count cap).
+        /// Sessions either reading applies to (Codex, Claude Code, Claude
+        /// Cowork)…
+        public var analyzable: Int = 0
+        /// …and those that have every reading that applies to them.
+        public var analyzed: Int = 0
+        /// Sessions still missing a reading the background fill will never
+        /// produce: past its count cap, or above the size cap of the source
+        /// that is missing (structure 512 MiB, activity 1 GiB).
         public var skipped: Int = 0
         /// Earliest instant with request-level detail; days before it are rollups.
         public var hourlyFrom: Date?
@@ -773,8 +780,9 @@ public struct UsageDashboardSnapshot: Sendable, Equatable {
 
         public init() {}
 
-        public var isComplete: Bool {
-            structureReady + skipped >= structureEligible && activityReady + skipped >= activityEligible
-        }
+        /// Sessions the fill still has to read.
+        public var pending: Int { max(0, analyzable - analyzed - skipped) }
+
+        public var isComplete: Bool { pending == 0 }
     }
 }

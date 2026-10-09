@@ -222,7 +222,9 @@ public actor UsageDashboardAggregator {
         if let activity {
             inputs.activity = await activity.tallies(for: inQuery)
         }
-        inputs.unreachablePaths = unreachable(inQuery)
+        inputs.unreachablePaths = unreachable(
+            inQuery, query: query, structureStats: inputs.structures, tallies: inputs.activity
+        )
         return UsageDashboardBuilder.build(inputs)
     }
 
@@ -279,7 +281,9 @@ public actor UsageDashboardAggregator {
 
     // MARK: Pieces
 
-    private func enrichmentCandidates(_ sessions: [SessionSummary], query: UsageDashboardQuery) -> [SessionSummary] {
+    /// The query's sessions the background fill can work on, most recently
+    /// active first — the order both the fill and `unreachable` rank by.
+    private func enrichmentOrder(_ sessions: [SessionSummary], query: UsageDashboardQuery) -> [SessionSummary] {
         sessions
             .filter { summary in
                 query.includes(summary.effectiveHarness)
@@ -287,21 +291,39 @@ public actor UsageDashboardAggregator {
                     && (query.project.map { UsageProjectIdentity.normalizedPath(summary.projectDir) == $0 } ?? true)
             }
             .sorted { ($0.lastActiveAt ?? .distantPast) > ($1.lastActiveAt ?? .distantPast) }
-            .prefix(configuration.enrichmentSessionLimit)
-            .map { $0 }
     }
 
-    /// Sessions the fill will never reach: past the count cap or above the
-    /// size cap.
-    private func unreachable(_ sessions: [SessionSummary]) -> Set<String> {
-        let eligible = sessions
-            .filter { SessionActivityScanner.supports($0.provider) }
-            .sorted { ($0.lastActiveAt ?? .distantPast) > ($1.lastActiveAt ?? .distantPast) }
+    private func enrichmentCandidates(_ sessions: [SessionSummary], query: UsageDashboardQuery) -> [SessionSummary] {
+        Array(enrichmentOrder(sessions, query: query).prefix(configuration.enrichmentSessionLimit))
+    }
+
+    /// Sessions still missing a reading the fill will never produce: past
+    /// the count cap, or larger than the cap of the source that is missing —
+    /// the structure parse stops at `structures.maxFileBytes` (512 MiB), the
+    /// activity scan at `activityBudget.maxFileBytes` (1 GiB). The size is
+    /// the file's own when it can be read, so an index row written before
+    /// the file grew does not hide it.
+    private func unreachable(
+        _ sessions: [SessionSummary],
+        query: UsageDashboardQuery,
+        structureStats: [String: SessionStats],
+        tallies: [String: SessionActivityTally]
+    ) -> Set<String> {
         var out: Set<String> = []
-        for (index, summary) in eligible.enumerated()
-        where index >= configuration.enrichmentSessionLimit
-            || summary.sizeBytes > configuration.activityBudget.maxFileBytes {
-            out.insert(summary.sourcePath)
+        for (index, summary) in enrichmentOrder(sessions, query: query).enumerated() {
+            let path = summary.sourcePath
+            let needsStructure = structures != nil
+                && SessionStructureService.supports(summary.provider) && structureStats[path] == nil
+            let needsActivity = activity != nil
+                && SessionActivityScanner.supports(summary.provider) && tallies[path] == nil
+            guard needsStructure || needsActivity else { continue }
+            if index >= configuration.enrichmentSessionLimit {
+                out.insert(path)
+                continue
+            }
+            let size = max(summary.sizeBytes, SessionFileFingerprint.of(path: path)?.size ?? 0)
+            if needsStructure, let structures, size > structures.maxFileBytes { out.insert(path) }
+            if needsActivity, size > configuration.activityBudget.maxFileBytes { out.insert(path) }
         }
         return out
     }
