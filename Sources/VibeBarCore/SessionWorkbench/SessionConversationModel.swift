@@ -576,8 +576,13 @@ public final class SessionConversationModel {
     // MARK: - Expansion
 
     public func toggleProcess(turn: Int) {
-        if expandedTurns.remove(turn) == nil { expandedTurns.insert(turn) }
+        let opening = expandedTurns.remove(turn) == nil
+        if opening { expandedTurns.insert(turn) }
         rebuildItems()
+        // Opening a process brings its row to the top with the steps under
+        // it. Left alone, a view resting at the end of the conversation
+        // keeps its bottom still and pushes the row it just opened upward.
+        if opening { requestScroll(to: "x\(turn)", anchor: .top) }
     }
 
     public func isProcessExpanded(turn: Int) -> Bool { expandedTurns.contains(turn) }

@@ -72,7 +72,7 @@ struct SessionConversationView: View {
             switch conversation.phase {
             case .idle, .unsupported:
                 Color.clear
-            case .loading, .ready where !conversation.items.isEmpty:
+            case .ready where !conversation.items.isEmpty, .loading:
                 // One scroll view for every session the pane shows: a new
                 // one per session paid for a fresh hosting scroll view and
                 // its initial-offset layout on every click.
@@ -223,10 +223,13 @@ private struct SessionTurnList: View {
     @MainActor
     private final class ReadingPosition {
         var above: Set<Int> = []
+        /// The session and build of the rows `above` describes; a report
+        /// for another one starts the set over.
+        var key = ""
         var pending: Task<Void, Never>?
         static let settle = Duration.milliseconds(120)
         /// A header this close to the top edge counts as the turn being read.
-        static let threshold: CGFloat = 96
+        nonisolated static let threshold: CGFloat = 96
     }
 
     /// Whether the viewport is near either end of what is loaded.
@@ -290,9 +293,6 @@ private struct SessionTurnList: View {
                     proxy.scrollTo(request.itemID, anchor: anchor)
                 }
             }
-            .task(id: conversation.contentToken) {
-                tracker.above.removeAll()
-            }
             .task(id: conversation.summary?.id) {
                 pagingArmed = false
                 try? await Task.sleep(for: .milliseconds(700))
@@ -310,6 +310,13 @@ private struct SessionTurnList: View {
             base.onGeometryChange(for: Bool.self) { proxy in
                 proxy.frame(in: .scrollView).minY <= ReadingPosition.threshold
             } action: { isAbove in
+                // Reset here rather than from a task: a task runs after the
+                // first reports of the new rows and would wipe them.
+                let key = "\(conversation.contentToken)|\(conversation.summary?.id ?? "")"
+                if tracker.key != key {
+                    tracker.key = key
+                    tracker.above.removeAll()
+                }
                 if isAbove { tracker.above.insert(header.turn) } else { tracker.above.remove(header.turn) }
                 scheduleReadingPosition()
             }

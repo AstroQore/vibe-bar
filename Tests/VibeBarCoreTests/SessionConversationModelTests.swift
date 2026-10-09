@@ -160,6 +160,8 @@ final class SessionConversationModelTests: XCTestCase {
         XCTAssertFalse(model.items.contains { $0.id.hasPrefix("s") })
         model.toggleProcess(turn: 1)
         XCTAssertEqual(model.items.filter { $0.id.hasPrefix("s1.") }.count, 2)
+        XCTAssertEqual(model.scrollRequest?.itemID, "x1", "an opened process comes to the top")
+        XCTAssertEqual(model.scrollRequest?.anchor, .top)
         model.toggleStep(turn: 1, position: 0)
         let step = model.items.first { $0.id == "s1.0" }
         if case let .step(value) = step { XCTAssertTrue(value.isExpanded) } else { XCTFail() }
