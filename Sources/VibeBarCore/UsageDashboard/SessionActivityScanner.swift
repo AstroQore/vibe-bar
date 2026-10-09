@@ -89,7 +89,10 @@ public struct SessionActivityTally: Codable, Sendable, Hashable {
 ///   `total_token_usage.total_tokens`, and `model_context_window`.
 public enum SessionActivityScanner {
     /// Bump when a change alters what an already-scanned file should say.
-    public static let version = 1
+    ///
+    /// v2: Codex lines with sorted keys (`type` after the payload's fields)
+    /// are read; v1 named their tool calls `tool` or missed them.
+    public static let version = 2
 
     public static func supports(_ provider: SessionProvider) -> Bool {
         provider == .codex || provider == .claude || provider == .claudeCowork
@@ -227,6 +230,7 @@ public enum SessionActivityScanner {
     enum Needle {
         static let timestamp = StaticNeedle("\"timestamp\":\"")
         static let responseItem = StaticNeedle("\"type\":\"response_item\"")
+        static let eventMessage = StaticNeedle("\"type\":\"event_msg\"")
         static let tokenCount = StaticNeedle("\"type\":\"token_count\"")
         static let functionCall = StaticNeedle("\"type\":\"function_call\"")
         static let customToolCall = StaticNeedle("\"type\":\"custom_tool_call\"")
@@ -313,31 +317,44 @@ public enum SessionActivityScanner {
         // MARK: Codex
 
         private mutating func consumeCodex(_ line: Bytes, date: Date?) {
+            // Codex writes the line's `type` and then the payload's `type`
+            // first, both inside the first few hundred bytes. A rollout
+            // re-serialized with sorted keys puts every `type` after the
+            // fields it describes, so a line whose head names neither kind of
+            // record is searched whole — the same markers, just unbounded.
             let head = 320
-            if line.contains(Needle.tokenCount, within: head) {
+            let scope: Int? = line.contains(Needle.responseItem, within: head) || line.contains(Needle.eventMessage, within: head)
+                ? head : nil
+            if line.contains(Needle.tokenCount, within: scope) {
                 consumeTokenCount(line)
                 return
             }
-            guard line.contains(Needle.responseItem, within: head) else { return }
-            if let at = line.find(Needle.functionCall, within: head) ?? line.find(Needle.customToolCall, within: head) {
-                // Codex writes `type`, `id`, `name`; a sorted re-serialization
-                // puts `arguments` first, so look a little further.
-                let name = line.quotedValue(after: Needle.name, from: at, within: 2_048) ?? "tool"
+            guard line.contains(Needle.responseItem, within: scope) else { return }
+            let call = line.find(Needle.functionCall, within: scope).map { ($0, Needle.functionCall) }
+                ?? line.find(Needle.customToolCall, within: scope).map { ($0, Needle.customToolCall) }
+            if let (at, marker) = call {
+                // The name sits in the same object as the `type`: after it in
+                // Codex's own order (`type`, `id`, `name`), before it when the
+                // keys are sorted (`arguments`, `call_id`, `id`, `name`,
+                // `type`) — the Claude path's rule, no brace in between.
+                let name = line.nameAfter(at + marker.bytes.count, within: 2_048)
+                    ?? line.nameBefore(at, notBefore: 0, within: 4_096)
+                    ?? "tool"
                 addTool(name, date: date)
                 recordSkillReads(in: line, date: date)
-            } else if line.contains(Needle.localShellCall, within: head) {
+            } else if line.contains(Needle.localShellCall, within: scope) {
                 addTool("local_shell", date: date)
                 recordSkillReads(in: line, date: date)
-            } else if line.contains(Needle.webSearchCall, within: head) {
+            } else if line.contains(Needle.webSearchCall, within: scope) {
                 addTool("web_search", date: date)
-            } else if line.contains(Needle.imageGenerationCall, within: head) {
+            } else if line.contains(Needle.imageGenerationCall, within: scope) {
                 addTool("image_generation", date: date)
-            } else if line.contains(Needle.toolSearchCall, within: head) {
+            } else if line.contains(Needle.toolSearchCall, within: scope) {
                 addTool("tool_search", date: date)
-            } else if line.contains(Needle.message, within: head), line.contains(Needle.roleUser) {
-                // `role` follows `type` in Codex's own order; a sorted
-                // re-serialization puts it after the content, so the whole
-                // line is searched. Inside a string it would be escaped.
+            } else if line.contains(Needle.message, within: scope), line.contains(Needle.roleUser) {
+                // `role` follows `type` in Codex's own order; sorted keys put
+                // it after the content, so the whole line is searched. Inside
+                // a string it would be escaped.
                 recordInjectedSkills(in: line, date: date)
             }
         }
@@ -466,9 +483,10 @@ public enum SessionActivityScanner {
         }
 
         private mutating func timestamp(in line: Bytes) -> Date? {
-            // Codex writes it first; Claude near the end of the line.
+            // Codex writes it first (sorted keys put it after the payload);
+            // Claude near the end of the line.
             let at = isCodex
-                ? line.find(Needle.timestamp, within: 64)
+                ? (line.find(Needle.timestamp, within: 64) ?? line.find(Needle.timestamp))
                 : line.find(Needle.timestamp)
             guard let at, let raw = line.string(from: at + Needle.timestamp.bytes.count, until: [0x22], limit: 40) else {
                 return nil

@@ -64,6 +64,52 @@ final class SessionActivityScannerTests: XCTestCase {
         XCTAssertEqual(tally.skillLastUsed["beta"], ISO8601DateFormatter().date(from: "2026-05-01T10:00:03Z"))
     }
 
+    /// The same rollout re-serialized with sorted keys — `arguments`,
+    /// `call_id`, `id`, `name`, `type` inside the payload, `payload`,
+    /// `timestamp`, `type` outside — reads exactly as Codex's own order.
+    func testCodexWithSortedKeysReadsTheSame() throws {
+        func line(_ object: [String: Any]) -> String {
+            let data = try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
+            return String(data: data, encoding: .utf8)!
+        }
+        func item(_ second: String, _ payload: [String: Any]) -> String {
+            line(["timestamp": "2026-05-01T10:00:\(second).000Z", "type": "response_item", "payload": payload])
+        }
+        func tokens(_ second: String, total: Int, input: Int) -> String {
+            line(["timestamp": "2026-05-01T10:00:\(second).000Z", "type": "event_msg", "payload": [
+                "type": "token_count",
+                "info": [
+                    "total_token_usage": ["input_tokens": total - 500, "output_tokens": 500, "total_tokens": total],
+                    "last_token_usage": ["cached_input_tokens": 8_000, "input_tokens": input, "output_tokens": 500, "total_tokens": input + 500],
+                    "model_context_window": 272_000,
+                ],
+            ]])
+        }
+        let lines = [
+            item("01", ["type": "message", "role": "developer", "content": [["type": "input_text", "text": "- alpha: /Users/example/.agents/skills/alpha/SKILL.md"]]]),
+            item("02", ["type": "message", "role": "user", "content": [["type": "input_text", "text": "<skill>\n<name>alpha</name>\n<path>/Users/example/.agents/skills/alpha/SKILL.md</path>\nbody</skill>"]]]),
+            item("03", ["type": "custom_tool_call", "id": "ctc_1", "name": "exec", "input": "cat /Users/example/.agents/skills/beta/SKILL.md", "call_id": "c1", "status": "completed"]),
+            item("04", ["type": "custom_tool_call_output", "call_id": "c1", "output": "name: beta"]),
+            item("05", ["type": "function_call", "id": "fc_1", "name": "js", "arguments": "{\"code\":\"1+1\"}", "call_id": "c2"]),
+            tokens("06", total: 12_500, input: 12_000),
+            tokens("07", total: 12_500, input: 12_000),
+            tokens("08", total: 30_000, input: 17_000),
+            line(["timestamp": "2026-05-02T09:00:00.000Z", "type": "response_item", "payload": ["type": "web_search_call", "id": "ws_1", "status": "completed"]]),
+        ]
+        XCTAssertTrue(lines[2].contains("\"name\":\"exec\",\"status\":\"completed\",\"type\":\"custom_tool_call\""), "keys are sorted")
+        let url = try write(lines, name: "sorted.jsonl")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let tally = try XCTUnwrap(SessionActivityScanner.scan(fileURL: url, provider: .codex, calendar: utc))
+        XCTAssertEqual(tally.days["2026-05-01"]?.tools, ["exec": 1, "js": 1])
+        XCTAssertEqual(tally.days["2026-05-02"]?.tools, ["web_search": 1])
+        XCTAssertEqual(tally.days["2026-05-01"]?.skills, ["alpha": 1, "beta": 1])
+        XCTAssertEqual(tally.requests, 2)
+        XCTAssertEqual(tally.firstPromptTokens, 12_000)
+        XCTAssertEqual(tally.maxPromptTokens, 17_000)
+        XCTAssertEqual(tally.contextWindow, 272_000)
+        XCTAssertEqual(tally.activeDays, ["2026-05-01", "2026-05-02"])
+    }
+
     func testClaudeSkillToolAndItsEchoCountOnce() throws {
         let url = try write(Self.claudeLines, name: "session.jsonl")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
