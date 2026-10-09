@@ -164,6 +164,124 @@ public actor SessionStructureStore {
         return rows
     }
 
+    /// What the Sessions list shows for each fresh row — its stats and its
+    /// first prompt preview — in one prepared statement for the whole
+    /// batch, reading only each outline entry's preview, origin and status
+    /// rather than decoding the outline. The preview is picked by the rule a
+    /// fresh parse uses (`SessionStructureListing.firstPromptPreview`), over
+    /// the whole outline. Rows parsed at another fingerprint or by another
+    /// parser are left out.
+    public func listings(
+        for entries: [(path: String, fingerprint: SessionFileFingerprint)]
+    ) -> [String: SessionStructureListing] {
+        guard !entries.isEmpty,
+              let database = openIfNeeded(),
+              let statement = database.prepare("""
+                SELECT mtime_ns, size, parser_version, stats_json,
+                       (SELECT json_group_array(json_array(
+                                   json_extract(entry.value, '$.promptPreview'),
+                                   json_extract(entry.value, '$.origin'),
+                                   json_extract(entry.value, '$.status')))
+                        FROM (SELECT value FROM json_each(outline_json) ORDER BY key) AS entry)
+                FROM session_structure WHERE source_path = ?1
+                """)
+        else { return [:] }
+        defer { sqlite3_finalize(statement) }
+        var out: [String: SessionStructureListing] = [:]
+        for entry in entries {
+            sqlite3_reset(statement)
+            sqlite3_clear_bindings(statement)
+            database.bindText(statement, 1, entry.path)
+            guard sqlite3_step(statement) == SQLITE_ROW,
+                  sqlite3_column_int64(statement, 0) == entry.fingerprint.mtimeNs,
+                  sqlite3_column_int64(statement, 1) == entry.fingerprint.size,
+                  Int(sqlite3_column_int64(statement, 2)) == parserVersion,
+                  let statsJSON = database.columnText(statement, 3),
+                  let stats = try? decoder.decode(SessionStats.self, from: Data(statsJSON.utf8))
+            else { continue }
+            let entries = database.columnText(statement, 4)
+                .flatMap { try? decoder.decode([[String?]].self, from: Data($0.utf8)) } ?? []
+            let candidates = entries.lazy.map { fields in
+                SessionStructureListing.PromptCandidate(
+                    preview: fields.first ?? nil,
+                    origin: fields.count > 1 ? fields[1].flatMap(SessionStructure.PromptOrigin.init(rawValue:)) : nil,
+                    status: fields.count > 2 ? fields[2].flatMap(SessionStructure.TurnStatus.init(rawValue:)) : nil
+                )
+            }
+            out[entry.path] = SessionStructureListing(
+                stats: stats,
+                firstPromptPreview: SessionStructureListing.firstPromptPreview(in: candidates)
+            )
+        }
+        return out
+    }
+
+    /// Rows per provider, originator and thread kind, for the kinds that are
+    /// not a conversation of their own. Claude subagent transcripts are left
+    /// out: the session index never lists them, so they are not part of any
+    /// count the page shows next to these.
+    public func threadKindCounts() -> [SessionThreadKindCount] {
+        let kinds = SessionThreadTree.nestedKinds.union(SessionThreadTree.filteredKinds)
+            .subtracting([.guardian])
+            .map { "'\($0.rawValue)'" }
+            .sorted()
+            .joined(separator: ",")
+        guard let database = openIfNeeded(),
+              let statement = database.prepare("""
+                SELECT provider, json_extract(stats_json, '$.originator'), kind, COUNT(*)
+                FROM session_structure
+                WHERE parser_version = ?1 AND kind IN (\(kinds))
+                  AND source_path NOT LIKE '%/subagents/agent-%'
+                GROUP BY 1, 2, 3
+                """)
+        else { return [] }
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, Int64(parserVersion))
+        var out: [SessionThreadKindCount] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let providerRaw = database.columnText(statement, 0),
+                  let provider = SessionProvider(rawValue: providerRaw),
+                  let kindRaw = database.columnText(statement, 2),
+                  let kind = SessionStructureKind(rawValue: kindRaw)
+            else { continue }
+            out.append(SessionThreadKindCount(
+                provider: provider,
+                originator: database.columnText(statement, 1),
+                kind: kind,
+                count: Int(sqlite3_column_int64(statement, 3))
+            ))
+        }
+        return out
+    }
+
+    /// Source paths of the rows that are a thread of another session
+    /// (subagent, fork, agent-created), with their kind. Claude subagent
+    /// transcripts are left out, as in `threadKindCounts()`.
+    public func threadPaths() -> [String: SessionStructureKind] {
+        let kinds = SessionThreadTree.nestedKinds.subtracting([.guardian])
+            .map { "'\($0.rawValue)'" }
+            .sorted()
+            .joined(separator: ",")
+        guard let database = openIfNeeded(),
+              let statement = database.prepare("""
+                SELECT source_path, kind FROM session_structure
+                WHERE parser_version = ?1 AND kind IN (\(kinds))
+                  AND source_path NOT LIKE '%/subagents/agent-%'
+                """)
+        else { return [:] }
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, Int64(parserVersion))
+        var out: [String: SessionStructureKind] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let path = database.columnText(statement, 0),
+                  let raw = database.columnText(statement, 1),
+                  let kind = SessionStructureKind(rawValue: raw)
+            else { continue }
+            out[path] = kind
+        }
+        return out
+    }
+
     public func count() -> Int {
         guard let database = openIfNeeded(),
               let statement = database.prepare("SELECT COUNT(*) FROM session_structure")

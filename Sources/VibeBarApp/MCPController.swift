@@ -609,17 +609,11 @@ final class MCPController: ObservableObject, MCPDataSource {
         of summary: SessionSummary,
         in reviewIndex: SessionReviewIndex?
     ) async -> (list: [SessionSummary], count: Int) {
-        guard let reviewIndex,
-              summary.provider == .codex,
-              SessionVisibleRows.reviewParentID(of: summary) == nil
-        else { return ([], 0) }
-        let limit = SessionTranscriptResult.autoReviewListLimit
-        guard let list = try? await reviewIndex.reviews(forParents: [summary.sessionID], limit: limit),
-              !list.isEmpty
-        else { return ([], 0) }
-        guard list.count >= limit else { return (list, list.count) }
-        let count = (try? await reviewIndex.reviewCount(forParent: summary.sessionID)) ?? list.count
-        return (list, count)
+        // The one counting rule the Sessions page's rows and masthead use
+        // too (`SessionReviewIndex.reviewSet`), so the three cannot disagree.
+        guard let reviewIndex else { return ([], 0) }
+        let set = await reviewIndex.reviewSet(for: summary, limit: SessionTranscriptResult.autoReviewListLimit)
+        return (set.reviews, set.count)
     }
 
     /// Same shape as the Workbench's transcript parse: a held detached task

@@ -226,6 +226,9 @@ final class SessionManagerModel: ObservableObject {
     }
 
     @Published private(set) var selection: SessionSummary?
+    /// The session `transcript` is of. The selection, unless the
+    /// conversation pane opened a thread from it (`loadTranscript(for:)`).
+    @Published private(set) var transcriptSubject: SessionSummary?
     /// Message the transcript should open on, when the row was picked out of
     /// a full-text result. Cleared by the pane once it has scrolled.
     @Published private(set) var focusSeq: Int?
@@ -256,6 +259,18 @@ final class SessionManagerModel: ObservableObject {
             return min(1, Double(done) / Double(total))
         }
     }
+
+    /// Whether selecting a session also reads its flat transcript. The
+    /// Sessions page answers no for a provider its turn view can read —
+    /// that view parses the log its own way, and reading it twice would pay
+    /// for the same file twice — and the transcript is then read only when
+    /// the Raw view asks for it (`loadTranscript(for:)`).
+    var loadsTranscriptOnSelect: @MainActor (SessionSummary) -> Bool = { _ in true }
+
+    /// A demo launch opens a session so a capture has a conversation in it.
+    /// The Sessions page turns this off and picks the first *listed* row
+    /// itself: the newest index row can be a thread folded out of sight.
+    var selectsFirstSummaryInDemo = true
 
     // MARK: - Dependencies
 
@@ -300,6 +315,9 @@ final class SessionManagerModel: ObservableObject {
     /// What the open transcript was read for — kept so "Load entire
     /// transcript" re-reads it with the same focus.
     private var transcriptRequest: SessionTranscriptMerge.Request?
+    /// What the selection asked for, kept apart from `transcriptRequest`:
+    /// the transcript may be showing a thread opened from the selection.
+    private var selectionRequest: SessionTranscriptMerge.Request?
     private var transcriptGeneration: UInt64 = 0
     private var searchGeneration: UInt64 = 0
     private var summaryGeneration: UInt64 = 0
@@ -354,6 +372,11 @@ final class SessionManagerModel: ObservableObject {
 
     var hasMoreSummaries: Bool {
         summaries.count < min(totalSessionCount, Self.maximumLoadedSummaries)
+    }
+
+    /// Sessions the list can still page in, within the ceiling.
+    var remainingSummaryCount: Int {
+        max(0, min(totalSessionCount, Self.maximumLoadedSummaries) - summaries.count)
     }
 
     /// True when the list stops short of the index because of the ceiling
@@ -613,7 +636,8 @@ final class SessionManagerModel: ObservableObject {
             // A demo launch opens the newest session so the transcript pane
             // is populated in a capture; a real launch leaves the choice to
             // the user.
-            if DemoMode.isEnabled, self.selection == nil, let first = page.summaries.first {
+            if DemoMode.isEnabled, self.selectsFirstSummaryInDemo, self.selection == nil,
+               let first = page.summaries.first {
                 self.select(first)
             }
             if var counts {
@@ -1139,7 +1163,9 @@ final class SessionManagerModel: ObservableObject {
     /// hit's seq counts.
     func loadEntireTranscript() {
         guard let transcriptRequest, transcriptTruncation != nil else { return }
-        load(transcriptRequest.wholeLog())
+        let whole = transcriptRequest.wholeLog()
+        if whole.summary.id == selectionRequest?.summary.id { selectionRequest = whole }
+        read(whole, force: true)
     }
 
     /// Abandon an in-flight transcript read.
@@ -1173,19 +1199,32 @@ final class SessionManagerModel: ObservableObject {
         transcriptGeneration &+= 1
     }
 
+    /// Select `request`'s session and read its transcript (when the page
+    /// wants it on selection).
     private func load(_ request: SessionTranscriptMerge.Request?) {
+        selectionRequest = request
+        selection = request?.summary
+        focusSeq = request?.focus.seq
+        read(request, force: false)
+    }
+
+    /// Read `request`'s transcript; the selection is not touched.
+    private func read(_ request: SessionTranscriptMerge.Request?, force: Bool) {
         // Cancel first, and hold the new task: the generation check alone
         // only discarded a stale *result*, so clicking through three large
         // sessions ran three full parses side by side and paid for all of
         // them.
         cancelTranscriptParse()
         transcriptRequest = request
-        selection = request?.summary
-        focusSeq = request?.focus.seq
+        transcriptSubject = request?.summary
         transcript = nil
         transcriptError = nil
         transcriptTruncation = nil
         guard let request else {
+            isLoadingTranscript = false
+            return
+        }
+        guard force || loadsTranscriptOnSelect(request.summary) else {
             isLoadingTranscript = false
             return
         }
@@ -1246,6 +1285,49 @@ final class SessionManagerModel: ObservableObject {
 
     func clearFocus() {
         focusSeq = nil
+    }
+
+    /// Read the flat transcript of `shown` — the session the conversation
+    /// pane shows — for the Raw view, unless it is already read or being
+    /// read. For the selection that is the request it made, so a search hit
+    /// still lands on its message; a thread opened from the selection (the
+    /// selection stays put) is read for itself, not as its parent.
+    func loadTranscript(for shown: SessionSummary) {
+        if transcriptRequest?.summary.id == shown.id, transcript != nil || isLoadingTranscript { return }
+        read(SessionTranscriptMerge.Request.forShown(
+            shown,
+            selection: selectionRequest,
+            headByteLimit: SessionIndexingBounds.viewerHeadParseByteLimit
+        ), force: true)
+    }
+
+    /// A Codex session's Auto Review rollouts and their count, for the
+    /// masthead — counted the way the list row and `sessions.transcript`
+    /// count them (`SessionReviewIndex.reviewSet`).
+    func reviews(for summary: SessionSummary) async -> SessionReviewSet {
+        await reviewIndex.reviewSet(for: summary, limit: Self.transcriptReviewLimit)
+    }
+
+    /// Every listed session's log, by harness — the rows the harness column
+    /// counts (`SessionVisibleRows`, Auto Reviews excluded). Paged off the
+    /// main actor; read once per index refresh by the harness column.
+    func listedSourcePathsByHarness() async -> [Harness: Set<String>] {
+        guard let service else { return [:] }
+        var out: [Harness: Set<String>] = [:]
+        var offset = 0
+        while !Task.isCancelled {
+            guard let page = try? await SessionVisibleRows.page(service, offset: offset, limit: 2_000) else { break }
+            for summary in page.summaries { out[summary.effectiveHarness, default: []].insert(summary.sourcePath) }
+            offset += page.summaries.count
+            if page.summaries.isEmpty || offset >= page.totalCount { break }
+        }
+        return out
+    }
+
+    /// One indexed session by id — where a subagent step's thread is found.
+    func indexedSummary(provider: SessionProvider, sessionID: String) async -> SessionSummary? {
+        guard let service else { return nil }
+        return try? await service.summary(provider: provider, sessionID: sessionID)
     }
 
     private struct ParsedTranscript: Sendable {
@@ -1359,7 +1441,10 @@ final class SessionManagerModel: ObservableObject {
     /// `nil` when the provider has no command-line entry point for this
     /// session — AntiGravity's IDE surfaces, most notably.
     func resumeCommand(for summary: SessionSummary) -> String? {
-        try? SessionResumeCommandBuilder.command(
+        // A Claude subagent transcript is not a session the CLI can resume;
+        // its agent id would resume nothing, or the wrong thing.
+        guard !ClaudeSubagentFiles.isSubagentSummary(summary) else { return nil }
+        return try? SessionResumeCommandBuilder.command(
             provider: summary.provider,
             sessionID: summary.sessionID,
             variant: summary.providerVariant
@@ -1399,6 +1484,45 @@ final class SessionManagerModel: ObservableObject {
             guard let self else { return }
             self.report(result)
         }
+    }
+
+    /// The resume button's dropdown: run the line in one terminal this once,
+    /// without changing the default the Options menu keeps.
+    func resume(_ summary: SessionSummary, in terminal: PreferredTerminal) {
+        guard let line = resumeShellLine(for: summary) else {
+            show(toast: L10n.Workbench.Sessions.Toast.noResumeCommand)
+            return
+        }
+        Task { [weak self] in
+            guard let result = await TerminalLauncher.launch(shellLine: line, preferred: terminal) else { return }
+            guard let self else { return }
+            self.report(result)
+        }
+    }
+
+    /// Select a folder (the session's working directory) in Finder, probed
+    /// off the main actor like the log reveal.
+    func revealFolder(_ path: String) {
+        Task { [revealer] in await revealer.reveal(sourcePath: path) }
+    }
+
+    /// Open the session's working directory in Finder. The existence check
+    /// runs off the main actor: a project on an unmounted volume must not
+    /// stall the Workbench on a click.
+    func openFolder(_ path: String) {
+        Task {
+            let exists = await Task.detached(priority: .userInitiated) {
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+            }.value
+            guard exists else { return }
+            NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
+        }
+    }
+
+    /// Show a short message at the foot of the page.
+    func notify(_ message: String) {
+        show(toast: message)
     }
 
     /// Select the session's log in Finder — or, when `sourcePath` is not a
@@ -1443,7 +1567,8 @@ final class SessionManagerModel: ObservableObject {
     /// promising something that will fail — the fact itself lives in Core so
     /// the gate and the adapters cannot drift apart.
     static func isDeletable(_ summary: SessionSummary) -> Bool {
-        summary.provider.supportsDeletion
+        // A subagent transcript goes with the session that wrote it.
+        summary.provider.supportsDeletion && !ClaudeSubagentFiles.isSubagentSummary(summary)
     }
 
     var checkedSummaries: [SessionSummary] {

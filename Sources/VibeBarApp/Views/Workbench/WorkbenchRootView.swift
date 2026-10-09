@@ -240,7 +240,7 @@ struct WorkbenchRootView: View {
         case .usageStats:
             UsageStatsPage(density: density, model: workbench.usageStats, onOpenSession: openSession)
         case .sessionManager:
-            SessionManagerPage(density: density, model: workbench.sessions)
+            SessionManagerPage(density: density, controller: workbench.sessionsPage)
         case .resets:
             ResetsPage(density: density)
         case .skillsManager:

@@ -207,6 +207,104 @@ public actor SessionStructureService {
         return report
     }
 
+    // MARK: - Workbench listing
+
+    /// Stats and first prompt preview for each summary whose parse is on
+    /// hand — a full structure in memory or a fresh sidecar row — keyed by
+    /// source path. Never parses: a summary with nothing cached is simply
+    /// absent, and `refresh(summaries:)` is how it gets something.
+    public func listings(for summaries: [SessionSummary]) async -> [String: SessionStructureListing] {
+        var out: [String: SessionStructureListing] = [:]
+        var pending: [(path: String, fingerprint: SessionFileFingerprint)] = []
+        for summary in summaries where Self.supports(summary.provider) {
+            guard let fingerprint = SessionFileFingerprint.of(path: summary.sourcePath) else { continue }
+            if let cached = cache[summary.sourcePath], cached.fingerprint == fingerprint {
+                out[summary.sourcePath] = SessionStructureListing(structure: cached.structure)
+                continue
+            }
+            pending.append((summary.sourcePath, fingerprint))
+        }
+        if let store, !pending.isEmpty {
+            out.merge(await store.listings(for: pending)) { current, _ in current }
+        }
+        return out
+    }
+
+    /// Threads that are not a conversation of their own, per harness, from
+    /// what the sidecar has parsed so far — a floor, not a census.
+    public func threadKindCounts() async -> [Harness: [SessionStructureKind: Int]] {
+        guard let store else { return [:] }
+        var out: [Harness: [SessionStructureKind: Int]] = [:]
+        for row in await store.threadKindCounts() {
+            let harness = row.provider == .codex
+                ? CodexOriginator.harness(originator: row.originator)
+                : row.provider.defaultHarness
+            out[harness, default: [:]][row.kind, default: 0] += row.count
+        }
+        return out
+    }
+
+    /// How many of each harness's listed sessions are threads of another
+    /// one, counting only rows the session index lists (`visiblePaths`, by
+    /// harness): a sidecar row for a log that is gone, or that the list
+    /// hides, is not part of any count the page shows. Sessions not parsed
+    /// yet are not known to be threads, so this is exact for what has been
+    /// read and grows as the list's stats fill in.
+    public func threadCounts(visiblePaths: [Harness: Set<String>]) async -> [Harness: Int] {
+        guard let store else { return [:] }
+        let threads = await store.threadPaths()
+        guard !threads.isEmpty else { return [:] }
+        var out: [Harness: Int] = [:]
+        for (harness, paths) in visiblePaths {
+            let count = paths.count < threads.count
+                ? paths.count(where: { threads[$0] != nil })
+                : threads.keys.count(where: { paths.contains($0) })
+            if count > 0 { out[harness] = count }
+        }
+        return out
+    }
+
+    /// Guardian verdicts from a session's Auto Review rollouts, keyed by the
+    /// parent turn id each review names (`Turn.reviewedTurnID`).
+    ///
+    /// Each review is parsed in full detail — the verdict lives in a step —
+    /// but neither cached nor stored: they are small, they are many, and
+    /// keeping them would push the conversation being read out of the
+    /// in-memory cache. Files over `maxFileBytes` are skipped.
+    public func reviewVerdicts(
+        for reviews: [SessionSummary],
+        maxFileBytes: Int64 = 16 * 1024 * 1024
+    ) async -> [String: [SessionStructure.GuardianVerdict]] {
+        let files = reviews.filter { $0.provider == .codex }.map(\.sourcePath)
+        guard !files.isEmpty else { return [:] }
+        let handle = Task.detached(priority: .utility) { () -> [String: [SessionStructure.GuardianVerdict]] in
+            var out: [String: [SessionStructure.GuardianVerdict]] = [:]
+            for path in files {
+                if Task.isCancelled { break }
+                guard let fingerprint = SessionFileFingerprint.of(path: path),
+                      fingerprint.size <= maxFileBytes,
+                      let parsed = Self.runParser(
+                          provider: .codex,
+                          url: URL(fileURLWithPath: path),
+                          options: SessionStructureParseOptions(detail: .full)
+                      )
+                else { continue }
+                for turn in parsed.turns {
+                    guard let target = turn.reviewedTurnID else { continue }
+                    for step in turn.steps where step.kind == .guardianVerdict {
+                        if let verdict = step.verdict { out[target, default: []].append(verdict) }
+                    }
+                }
+            }
+            return out
+        }
+        return await withTaskCancellationHandler {
+            await handle.value
+        } onCancel: {
+            handle.cancel()
+        }
+    }
+
     // MARK: - Parsing
 
     private func parse(

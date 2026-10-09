@@ -29,30 +29,67 @@ extension SessionProvider {
     var accent: Color { Theme.providerAccent(for: tool) }
 }
 
-/// The Workbench's Sessions page.
+/// The Workbench's Sessions page: four columns under one toolbar.
 ///
-/// A split, not a scroll: the list is a place you keep coming back to while
-/// reading one transcript, so it stays put on the left instead of scrolling
-/// away above the thing you selected. The toolbar above both columns is a
-/// `CardShell` at the window density, which is what makes this page read as
-/// the same material as Usage Stats.
+/// Harnesses on the left (`SessionHarnessRail`), the session list beside
+/// them, the conversation in the middle, its contents on the right. The two
+/// outer columns give way first when the window narrows — the harness
+/// column folds to its icons, the contents column hides behind a toolbar
+/// button — so the list and the conversation keep their reading widths down
+/// to the window's minimum size. A split, not a scroll: the list is a place
+/// you keep coming back to while reading one conversation, so it stays put.
 struct SessionManagerPage: View {
     let density: Theme.Density
-    @ObservedObject var model: SessionManagerModel
+    let controller: SessionsPageController
+    @ObservedObject private var model: SessionManagerModel
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(density: Theme.Density, controller: SessionsPageController) {
+        self.density = density
+        self.controller = controller
+        _model = ObservedObject(wrappedValue: controller.manager)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            SessionFiltersBar(density: density, model: model)
+            SessionFiltersBar(density: density, model: model, controller: controller)
                 .padding(.horizontal, density.popoverPaddingH)
                 .padding(.top, density.popoverPaddingV)
                 .padding(.bottom, density.popoverPaddingV / 2)
-            HSplitView {
-                SessionListView(density: density, model: model)
-                    .frame(minWidth: 300, idealWidth: 380, maxWidth: 620)
-                    .padding(.leading, density.popoverPaddingH)
-                    .padding(.bottom, density.popoverPaddingV)
-                TranscriptView(density: density, model: model)
-                    .frame(minWidth: 420, maxWidth: .infinity)
+            Rectangle()
+                .fill(WorkbenchPorcelain.hairline(for: colorScheme))
+                .frame(height: Theme.Card.hairlineWidth)
+            GeometryReader { proxy in
+                let layout = SessionPageLayout(
+                    width: proxy.size.width,
+                    railChoice: controller.railCollapsedChoice,
+                    outlineChoice: controller.outlineVisibleChoice
+                )
+                HStack(spacing: 0) {
+                    SessionHarnessRail(
+                        density: density,
+                        controller: controller,
+                        navigation: controller.navigation,
+                        isCollapsed: layout.isRailCollapsed
+                    )
+                    .frame(width: layout.railWidth)
+                    divider
+                    SessionListView(density: density, controller: controller, list: controller.list)
+                        .frame(width: layout.listWidth)
+                    divider
+                    SessionConversationView(density: density, controller: controller, conversation: controller.conversation)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if layout.showsOutline {
+                        divider
+                        SessionConversationOutline(density: density, conversation: controller.conversation) {
+                            controller.outlineVisibleChoice = false
+                        }
+                        .frame(width: SessionPageLayout.outlineWidth)
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .onAppear { controller.pageWidth = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, width in controller.pageWidth = width }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -67,7 +104,13 @@ struct SessionManagerPage: View {
         } message: {
             Text(deletionMessage)
         }
-        .task { model.activate() }
+        .task { controller.activate() }
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(WorkbenchPorcelain.hairline(for: colorScheme))
+            .frame(width: Theme.Card.hairlineWidth)
     }
 
     private var deletionBinding: Binding<Bool> {
@@ -116,6 +159,44 @@ struct SessionManagerPage: View {
     }
 }
 
+/// How wide each of the page's columns is at a given page width.
+///
+/// The conversation keeps at least `conversationMinimum`; the contents
+/// column is shown before the harness column gets its labels back, because
+/// a jump list is worth more to a reader than a harness name next to an
+/// icon that already says it. A reader's own toggle wins over both rules.
+struct SessionPageLayout: Equatable {
+    static let railExpandedWidth: CGFloat = 180
+    static let railCollapsedWidth: CGFloat = 44
+    static let outlineWidth: CGFloat = 220
+    static let listMinimum: CGFloat = 300
+    static let listMaximum: CGFloat = 400
+    static let conversationMinimum: CGFloat = 520
+
+    let isRailCollapsed: Bool
+    let showsOutline: Bool
+    let railWidth: CGFloat
+    let listWidth: CGFloat
+
+    /// Whether a contents column fits beside a list and a conversation at
+    /// their minimum widths; narrower than this it opens as a popover.
+    static func canShowOutline(width: CGFloat) -> Bool {
+        width >= railCollapsedWidth + listMinimum + 440 + outlineWidth
+    }
+
+    init(width: CGFloat, railChoice: Bool?, outlineChoice: Bool?) {
+        let list = min(Self.listMaximum, max(Self.listMinimum, (width * 0.32).rounded()))
+        let outline = (outlineChoice ?? (width >= Self.railCollapsedWidth + list + Self.conversationMinimum + Self.outlineWidth))
+            && Self.canShowOutline(width: width)
+        let collapsed = railChoice
+            ?? (width < Self.railExpandedWidth + list + Self.conversationMinimum + (outline ? Self.outlineWidth : 0))
+        isRailCollapsed = collapsed
+        showsOutline = outline
+        railWidth = collapsed ? Self.railCollapsedWidth : Self.railExpandedWidth
+        listWidth = list
+    }
+}
+
 /// Everything that narrows the session list, plus the page's own options.
 ///
 /// The filter unit is the **harness**, not the company: a row is labelled
@@ -129,7 +210,9 @@ struct SessionManagerPage: View {
 struct SessionFiltersBar: View {
     let density: Theme.Density
     @ObservedObject var model: SessionManagerModel
+    let controller: SessionsPageController
     @State private var showsDirectoryFilters = false
+    @State private var showsOutlinePopover = false
 
     var body: some View {
         Group {
@@ -147,11 +230,12 @@ struct SessionFiltersBar: View {
                         model.refreshIndex()
                     }
                     .help(L10n.Workbench.Sessions.refreshHelp)
-                    harnessPicker
                     rangeMenu
                     sortMenu
+                    threadsMenu
                     optionsMenu
                     deleteControls
+                    outlineToggle
                 }
                 .padding(.vertical, 1)
             }
@@ -329,62 +413,88 @@ struct SessionFiltersBar: View {
         return L10n.Workbench.Sessions.Count.sessions(count: shown)
     }
 
-    // MARK: - Harnesses
+    // MARK: - Threads
 
-    /// Companies are hierarchy labels, not peers of harnesses. The filter row
-    /// therefore contains only the thing it actually filters: one chip per
-    /// harness, in catalog order. Empty harnesses disappear after counts load.
-    private var availableHarnesses: [Harness] {
-        let counts = model.harnessCounts
-        guard counts.values.contains(where: { $0 > 0 }) else { return Harness.allCases }
-        return Harness.allCases.filter { (counts[$0] ?? 0) > 0 }
-    }
-
-    private var availableCompanyGroups: [Harness.ChipGroup] {
-        Harness.chipGroups(
-            companies: ToolType.coreProviderRepresentatives,
-            harnesses: availableHarnesses
-        )
-    }
-
-    /// One pill, one picker: every harness grouped under its company, with
-    /// the session count beside each, findable by typing any of its names.
-    /// The two menus this replaces closed on every click, so narrowing to
-    /// three harnesses meant opening them three times.
-    private var harnessPicker: some View {
-        FilterPickerButton(
-            density: density,
-            systemImage: "terminal",
-            title: L10n.Usage.Table.Column.harness,
-            detail: selectedHarnessSummary,
-            prominent: model.harnessFilter != nil,
-            accessibilityLabel: L10n.Usage.Table.Column.harness
-        ) {
-            FilterPickerList(
-                density: density,
-                sections: HarnessPickerRows.sections(
-                    groups: availableCompanyGroups,
-                    density: density,
-                    detail: { AppLocale.number(model.harnessCounts[$0] ?? 0) }
+    /// How threads and headless runs are listed. Subagents and forks are
+    /// always folded under the session that started them — the menu says so
+    /// — while headless and automated runs, which nobody typed into, are
+    /// switched in or out with their loaded counts beside them.
+    private var threadsMenu: some View {
+        let list = controller.list
+        let hidden = list.hiddenCounts
+        let exec = hidden[.exec] ?? 0
+        let automation = hidden[.automation] ?? 0
+        let totalHidden = hidden.values.reduce(0, +) - (hidden[.guardian] ?? 0)
+        return Menu {
+            Text(L10n.Workbench.Sessions.Threads.foldedNote)
+            Divider()
+            Toggle(
+                L10n.Workbench.Sessions.Threads.showExec(count: AppLocale.number(list.showsExec ? execShown : exec)),
+                isOn: Binding(get: { list.showsExec }, set: { list.showsExec = $0 })
+            )
+            Toggle(
+                L10n.Workbench.Sessions.Threads.showAutomation(
+                    count: AppLocale.number(list.showsAutomation ? automationShown : automation)
                 ),
-                searchPlaceholder: L10n.Workbench.Filter.searchHarnesses,
-                isSelected: { model.harnessFilter?.contains($0) ?? true },
-                toggle: { model.toggleHarness($0) },
-                solo: { model.soloHarness($0) },
-                toggleGroup: { model.toggleHarnesses(Set($0)) },
-                selectAll: { model.setHarnessFilter(nil) },
-                selectNone: { model.setHarnessFilter([]) }
+                isOn: Binding(get: { list.showsAutomation }, set: { list.showsAutomation = $0 })
+            )
+            if list.hasThreads {
+                Divider()
+                Button(L10n.Workbench.Sessions.Threads.expandAll) { list.setAllExpanded(true) }
+                Button(L10n.Workbench.Sessions.Threads.collapseAll) { list.setAllExpanded(false) }
+            }
+        } label: {
+            menuLabel(
+                systemImage: "point.3.connected.trianglepath.dotted",
+                title: L10n.Workbench.Sessions.Threads.menu,
+                detail: totalHidden > 0
+                    ? L10n.Workbench.Sessions.Threads.hidden(count: AppLocale.number(totalHidden))
+                    : L10n.Common.all
             )
         }
+        .menuStyle(.button)
+        .buttonStyle(WorkbenchPillButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(L10n.Workbench.Sessions.Threads.menuHelp)
     }
 
-    private var selectedHarnessSummary: String {
-        guard let filter = model.harnessFilter else { return L10n.Common.all }
-        let count = availableHarnesses.count(where: filter.contains)
-        guard count != availableHarnesses.count else { return L10n.Common.all }
-        return L10n.Workbench.Sessions.fraction(shown: count, total: availableHarnesses.count)
-    }
+    /// Rows a switched-on filter is showing, for the toggle's own count.
+    private var execShown: Int { controller.list.rows.count(where: { $0.kind == .exec }) }
+    private var automationShown: Int { controller.list.rows.count(where: { $0.kind == .automation }) }
 
+    /// The contents column, from the toolbar: a toggle while there is room
+    /// for it, a popover of the same list when there is not.
+    private var outlineToggle: some View {
+        Button {
+            let layout = SessionPageLayout(
+                width: controller.pageWidth,
+                railChoice: controller.railCollapsedChoice,
+                outlineChoice: controller.outlineVisibleChoice
+            )
+            if layout.showsOutline {
+                controller.outlineVisibleChoice = false
+            } else if SessionPageLayout.canShowOutline(width: controller.pageWidth) {
+                controller.outlineVisibleChoice = true
+            } else {
+                showsOutlinePopover.toggle()
+            }
+        } label: {
+            Image(systemName: "list.bullet.rectangle")
+                .font(.system(size: density.segmentedFontSize, weight: .semibold))
+                .frame(minWidth: 18, minHeight: 26)
+        }
+        .buttonStyle(WorkbenchPillButtonStyle(prominent: controller.outlineVisibleChoice == true))
+        .help(L10n.Workbench.Sessions.Layout.outlineHelp)
+        .accessibilityLabel(L10n.Workbench.Sessions.Layout.outlineHelp)
+        .popover(isPresented: $showsOutlinePopover, arrowEdge: .bottom) {
+            SessionConversationOutline(density: density, conversation: controller.conversation) {
+                showsOutlinePopover = false
+            }
+            .frame(width: 300, height: 460)
+            .vibeBarNoInitialFocus()
+        }
+    }
 
     // MARK: - Controls
 

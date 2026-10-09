@@ -1120,6 +1120,76 @@ capture against § 8 before committing it — a screenshot is source content.
   quota buckets their own file: `quota_field_registry.json`, written by
   `QuotaService` when an adapter returns a bucket the static
   `MenuBarFieldCatalog` doesn't list.
+- **The Sessions page reads its numbers from one place and draws them
+  lazily.** Four columns — harness column, list, conversation, contents —
+  over `SessionsPageController`: `SessionManagerModel` still pages the
+  index, searches, deletes and resumes; `SessionNavigationModel`,
+  `SessionListModel` (App) and `SessionConversationModel` (Core) are
+  `@Observable` models for what each column draws. Harness counts are
+  `SessionVisibleRows` (what `sessions.list` returns); "includes N
+  threads" is counted within those listed rows from the structure sidecar
+  (`SessionStructureService.threadCounts(visiblePaths:)`). A row's tokens
+  and cost, the masthead and the contents column all come from the same
+  `SessionStats` of the same sidecar row (`SessionStructureService.listings`,
+  `outline(for:)`), the masthead's prompt / tool-call counts equal the
+  contents column's sums (`SessionConversationTOCEntry.totals`), and an
+  Auto Review count is `SessionReviewIndex.reviewSet` everywhere, MCP's
+  `sessions.transcript` included. `SessionCountsConsistencyTests` holds all
+  of that to one synthetic home; add a surface, add it there. Rules the
+  profiling of a 1 000-message conversation paid for:
+  - Wrap a scroll view that sits in a stack, an inset or a flexible frame
+    in `LazyScrollContainer`. Those containers size a child by asking what
+    it would like to be, a scroll view answers by measuring its whole
+    content, and for a lazy list that is every row — one layout pass
+    measured every turn in the window, a 1.4 s stall while scrolling.
+  - Read an observed value once in the parent and capture it; a read inside
+    a `ForEach` row closure makes every built row an observer, so one
+    selection change woke every list row.
+  - Write an observed property only when it changed (`update(_:_:)` in
+    `SessionConversationModel`): observation has no equality check and a
+    no-op write still wakes every reader.
+  - No per-row visibility reports (`onScrollTargetVisibilityChange` fired
+    hundreds of times while a conversation opened). Paging hangs off one
+    `onScrollGeometryChange` boolean per edge; the turn being read off
+    header-row `onGeometryChange` booleans, coalesced.
+  - Open at the end by the initial offset of a scroll view built on the
+    final rows (`contentToken`), not by a scroll-to-end, which on a lazy
+    list lays out every row in between.
+  - Spread work over frames, never one big one: an open publishes the
+    masthead and contents, then the newest turn, then the rest of
+    `initialTurns` a turn a frame (`loadWhole`, `nextFrame`); a page of a
+    file held in memory joins a turn a frame (`grow`); an opening process
+    lists `firstFrameSteps` steps, the rest a frame later. A scroll view
+    resting on its end stays there while content grows above it, so none
+    of this needs a scroll request.
+  - Prompts and answers are one TextKit 1 text view each
+    (`SessionRichTextView`): the attributed string — headings, prose, code
+    and tables as rounded cards (`NSTextBlock`, `NSTextTable`) — is built by
+    `SessionRichTextBuilder` (App), which the page hands the model as a
+    `SessionConversationRendering`; the model runs it off the main actor
+    with the presentation and caches the result per text and size, carried
+    through Core as an opaque `SessionRenderedText` so Core stays free of
+    AppKit. The view measures once per width. A SwiftUI text per run of
+    prose and a grid cell per table cell were hundreds of views per open.
+    It also makes the text selectable.
+  - The contents column is an AppKit table (`SessionOutlineTable`) whose
+    row heights come from widths measured off the main actor
+    (`measuredEntries`, with the rendering's measure), and it stays mounted
+    while a session loads; so
+    does the turn list under the raw transcript. Building either per open
+    was most of what opening cost.
+  - Keep responders few: no hover state on rows that repeat (steps,
+    contents entries), one tooltip per list row instead of one per chip,
+    none on per-turn headers or badges. With an accessibility client
+    attached, SwiftUI walks every responder on each update
+    (`AccessibilityNode.updateFocus`), and the window walks them again for
+    drag regions.
+  Measured on a release build with a run-loop probe: opening a 66-turn,
+  25 MB synthetic rollout shaped like the 23 MB / 1 247-record one the
+  page was first profiled on (its last turns answer with tables) runs no
+  single main-thread callout much past 16 ms of CPU, against ~115–130 ms
+  before; paging, expansion, scrolling and hover stay in that range. The
+  raw transcript (the legacy `TranscriptView`) is the slowest open left.
 - **JSONL parsing must be O(n).** Go through
   `CostUsageScanner.forEachJSONLLine`, which forwards to the package's
   `JSONLLineScanner.forEachLine`: a moving cursor, not `removeSubrange`.
