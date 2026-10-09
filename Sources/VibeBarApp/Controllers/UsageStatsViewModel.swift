@@ -1,991 +1,360 @@
-import Combine
 import Foundation
+import Observation
 import VibeBarCore
 
-/// Filter state and query results behind the Workbench's Usage Stats page.
+/// Filter state and the current snapshot behind the Workbench Usage page.
 ///
-/// Every published result is a plain value produced by `UsageEventLedger`,
-/// which is an actor: the queries run on its executor and only the finished
-/// snapshot is assigned here, so a 30-day scan never blocks a frame.
+/// The model holds two things: what the user asked for (range, harnesses,
+/// model, project) and the one `UsageDashboardSnapshot` that answers it.
+/// Every query, merge and file read runs on `UsageDashboardAggregator`, an
+/// actor; a filter change starts a task there and the finished snapshot is
+/// assigned here in one write, so no frame waits on SQLite or the disk.
+///
+/// While the page is on screen a background loop fills the session-level
+/// caches (structure sidecar, activity scans) a budget at a time and
+/// re-snapshots when something new landed. Leaving the page cancels it.
 @MainActor
-final class UsageStatsViewModel: ObservableObject {
-    /// Range presets deliberately mix two shapes:
-    ///
-    /// - `all` starts at the ledger's first retained fact;
-    /// - `today` is the local calendar day so far — midnight → now.
-    /// - `24 h` is a rolling window ending now;
-    /// - every multi-day preset is aligned to local calendar days, matching
-    ///   `CostSnapshot.last7Days*` / `last30Days*` everywhere else in Vibe Bar.
-    ///
-    /// Keeping only `24 h` rolling preserves an hourly comparison without
-    /// creating a second, contradictory definition of "7 days" inside the
-    /// same app.
-    enum RangePreset: String, CaseIterable, Identifiable {
-        case all
-        case today
-        case day1
-        case day7
-        case day14
-        case day30
-        case custom
+@Observable
+final class UsageStatsViewModel {
+    // MARK: Filters
 
-        var id: String { rawValue }
+    private(set) var range: UsageDashboardRange = DemoMode.isEnabled ? .month : .week
+    /// `nil` is every harness, `[]` none — `HarnessSelection`'s convention.
+    private(set) var selectedHarnesses: Set<Harness>?
+    private(set) var selectedModel: String?
+    private(set) var selectedProject: String?
 
-        var title: String {
-            switch self {
-            case .all:    L10n.Cost.Timeframe.all
-            case .today:  L10n.Cost.Timeframe.today
-            case .day1:   L10n.Usage.Filters.range24h
-            case .day7:   L10n.Cost.Timeframe.weekShort
-            case .day14:  L10n.Usage.Filters.range14d
-            case .day30:  L10n.Cost.Timeframe.monthShort
-            case .custom: L10n.Usage.Filters.rangeCustom
-            }
-        }
+    // MARK: Results
 
-        var systemImage: String {
-            switch self {
-            case .all:    "infinity"
-            case .today:  "sun.max"
-            case .day1:   "clock"
-            case .day7:   "calendar"
-            case .day14:  "calendar"
-            case .day30:  "calendar"
-            case .custom: "calendar.badge.clock"
-            }
-        }
-
-        var calendarDayCount: Int? {
-            switch self {
-            case .day7: 7
-            case .day14: 14
-            case .day30: 30
-            case .all, .today, .day1, .custom: nil
-            }
-        }
-    }
-
-    enum Breakdown: String, CaseIterable, Identifiable, Sendable {
-        case periods
-        case requests
-        case providers
-        case projects
-        case models
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .periods: L10n.Usage.Breakdown.periods
-            case .requests: L10n.Usage.Breakdown.requests
-            case .providers: L10n.Usage.Breakdown.providers
-            case .projects: L10n.Usage.Breakdown.projects
-            case .models: L10n.Usage.Breakdown.models
-            }
-        }
-    }
-
-    enum RefreshInterval: Int, CaseIterable, Identifiable {
-        case off = 0
-        case fiveSeconds = 5
-        case tenSeconds = 10
-        case thirtySeconds = 30
-        case sixtySeconds = 60
-
-        var id: Int { rawValue }
-
-        var title: String {
-            self == .off
-                ? L10n.Common.off
-                : L10n.Usage.Filters.refreshInterval(seconds: rawValue)
-        }
-    }
-
-    // MARK: - Filter state
-
-    // A month shows the shape of a ledger; a week shows five bars. Demo mode
-    // opens on the month so the capture shows what the page is for.
-    @Published var rangePreset: RangePreset = DemoMode.isEnabled ? .day30 : .day7 {
-        didSet {
-            guard oldValue != rangePreset else { return }
-            windowStart = nil
-            allTimeStart = nil
-            reload(cascadeModels: false)
-        }
-    }
-
-    @Published var customStart: Date {
-        didSet {
-            guard oldValue != customStart, rangePreset == .custom else { return }
-            windowStart = nil
-            reload(cascadeModels: false)
-        }
-    }
-
-    @Published var customEnd: Date {
-        didSet {
-            guard oldValue != customEnd, rangePreset == .custom else { return }
-            windowStart = nil
-            reload(cascadeModels: false)
-        }
-    }
-
-    /// This changes the ledger query's grouping, not just the chart label.
-    /// `nil` is the automatic bucket.
-    @Published var trendGranularity: UsageTrendBucket? {
-        didSet {
-            guard oldValue != trendGranularity, !isApplyingGranularityFallback else { return }
-            reload(cascadeModels: false)
-        }
-    }
-    /// The width the trend chart has, which decides the automatic bucket —
-    /// a wide window earns a finer one. Set by the chart as it lays out;
-    /// only a width change that changes the bucket re-queries.
-    var trendChartWidth: CGFloat = 0 {
-        didSet {
-            guard trendGranularity == nil,
-                  automaticTrendBucket(width: oldValue) != automaticTrendBucket(width: trendChartWidth)
-            else { return }
-            reload(cascadeModels: false)
-        }
-    }
-
-    private func automaticTrendBucket(width: CGFloat) -> UsageTrendBucket {
-        UsageTrendBucket.recommended(for: range, chartWidth: Double(width))
-    }
-    /// Set while `fallBackToAutomaticGranularity` writes `trendGranularity`,
-    /// so the reload it triggers is issued explicitly with the original
-    /// caller's cascade intent instead of the `didSet`'s hardcoded `false`.
-    private var isApplyingGranularityFallback = false
-
-    @Published var refreshInterval: RefreshInterval = .off {
-        didSet {
-            guard oldValue != refreshInterval else { return }
-            restartTimer()
-        }
-    }
-
-    /// `nil` means "every tool". An empty selection is normalized back to
-    /// `nil` rather than kept as "match nothing" — a filter bar with no chip
-    /// lit should read as unfiltered, not as an empty page. Only whole
-    /// companies are ever selected here; the chips are the only writer.
-    @Published private(set) var selectedTools: Set<ToolType>?
-    /// `nil` means "every harness", `[]` means **none** — see
-    /// `HarnessSelection`, which owns the chip arithmetic. Orthogonal to
-    /// `selectedTools`: the chips pick companies on the quota axis, this
-    /// picks the CLI / app the usage actually came from.
-    @Published private(set) var selectedHarnesses: Set<Harness>?
-    @Published private(set) var selectedModels: Set<String>?
-    @Published private(set) var activeBreakdown: Breakdown = .periods
-
-    // MARK: - Results
-
-    /// One publication for the query's mutually consistent result set. The
-    /// old six independent `@Published` writes made SwiftUI rebuild the whole
-    /// Workbench analytics tree six times after a 30-day query, even though
-    /// every value came from the same ledger snapshot.
-    @Published private var results = UsageResults.empty
-    var summary: UsageSummaryMetrics { results.summary }
-    var trend: UsageTrendSeries { results.trend }
-    var companyProviderStats: [UsageProviderStat] {
-        UsageProviderStat.mergedByCompany(results.providerStats)
-    }
-    var harnessStats: [UsageHarnessStat] { results.harnessStats }
-    var modelStats: [UsageModelStat] { results.modelStats }
-    var projectStats: [UsageProjectStat] { results.projectStats }
-    var requestRows: [UsageRequestRow] { results.requestRows }
-    var requestTotalCount: Int { results.requestTotalCount }
-    /// Both of these used to be their own `@Published`, written mid-reload
-    /// at two different await points — so a single query rebuilt the whole
-    /// analytics tree three times: once for the model list, once for the
-    /// hourly flag, once for the results they describe. They travel with the
-    /// snapshot now and land in the same publication.
-    var availableModels: [String] { results.availableModels }
-    /// Tools behind the company chips: the cost-aware set, widened by any
-    /// tool the ledger actually has rows for.
-    @Published private(set) var knownTools: [ToolType] = ToolType.usageStatsProviders
-    /// Harnesses offered in the harness filter: every harness of a known
-    /// tool, widened by any the ledger has actually reported.
-    @Published private(set) var knownHarnesses: [Harness] = Harness.allCases
-    @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingMore = false
-    @Published private(set) var lastUpdatedAt: Date?
-    /// True only when the current filter lies wholly above every selected
-    /// provider's ledger detail floor. This drives the Hourly menu state and
-    /// is refreshed alongside the query it describes.
-    var isHourlyTrendAvailable: Bool { results.isHourlyTrendAvailable }
+    private(set) var snapshot: UsageDashboardSnapshot
+    private(set) var isLoading = false
+    /// The background fill has work left for the current query.
+    private(set) var isEnriching = false
+    /// The session index has never been built and is being built now.
+    private(set) var isBuildingIndex = false
+    private(set) var lastUpdatedAt: Date?
 
     let isLedgerAvailable: Bool
 
-    /// The ledger reports where the loaded run stops, so this no longer has
-    /// to infer "more exist" from a count that a concurrent scan can move.
-    var hasMoreRequests: Bool { results.nextRequestCursor != nil }
+    // MARK: Request log
 
-    var knownCompanyRepresentatives: [ToolType] {
-        ToolType.coreProviderRepresentatives.filter { representative in
-            !Set(representative.coreProviderMembers).isDisjoint(with: knownTools)
-        }
+    /// The request-level rows the previous page's Requests tab listed, newest
+    /// first, for the query on screen. Read page by page, and only once the
+    /// card asks: a 30-day ledger is a six-figure row count.
+    private(set) var requestRows: [UsageRequestRow] = []
+    private(set) var requestTotal = 0
+    private(set) var isLoadingRequests = false
+    var hasMoreRequests: Bool { requestCursor != nil }
+    @ObservationIgnored private var requestCursor: UsageRequestCursor?
+    /// What the loaded pages were read for (`UsageRequestLogKey`).
+    @ObservationIgnored private var requestKey: UsageRequestLogKey?
+    @ObservationIgnored private var wantsRequests = false
+    /// The header's Refresh was clicked: the next snapshot re-reads the
+    /// request pages even if nothing in its key moved.
+    @ObservationIgnored private var pendingUserRefresh = false
+    @ObservationIgnored private var requestTask: Task<Void, Never>?
+    @ObservationIgnored private static let requestPageSize = 40
+
+    var harnessOptions: [Harness] { snapshot.options.harnesses.map(\.harness) }
+
+    var hasActiveFilters: Bool {
+        selectedHarnesses != nil || selectedModel != nil || selectedProject != nil
     }
 
-    func isCompanySelected(_ representative: ToolType) -> Bool {
-        guard let selectedTools else { return true }
-        let members = representative.coreProviderMembers.filter { knownTools.contains($0) }
-        return !members.isEmpty && members.allSatisfy(selectedTools.contains)
-    }
+    // MARK: Dependencies
 
-    /// Harnesses the filter offers, narrowed to the companies whose tools are
-    /// in the query. A harness filter that could only ever return nothing —
-    /// because its company is filtered out — should not be offered at all.
-    /// With the chip row as the only writer `selectedTools` stays nil, so this
-    /// degenerates to `knownHarnesses`.
-    var harnessOptions: [Harness] {
-        knownHarnesses.filter { isCompanySelected($0.company) }
-    }
+    @ObservationIgnored private let ledger: UsageEventLedger?
+    @ObservationIgnored private let sessionIndex: () -> SharedSessionIndex
+    @ObservationIgnored private var aggregatorStorage: UsageDashboardAggregator?
+    @ObservationIgnored private var indexService: SessionIndexService?
+    @ObservationIgnored private var reloadTask: Task<Void, Never>?
+    @ObservationIgnored private var generation: UInt64 = 0
+    @ObservationIgnored private var hasLoadedOnce = false
+    /// How long a sweep waits when nothing is left to fill.
+    @ObservationIgnored private let idleInterval: Duration = .seconds(45)
 
-    /// The harness-primary chip row: one section per company, its known
-    /// harnesses underneath. Derived from `knownCompanyRepresentatives` and
-    /// `knownHarnesses` rather than stored, so it follows the ledger without a
-    /// second piece of state to keep in sync.
-    var harnessChipGroups: [Harness.ChipGroup] {
-        Harness.chipGroups(
-            companies: knownCompanyRepresentatives,
-            harnesses: knownHarnesses
-        )
-    }
-
-    var range: DateInterval {
-        windowStart.map(anchoredRange(start:)) ?? currentRange
-    }
-
-    var canNavigateBackward: Bool { rangePreset != .all }
-    var canNavigateForward: Bool { rangePreset != .all && windowStart != nil }
-
-    /// Manual buckets stay available only while they remain a useful
-    /// interactive chart. The renderer also thins marks, but avoiding a huge
-    /// zero-filled provider matrix here keeps a years-long custom range from
-    /// allocating tens of thousands of points before drawing even begins.
-    func isTrendGranularityAvailable(_ granularity: UsageTrendBucket?) -> Bool {
-        guard let granularity else { return true }
-        if granularity == .hour || granularity == .sixHours, !isHourlyTrendAvailable { return false }
-        let seconds = granularity.nominalSeconds
-        return Int(ceil(range.duration / seconds)) + 1 <= Self.maximumInteractiveTrendBuckets
-    }
-
-    private var currentRange: DateInterval {
-        let now = Date()
-        switch rangePreset {
-        case .all:
-            let start = min(allTimeStart ?? now.addingTimeInterval(-60), now)
-            return DateInterval(start: start, end: max(now, start.addingTimeInterval(60)))
-        case .today:
-            let start = min(Calendar.current.startOfDay(for: now), now)
-            return DateInterval(start: start, end: now)
-        case .custom:
-            let start = min(customStart, customEnd)
-            let end = max(customStart, customEnd)
-            return DateInterval(start: start, end: max(end, start.addingTimeInterval(60)))
-        case .day1:
-            return DateInterval(start: now.addingTimeInterval(-86_400), end: now)
-        case .day7, .day14, .day30:
-            let days = rangePreset.calendarDayCount ?? 1
-            let today = Calendar.current.startOfDay(for: now)
-            let start = Calendar.current.date(
-                byAdding: .day,
-                value: -(days - 1),
-                to: today
-            ) ?? today
-            return DateInterval(start: start, end: now)
-        }
-    }
-
-    func navigateWindow(by direction: Int) {
-        guard rangePreset != .all, direction == -1 || direction == 1 else { return }
-        let present = currentRange
-        let candidate = shiftedStart(range.start, by: direction)
-        if direction > 0, candidate >= present.start {
-            resetWindow()
-        } else {
-            windowStart = candidate
-            reload(cascadeModels: false)
-        }
-    }
-
-    func resetWindow() {
-        guard windowStart != nil else { return }
-        windowStart = nil
-        reload(cascadeModels: false)
-    }
-
-    private func anchoredRange(start: Date) -> DateInterval {
-        switch rangePreset {
-        case .all:
-            return currentRange
-        case .today:
-            let end = Calendar.current.date(byAdding: .day, value: 1, to: start)
-                ?? start.addingTimeInterval(86_400)
-            return DateInterval(start: start, end: end)
-        case .day1:
-            return DateInterval(start: start, duration: 86_400)
-        case .day7, .day14, .day30:
-            let days = rangePreset.calendarDayCount ?? 1
-            let end = Calendar.current.date(byAdding: .day, value: days, to: start)
-                ?? start.addingTimeInterval(TimeInterval(days * 86_400))
-            return DateInterval(start: start, end: end)
-        case .custom:
-            return DateInterval(start: start, duration: max(60, currentRange.duration))
-        }
-    }
-
-    private func shiftedStart(_ start: Date, by direction: Int) -> Date {
-        switch rangePreset {
-        case .all:
-            return start
-        case .today:
-            return Calendar.current.date(byAdding: .day, value: direction, to: start)
-                ?? start.addingTimeInterval(TimeInterval(direction * 86_400))
-        case .day1:
-            return start.addingTimeInterval(TimeInterval(direction * 86_400))
-        case .day7, .day14, .day30:
-            let days = (rangePreset.calendarDayCount ?? 1) * direction
-            return Calendar.current.date(byAdding: .day, value: days, to: start)
-                ?? start.addingTimeInterval(TimeInterval(days * 86_400))
-        case .custom:
-            return start.addingTimeInterval(currentRange.duration * Double(direction))
-        }
-    }
-
-    var filter: UsageQueryFilter {
-        UsageQueryFilter(
-            range: range,
-            tools: selectedTools.map { $0.sorted { $0.rawValue < $1.rawValue } },
-            harnesses: selectedHarnesses.map { $0.sorted { $0.rawValue < $1.rawValue } },
-            models: selectedModels.map { $0.sorted() }
-        )
-    }
-
-    // MARK: - Dependencies
-
-    private let ledger: UsageEventLedger?
-    private let costService: CostUsageService
-
-    private var reloadTask: Task<Void, Never>?
-    /// A deferred Models / Requests fetch that fills one tab without redoing
-    /// the whole query set. Separate from `reloadTask` so a tab switch never
-    /// cancels the reload that produced the numbers it is merging into.
-    private var breakdownTask: Task<Void, Never>?
-    /// The deferred breakdowns whose contents in `results` belong to
-    /// `activeFilter`. Cleared by every reload, so a filter or range change
-    /// re-fetches rather than showing a tab's stale rows.
-    private var loadedBreakdowns: Set<Breakdown> = []
-    private var tickTask: Task<Void, Never>?
-    private var lastCostRefreshAt: Date?
-    private var lastAvailableModelsRevision: UInt64?
-    private var generation: UInt64 = 0
-    private var hasLoadedOnce = false
-    /// Resolved lazily from the ledger whenever All is active. Keeping it at
-    /// the real data floor prevents zero-filled decades and large chart trees.
-    private var allTimeStart: Date?
-    /// A historical window start, or `nil` when the preset follows now.
-    private var windowStart: Date?
-    /// The filter page 0 was fetched with. Later pages reuse it verbatim: a
-    /// rolling preset's `now` moves between pages, and re-deriving the range
-    /// per page would slide the offsets under the rows already on screen.
-    private var activeFilter: UsageQueryFilter?
-    /// Providers the ledger has been seen carrying, accumulated across
-    /// reloads. Derived from the *filtered* results, so it must only grow —
-    /// otherwise narrowing to one provider would retire every other chip and
-    /// strand the user with no way back except "All providers".
-    private var observedTools: Set<ToolType> = []
-    /// Same growth-only rule as `observedTools`: narrowing to one harness
-    /// must not retire every other option and strand the user.
-    private var observedHarnesses: Set<Harness> = []
-
-    private nonisolated static let requestPageSize = 50
-    private static let maximumInteractiveTrendBuckets = 1_200
-    /// A poll re-reads the ledger every tick, but the ledger only moves when a
-    /// cost scan writes to it — and a scan walks the whole session tree. One
-    /// rescan a minute is the ceiling regardless of how fast the poll runs.
-    private static let costRefreshMinimumInterval: TimeInterval = 60
-
-    init(ledger: UsageEventLedger?, costService: CostUsageService) {
+    init(ledger: UsageEventLedger?, sessionIndex: @escaping () -> SharedSessionIndex) {
         self.ledger = ledger
-        self.costService = costService
+        self.sessionIndex = sessionIndex
         self.isLedgerAvailable = ledger != nil
         let now = Date()
-        self.customEnd = now
-        self.customStart = now.addingTimeInterval(-7 * 86_400)
+        let initialRange: UsageDashboardRange = DemoMode.isEnabled ? .month : .week
+        self.snapshot = .empty(query: UsageDashboardQuery(
+            range: initialRange,
+            interval: initialRange.interval(now: now, earliest: nil)
+        ))
     }
 
-    // MARK: - Lifecycle
-
-    /// First load on window open; a re-open re-queries only when something it
-    /// depends on has actually moved.
-    ///
-    /// The page's `.task` runs this on every entry, and the model outlives
-    /// the window, so "switch to Sessions and back" used to cost the whole
-    /// analytic set — up to eleven sequential ledger round trips including
-    /// the day × tool trend — to redraw numbers already on screen. The
-    /// memo below is what makes re-entry free.
-    func activate() {
-        restartTimer()
-        guard hasLoadedOnce else {
-            hasLoadedOnce = true
-            reload(cascadeModels: true)
-            return
-        }
-        guard let ledger, let signature = loadedSignature else {
-            reload(cascadeModels: false)
-            return
-        }
-        let generation = self.generation
-        Task { [weak self] in
-            let revision = await ledger.contentRevision()
-            guard let self, !Task.isCancelled, generation == self.generation else { return }
-            guard signature != self.reloadSignature(revision: revision) else { return }
-            self.reload(cascadeModels: false)
-        }
-    }
-
-    /// The last completed query's inputs. `UsageQuerySignature` documents
-    /// what belongs in one and, more importantly, what does not — the active
-    /// breakdown tab is deliberately absent, because switching tabs runs its
-    /// own deferred query and changes nothing the shared set answered.
-    private var loadedSignature: UsageQuerySignature?
-
-    private func reloadSignature(revision: UInt64) -> UsageQuerySignature {
-        UsageQuerySignature(
-            rangeKey: UsageQuerySignature.rangeKey(
-                preset: rangePreset.rawValue,
-                windowStart: windowStart,
-                customStart: customStart,
-                customEnd: customEnd
-            ),
-            tools: selectedTools.map { $0.sorted { $0.rawValue < $1.rawValue } },
-            harnesses: selectedHarnesses.map { $0.sorted { $0.rawValue < $1.rawValue } },
-            models: selectedModels.map { $0.sorted() },
-            granularity: trendGranularity,
-            revision: revision
+    /// Built on first activation: opening the session index is the Sessions
+    /// page's cost too, and a Workbench opened elsewhere should not pay it.
+    private var aggregator: UsageDashboardAggregator {
+        if let aggregatorStorage { return aggregatorStorage }
+        let shared = sessionIndex()
+        indexService = shared.service
+        let aggregator = UsageDashboardAggregator(
+            ledger: ledger,
+            sessions: shared.service.map { SessionIndexDashboardSource(service: $0) },
+            structures: SessionStructureDashboardSource.live(),
+            activity: SessionActivityStore()
         )
+        aggregatorStorage = aggregator
+        return aggregator
     }
 
-    /// Park for as long as the page is on screen.
-    ///
-    /// `UsageStatsPage` awaits this inside its `.task`, and SwiftUI cancels a
-    /// `.task` when its view disappears — so leaving the page stops the
-    /// refresh poll, which otherwise kept calling `costService.refreshAll()`
-    /// (a walk of every session tree) against a page nobody is looking at.
-    /// The same shape as `SkillsManagerModel.monitorFilesystem`.
+    // MARK: Lifecycle
+
+    func activate() {
+        guard !hasLoadedOnce else {
+            reload()
+            return
+        }
+        hasLoadedOnce = true
+        reload()
+    }
+
+    /// Fill the session caches while the page is visible. `UsageStatsPage`
+    /// awaits this in its `.task`, so SwiftUI cancels it when the page goes.
     func pollWhileVisible() async {
+        await refreshIndexIfDue()
         while !Task.isCancelled {
+            // The query on screen; a filter change lands in the next sweep.
+            let report = await aggregator.enrich(snapshot.query)
+            if Task.isCancelled { break }
+            isEnriching = report.hasMore
+            if report.changed {
+                await aggregator.invalidateSessions()
+                reload(silently: true)
+            }
             do {
-                try await Task.sleep(for: .seconds(3_600))
+                try await Task.sleep(for: report.hasMore ? .milliseconds(400) : idleInterval)
             } catch {
                 break
             }
+            if !report.hasMore {
+                // Idle wake-up: pick up whatever a cost scan or a CLI wrote
+                // meanwhile — re-scanning the index once its ten minutes are
+                // up. A snapshot equal to the one on screen is not assigned,
+                // so this costs no render.
+                await refreshIndexIfDue()
+                await aggregator.invalidateSessions()
+                reload(silently: true)
+            }
         }
-        tickTask?.cancel()
-        tickTask = nil
+        isEnriching = false
     }
 
     func stop() {
-        tickTask?.cancel()
-        tickTask = nil
         reloadTask?.cancel()
         reloadTask = nil
-        breakdownTask?.cancel()
-        breakdownTask = nil
+        isLoading = false
     }
 
-    // MARK: - Filter mutation
-
-    func setSelectedTools(_ tools: Set<ToolType>?) {
-        let normalized = (tools?.isEmpty ?? true) ? nil : tools
-        guard normalized != selectedTools else { return }
-        selectedTools = normalized
-        if rangePreset == .all { allTimeStart = nil }
-        // A company chip going dark can strand a harness selection whose
-        // company is no longer in the query; drop those so the harness menu
-        // and the results describe the same thing. An explicit empty
-        // selection is left alone — the user asked for nothing, and pruning
-        // nothing must not silently mean everything.
-        if let selectedHarnesses, !selectedHarnesses.isEmpty {
-            let kept = selectedHarnesses.filter { harness in
-                normalized?.contains(harness.quotaTool) ?? true
-            }
-            self.selectedHarnesses = kept.isEmpty ? nil : kept
+    func refresh() {
+        pendingUserRefresh = true
+        Task { [weak self] in
+            guard let self else { return }
+            await self.aggregator.invalidateSessions()
+            self.reload()
         }
-        reload(cascadeModels: true)
     }
 
-    /// The company-axis writer. No chip drives it since the filter row became
-    /// harness-primary — a harness already narrows the tools it belongs to —
-    /// but it stays as the counterpart to `toggleHarnesses` for any surface
-    /// that needs to select whole companies.
-    func toggleCompany(_ representative: ToolType) {
-        let members = Set(representative.coreProviderMembers.filter { knownTools.contains($0) })
-        guard !members.isEmpty else { return }
-        var next = selectedTools ?? Set(knownTools)
-        if members.allSatisfy(next.contains) {
-            next.subtract(members)
-        } else {
-            next.formUnion(members)
-        }
-        setSelectedTools(next.count == knownTools.count ? nil : next)
-    }
+    // MARK: Filter mutation
 
-    /// `nil` selects every harness; `[]` selects none. Both are real states —
-    /// the All chip toggles between them — so an empty set is no longer
-    /// folded back into "unfiltered". The ledger already reads an empty
-    /// filter list as "match nothing".
-    func setSelectedHarnesses(_ harnesses: Set<Harness>?) {
-        guard harnesses != selectedHarnesses else { return }
-        selectedHarnesses = harnesses
-        if rangePreset == .all { allTimeStart = nil }
-        reload(cascadeModels: true)
+    func setRange(_ range: UsageDashboardRange) {
+        guard range != self.range else { return }
+        self.range = range
+        reload()
     }
 
     func toggleHarness(_ harness: Harness) {
-        toggleHarnesses([harness])
+        setSelectedHarnesses(HarnessSelection.toggle([harness], in: selectedHarnesses, options: harnessOptions))
     }
 
-    /// ⌥-click on a harness chip: narrow to that harness alone.
+    /// ⌥-click on a harness chip: that harness alone.
     func soloHarness(_ harness: Harness) {
         setSelectedHarnesses(HarnessSelection.solo(harness, options: harnessOptions))
     }
 
-    /// What the "All harnesses" chip does: everything lit turns everything
-    /// off, anything else turns everything back on.
     func toggleAllHarnesses() {
-        setSelectedHarnesses(
-            HarnessSelection.toggleAll(selectedHarnesses, options: harnessOptions)
-        )
+        setSelectedHarnesses(HarnessSelection.toggleAll(selectedHarnesses, options: harnessOptions))
     }
 
-    /// Toggles a whole company's harnesses in one click — what the muted
-    /// company chip at the head of each chip group does.
-    func toggleHarnesses(_ harnesses: Set<Harness>) {
-        setSelectedHarnesses(
-            HarnessSelection.toggle(
-                harnesses, in: selectedHarnesses, options: harnessOptions
-            )
-        )
+    func setSelectedHarnesses(_ harnesses: Set<Harness>?) {
+        guard harnesses != selectedHarnesses else { return }
+        selectedHarnesses = harnesses
+        reload()
     }
 
-    func setSelectedModels(_ models: Set<String>?) {
-        let normalized = (models?.isEmpty ?? true) ? nil : models
-        guard normalized != selectedModels else { return }
-        selectedModels = normalized
-        reload(cascadeModels: false)
+    func setModel(_ model: String?) {
+        guard model != selectedModel else { return }
+        selectedModel = model
+        reload()
     }
 
-    func toggleModel(_ model: String) {
-        var next = selectedModels ?? Set(availableModels)
-        if next.contains(model) { next.remove(model) } else { next.insert(model) }
-        setSelectedModels(next.count == availableModels.count ? nil : next)
+    func setProject(_ project: String?) {
+        guard project != selectedProject else { return }
+        selectedProject = project
+        reload()
     }
 
-    func setActiveBreakdown(_ breakdown: Breakdown) {
-        guard activeBreakdown != breakdown else { return }
-        activeBreakdown = breakdown
-        // Every distribution is already loaded for the visual dashboard;
-        // request rows remain deferred because they are paginated detail.
-        switch breakdown {
-        case .periods, .providers, .projects, .models:
-            break
-        case .requests:
-            guard !loadedBreakdowns.contains(breakdown) else { break }
-            loadDeferredBreakdown(breakdown)
-        }
+    func clearFilters() {
+        guard hasActiveFilters else { return }
+        selectedHarnesses = nil
+        selectedModel = nil
+        selectedProject = nil
+        reload()
     }
 
-    /// Fetch only what a newly opened tab needs, against the filter the
-    /// visible results were already produced with.
-    ///
-    /// Opening a tab used to call `reload`, which re-ran the whole analytic
-    /// set — up to nine sequential ledger round trips, including the day × tool
-    /// trend GROUP BY that dominates the query at 30 days — to redraw numbers
-    /// that had not changed and were already on screen. Filter, range and
-    /// refresh changes still take the full path; this one only fills the hole.
-    private func loadDeferredBreakdown(_ breakdown: Breakdown) {
-        guard let ledger, let filter = activeFilter, !isLoading else {
-            // No settled filter to reuse (first load still in flight, or the
-            // ledger is unavailable): the full path is the only correct one.
-            reload(cascadeModels: false)
-            return
-        }
-        breakdownTask?.cancel()
-        let generation = self.generation
-        isLoadingMore = true
-        breakdownTask = Task { [weak self] in
-            let models: [UsageModelStat] = []
-            let requests: UsageRequestPage? = breakdown == .requests
-                ? (try? await ledger.requestPage(
-                    filter, pageSize: UsageStatsViewModel.requestPageSize
-                ))
-                : nil
-            guard let self, !Task.isCancelled, generation == self.generation else { return }
-            self.isLoadingMore = false
-            self.applyDeferred(breakdown, models: models, requests: requests)
-        }
+    func isHarnessSelected(_ harness: Harness) -> Bool {
+        selectedHarnesses?.contains(harness) ?? true
     }
 
-    private func applyDeferred(
-        _ breakdown: Breakdown,
-        models: [UsageModelStat],
-        requests: UsageRequestPage?
-    ) {
-        guard activeBreakdown == breakdown else { return }
-        var updated = results
-        switch breakdown {
-        case .periods, .providers, .projects:
-            return
-        case .models:
-            updated.modelStats = models
-        case .requests:
-            guard let requests else { return }
-            updated.requestRows = requests.rows
-            updated.requestTotalCount = requests.totalCount ?? 0
-            updated.nextRequestCursor = requests.nextCursor
-        }
-        results = updated
-        loadedBreakdowns.insert(breakdown)
+    // MARK: Requests
+
+    /// The card appeared: read the first page for the query on screen.
+    func loadRequestsIfNeeded() {
+        wantsRequests = true
+        guard requestKey != UsageRequestLogKey(snapshot) else { return }
+        loadRequests(reset: true)
     }
 
-    // MARK: - Queries
-
-    func refresh() {
-        reload(cascadeModels: true)
-    }
-
-    /// The next run of request rows, appended to what is already on screen.
-    /// Pages from a superseded filter are dropped on arrival.
     func loadMoreRequests() {
-        guard let ledger, let filter = activeFilter,
-              let cursor = results.nextRequestCursor,
-              activeBreakdown == .requests,
-              !isLoadingMore, !isLoading
-        else { return }
-        let generation = self.generation
-        isLoadingMore = true
-        Task { [weak self] in
-            let result = try? await ledger.requestPage(
-                filter, after: cursor, pageSize: Self.requestPageSize, includeTotal: false
+        guard requestCursor != nil, !isLoadingRequests else { return }
+        loadRequests(reset: false)
+    }
+
+    private func loadRequests(reset: Bool) {
+        guard let ledger else { return }
+        let query = snapshot.query
+        if let harnesses = query.harnesses, harnesses.isEmpty { return }
+        let cursor = reset ? nil : requestCursor
+        requestTask?.cancel()
+        isLoadingRequests = true
+        if reset { requestKey = UsageRequestLogKey(snapshot) }
+        let key = requestKey
+        let aggregator = self.aggregator
+        requestTask = Task { [weak self] in
+            let projects = await aggregator.ledgerProjects(for: query)
+            let page = try? await ledger.requestPage(
+                query.ledgerFilter,
+                projects: projects,
+                after: cursor,
+                pageSize: Self.requestPageSize,
+                includeTotal: reset
             )
-            guard let self, generation == self.generation else { return }
-            self.isLoadingMore = false
-            guard let result else { return }
-            self.append(result)
+            guard let self, !Task.isCancelled, self.requestKey == key else { return }
+            self.isLoadingRequests = false
+            guard let page else { return }
+            if reset {
+                self.requestRows = page.rows
+                self.requestTotal = page.totalCount ?? page.rows.count
+            } else {
+                self.requestRows.append(contentsOf: page.rows)
+            }
+            self.requestCursor = page.nextCursor
         }
     }
 
-    /// Re-run the query at the automatic bucket, keeping the caller's cascade
-    /// intent. Assigning `trendGranularity` reloads through its `didSet`,
-    /// which always passes `cascadeModels: false`; a reload that narrowed the
-    /// provider set would then skip `pruneSelectedModels` and strand a model
-    /// filter the new set can no longer produce.
-    private func fallBackToAutomaticGranularity(cascadeModels: Bool) {
-        isApplyingGranularityFallback = true
-        trendGranularity = nil
-        isApplyingGranularityFallback = false
-        reload(cascadeModels: cascadeModels)
-    }
+    // MARK: Queries
 
-    private func reload(cascadeModels: Bool) {
+    private func reload(silently: Bool = false) {
         generation &+= 1
         let generation = self.generation
         reloadTask?.cancel()
-        breakdownTask?.cancel()
-        loadedBreakdowns.removeAll()
-        activeFilter = nil
-        loadedSignature = nil
-        // A page still in flight is now for a filter nobody is looking at; it
-        // drops itself on the generation check and never clears this, so the
-        // reload has to, or paging stays wedged for the rest of the session.
-        isLoadingMore = false
-        guard let ledger else {
-            applyEmpty()
-            return
-        }
-        let toolsForBounds = selectedTools.map { $0.sorted { $0.rawValue < $1.rawValue } }
-        let harnessesForBounds = selectedHarnesses.map { $0.sorted { $0.rawValue < $1.rawValue } }
-        isLoading = true
+        if !silently { isLoading = true }
+        let aggregator = self.aggregator
+        let range = self.range
+        let harnesses = selectedHarnesses.map { Array($0) }
+        let model = selectedModel
+        let project = selectedProject
+        let started = ContinuousClock.now
         reloadTask = Task { [weak self] in
-            guard let self else { return }
-            if self.rangePreset == .all {
-                let earliest = try? await ledger.earliestUsageDate(
-                    tools: toolsForBounds, harnesses: harnessesForBounds
-                )
-                guard !Task.isCancelled, generation == self.generation else { return }
-                self.allTimeStart = earliest.map { Calendar.current.startOfDay(for: $0) }
-                    ?? Date().addingTimeInterval(-60)
-            }
-            // Only now is `range` settled: under "All" it depends on the
-            // ledger's earliest row, which the caller had just cleared, so a
-            // check before this point tested a 60-second placeholder window
-            // and could never fail.
-            if !self.isTrendGranularityAvailable(self.trendGranularity) {
-                self.fallBackToAutomaticGranularity(cascadeModels: cascadeModels)
-                return
-            }
-            let tools = self.filter.tools
-            let harnesses = self.filter.harnesses
-            // Model availability depends on the provider filter and ledger
-            // contents, not the time range. The ledger revision lets 7 d →
-            // 30 d reuse the same options while an automatic usage refresh
-            // still exposes a newly observed model immediately.
-            let ledgerRevision = await ledger.contentRevision()
-            let models: [String]
-            var refreshedModelsRevision: UInt64?
-            if cascadeModels
-                || self.availableModels.isEmpty
-                || self.lastAvailableModelsRevision != ledgerRevision
-            {
-                if let refreshed = try? await ledger.availableModels(
-                    tools: tools, harnesses: harnesses
-                ) {
-                    models = refreshed
-                    refreshedModelsRevision = ledgerRevision
-                } else {
-                    models = self.availableModels
+            let now = Date()
+            let interval = await aggregator.interval(for: range, harnesses: nil, now: now)
+            let query = UsageDashboardQuery(
+                range: range, interval: interval, harnesses: harnesses, model: model, project: project
+            )
+            let next = await aggregator.snapshot(query, now: now)
+            guard let self, !Task.isCancelled, generation == self.generation else { return }
+            let applied = ContinuousClock.now
+            self.apply(next)
+            self.isLoading = false
+            if UsageStallProbe.isEnabled {
+                // The assignment's main-thread cost: until the run loop is free
+                // again, i.e. after SwiftUI's update and the CA commit it drives.
+                DispatchQueue.main.async {
+                    let milliseconds = (ContinuousClock.now - applied) / .milliseconds(1)
+                    FileHandle.standardOutput.write(Data(String(format: "VIBEBAR_USAGE_APPLY silent=%@ ms=%.1f\n", silently ? "true" : "false", milliseconds).utf8))
                 }
-            } else {
-                models = self.availableModels
             }
-            guard !Task.isCancelled, generation == self.generation else { return }
-            // Models first: a narrowed provider set can strand a model that no
-            // longer exists in the picker, and querying with it would report
-            // an empty page the user has no control to clear. An empty harness
-            // selection is exempt: it says nothing about which models exist,
-            // so pruning against its empty list would quietly discard a model
-            // filter the user still wants when the harnesses come back.
-            if cascadeModels, !HarnessSelection.isNothing(self.selectedHarnesses) {
-                self.pruneSelectedModels(to: models)
+            if DemoMode.isEnabled {
+                // Demo mode is the measuring mode (AGENTS.md § 7): one line
+                // per query, filter change to assigned snapshot.
+                let milliseconds = Int(((ContinuousClock.now - started) / .milliseconds(1)).rounded())
+                FileHandle.standardOutput.write(Data("VIBEBAR_USAGE_TIMING range=\(range.rawValue) harnesses=\(harnesses?.count ?? -1) model=\(model != nil) project=\(project != nil) silent=\(silently) ms=\(milliseconds)\n".utf8))
             }
-            let resolved = self.filter
-            let supportsHourly = (try? await ledger.supportsHourlyTrend(resolved)) ?? false
-            guard !Task.isCancelled, generation == self.generation else { return }
-            if self.trendGranularity == .hour, !supportsHourly {
-                // Keep the Picker's intent and the returned series aligned.
-                // `trend` also falls back defensively in case the floor moves
-                // between this check and the subsequent query.
-                self.fallBackToAutomaticGranularity(cascadeModels: cascadeModels)
-                return
-            }
-            // Automatic resolves here, by the chart's width, rather than in
-            // the ledger's width-blind rule.
-            let granularity = self.trendGranularity ?? self.automaticTrendBucket(width: self.trendChartWidth)
-            let snapshot = await Self.load(
-                ledger: ledger,
-                filter: resolved,
-                granularity: granularity,
-                breakdown: self.activeBreakdown
-            )
-            guard !Task.isCancelled, generation == self.generation else { return }
-            self.activeFilter = resolved
-            if let refreshedModelsRevision {
-                self.lastAvailableModelsRevision = refreshedModelsRevision
-            }
-            // Stamped with the revision this query actually read, not a
-            // fresher one: a scan that lands mid-query must still make the
-            // next page entry re-ask.
-            self.loadedSignature = self.reloadSignature(revision: ledgerRevision)
-            self.apply(
-                snapshot, availableModels: models, isHourlyTrendAvailable: supportsHourly
-            )
+            await self.warmOtherRanges(model: model, project: project)
         }
     }
 
-    private func pruneSelectedModels(to models: [String]) {
-        guard let selectedModels else { return }
-        let kept = selectedModels.intersection(models)
-        self.selectedModels = kept.isEmpty ? nil : kept
-    }
-
-    private func apply(
-        _ snapshot: LoadedUsage,
-        availableModels: [String],
-        isHourlyTrendAvailable: Bool
-    ) {
-        results = UsageResults(
-            summary: snapshot.summary,
-            trend: snapshot.trend,
-            providerStats: snapshot.providers,
-            harnessStats: snapshot.harnesses,
-            modelStats: snapshot.models,
-            projectStats: snapshot.projects,
-            requestRows: snapshot.requests.rows,
-            requestTotalCount: snapshot.requests.totalCount ?? 0,
-            nextRequestCursor: snapshot.requests.nextCursor,
-            availableModels: availableModels,
-            isHourlyTrendAvailable: isHourlyTrendAvailable
-        )
-        // Key off the breakdown the snapshot was *queried* for: the user can
-        // open a different tab while the query is in flight, and claiming that
-        // tab is loaded would leave it permanently empty.
-        loadedBreakdowns = snapshot.breakdown == .requests
-            ? [snapshot.breakdown]
-            : []
-        observedTools.formUnion(snapshot.providers.map(\.tool))
-        observedTools.formUnion(selectedTools ?? [])
-        knownTools = ToolType.allCases.filter {
-            ToolType.usageStatsProviders.contains($0) || observedTools.contains($0)
+    /// Assign only a snapshot that differs from the one on screen: the
+    /// background sweep re-reads every few seconds and an identical answer
+    /// should not invalidate a single view.
+    private func apply(_ next: UsageDashboardSnapshot) {
+        var comparable = next
+        comparable.generatedAt = snapshot.generatedAt
+        if comparable != snapshot || !hasAppliedSnapshot {
+            snapshot = next
+            hasAppliedSnapshot = true
         }
-        observedHarnesses.formUnion(snapshot.harnesses.map(\.harness))
-        observedHarnesses.formUnion(selectedHarnesses ?? [])
-        knownHarnesses = Harness.allCases.filter {
-            knownTools.contains($0.quotaTool) || observedHarnesses.contains($0)
-        }
-        lastUpdatedAt = Date()
-        isLoading = false
-    }
-
-    private func applyEmpty() {
-        results = UsageResults(
-            summary: .empty,
-            trend: UsageTrendSeries(
-                bucket: trendGranularity.resolved(for: range), points: []
-            ),
-            providerStats: [],
-            harnessStats: [],
-            modelStats: [],
-            projectStats: [],
-            requestRows: [],
-            requestTotalCount: 0,
-            nextRequestCursor: nil,
-            availableModels: [],
-            isHourlyTrendAvailable: isHourlyTrendAvailable
-        )
-        isLoading = false
-    }
-
-    /// A keyset page starts strictly after the cursor it was asked for, so
-    /// the rows can never overlap what is already on screen — as long as this
-    /// really is the page that continues from where the list currently ends.
-    private func append(_ page: UsageRequestPage) {
-        guard page.cursor == results.nextRequestCursor else { return }
-        var updated = results
-        updated.requestRows.append(contentsOf: page.rows)
-        // A continuation page does not recount; the pinned filter means the
-        // number the first page reported is still the right one.
-        if let totalCount = page.totalCount { updated.requestTotalCount = totalCount }
-        updated.nextRequestCursor = page.nextCursor
-        results = updated
-    }
-
-    // MARK: - Polling
-
-    private func restartTimer() {
-        tickTask?.cancel()
-        let seconds = refreshInterval.rawValue
-        guard seconds > 0 else {
-            tickTask = nil
-            return
-        }
-        tickTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(seconds))
-                guard !Task.isCancelled, let self else { return }
-                await self.tick()
-            }
+        lastUpdatedAt = next.generatedAt
+        // The request log follows the filters, the window's start and the
+        // ledger's revision, and a user refresh; a background re-read that
+        // moved none of them leaves the pages already loaded alone.
+        let userRefresh = pendingUserRefresh
+        pendingUserRefresh = false
+        if wantsRequests,
+           UsageRequestLogKey.needsReload(loaded: requestKey, next: UsageRequestLogKey(snapshot), userRefresh: userRefresh) {
+            loadRequests(reset: true)
         }
     }
 
-    private func tick() async {
+    @ObservationIgnored private var hasAppliedSnapshot = false
+
+
+    /// Read the other ranges' ledger facts after the visible one landed, so
+    /// switching range is a cache hit rather than a query.
+    private func warmOtherRanges(model: String?, project: String?) async {
+        let aggregator = self.aggregator
+        let current = range
         let now = Date()
-        let due = lastCostRefreshAt.map { now.timeIntervalSince($0) >= Self.costRefreshMinimumInterval }
-        if due ?? true {
-            lastCostRefreshAt = now
-            await costService.refreshAll()
+        var queries: [UsageDashboardQuery] = []
+        for other in UsageDashboardRange.allCases where other != current {
+            let interval = await aggregator.interval(for: other, harnesses: nil, now: now)
+            queries.append(UsageDashboardQuery(range: other, interval: interval, model: model, project: project))
         }
-        reload(cascadeModels: false)
+        await aggregator.warm(queries)
     }
 
-    // MARK: - Off-main load
-
-    private struct LoadedUsage: Sendable {
-        let summary: UsageSummaryMetrics
-        let trend: UsageTrendSeries
-        let providers: [UsageProviderStat]
-        let harnesses: [UsageHarnessStat]
-        let models: [UsageModelStat]
-        let projects: [UsageProjectStat]
-        let requests: UsageRequestPage
-        /// Which deferred tab this snapshot actually answered for.
-        let breakdown: Breakdown
-    }
-
-    private struct UsageResults {
-        var summary: UsageSummaryMetrics
-        var trend: UsageTrendSeries
-        var providerStats: [UsageProviderStat]
-        var harnessStats: [UsageHarnessStat]
-        var modelStats: [UsageModelStat]
-        var projectStats: [UsageProjectStat]
-        var requestRows: [UsageRequestRow]
-        var requestTotalCount: Int
-        /// Where the loaded run stops. `nil` means the range holds nothing
-        /// more, so paging is finished rather than merely not started.
-        var nextRequestCursor: UsageRequestCursor?
-        var availableModels: [String]
-        var isHourlyTrendAvailable: Bool
-
-        static let empty = UsageResults(
-            summary: .empty,
-            trend: UsageTrendSeries(bucket: .day, points: []),
-            providerStats: [],
-            harnessStats: [],
-            modelStats: [],
-            projectStats: [],
-            requestRows: [],
-            requestTotalCount: 0,
-            nextRequestCursor: nil,
-            availableModels: [],
-            isHourlyTrendAvailable: true
-        )
-    }
-
-    /// Every query the dashboard needs, issued together.
-    ///
-    /// `async let` does not make the ledger run them in parallel — it is an
-    /// actor and its executor serializes them — but it does hand all seven to
-    /// that executor in one go instead of returning to this task between each
-    /// one, so the queries run back to back rather than with a scheduling
-    /// round trip in every gap. None of them depends on another's result.
-    private nonisolated static func load(
-        ledger: UsageEventLedger,
-        filter: UsageQueryFilter,
-        granularity: UsageTrendBucket?,
-        breakdown: Breakdown
-    ) async -> LoadedUsage {
-        let bucket = granularity.resolved(for: filter.range)
-        let emptyPage = UsageRequestPage(rows: [], totalCount: 0, pageSize: requestPageSize)
-
-        async let summaryTask = try? await ledger.summary(filter)
-        async let trendTask = try? await ledger.trend(filter, bucket: bucket)
-        async let providersTask = try? await ledger.providerStats(filter)
-        async let harnessesTask = try? await ledger.harnessStats(filter)
-        async let modelsTask = try? await ledger.modelStats(filter)
-        async let projectsTask = try? await ledger.projectStats(filter)
-        async let requestsTask = breakdown == .requests
-            ? (try? await ledger.requestPage(filter, pageSize: requestPageSize))
-            : nil
-
-        let summary = await summaryTask ?? .empty
-        let trend = await trendTask ?? UsageTrendSeries(bucket: bucket, points: [])
-        let providers = await providersTask ?? []
-        let harnesses = await harnessesTask ?? []
-        let models = await modelsTask ?? []
-        let projects = await projectsTask ?? []
-        let requests = await requestsTask ?? emptyPage
-        return LoadedUsage(
-            summary: summary,
-            trend: trend,
-            providers: providers,
-            harnesses: harnesses,
-            models: models,
-            projects: projects,
-            requests: requests,
-            breakdown: breakdown
-        )
+    /// Re-scan the session index on activation and while the page stays
+    /// open, on the Sessions page's terms: at most every ten minutes, one
+    /// sweep at a time, behind the maintenance gate
+    /// (`SessionIndexRefreshThrottle`). Sessions a CLI wrote since the last
+    /// scan would otherwise never reach these cards unless the user opened
+    /// Sessions first.
+    private func refreshIndexIfDue() async {
+        _ = aggregator
+        guard let service = indexService,
+              await SessionIndexRefreshThrottle.shared.isDue
+        else { return }
+        let isEmpty = await SessionIndexDashboardSource(service: service).totalSessionCount() == 0
+        if isEmpty { isBuildingIndex = true }
+        let refreshed = await SessionIndexRefreshThrottle.shared.refreshIfDue {
+            await service.refreshIndex()
+        }
+        isBuildingIndex = false
+        guard refreshed, !Task.isCancelled else { return }
+        await aggregator.invalidateSessions()
+        reload(silently: true)
     }
 }

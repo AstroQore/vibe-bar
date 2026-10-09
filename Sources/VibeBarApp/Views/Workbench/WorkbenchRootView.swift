@@ -208,6 +208,25 @@ struct WorkbenchRootView: View {
         }
     }
 
+    /// Show one session on the Sessions page — the Usage page's rows link
+    /// here. The Sessions page reloads its list when it appears and keeps a
+    /// selection only if the list holds it, so the session is selected again
+    /// once that first reload has landed.
+    private func openSession(_ summary: SessionSummary) {
+        let sessions = workbench.sessions
+        navigation.select(.sessionManager)
+        sessions.select(summary)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            for _ in 0..<60 where sessions.isLoadingSummaries {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            if sessions.selection?.id != summary.id {
+                sessions.select(summary)
+            }
+        }
+    }
+
     private var selectionBinding: Binding<WorkbenchPage?> {
         Binding(
             get: { navigation.selectedPage },
@@ -219,7 +238,7 @@ struct WorkbenchRootView: View {
     private func detail(for page: WorkbenchPage, density: Theme.Density) -> some View {
         switch page {
         case .usageStats:
-            UsageStatsPage(density: density, model: workbench.usageStats)
+            UsageStatsPage(density: density, model: workbench.usageStats, onOpenSession: openSession)
         case .sessionManager:
             SessionManagerPage(density: density, model: workbench.sessions)
         case .resets:

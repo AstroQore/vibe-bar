@@ -352,3 +352,65 @@ public actor SessionStructureStore {
         }
     }
 }
+
+// MARK: - Bulk stats (read-only)
+
+/// One row of `SessionStructureStore.statsRows(forPaths:)`: what a dashboard
+/// needs from a cached parse, without decoding its outline.
+public struct SessionStructureStatsRow: Hashable, Sendable {
+    public var sourcePath: String
+    public var fingerprint: SessionFileFingerprint
+    public var parserVersion: Int
+    public var stats: SessionStats
+
+    public init(sourcePath: String, fingerprint: SessionFileFingerprint, parserVersion: Int, stats: SessionStats) {
+        self.sourcePath = sourcePath
+        self.fingerprint = fingerprint
+        self.parserVersion = parserVersion
+        self.stats = stats
+    }
+}
+
+extension SessionStructureStore {
+    /// Stats for each of `paths` that has a row from the current parser —
+    /// fresh or not; the caller compares `fingerprint` with the file. Reads
+    /// `stats_json` only, so a few thousand sessions cost one statement per
+    /// 400 paths and no outline decode.
+    public func statsRows(forPaths paths: [String]) -> [String: SessionStructureStatsRow] {
+        guard !paths.isEmpty, let database = openIfNeeded() else { return [:] }
+        var out: [String: SessionStructureStatsRow] = [:]
+        let unique = Array(Set(paths))
+        var start = 0
+        while start < unique.count {
+            let chunk = unique[start..<min(unique.count, start + 400)]
+            start += chunk.count
+            let marks = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            guard let statement = database.prepare("""
+                SELECT source_path, mtime_ns, size, parser_version, stats_json
+                FROM session_structure WHERE parser_version = ? AND source_path IN (\(marks))
+                """)
+            else { continue }
+            sqlite3_bind_int64(statement, 1, Int64(parserVersion))
+            for (offset, path) in chunk.enumerated() {
+                database.bindText(statement, Int32(offset + 2), path)
+            }
+            while sqlite3_step(statement) == SQLITE_ROW {
+                guard let path = database.columnText(statement, 0),
+                      let json = database.columnText(statement, 4),
+                      let stats = try? decoder.decode(SessionStats.self, from: Data(json.utf8))
+                else { continue }
+                out[path] = SessionStructureStatsRow(
+                    sourcePath: path,
+                    fingerprint: SessionFileFingerprint(
+                        mtimeNs: sqlite3_column_int64(statement, 1),
+                        size: sqlite3_column_int64(statement, 2)
+                    ),
+                    parserVersion: Int(sqlite3_column_int64(statement, 3)),
+                    stats: stats
+                )
+            }
+            sqlite3_finalize(statement)
+        }
+        return out
+    }
+}
