@@ -94,6 +94,37 @@ public struct UsageDashboardQuery: Hashable, Sendable {
     }
 }
 
+// MARK: - Request log
+
+/// What the Requests card's loaded pages were read for. While the key is
+/// unchanged the pages on screen still answer the query; a new filter, a new
+/// window start (a new day) or a new ledger revision (a cost scan ingested
+/// rows) makes them stale. The window's moving end is deliberately not part
+/// of it: a rolling preset moves every second and that alone changes no row.
+public struct UsageRequestLogKey: Hashable, Sendable {
+    public var range: UsageDashboardRange
+    public var intervalStart: Date
+    public var harnesses: [Harness]?
+    public var model: String?
+    public var project: String?
+    public var ledgerRevision: UInt64?
+
+    public init(_ snapshot: UsageDashboardSnapshot) {
+        range = snapshot.query.range
+        intervalStart = snapshot.query.interval.start
+        harnesses = snapshot.query.harnesses
+        model = snapshot.query.model
+        project = snapshot.query.project
+        ledgerRevision = snapshot.ledgerRevision
+    }
+
+    /// Re-read the first page: nothing loaded yet, the key moved, or the
+    /// user asked for a refresh.
+    public static func needsReload(loaded: UsageRequestLogKey?, next: UsageRequestLogKey, userRefresh: Bool) -> Bool {
+        userRefresh || loaded != next
+    }
+}
+
 // MARK: - Shared values
 
 /// Four disjoint token buckets, the ledger's own split. `prompt` is
@@ -166,6 +197,9 @@ public struct UsageDashboardSnapshot: Sendable, Equatable {
     public var mix: Mix
     public var options: FilterOptions
     public var coverage: Coverage
+    /// `UsageEventLedger.contentRevision()` when the snapshot was read — what
+    /// tells a reader holding request-level pages that new rows landed.
+    public var ledgerRevision: UInt64?
 
     public init(
         query: UsageDashboardQuery,

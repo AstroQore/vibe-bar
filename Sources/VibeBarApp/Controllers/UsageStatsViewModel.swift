@@ -46,8 +46,12 @@ final class UsageStatsViewModel {
     private(set) var isLoadingRequests = false
     var hasMoreRequests: Bool { requestCursor != nil }
     @ObservationIgnored private var requestCursor: UsageRequestCursor?
-    @ObservationIgnored private var requestQuery: UsageDashboardQuery?
+    /// What the loaded pages were read for (`UsageRequestLogKey`).
+    @ObservationIgnored private var requestKey: UsageRequestLogKey?
     @ObservationIgnored private var wantsRequests = false
+    /// The header's Refresh was clicked: the next snapshot re-reads the
+    /// request pages even if nothing in its key moved.
+    @ObservationIgnored private var pendingUserRefresh = false
     @ObservationIgnored private var requestTask: Task<Void, Never>?
     @ObservationIgnored private static let requestPageSize = 40
 
@@ -146,6 +150,7 @@ final class UsageStatsViewModel {
     }
 
     func refresh() {
+        pendingUserRefresh = true
         Task { [weak self] in
             guard let self else { return }
             await self.aggregator.invalidateSessions()
@@ -209,7 +214,7 @@ final class UsageStatsViewModel {
     /// The card appeared: read the first page for the query on screen.
     func loadRequestsIfNeeded() {
         wantsRequests = true
-        guard requestQuery != snapshot.query else { return }
+        guard requestKey != UsageRequestLogKey(snapshot) else { return }
         loadRequests(reset: true)
     }
 
@@ -225,7 +230,8 @@ final class UsageStatsViewModel {
         let cursor = reset ? nil : requestCursor
         requestTask?.cancel()
         isLoadingRequests = true
-        if reset { requestQuery = query }
+        if reset { requestKey = UsageRequestLogKey(snapshot) }
+        let key = requestKey
         let aggregator = self.aggregator
         requestTask = Task { [weak self] in
             let projects = await aggregator.ledgerProjects(for: query)
@@ -236,7 +242,7 @@ final class UsageStatsViewModel {
                 pageSize: Self.requestPageSize,
                 includeTotal: reset
             )
-            guard let self, !Task.isCancelled, self.requestQuery == query else { return }
+            guard let self, !Task.isCancelled, self.requestKey == key else { return }
             self.isLoadingRequests = false
             guard let page else { return }
             if reset {
@@ -302,9 +308,13 @@ final class UsageStatsViewModel {
             hasAppliedSnapshot = true
         }
         lastUpdatedAt = next.generatedAt
-        // The request log follows the filters; a background re-read of the
-        // same query leaves the pages already loaded alone.
-        if wantsRequests, requestQuery?.withoutInterval != next.query.withoutInterval {
+        // The request log follows the filters, the window's start and the
+        // ledger's revision, and a user refresh; a background re-read that
+        // moved none of them leaves the pages already loaded alone.
+        let userRefresh = pendingUserRefresh
+        pendingUserRefresh = false
+        if wantsRequests,
+           UsageRequestLogKey.needsReload(loaded: requestKey, next: UsageRequestLogKey(snapshot), userRefresh: userRefresh) {
             loadRequests(reset: true)
         }
     }
@@ -346,12 +356,5 @@ final class UsageStatsViewModel {
         guard refreshed, !Task.isCancelled else { return }
         await aggregator.invalidateSessions()
         reload(silently: true)
-    }
-}
-
-private extension UsageDashboardQuery {
-    /// The filters without the window's moving end.
-    var withoutInterval: [String] {
-        [range.rawValue, (harnesses ?? []).map(\.rawValue).joined(separator: ","), harnesses == nil ? "*" : "", model ?? "", project ?? ""]
     }
 }

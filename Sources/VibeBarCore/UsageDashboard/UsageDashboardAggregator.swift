@@ -196,8 +196,10 @@ public actor UsageDashboardAggregator {
             return .empty(query: query, now: now)
         }
         var inputs = UsageDashboardInputs(query: query, now: now, calendar: calendar)
+        var ledgerRevision: UInt64?
         if let ledger {
             let revision = await ledger.contentRevision()
+            ledgerRevision = revision
             if cacheRevision != revision {
                 cacheRevision = revision
                 factsCache.removeAll()
@@ -227,7 +229,9 @@ public actor UsageDashboardAggregator {
         inputs.unreachablePaths = unreachable(
             inQuery, query: query, structureStats: inputs.structures, tallies: inputs.activity
         )
-        return UsageDashboardBuilder.build(inputs)
+        var snapshot = UsageDashboardBuilder.build(inputs)
+        snapshot.ledgerRevision = ledgerRevision
+        return snapshot
     }
 
     /// Read the ledger facts for `queries` ahead of time, so switching to one
