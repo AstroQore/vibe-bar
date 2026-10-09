@@ -238,10 +238,13 @@ public enum SessionMarkdown {
 
     // MARK: - Block recognizers
 
+    /// The opening run of a code fence — every backtick or tilde of it, so
+    /// a block opened with four can hold a three-character fence and close
+    /// only on a run at least as long as its own.
     static func fenceMarker(_ trimmed: String) -> String? {
-        if trimmed.hasPrefix("```") { return "```" }
-        if trimmed.hasPrefix("~~~") { return "~~~" }
-        return nil
+        guard let first = trimmed.first, first == "`" || first == "~" else { return nil }
+        let run = trimmed.prefix(while: { $0 == first })
+        return run.count >= 3 ? String(run) : nil
     }
 
     static func heading(_ trimmed: String) -> (level: Int, text: String)? {

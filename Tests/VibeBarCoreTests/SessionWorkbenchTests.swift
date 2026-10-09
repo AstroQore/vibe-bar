@@ -382,4 +382,29 @@ final class SessionWorkbenchTests: XCTestCase {
         XCTAssertTrue(requests.isRequested(logSummary("old0")), "answered before the stop")
         XCTAssertFalse(requests.isRequested(logSummary("old2")), "handed back and never read")
     }
+
+    // MARK: - Markdown fences
+
+    func testALongerFenceHoldsAShorterOne() {
+        let source = "````markdown\n```swift\nlet a = 1\n```\n````\nAfter."
+        let blocks = SessionMarkdown.document(from: source).blocks
+        XCTAssertEqual(blocks.count, 2)
+        guard case let .code(language, text) = blocks.first else { return XCTFail("expected a code block") }
+        XCTAssertEqual(language, "markdown")
+        XCTAssertEqual(text, "```swift\nlet a = 1\n```")
+        guard case .paragraph = blocks.last else { return XCTFail("the text after the fence is prose") }
+    }
+
+    func testFencesCloseOnARunAtLeastAsLong() {
+        let tildes = SessionMarkdown.document(from: "~~~~\n~~~\n~~~~").blocks
+        guard case let .code(_, inner) = tildes.first else { return XCTFail("expected a code block") }
+        XCTAssertEqual(inner, "~~~")
+        XCTAssertEqual(tildes.count, 1)
+        let longerClose = SessionMarkdown.document(from: "```\ncode\n`````\nAfter").blocks
+        XCTAssertEqual(longerClose.count, 2)
+        guard case let .code(_, code) = longerClose.first else { return XCTFail("expected a code block") }
+        XCTAssertEqual(code, "code")
+        // Two backticks are inline code, not a fence.
+        guard case .paragraph = SessionMarkdown.document(from: "``x``").blocks.first else { return XCTFail() }
+    }
 }
