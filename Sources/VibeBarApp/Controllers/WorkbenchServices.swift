@@ -29,6 +29,7 @@ final class WorkbenchServices: ObservableObject {
 
     private var usageStatsStorage: UsageStatsViewModel?
     private var sessionsStorage: SessionManagerModel?
+    private var sessionsPageStorage: SessionsPageController?
     private var skillsStorage: SkillsManagerModel?
     private var libraryStorage: AgentLibraryManagerModel?
 
@@ -60,6 +61,17 @@ final class WorkbenchServices: ObservableObject {
         return model
     }
 
+    /// The Sessions page's column models over `sessions`, with the
+    /// structure service behind its turn view and list stats. Building it
+    /// opens nothing; the service opens `session_structure.sqlite3` on its
+    /// first read.
+    var sessionsPage: SessionsPageController {
+        if let sessionsPageStorage { return sessionsPageStorage }
+        let controller = SessionsPageController(manager: sessions, structure: SessionStructureService.live())
+        sessionsPageStorage = controller
+        return controller
+    }
+
     /// Lazy for the same reason as the usage page, and more so: building it
     /// opens `~/.vibebar/skills.json` and, on first activation, walks every
     /// agent CLI's skills directory. The service behind it is the app-wide
@@ -86,5 +98,6 @@ final class WorkbenchServices: ObservableObject {
     func stopBackgroundWork() {
         usageStatsStorage?.stop()
         sessionsStorage?.stop()
+        sessionsPageStorage?.stop()
     }
 }
