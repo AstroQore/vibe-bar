@@ -832,7 +832,12 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Throwing form of `consume`, for tests and for callers that want to
     /// see ingest failures.
     public func ingest(_ batch: UsageEventFileBatch) throws {
-        let fileKey = CostUsageScanCache.entryKey(for: batch.filePath)
+        // Key on the rollout's canonical path: when Codex compresses
+        // `rollout-X.jsonl` into `rollout-X.jsonl.zst` the events inside are
+        // the same, and the `f:` dedupe keys below are seeded with this key,
+        // so the renamed file must upsert the rows it already produced
+        // rather than insert a second copy of every request.
+        let fileKey = CostUsageScanCache.entryKey(for: CodexRolloutFile.canonicalPath(batch.filePath))
         if let stored = try storedFingerprint(tool: batch.tool, fileKey: fileKey),
            stored.size == batch.size,
            abs(stored.mtime - batch.mtime.timeIntervalSince1970) <= 1.0 {

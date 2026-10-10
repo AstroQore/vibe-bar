@@ -6,7 +6,8 @@ import AgentSessionKit
 /// across multiple windows (today / 7d / 30d / all-time) plus a per-day history
 /// and a weekday × hour heatmap.
 ///
-/// Codex: `~/.codex/sessions/**/*.jsonl` + `~/.codex/archived_sessions/`.
+/// Codex: `~/.codex/sessions/**/*.jsonl` (or `.jsonl.zst` once Codex has
+/// compressed a week-idle rollout) + `~/.codex/archived_sessions/`.
 ///   We track running `total_token_usage` snapshots and treat consecutive
 ///   snapshots in the SAME file as a delta sequence so the same session's
 ///   cumulative tokens aren't double-counted into multiple days.
@@ -2632,7 +2633,10 @@ public enum CostUsageScanner {
             options: [.skipsHiddenFiles]
         ) else { return [] }
         var out: [URL] = []
-        for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+        // `.jsonl`, plus the `.jsonl.zst` Codex leaves behind once
+        // `local_thread_store_compression` has compressed a rollout; the
+        // kit's line scanner decodes those transparently.
+        for case let url as URL in enumerator where CodexRolloutFile.isJSONL(url) {
             // Skip symlinks. They could resolve outside `~/.claude` /
             // `~/.codex` (e.g. an attacker with the user's UID seeding a link
             // to a different cache directory) and we don't want the scanner

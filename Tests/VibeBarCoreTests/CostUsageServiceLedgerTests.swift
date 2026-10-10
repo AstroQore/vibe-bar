@@ -50,6 +50,40 @@ final class CostUsageServiceLedgerTests: XCTestCase {
         return home
     }
 
+    /// Codex's `local_thread_store_compression` renames a rollout to
+    /// `.jsonl.zst` with the same contents. The scan must still see it,
+    /// and the ledger must upsert the rows it already holds for that
+    /// rollout instead of counting every request a second time.
+    func testCompressedRolloutIsScannedWithoutDoubleCounting() async throws {
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let home = try makeCodexHome(now: now)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("ServiceScanZst")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+
+        let plainScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now, eventSink: ledger)
+        let plain = try XCTUnwrap(plainScan)
+        let plainSummary = try await ledger.summary(filter)
+        XCTAssertEqual(plainSummary.requests, plain.allTimeRequests)
+        XCTAssertEqual(plain.jsonlFilesFound, 1)
+
+        let rollout = home.appendingPathComponent(".codex/sessions/session.jsonl")
+        try ZstdRawFrame.compressInPlace(rollout)
+
+        let compressedScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now, eventSink: ledger)
+        let compressed = try XCTUnwrap(compressedScan)
+        XCTAssertEqual(compressed.jsonlFilesFound, 1)
+        XCTAssertEqual(compressed.allTimeRequests, plain.allTimeRequests)
+        XCTAssertEqual(compressed.allTimeTokens, plain.allTimeTokens)
+        XCTAssertEqual(compressed.allTimeCostUSD, plain.allTimeCostUSD, accuracy: 0.000_01)
+
+        let compressedSummary = try await ledger.summary(filter)
+        XCTAssertEqual(compressedSummary.requests, plainSummary.requests)
+        XCTAssertEqual(compressedSummary.realTotalTokens, plainSummary.realTotalTokens)
+        XCTAssertEqual(compressedSummary.costMicros, plainSummary.costMicros)
+    }
+
     func testScanWithSinkFillsTheLedgerWithTheSnapshotTotals() async throws {
         let now = Date(timeIntervalSince1970: 1_762_339_200)
         let home = try makeCodexHome(now: now)

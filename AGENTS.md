@@ -1299,7 +1299,7 @@ display names). The mapping from a harness onto the quota axis —
 
 | Harness       | L1 company | Local evidence                                      |
 | ------------- | ---------- | --------------------------------------------------- |
-| Codex         | OpenAI     | `~/.codex/sessions`, every other `originator` (`Codex Desktop`, `codex-tui`, `codex_cli_rs`, `codex_exec`, `codex_vscode`) |
+| Codex         | OpenAI     | `~/.codex/sessions` (`rollout-*.jsonl`, or `rollout-*.jsonl.zst` once Codex's `local_thread_store_compression` has compressed a week-idle thread — read through `SessionLogByteReader`, keyed on `CodexRolloutFile.canonicalPath`), every other `originator` (`Codex Desktop`, `codex-tui`, `codex_cli_rs`, `codex_exec`, `codex_vscode`) |
 | ChatGPT Work  | OpenAI     | same tree, `originator` == "codex_work_desktop"      |
 | Claude Code   | Anthropic  | `~/.claude/projects`, `~/.config/claude/projects`    |
 | Claude Cowork | Anthropic  | `…/Application Support/Claude/local-agent-mode-sessions/**/.claude/projects` |
