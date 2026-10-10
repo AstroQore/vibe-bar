@@ -22,6 +22,29 @@ final class SessionStructureLineReaderTests: XCTestCase {
         return (collected, outcome)
     }
 
+    /// A Codex rollout compressed to `.jsonl.zst` reads with the same
+    /// decompressed offsets, so a byte window recorded against the plain
+    /// file still selects the same lines after the rename.
+    func testCompressedRolloutKeepsOffsetsAndWindows() throws {
+        let plain = directory.appendingPathComponent("rollout-2026-02-03T13-58-51-019c2215-0f3c-7f72-89e3-92598c209589.jsonl")
+        let text = (0..<3_000).map { #"{"i":\#($0),"pad":"\#(String(repeating: "p", count: $0 % 61))"}"# }
+        try Data((text.joined(separator: "\n") + "\n").utf8).write(to: plain)
+        let before = lines(in: plain)
+        let window = SessionStructure.ByteRange(before.lines[1_500].1, before.lines[1_503].1)
+        let beforeWindow = lines(in: plain, range: window)
+
+        let compressed = try ZstdRawFrame.compressInPlace(plain)
+        let after = lines(in: compressed)
+        XCTAssertTrue(after.outcome.completed)
+        XCTAssertEqual(after.lines.map(\.0), before.lines.map(\.0))
+        XCTAssertEqual(after.lines.map(\.1), before.lines.map(\.1))
+
+        let afterWindow = lines(in: compressed, range: window)
+        XCTAssertEqual(afterWindow.lines.map(\.0), beforeWindow.lines.map(\.0))
+        XCTAssertEqual(afterWindow.lines.map(\.0).count, 3)
+        XCTAssertEqual(afterWindow.outcome.lastLineEnd, beforeWindow.outcome.lastLineEnd)
+    }
+
     func testOffsetsBlankLinesAndMissingTrailingNewline() throws {
         let url = directory.appendingPathComponent("a.jsonl")
         try Data("alpha\n\nbeta\ngamma".utf8).write(to: url)

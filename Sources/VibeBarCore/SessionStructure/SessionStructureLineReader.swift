@@ -53,10 +53,14 @@ enum SessionStructureLineReader {
         isCancelled: () -> Bool = { false },
         _ body: (Line) -> Bool
     ) -> Outcome {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
+        // `SessionLogByteReader` reads a compressed rollout (`.jsonl.zst`)
+        // through zstd and reports *decompressed* offsets, so a turn's
+        // byte window recorded against the plain file still lands on the
+        // same line after Codex compresses it.
+        guard let handle = SessionLogByteReader(url: url) else {
             return Outcome(completed: false, bytesRead: 0, lastLineEnd: range?.lowerBound ?? 0)
         }
-        defer { try? handle.close() }
+        defer { handle.close() }
 
         let lower = range?.lowerBound ?? 0
         let upper = range?.upperBound ?? Int64.max
@@ -64,7 +68,7 @@ enum SessionStructureLineReader {
         var skippingToNewline = false
         if lower > 0 {
             do {
-                try handle.seek(toOffset: UInt64(lower - 1))
+                try handle.seek(toOffset: lower - 1)
             } catch {
                 return Outcome(completed: false, bytesRead: 0, lastLineEnd: lower)
             }
