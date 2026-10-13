@@ -104,6 +104,7 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/Workbench/UsageHealthCards.swift",
     "Sources/VibeBarApp/Views/Workbench/UsageMixCards.swift",
     "Sources/VibeBarApp/Views/Workbench/UsageRequestsCard.swift",
+    "Sources/VibeBarApp/Views/Workbench/UsageSpeedCard.swift",
     "Sources/VibeBarApp/Controllers/UsageStatsViewModel.swift",
     "Sources/VibeBarApp/Views/PopoverRoot.swift",
     "Sources/VibeBarCore/Services/QuotaPaceForecast.swift",

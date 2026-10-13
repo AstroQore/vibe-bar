@@ -53,6 +53,20 @@ public struct CostUsageScanCache: Codable, Sendable {
         /// so worktree aliases can be folded into the owning repository and
         /// same-named projects in different directories remain distinct.
         public let projectPath: String?
+        /// When the request behind this event went out, produced its first
+        /// content block, and finished — read from the log's own line
+        /// timestamps (`UsageRequestTiming`). Stored as millisecond offsets
+        /// from `date` to keep the cache small; `nil` for harnesses whose
+        /// log carries no per-request timing, and for entries cached before
+        /// it existed.
+        private let timing: UsageRequestTimingOffsets?
+
+        private enum CodingKeys: String, CodingKey {
+            case date, model, modelFallback, input, output, cache, cacheCreation
+            case sessionId, messageId, requestId, isSidechain, pathRole, sourceKey
+            case serviceTier, harness, projectPath
+            case timing = "rt"
+        }
 
         public init(
             date: Date,
@@ -70,7 +84,10 @@ public struct CostUsageScanCache: Codable, Sendable {
             sourceKey: String? = nil,
             serviceTier: String? = nil,
             harness: Harness? = nil,
-            projectPath: String? = nil
+            projectPath: String? = nil,
+            requestStartedAt: Date? = nil,
+            firstBlockAt: Date? = nil,
+            completedAt: Date? = nil
         ) {
             self.date = date
             self.model = model
@@ -88,6 +105,54 @@ public struct CostUsageScanCache: Codable, Sendable {
             self.serviceTier = serviceTier
             self.harness = harness
             self.projectPath = projectPath
+            let checked = UsageRequestTiming.sanitized(
+                start: requestStartedAt, firstBlock: firstBlockAt, completed: completedAt
+            )
+            self.timing = UsageRequestTimingOffsets(
+                start: checked.start,
+                firstBlock: checked.firstBlock,
+                completed: checked.completed,
+                relativeTo: date
+            )
+        }
+
+        /// When the request went out: the last conversation line written
+        /// before its response. See `UsageRequestTiming`.
+        public var requestStartedAt: Date? { timing.flatMap { $0.date($0.start, relativeTo: date) } }
+        /// When the response's first content block was written.
+        public var firstBlockAt: Date? { timing.flatMap { $0.date($0.firstBlock, relativeTo: date) } }
+        /// When the response's last block (or Codex `token_count`) was written.
+        public var completedAt: Date? { timing.flatMap { $0.date($0.completed, relativeTo: date) } }
+
+        /// Start to completion, in whole milliseconds.
+        public var durationMs: Int64? { timing.flatMap { $0.span(from: $0.start, to: $0.completed) } }
+        /// Start to first block, in whole milliseconds — an upper bound on
+        /// the time to first token.
+        public var firstTokenMs: Int64? { timing.flatMap { $0.span(from: $0.start, to: $0.firstBlock) } }
+
+        /// The same event with the request's timing attached.
+        public func withTiming(requestStartedAt: Date?, firstBlockAt: Date?, completedAt: Date?) -> ParsedEvent {
+            ParsedEvent(
+                date: date,
+                model: model,
+                modelFallback: modelFallback,
+                input: input,
+                output: output,
+                cache: cache,
+                cacheCreation: cacheCreation,
+                sessionId: sessionId,
+                messageId: messageId,
+                requestId: requestId,
+                isSidechain: isSidechain,
+                pathRole: pathRole,
+                sourceKey: sourceKey,
+                serviceTier: serviceTier,
+                harness: harness,
+                projectPath: projectPath,
+                requestStartedAt: requestStartedAt,
+                firstBlockAt: firstBlockAt,
+                completedAt: completedAt
+            )
         }
     }
 
@@ -236,7 +301,11 @@ public struct CostUsageScanCache: Codable, Sendable {
     /// invalidate once so the project dashboard is populated immediately.
     /// v8 preserves Codex request/turn service tiers and the configured
     /// fallback used for legacy rollouts, so ledger repricing keeps that tier.
-    public static let currentSchemaVersion = 8
+    /// v9 adds `ParsedEvent`'s request timing (`"rt"`). It is read from the
+    /// timestamps of lines a warm v8 cache never kept — the prompt before a
+    /// Claude response, the tool output before a Codex one — so only a fresh
+    /// parse can supply it, and the ledger re-ingests from that parse.
+    public static let currentSchemaVersion = 9
 
     public static func fileURL(homeDirectory: String, tool: ToolType) -> URL {
         URL(fileURLWithPath: homeDirectory)
