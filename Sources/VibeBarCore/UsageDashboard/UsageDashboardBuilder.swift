@@ -81,6 +81,8 @@ public enum UsageDashboardBuilder {
     public static let toolWeekLimit = 26
     /// Above this many days the trend switches to weekly bars.
     public static let dailyTrendLimit = 120
+    /// Model rows on the speed card.
+    public static let speedModelLimit = 8
 
     public static func build(_ inputs: UsageDashboardInputs) -> UsageDashboardSnapshot {
         var context = Context(inputs: inputs)
@@ -99,6 +101,7 @@ public enum UsageDashboardBuilder {
         snapshot.skills = context.skills(rows: rows)
         snapshot.tools = context.tools(rows: rows)
         snapshot.health = context.health(rows: rows)
+        snapshot.speed = context.speed()
         snapshot.mix = context.mix(days: ledgerRows)
         snapshot.options = context.options()
         snapshot.coverage = context.coverage(rows: rows)
@@ -257,6 +260,7 @@ private struct Context {
             facts.projects = facts.projects.filter { query.includes($0.harness) }
             facts.models = facts.models.filter { query.includes($0.harness) }
             facts.promptBuckets = facts.promptBuckets.filter { query.includes($0.harness) }
+            facts.speedSamples = facts.speedSamples.filter { query.includes($0.harness) }
         }
         self.facts = facts
         self.calendar = inputs.calendar
@@ -819,6 +823,38 @@ private struct Context {
                 ? ($0.sessions == $1.sessions ? $0.harness.rawValue < $1.harness.rawValue : $0.sessions > $1.sessions)
                 : $0.requests > $1.requests
         }
+    }
+
+    // MARK: Speed
+
+    /// Medians over the merged samples — per harness across its models, per
+    /// model across the included harnesses — never medians of medians.
+    func speed() -> UsageDashboardSnapshot.Speed {
+        var byHarness: [Harness: UsageSpeedSamples] = [:]
+        var byModel: [String: UsageSpeedSamples] = [:]
+        for row in facts.speedSamples {
+            byHarness[row.harness, default: UsageSpeedSamples()].merge(row.samples)
+            if let model = row.model {
+                byModel[model, default: UsageSpeedSamples()].merge(row.samples)
+            }
+        }
+        func ranked<Key>(_ groups: [Key: UsageSpeedSamples], id: (Key) -> String) -> [(Key, UsageSpeedSamples)] {
+            groups
+                .filter { $0.value.requestsWithTiming > 0 }
+                .sorted {
+                    $0.value.requestsWithTiming == $1.value.requestsWithTiming
+                        ? id($0.key) < id($1.key)
+                        : $0.value.requestsWithTiming > $1.value.requestsWithTiming
+                }
+                .map { ($0.key, $0.value) }
+        }
+        let harnesses = ranked(byHarness, id: \.rawValue)
+        let models = ranked(byModel, id: { $0 }).prefix(UsageDashboardBuilder.speedModelLimit)
+        return UsageDashboardSnapshot.Speed(
+            byHarness: harnesses.map { UsageDashboardSnapshot.SpeedRow(id: $0.0.rawValue, harness: $0.0, stat: $0.1.stat) },
+            byModel: models.map { UsageDashboardSnapshot.SpeedRow(id: $0.0, model: $0.0, stat: $0.1.stat) },
+            timedRequests: harnesses.reduce(0) { $0 + $1.1.requestsWithTiming }
+        )
     }
 
     // MARK: Mix

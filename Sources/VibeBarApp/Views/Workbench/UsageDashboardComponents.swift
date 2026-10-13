@@ -79,6 +79,29 @@ enum UsageDashboardFormat {
     }
 
     static func modelName(_ raw: String) -> String { UsageModelNaming.canonicalDisplayName(raw) }
+
+    /// "≈107 tok/s"; one decimal under 10 so a slow model does not read 0.
+    static func speed(_ tokensPerSecond: Double?) -> String {
+        guard let tokensPerSecond, tokensPerSecond.isFinite else { return "—" }
+        return L10n.Usage.Table.speedValue(value: speedNumber(tokensPerSecond))
+    }
+
+    /// The bare number of `speed`, for a sentence that supplies the unit.
+    static func speedNumber(_ tokensPerSecond: Double) -> String {
+        AppLocale.decimal(tokensPerSecond, fractionDigits: tokensPerSecond < 10 ? 1 : 0)
+    }
+
+    /// "≈850 ms" under a second, "≈2.6s" under ten, "≈14s" after.
+    static func firstToken(milliseconds: Int64?) -> String {
+        guard let milliseconds, milliseconds >= 0 else { return "—" }
+        if milliseconds < 1_000 {
+            return L10n.Usage.Table.firstTokenMillis(milliseconds: AppLocale.number(milliseconds))
+        }
+        let seconds = Double(milliseconds) / 1_000
+        return L10n.Usage.Table.firstTokenSeconds(
+            seconds: AppLocale.decimal(seconds, fractionDigits: seconds < 10 ? 1 : 0)
+        )
+    }
 }
 
 extension Harness {
@@ -282,6 +305,29 @@ struct UsageSegmentedBar: View, Equatable {
         }
         .frame(height: height)
         .accessibilityHidden(true)
+    }
+}
+
+/// A column header or tile title with a `?` beside it; hovering either
+/// shows how the figure is defined. The tooltip sits on the whole label so
+/// the target is the words, not just the glyph.
+struct UsageHelpLabel: View {
+    let title: String
+    let help: String
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(title)
+            Image(systemName: "questionmark.circle")
+                .imageScale(.small)
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .contentShape(Rectangle())
+        .help(help)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityHint(help)
     }
 }
 

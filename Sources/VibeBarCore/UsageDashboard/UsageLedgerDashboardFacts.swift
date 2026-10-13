@@ -140,6 +140,22 @@ public struct UsageLedgerDashboardFacts: Sendable, Equatable {
         }
     }
 
+    /// Request timing for one (harness, model) pair of detail rows, unreduced
+    /// so the builder can merge pairs after the harness filter.
+    public struct SpeedSampleRow: Sendable, Equatable {
+        public var harness: Harness
+        /// The raw model id; `nil` for rows with a blank model, which count
+        /// toward their harness only.
+        public var model: String?
+        public var samples: UsageSpeedSamples
+
+        public init(harness: Harness, model: String?, samples: UsageSpeedSamples) {
+            self.harness = harness
+            self.model = model
+            self.samples = samples
+        }
+    }
+
     /// Request-level days (by each row's own `day` key) and, when read,
     /// rollup days. Detail and rollup days never overlap: a day is folded into
     /// rollups only after its detail rows are pruned.
@@ -150,6 +166,8 @@ public struct UsageLedgerDashboardFacts: Sendable, Equatable {
     public var models: [GroupRow] = []
     public var sessions: [SessionRow] = []
     public var promptBuckets: [PromptBucketRow] = []
+    /// Detail rows only: rollups carry no timing.
+    public var speedSamples: [SpeedSampleRow] = []
     /// The last day already folded into rollups, newest across tools; every
     /// day after it still has request-level rows. `nil` before any rollup.
     public var detailFloorDay: String?
