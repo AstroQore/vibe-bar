@@ -113,6 +113,38 @@ public struct SkillBackupManager: Sendable {
         return backupURL
     }
 
+    /// Snapshots a validated harness copy before explicit overwrite/adoption.
+    /// The app name keeps these backups distinguishable from shared snapshots.
+    @discardableResult
+    public func createBackup(ofCopy source: URL, app: SkillAppTarget, skill: Skill) throws -> URL {
+        let expected = SkillAppCatalog.skillsDirectory(for: app, homeDirectory: homeDirectory)
+            .appendingPathComponent(skill.directory)
+        guard source.standardizedFileURL == expected.standardizedFileURL,
+              SkillAppCatalog.isWriteAllowed(source, homeDirectory: homeDirectory),
+              SkillFileSystem.kind(of: source) == .directory else {
+            throw SkillError.copyOutsideScannedRoots(skill.directory)
+        }
+        try SkillFileSystem.validateDirectoryAncestors(source, homeDirectory: homeDirectory)
+        try SkillFileSystem.ensureDirectory(rootDirectory, stopAt: homeURL, permissions: 0o700)
+        let createdAt = Date()
+        let backupURL = try uniqueBackupURL(for: "\(app.rawValue)_\(skill.directory)", at: createdAt, in: rootDirectory)
+        try FileManager.default.createDirectory(at: backupURL, withIntermediateDirectories: false)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: backupURL.path)
+        do {
+            try FileManager.default.copyItem(at: source, to: backupURL.appendingPathComponent("skill"))
+            try VibeBarLocalStore.writeJSON(
+                Metadata(skill: skill, backupCreatedAt: createdAt, sourcePath: source.path),
+                to: backupURL.appendingPathComponent("meta.json"),
+                base: VibeBarLocalStore.baseDirectory(homeDirectory: homeDirectory)
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: backupURL)
+            throw error
+        }
+        prune()
+        return backupURL
+    }
+
     /// Newest first.
     public func listBackups() -> [Backup] {
         let root = rootDirectory
