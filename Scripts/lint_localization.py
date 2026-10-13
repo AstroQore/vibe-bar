@@ -116,6 +116,7 @@ MIGRATED = [
     "Sources/VibeBarApp/Views/Workbench/FilterPicker.swift",
     "Sources/VibeBarApp/Views/Workbench/TranscriptView.swift",
     "Sources/VibeBarApp/Views/Workbench/SessionHarnessRail.swift",
+    "Sources/VibeBarApp/Views/Workbench/WorkbenchSecondaryColumn.swift",
     "Sources/VibeBarApp/Views/Workbench/SessionRowText.swift",
     "Sources/VibeBarApp/Views/Workbench/SessionConversationView.swift",
     "Sources/VibeBarApp/Views/Workbench/SessionConversationRows.swift",

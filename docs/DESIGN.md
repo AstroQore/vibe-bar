@@ -63,6 +63,42 @@ chart is two providers as far as the reader is concerned.
 gradient because it encodes magnitude. Backgrounds, cards, sidebars and
 buttons may not.
 
+## 2.1 Navigation columns
+
+The Workbench reads as three levels, left to right: the window's
+navigation (`WorkbenchSidebar`), a page's own navigation where it has one
+(Sessions' harnesses, Settings' sections), then the page header over the
+content. The two navigation levels are **one design at two weights**,
+built from `WorkbenchSecondaryColumn.swift` and the
+`WorkbenchPorcelain.Navigation` metrics:
+
+- **One row.** `WorkbenchNavigationRow` everywhere: 32 pt tall, 8 pt
+  corner, 8 pt padding, a 20 pt mark, 13 pt title. Selected is the
+  selected-navigation fill plus the hairline, with the title (and a
+  symbol mark) in the accent; hover is the hover fill. What a page adds
+  after the title — a count, a status dot and drag handle — goes in the
+  row's accessory slot, never in a second row design.
+- **Two weights.** The sidebar's rows are `.window` level: semibold
+  titles and a tinted icon block per page. A page's rows are `.page`
+  level: medium titles and a bare SF Symbol or brand mark.
+- **One group label.** `WorkbenchNavigationSectionHeader` — 11 pt
+  semibold tertiary, sentence case — for the sidebar's "Library" and a
+  page's groups alike.
+- **One column.** A page's navigation is a `WorkbenchSecondaryColumn`,
+  232 pt, on `secondaryColumnFill` (half a step between the sidebar and
+  the page), with a hairline on its trailing edge. It runs the full
+  height of the window beside the page header, not under it, and opens
+  with a one-row header slot — a title and fold button on Sessions, the
+  search field on Settings — spaced like a row, so its rows fall on the
+  sidebar's row lines. Folded, it is 56 pt and each mark sits exactly
+  where the sidebar draws its icon blocks.
+- **One hairline.** Columns are separated by `WorkbenchColumnDivider`
+  (`Theme.Card.hairlineWidth`), which runs up through the title bar with
+  the columns' fills.
+
+A new page that needs its own navigation uses this column; it does not
+draw a third kind of list.
+
 ## 3. The two exceptions: floating surfaces over content
 
 `MiniQuotaWindowView` wraps its content in
@@ -136,19 +172,21 @@ flat card like any other content.
 
 ## 4.1 The Sessions page
 
-Four flat columns under one toolbar, separated by hairlines: the harness
-column (`SessionHarnessRail`, sidebar fill, folds to 44 pt of brand marks),
-the session list, the conversation, and its contents (`SessionConversationOutline`,
-sidebar fill). No column is a card; cards appear inside the conversation
+The harness column (`SessionHarnessRail`), the page's navigation column of
+§ 2.1, runs the full height beside the header and folds to 56 pt of brand
+marks. To its right, three flat columns under one toolbar, separated by
+hairlines: the session list, the conversation, and its contents
+(`SessionConversationOutline`, on the same secondary fill). No column is a card; cards appear inside the conversation
 only where content needs a surface — code, tables, a step's detail. The
 person's prompt is the one tinted bubble (the provider accent at 13 %),
 on the right; everything the agent did is quiet and on the left, and the
 single primary action is the resume button in the masthead, in the
 provider accent. A prompt or an answer is one selectable text, with its
 code blocks and tables set in it as rounded hairline cards.
-`SessionPageLayout` decides the column widths: the
-contents column shows before the harness column gets its labels back, and
-below 1 104 pt the contents open as a popover from the toolbar.
+`SessionPageLayout` decides the column widths from the width right of
+the window's sidebar: the contents column shows before the harness column
+gets its labels back, and below 1 016 pt (a window of about 1 220 pt) the
+contents open as a popover from the toolbar.
 
 ## 5. Where the tokens live
 
@@ -156,7 +194,8 @@ below 1 104 pt the contents open as a popover from the toolbar.
 | --- | --- |
 | `Views/Theme.swift` | `Theme.Card` (the card recipe), `Theme.Density` profiles, provider accents, quota bar colours, mini-window metrics |
 | `Views/CardShell.swift` | `CardShell`, `cardSurface(density:)`, `SettingsSectionCard` — the only places the card recipe is composed |
-| `Views/Workbench/WorkbenchPorcelainStyle.swift` | Workbench window chrome: ground, sidebar, toolbar, field, overlay, selection, hover, hairline, accent; `WorkbenchPillButtonStyle`; the `workbenchPorcelain()` density opt-in |
+| `Views/Workbench/WorkbenchPorcelainStyle.swift` | Workbench window chrome: ground, sidebar, secondary column, toolbar, field, overlay, selection, hover, hairline, accent; navigation metrics (`WorkbenchPorcelain.Navigation`); `WorkbenchPillButtonStyle`; the `workbenchPorcelain()` density opt-in |
+| `Views/Workbench/WorkbenchSecondaryColumn.swift` | The navigation pieces of § 2.1: `WorkbenchSecondaryColumn`, `WorkbenchNavigationRow`, `WorkbenchNavigationSectionHeader`, `WorkbenchColumnDivider` |
 
 The `WorkbenchPorcelain` name is historical — it once meant a
 soft-shadowed "porcelain" direction. It is now just the Workbench's

@@ -44,7 +44,9 @@ struct SessionConversationOutline: View {
                 .disabled(isEmpty)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(WorkbenchPorcelain.sidebarFill(for: colorScheme))
+        // The page's other side column, on the same ground as its harness
+        // column: both are the page's, a level below the window's sidebar.
+        .background(WorkbenchPorcelain.secondaryColumnFill(for: colorScheme))
     }
 
     private var emptyText: String {
