@@ -125,6 +125,21 @@ final class SkillCopyResolutionTests: XCTestCase {
         XCTAssertEqual(service.listBackups().count, 2)
     }
 
+    func testRestoringTheOldestBackupSurvivesThePruneTheCommitTriggers() async throws {
+        let (home, service, skill, copy) = try await fixture()
+        _ = try await service.overwriteCopyWithShared(skill.id, copy: copy)
+        let oldest = try XCTUnwrap(service.listBackups().last)
+        // Fill the retained set so the commit's own backup pushes the
+        // oldest one out — the one being restored.
+        for _ in 1..<SkillBackupManager.defaultRetainedBackups {
+            _ = try await service.overwriteCopyWithShared(skill.id, copy: copy)
+        }
+        XCTAssertEqual(service.listBackups().count, SkillBackupManager.defaultRetainedBackups)
+        _ = try await service.restoreBackupToShared(skill.id, backupURL: oldest.url)
+        XCTAssertEqual(home.contents(of: home.ssot.appendingPathComponent("alpha/changed.txt")), "compared")
+        XCTAssertEqual(service.listBackups().count, SkillBackupManager.defaultRetainedBackups)
+    }
+
     func testNestedSymlinksAreCopiedAsLinksAndNeverWrittenThrough() async throws {
         let (home, service, skill, copy) = try await fixture()
         let outside = try home.makeDirectory(home.url.appendingPathComponent("unowned"))

@@ -124,7 +124,15 @@ extension SkillsService {
             throw SkillError.backupCorrupted(backup.directoryName)
         }
         try SkillFileSystem.validateDirectoryAncestors(payload, homeDirectory: homeDirectory)
-        return try await commitSharedContent(existing, from: payload)
+        // Staged outside the backup root: the commit takes a backup of the
+        // current shared content first, and that backup's prune may delete
+        // this very directory when it is the oldest of the retained set.
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent("skill-restore-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let staged = staging.appendingPathComponent("skill")
+        try FileManager.default.copyItem(at: payload, to: staged)
+        return try await commitSharedContent(existing, from: staged)
     }
 
     private func editableSkill(_ id: SkillID) async throws -> Skill {
