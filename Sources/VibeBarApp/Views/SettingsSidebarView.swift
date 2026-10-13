@@ -6,15 +6,13 @@ import VibeBarCore
 /// configuration. Provider ordering is edited directly where it is consumed,
 /// rather than in a second, disconnected ordering screen.
 ///
-/// This is a column *inside* the Settings page, not a second window sidebar:
-/// no fill, no title of its own, no chrome the Workbench already provides.
-/// It reads as a segmented list of sections, which is what it is — the
-/// Workbench's own rail stays the only navigation surface in the window.
+/// The Settings page's own navigation column: a `WorkbenchSecondaryColumn`,
+/// the same column the Sessions page's harnesses use, with the search field
+/// in its header slot. It runs the full height of the window beside the
+/// page header, so the window reads as its sidebar, then this column, then
+/// the section it opens.
 struct SettingsSidebarView: View {
-    static let width: CGFloat = 236
-
     @EnvironmentObject private var settingsStore: SettingsStore
-    @Environment(\.colorScheme) private var colorScheme
     @Binding var selection: SettingsDestination
 
     @State private var searchText = ""
@@ -37,110 +35,110 @@ struct SettingsSidebarView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(L10n.Settings.search, text: $searchText)
-                    .textFieldStyle(.plain)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 31)
-            .workbenchFieldSurface(cornerRadius: 8)
-            // The search field is the sidebar's one native control; give it
-            // back the system focus ring the rail switches off.
-            .vibeBarSystemControlFocus()
-            .padding(.horizontal, 14)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
+        WorkbenchSecondaryColumn {
+            searchField
+        } content: {
+            // Each filter runs once per render, not once per use.
+            let basicPages = filteredBasicPages
+            let coreProviders = filteredCoreProviders
+            let miscProviders = filteredMiscProviders
+            let showsMiscLanding = miscLandingMatchesSearch
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
-                    if searchText.isEmpty || !filteredBasicPages.isEmpty {
-                        sidebarGroup(L10n.Popover.Header.settings) {
-                            ForEach(filteredBasicPages, id: \.rawValue) { page in
-                                staticRow(page)
-                            }
-                        }
-                    }
-
-                    if searchText.isEmpty || !filteredCoreProviders.isEmpty {
-                        sidebarGroup(L10n.Settings.Sidebar.coreProviders) {
-                            ForEach(filteredCoreProviders, id: \.self) { tool in
-                                coreProviderRow(tool)
-                                    .onDrag {
-                                        draggedCoreProvider = tool
-                                        return NSItemProvider(object: tool.rawValue as NSString)
-                                    }
-                                    .onDrop(
-                                        of: [.text],
-                                        delegate: SettingsCoreProviderDropDelegate(
-                                            target: tool,
-                                            dragged: $draggedCoreProvider,
-                                            settingsStore: settingsStore
-                                        )
-                                    )
-                            }
-                            if searchText.isEmpty {
-                                Color.clear
-                                    .frame(height: 6)
-                                    .contentShape(Rectangle())
-                                    .onDrop(
-                                        of: [.text],
-                                        delegate: SettingsCoreProviderDropDelegate(
-                                            target: nil,
-                                            dragged: $draggedCoreProvider,
-                                            settingsStore: settingsStore
-                                        )
-                                    )
-                            }
-                        }
-                    }
-
-                    if miscLandingMatchesSearch || !filteredMiscProviders.isEmpty {
-                        sidebarGroup(L10n.Popover.Tab.misc) {
-                            if miscLandingMatchesSearch {
-                                miscLandingRow
-                            }
-                            ForEach(filteredMiscProviders) { instance in
-                                miscProviderRow(instance)
-                                    .onDrag {
-                                        draggedMiscProviderID = instance.id
-                                        return NSItemProvider(object: instance.id as NSString)
-                                    }
-                                    .onDrop(
-                                        of: [.text],
-                                        delegate: SettingsMiscProviderDropDelegate(
-                                            targetID: instance.id,
-                                            draggedID: $draggedMiscProviderID,
-                                            settingsStore: settingsStore
-                                        )
-                                    )
-                            }
-                            if searchText.isEmpty {
-                                Color.clear
-                                    .frame(height: 8)
-                                    .contentShape(Rectangle())
-                                    .onDrop(
-                                        of: [.text],
-                                        delegate: SettingsMiscProviderDropDelegate(
-                                            targetID: nil,
-                                            draggedID: $draggedMiscProviderID,
-                                            settingsStore: settingsStore
-                                        )
-                                    )
-                            }
-                        }
-                    }
+            if searchText.isEmpty || !basicPages.isEmpty {
+                WorkbenchNavigationSectionHeader(title: L10n.Popover.Header.settings)
+                ForEach(basicPages, id: \.rawValue) { page in
+                    staticRow(page)
                 }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 18)
+            }
+
+            if searchText.isEmpty || !coreProviders.isEmpty {
+                WorkbenchNavigationSectionHeader(title: L10n.Settings.Sidebar.coreProviders)
+                ForEach(coreProviders, id: \.self) { tool in
+                    coreProviderRow(tool)
+                        .onDrag {
+                            draggedCoreProvider = tool
+                            return NSItemProvider(object: tool.rawValue as NSString)
+                        }
+                        .onDrop(
+                            of: [.text],
+                            delegate: SettingsCoreProviderDropDelegate(
+                                target: tool,
+                                dragged: $draggedCoreProvider,
+                                settingsStore: settingsStore
+                            )
+                        )
+                }
+                if searchText.isEmpty {
+                    Color.clear
+                        .frame(height: 6)
+                        .contentShape(Rectangle())
+                        .onDrop(
+                            of: [.text],
+                            delegate: SettingsCoreProviderDropDelegate(
+                                target: nil,
+                                dragged: $draggedCoreProvider,
+                                settingsStore: settingsStore
+                            )
+                        )
+                }
+            }
+
+            if showsMiscLanding || !miscProviders.isEmpty {
+                WorkbenchNavigationSectionHeader(title: L10n.Popover.Tab.misc)
+                if showsMiscLanding {
+                    miscLandingRow
+                }
+                ForEach(miscProviders) { instance in
+                    miscProviderRow(instance)
+                        .onDrag {
+                            draggedMiscProviderID = instance.id
+                            return NSItemProvider(object: instance.id as NSString)
+                        }
+                        .onDrop(
+                            of: [.text],
+                            delegate: SettingsMiscProviderDropDelegate(
+                                targetID: instance.id,
+                                draggedID: $draggedMiscProviderID,
+                                settingsStore: settingsStore
+                            )
+                        )
+                }
+                if searchText.isEmpty {
+                    Color.clear
+                        .frame(height: 8)
+                        .contentShape(Rectangle())
+                        .onDrop(
+                            of: [.text],
+                            delegate: SettingsMiscProviderDropDelegate(
+                                targetID: nil,
+                                draggedID: $draggedMiscProviderID,
+                                settingsStore: settingsStore
+                            )
+                        )
+                }
             }
         }
-        .frame(width: Self.width)
-        // A rail of hand-drawn rows: the system focus ring stays off and
-        // each row's `VibeBarButtonStyle` hairline marks keyboard focus.
-        .vibeBarControlFocus()
+    }
+
+    /// The column's header slot. The glyph sits in a mark-sized frame and the
+    /// text starts where the rows' titles start, so the field lines up with
+    /// the column under it.
+    private var searchField: some View {
+        HStack(spacing: WorkbenchPorcelain.Navigation.markSpacing) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: WorkbenchPorcelain.Navigation.markSize)
+            TextField(L10n.Settings.search, text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+        }
+        .padding(.horizontal, WorkbenchPorcelain.Navigation.rowPadding)
+        .frame(height: 30)
+        .workbenchFieldSurface(cornerRadius: WorkbenchPorcelain.Navigation.rowCornerRadius)
+        // The search field is the column's one native control; give it
+        // back the system focus ring the column switches off.
+        .vibeBarSystemControlFocus()
     }
 
     private var filteredBasicPages: [SettingsSectionID] {
@@ -221,49 +219,32 @@ struct SettingsSidebarView: View {
             || L10n.Popover.Tab.misc.localizedCaseInsensitiveContains(searchText)
     }
 
-    private func sidebarGroup<Content: View>(
-        _ title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .textCase(.uppercase)
-                .tracking(0.55)
-                .padding(.horizontal, 9)
-                .padding(.bottom, 2)
-            content()
-        }
-    }
-
     private func staticRow(_ page: SettingsSectionID) -> some View {
-        sidebarRow(
-            destination: .page(page),
+        let isSelected = selection == .page(page)
+        return WorkbenchNavigationRow(
             title: page.title,
-            icon: AnyView(
-                Image(systemName: page.systemImage)
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 20, height: 20)
-            ),
-            enabled: true,
-            showsStatusDot: false,
-            showsDragHandle: false
-        )
+            isSelected: isSelected,
+            action: { selection = .page(page) }
+        ) {
+            WorkbenchNavigationSymbol(systemImage: page.systemImage, isSelected: isSelected)
+        }
     }
 
     private func coreProviderRow(_ tool: ToolType) -> some View {
         let enabled = settingsStore.settings.isCoreProviderVisible(tool)
-        return sidebarRow(
-            destination: .coreProvider(tool),
+        let destination = SettingsDestination.coreProvider(tool)
+        return WorkbenchNavigationRow(
             title: coreProviderTitle(tool),
+            isSelected: selection == destination,
+            isDimmed: !enabled,
+            action: { selection = destination }
+        ) {
             // The row is titled with the company (`coreProviderTitle`),
             // so it is marked with the company too.
-            icon: AnyView(CompanyBrandIconView(tool: tool, size: 17).frame(width: 20, height: 20)),
-            enabled: enabled,
-            showsStatusDot: true,
-            showsDragHandle: true
-        )
+            CompanyBrandIconView(tool: tool, size: 16)
+        } accessory: {
+            providerAccessory(enabled: enabled)
+        }
         .contextMenu {
             Button(enabled ? L10n.Settings.Sidebar.hideFromOverview : L10n.Onboarding.Subscriptions.showInOverview) {
                 settingsStore.settings.setCoreProviderVisible(!enabled, for: tool)
@@ -273,18 +254,21 @@ struct SettingsSidebarView: View {
 
     private func miscProviderRow(_ instance: MiscProviderInstance) -> some View {
         let enabled = instance.isVisible
-        return sidebarRow(
-            destination: .miscProvider(instance.id),
+        let destination = SettingsDestination.miscProvider(instance.id)
+        return WorkbenchNavigationRow(
             // `menuTitle` is the L2 SubProvider, which is identical for the
             // Coding Plan / Token Plan / Agent Plan pairs — two sidebar rows
             // reading "Volcengine" with no way to tell which is which.
             // `displayName` keeps the plan.
             title: instance.displayTitle(fallback: instance.tool.displayName),
-            icon: AnyView(ToolBrandIconView(tool: instance.tool, size: 17).frame(width: 20, height: 20)),
-            enabled: enabled,
-            showsStatusDot: true,
-            showsDragHandle: true
-        )
+            isSelected: selection == destination,
+            isDimmed: !enabled,
+            action: { selection = destination }
+        ) {
+            ToolBrandIconView(tool: instance.tool, size: 16)
+        } accessory: {
+            providerAccessory(enabled: enabled)
+        }
         .contextMenu {
             Button(enabled ? L10n.Settings.Sidebar.disableProvider : L10n.Settings.Sidebar.enableProvider) {
                 settingsStore.settings.setMiscProviderInstanceVisible(!enabled, forID: instance.id)
@@ -293,70 +277,27 @@ struct SettingsSidebarView: View {
     }
 
     private var miscLandingRow: some View {
-        sidebarRow(
-            destination: .page(.miscProviders),
+        let isSelected = selection == .page(.miscProviders)
+        return WorkbenchNavigationRow(
             title: L10n.Onboarding.Step.BrowserCookies.title,
-            icon: AnyView(
-                Image(systemName: "safari")
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 20, height: 20)
-            ),
-            enabled: true,
-            showsStatusDot: false,
-            showsDragHandle: false
-        )
+            isSelected: isSelected,
+            action: { selection = .page(.miscProviders) }
+        ) {
+            WorkbenchNavigationSymbol(systemImage: "safari", isSelected: isSelected)
+        }
     }
 
-    private func sidebarRow(
-        destination: SettingsDestination,
-        title: String,
-        icon: AnyView,
-        enabled: Bool,
-        showsStatusDot: Bool,
-        showsDragHandle: Bool
-    ) -> some View {
-        let selected = selection == destination
-        return Button {
-            selection = destination
-        } label: {
-            HStack(spacing: 9) {
-                icon
-                    .opacity(enabled || selected ? 1 : 0.48)
-                Text(title)
-                    .font(.system(size: 13, weight: selected ? .semibold : .medium))
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if showsStatusDot {
-                    Circle()
-                        .fill(enabled ? Color.green : Color.secondary.opacity(0.42))
-                        .frame(width: 6, height: 6)
-                }
-                if showsDragHandle {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .foregroundStyle(selected ? Color.primary : (enabled ? Color.primary : Color.secondary))
-            .padding(.horizontal, 9)
-            .frame(height: 33)
-            .background {
-                if selected {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(WorkbenchPorcelain.selectedNavigationFill(for: colorScheme))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .stroke(
-                                    WorkbenchPorcelain.hairline(for: colorScheme),
-                                    lineWidth: Theme.Card.hairlineWidth
-                                )
-                        )
-                }
-            }
-            .contentShape(Rectangle())
+    /// A provider row's trailing slot: whether it is on, and the handle that
+    /// says the rows can be dragged into a new order.
+    private func providerAccessory(enabled: Bool) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(enabled ? Color.green : Color.secondary.opacity(0.42))
+                .frame(width: 6, height: 6)
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
         }
-        .buttonStyle(.vibeBar(cornerRadius: 7))
-        .opacity(enabled || selected ? 1 : 0.62)
     }
 
     private func coreProviderTitle(_ tool: ToolType) -> String {
