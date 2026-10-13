@@ -72,6 +72,8 @@ struct UsageHeroCards: View, Equatable {
         let value: String
         let detail: String
         var badge: String?
+        /// How the figure is defined, behind a `?` beside the title.
+        var help: String?
         let systemImage: String
         let tint: Color
     }
@@ -98,6 +100,7 @@ struct UsageHeroCards: View, Equatable {
                     input: UsageDashboardFormat.tokens(tokens.prompt),
                     output: UsageDashboardFormat.tokens(tokens.output)
                 ),
+                help: L10n.Workbench.Usage.Hero.tokensHelp,
                 systemImage: "sum",
                 tint: WorkbenchPorcelain.accent
             ),
@@ -112,6 +115,7 @@ struct UsageHeroCards: View, Equatable {
                 title: L10n.Usage.Tokens.cacheRead,
                 value: UsageDashboardFormat.tokens(tokens.cacheRead),
                 detail: L10n.Workbench.Usage.Hero.cacheDetail(rate: UsageDashboardFormat.percent(tokens.cacheHitRate)),
+                help: L10n.Workbench.Usage.Hero.cacheHelp,
                 systemImage: "arrow.triangle.2.circlepath",
                 tint: .purple
             ),
@@ -140,10 +144,16 @@ struct UsageHeroCards: View, Equatable {
                 Image(systemName: tile.systemImage)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(tile.tint)
-                Text(tile.title)
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                Group {
+                    if let help = tile.help {
+                        UsageHelpLabel(title: tile.title, help: help)
+                    } else {
+                        Text(tile.title)
+                    }
+                }
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
             Text(tile.value)
                 .font(.system(size: density.titleFontSize + 8, weight: .bold, design: .rounded).monospacedDigit())

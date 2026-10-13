@@ -246,6 +246,10 @@ public enum MCPToolCatalog {
             The per-request log, newest first, over the same window and filters as usage.summary. \
             Only the ledger's detail window (about the last 30 days) has request-level rows; older \
             history survives as daily totals and is visible through usage.summary and usage.trend only. \
+            Codex and Claude Code rows (ChatGPT Work and Claude Cowork included) also carry 'durationMs', \
+            'firstTokenMs' and 'outputTokensPerSecond', measured from the local log's own timestamps: \
+            request sent to last / first content block written, so 'firstTokenMs' is an upper bound; other \
+            harnesses omit them. \
             Page by passing the previous response's 'nextCursor' back as 'cursor' — the cursor is opaque, \
             do not construct or edit one.
             """,

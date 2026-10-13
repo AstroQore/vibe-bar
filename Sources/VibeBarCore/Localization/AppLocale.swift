@@ -117,6 +117,14 @@ public enum AppLocale {
         Int(value).formatted(.number.grouping(.automatic).locale(current))
     }
 
+    /// A grouped decimal with exactly `fractionDigits` decimals — "1,234.5"
+    /// / "1,234.5" — in the app's language.
+    public static func decimal(_ value: Double, fractionDigits: Int) -> String {
+        value.formatted(
+            .number.precision(.fractionLength(max(0, fractionDigits))).grouping(.automatic).locale(current)
+        )
+    }
+
     /// A percentage with `fractionDigits` decimals.
     public static func percent(_ fraction: Double, fractionDigits: Int = 0) -> String {
         fraction.formatted(

@@ -9,6 +9,8 @@ struct UsageRequestsCard: View {
     let model: UsageStatsViewModel
 
     private static var timeFormatter: DateFormatter { AppLocale.dateFormatter(template: "MMMdHHmmss") }
+    static let speedWidth: CGFloat = 76
+    static let firstTokenWidth: CGFloat = 74
 
     var body: some View {
         CardShell(density: density, spacing: 8) {
@@ -67,6 +69,10 @@ struct UsageRequestsCard: View {
             Text(L10n.Usage.Tokens.input).frame(width: 62, alignment: .trailing)
             Text(L10n.Usage.Tokens.output).frame(width: 58, alignment: .trailing)
             Text(L10n.Usage.Mix.Flow.cache).frame(width: 74, alignment: .trailing)
+            UsageHelpLabel(title: L10n.Usage.Table.Column.speed, help: L10n.Usage.Table.speedHelp)
+                .frame(width: Self.speedWidth, alignment: .trailing)
+            UsageHelpLabel(title: L10n.Usage.Table.Column.firstToken, help: L10n.Usage.Table.firstTokenHelp)
+                .frame(width: Self.firstTokenWidth, alignment: .trailing)
             Text(L10n.Cost.title).frame(width: 64, alignment: .trailing)
         }
         .font(.system(size: 9.5, weight: .semibold))
@@ -98,6 +104,12 @@ private struct UsageRequestRowView: View, Equatable {
             Text(UsageDashboardFormat.tokens(row.freshInput)).frame(width: 62, alignment: .trailing)
             Text(UsageDashboardFormat.tokens(row.output)).frame(width: 58, alignment: .trailing)
             Text(UsageDashboardFormat.tokens(row.cacheRead + row.cacheCreation)).frame(width: 74, alignment: .trailing)
+            Text(UsageDashboardFormat.speed(row.outputTokensPerSecond))
+                .foregroundStyle(row.outputTokensPerSecond == nil ? Color.secondary : Color.primary)
+                .frame(width: UsageRequestsCard.speedWidth, alignment: .trailing)
+            Text(UsageDashboardFormat.firstToken(milliseconds: row.firstTokenMs))
+                .foregroundStyle(row.firstTokenMs == nil ? Color.secondary : Color.primary)
+                .frame(width: UsageRequestsCard.firstTokenWidth, alignment: .trailing)
             Text(row.costMicros.map(UsageFormatting.compactUSD) ?? L10n.Usage.Table.unpriced)
                 .foregroundStyle(row.costMicros == nil ? Color.orange : Color.primary)
                 .frame(width: 64, alignment: .trailing)
