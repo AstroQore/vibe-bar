@@ -86,6 +86,8 @@ struct UsageStatsPage: View {
         }
         UsageHealthSection(density: density, health: snapshot.health)
             .equatable()
+        UsageSpeedCard(density: density, speed: snapshot.speed)
+            .equatable()
         UsageRecentSessionsCard(
             density: density,
             sessions: snapshot.recentSessions,

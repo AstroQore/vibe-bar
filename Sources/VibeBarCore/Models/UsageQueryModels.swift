@@ -386,6 +386,13 @@ public struct UsageRequestRow: Sendable, Equatable, Identifiable {
     public let serviceTier: String?
     public let sessionId: String?
     public let sourceKey: String?
+    /// Request sent to last content block written, from the log's own
+    /// timestamps (`UsageRequestTiming`). `nil` where the harness's log
+    /// carries no per-request timing.
+    public let durationMs: Int64?
+    /// Request sent to first content block written — an upper bound on the
+    /// time to first token.
+    public let firstTokenMs: Int64?
 
     public init(
         id: Int64,
@@ -400,7 +407,9 @@ public struct UsageRequestRow: Sendable, Equatable, Identifiable {
         costMicros: Int64?,
         serviceTier: String?,
         sessionId: String?,
-        sourceKey: String?
+        sourceKey: String?,
+        durationMs: Int64? = nil,
+        firstTokenMs: Int64? = nil
     ) {
         self.id = id
         self.date = date
@@ -415,10 +424,106 @@ public struct UsageRequestRow: Sendable, Equatable, Identifiable {
         self.serviceTier = serviceTier
         self.sessionId = sessionId
         self.sourceKey = sourceKey
+        self.durationMs = durationMs
+        self.firstTokenMs = firstTokenMs
     }
 
     public var totalTokens: Int64 {
         freshInput + output + cacheRead + cacheCreation
+    }
+
+    /// Output tokens per second of request time; `nil` without a duration of
+    /// at least `UsageRequestTiming.minimumSpeedDurationMs` or without output.
+    public var outputTokensPerSecond: Double? {
+        UsageRequestTiming.outputTokensPerSecond(output: output, durationMs: durationMs)
+    }
+}
+
+// MARK: - Request speed
+
+/// Median and p90 output speed and median time to first token over a group
+/// of requests. Only requests whose log carried timing count.
+public struct UsageSpeedStat: Sendable, Equatable {
+    /// Requests with a measured duration.
+    public var requestsWithTiming: Int
+    public var medianTokensPerSecond: Double?
+    public var p90TokensPerSecond: Double?
+    public var medianFirstTokenMs: Int64?
+
+    public init(
+        requestsWithTiming: Int = 0,
+        medianTokensPerSecond: Double? = nil,
+        p90TokensPerSecond: Double? = nil,
+        medianFirstTokenMs: Int64? = nil
+    ) {
+        self.requestsWithTiming = requestsWithTiming
+        self.medianTokensPerSecond = medianTokensPerSecond
+        self.p90TokensPerSecond = p90TokensPerSecond
+        self.medianFirstTokenMs = medianFirstTokenMs
+    }
+}
+
+/// The raw per-request timing behind a `UsageSpeedStat`, kept unreduced so
+/// groups can be merged before a median is taken — a median of medians is not
+/// a median. Stored narrow (`Float`, `Int32`): a 30-day ledger holds six
+/// figures of timed rows, and a few ranges' worth stay cached at once.
+public struct UsageSpeedSamples: Sendable, Equatable {
+    public private(set) var requestsWithTiming = 0
+    public private(set) var tokensPerSecond: [Float] = []
+    public private(set) var firstTokenMs: [Int32] = []
+
+    public init() {}
+
+    /// One request. A request without a duration was not timed and is
+    /// ignored; its speed is the same `UsageRequestTiming` figure the request
+    /// log shows.
+    public mutating func add(output: Int64, durationMs: Int64?, firstTokenMs: Int64?) {
+        guard let durationMs else { return }
+        requestsWithTiming += 1
+        if let speed = UsageRequestTiming.outputTokensPerSecond(output: output, durationMs: durationMs) {
+            tokensPerSecond.append(Float(speed))
+        }
+        if let firstTokenMs, firstTokenMs >= 0 {
+            self.firstTokenMs.append(Int32(clamping: firstTokenMs))
+        }
+    }
+
+    public mutating func merge(_ other: UsageSpeedSamples) {
+        requestsWithTiming += other.requestsWithTiming
+        tokensPerSecond.append(contentsOf: other.tokensPerSecond)
+        firstTokenMs.append(contentsOf: other.firstTokenMs)
+    }
+
+    /// Sorts in the stored narrow types rather than widening a copy first.
+    /// Off the main thread, on a 30-day ledger of ~10⁵ timed requests, the
+    /// speed section adds ~20 ms to a snapshot build.
+    public var stat: UsageSpeedStat {
+        let speeds = tokensPerSecond.sorted()
+        let firsts = firstTokenMs.sorted()
+        return UsageSpeedStat(
+            requestsWithTiming: requestsWithTiming,
+            medianTokensPerSecond: Self.percentile(sorted: speeds, 0.5),
+            p90TokensPerSecond: Self.percentile(sorted: speeds, 0.9),
+            medianFirstTokenMs: Self.percentile(sorted: firsts, 0.5).map { Int64($0.rounded()) }
+        )
+    }
+
+    /// Linear-interpolated percentile of an ascending sample, the same rule
+    /// as `UsageDashboardBuilder.percentile`.
+    static func percentile<Value: BinaryFloatingPoint>(sorted values: [Value], _ p: Double) -> Double? {
+        guard !values.isEmpty else { return nil }
+        let rank = max(0, min(1, p)) * Double(values.count - 1)
+        let lower = Double(values[Int(rank.rounded(.down))])
+        let upper = Double(values[Int(rank.rounded(.up))])
+        return lower + (upper - lower) * (rank - rank.rounded(.down))
+    }
+
+    static func percentile<Value: BinaryInteger>(sorted values: [Value], _ p: Double) -> Double? {
+        guard !values.isEmpty else { return nil }
+        let rank = max(0, min(1, p)) * Double(values.count - 1)
+        let lower = Double(values[Int(rank.rounded(.down))])
+        let upper = Double(values[Int(rank.rounded(.up))])
+        return lower + (upper - lower) * (rank - rank.rounded(.down))
     }
 }
 

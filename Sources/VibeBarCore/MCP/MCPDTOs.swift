@@ -390,6 +390,14 @@ public struct MCPUsageRequestRowDTO: Codable, Equatable, Sendable {
     public let costUSD: Double?
     public let serviceTier: String?
     public let sessionId: String?
+    /// Request sent to last content block written, from the local log's own
+    /// timestamps. Absent where the harness's log carries no timing.
+    public let durationMs: Int64?
+    /// Request sent to first content block written: an upper bound on the
+    /// time to first token, since logs write a block once it is complete.
+    public let firstTokenMs: Int64?
+    /// `outputTokens / durationMs`, absent below 500 ms or without output.
+    public let outputTokensPerSecond: Double?
 
     public init(row: UsageRequestRow) {
         self.id = row.id
@@ -407,6 +415,9 @@ public struct MCPUsageRequestRowDTO: Codable, Equatable, Sendable {
         self.costUSD = row.costMicros.map(MCPMoney.usd)
         self.serviceTier = row.serviceTier
         self.sessionId = row.sessionId
+        self.durationMs = row.durationMs
+        self.firstTokenMs = row.firstTokenMs
+        self.outputTokensPerSecond = row.outputTokensPerSecond.map { ($0 * 10).rounded() / 10 }
     }
 }
 

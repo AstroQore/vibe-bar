@@ -194,6 +194,7 @@ public struct UsageDashboardSnapshot: Sendable, Equatable {
     public var skills: [SkillRow]
     public var tools: ToolUsage
     public var health: [HarnessHealth]
+    public var speed: Speed
     public var mix: Mix
     public var options: FilterOptions
     public var coverage: Coverage
@@ -215,6 +216,7 @@ public struct UsageDashboardSnapshot: Sendable, Equatable {
         skills: [SkillRow],
         tools: ToolUsage,
         health: [HarnessHealth],
+        speed: Speed = Speed(),
         mix: Mix = Mix(),
         options: FilterOptions,
         coverage: Coverage
@@ -232,6 +234,7 @@ public struct UsageDashboardSnapshot: Sendable, Equatable {
         self.skills = skills
         self.tools = tools
         self.health = health
+        self.speed = speed
         self.mix = mix
         self.options = options
         self.coverage = coverage
@@ -745,6 +748,43 @@ public struct UsageDashboardSnapshot: Sendable, Equatable {
             self.contextWindow = contextWindow
             self.toolFailureRate = toolFailureRate
             self.models = models
+        }
+    }
+
+    // MARK: Speed
+
+    /// One row of the speed card: a harness, or a model across the harnesses
+    /// the query includes.
+    public struct SpeedRow: Sendable, Equatable, Identifiable {
+        /// `Harness.rawValue` or the raw model id.
+        public var id: String
+        public var harness: Harness?
+        public var model: String?
+        public var stat: UsageSpeedStat
+
+        public init(id: String, harness: Harness? = nil, model: String? = nil, stat: UsageSpeedStat) {
+            self.id = id
+            self.harness = harness
+            self.model = model
+            self.stat = stat
+        }
+    }
+
+    /// Median output speed and time to first token per harness and per model,
+    /// over the timed detail rows in the query — Claude Code and Codex logs
+    /// (Claude Cowork and ChatGPT Work included); see `UsageRequestTiming`.
+    public struct Speed: Sendable, Equatable {
+        /// Most timed requests first.
+        public var byHarness: [SpeedRow] = []
+        /// Most timed requests first, at most `UsageDashboardBuilder.speedModelLimit`.
+        public var byModel: [SpeedRow] = []
+        /// Timed requests across every harness in the query.
+        public var timedRequests: Int = 0
+
+        public init(byHarness: [SpeedRow] = [], byModel: [SpeedRow] = [], timedRequests: Int = 0) {
+            self.byHarness = byHarness
+            self.byModel = byModel
+            self.timedRequests = timedRequests
         }
     }
 
