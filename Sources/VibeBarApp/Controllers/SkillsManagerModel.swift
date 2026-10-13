@@ -477,6 +477,40 @@ final class SkillsManagerModel: ObservableObject {
         }
     }
 
+    var skillBackupDirectory: String { service.backupDirectory.path }
+
+    func overwriteCopy(skill: Skill, copy: SkillCopy) {
+        perform(BusyKey.skill(skill.id)) { [self] in
+            _ = try await service.overwriteCopyWithShared(skill.id, copy: copy)
+            updateStates[skill.id] = nil
+            toast = L10n.Workbench.Skills.Copies.updated
+        }
+    }
+
+    func adoptCopy(skill: Skill, copy: SkillCopy, replaceShared: Bool) {
+        perform(BusyKey.skill(skill.id)) { [self] in
+            _ = try await service.adoptCopy(skill.id, copy: copy, replaceShared: replaceShared)
+            updateStates[skill.id] = nil
+            toast = L10n.Workbench.Skills.Copies.updated
+        }
+    }
+
+    func mergeCopy(skill: Skill, copy: SkillCopy, resolutions: [String: SkillMergeSide], sharedHash: String?) {
+        perform(BusyKey.skill(skill.id)) { [self] in
+            _ = try await service.mergeIntoShared(skill.id, from: copy, resolutions: resolutions, expectedSharedHash: sharedHash)
+            updateStates[skill.id] = nil
+            toast = L10n.Workbench.Skills.Copies.updated
+        }
+    }
+
+    func restoreCopy(skill: Skill, backup: URL) {
+        perform(BusyKey.skill(skill.id)) { [self] in
+            _ = try await service.restoreBackupToShared(skill.id, backupURL: backup)
+            updateStates[skill.id] = nil
+            toast = L10n.Workbench.Skills.Copies.updated
+        }
+    }
+
     func presentCopies(_ skill: Skill) {
         copiesSheet = SkillCopiesRequest(id: skill.id)
     }
@@ -825,6 +859,8 @@ final class SkillsManagerModel: ObservableObject {
         }
     }
 
+    private var didPresentDemoCopies = false
+
     private func reloadSkills() async {
         let latest = await service.inventory()
         let counts = Dictionary(uniqueKeysWithValues: SkillAppTarget.managedHarnesses.map { ($0, latest.counts(for: $0)) })
@@ -833,6 +869,13 @@ final class SkillsManagerModel: ObservableObject {
         if latest.discoveredShared != discoveredShared { discoveredShared = latest.discoveredShared }
         guard latest.installed != skills else { return }
         skills = latest.installed
+        // Reproducible screenshot entry point, gated by the synthetic home.
+        if DemoMode.isEnabled, !didPresentDemoCopies,
+           let name = ProcessInfo.processInfo.environment["VIBEBAR_DEMO_SKILL_COPIES"],
+           let skill = skills.first(where: { $0.directory == name }) {
+            didPresentDemoCopies = true
+            presentCopies(skill)
+        }
         let modified = latest.installed.count { $0.isLocallyModified }
         if modified != locallyModifiedCount { locallyModifiedCount = modified }
     }

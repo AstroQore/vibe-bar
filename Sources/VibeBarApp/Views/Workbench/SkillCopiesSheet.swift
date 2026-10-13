@@ -32,6 +32,11 @@ struct SkillCopiesSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if let skill {
+                SkillCopyResolutionControls(skill: skill, model: model, detail: detail)
+                    .padding(.horizontal, density.popoverPaddingH)
+                    .padding(.bottom, 10)
+            }
             Divider()
             if let skill {
                 HStack(alignment: .top, spacing: 0) {
@@ -46,6 +51,11 @@ struct SkillCopiesSheet: View {
                 Spacer()
             }
             Divider()
+            if let toast = model.toast {
+                Text(toast)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .padding(.horizontal, density.popoverPaddingH).padding(.top, 8)
+            }
             footer
         }
         // Fits inside the Workbench window's 1040 × 680 minimum, so the sheet
@@ -70,7 +80,7 @@ struct SkillCopiesSheet: View {
             }
             Button(L10n.Common.cancel, role: .cancel) { pendingReplacement = nil }
         } message: { _ in
-            Text(L10n.Workbench.Skills.Copies.replaceConfirmMessage)
+            Text(L10n.Workbench.Skills.Copies.backupNotice(path: model.skillBackupDirectory))
         }
     }
 
@@ -111,6 +121,7 @@ struct SkillCopiesSheet: View {
 
     private var footer: some View {
         HStack {
+            if let skill { SkillMergeControls(skill: skill, model: model, detail: detail) }
             Spacer()
             Button(L10n.Common.done) { dismiss() }
                 .buttonStyle(.borderedProminent)
@@ -507,6 +518,10 @@ private struct SkillComparisonPane: View {
             ))
             .font(.system(size: max(10, density.resetCountdownFontSize - 1)).monospacedDigit())
             .foregroundStyle(.secondary)
+            if detail.mergeCopy == nil, detail.version(id: detail.comparedID)?.copy != nil {
+                Text(L10n.Workbench.Skills.Copies.mergeBaseHint)
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            }
             if comparison.truncated {
                 Text(L10n.Workbench.Skills.Copies.Diff.truncated(count: SkillDiffLimits.standard.maxFiles))
                     .font(.system(size: max(9, density.resetCountdownFontSize - 1)))
@@ -519,11 +534,35 @@ private struct SkillComparisonPane: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 1) {
                 ForEach(comparison.files) { file in
-                    fileRow(file)
+                    VStack(alignment: .leading, spacing: 4) {
+                        fileRow(file)
+                        if file.change != .unchanged, detail.mergeCopy != nil {
+                            HStack(spacing: 4) {
+                                resolutionButton(.base, path: file.path, title: L10n.Workbench.Skills.Copies.keepBase)
+                                resolutionButton(.compared, path: file.path, title: L10n.Workbench.Skills.Copies.useCompared)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.bottom, 5)
+                        }
+                    }
                 }
             }
             .padding(6)
         }
+    }
+
+    private func resolutionButton(_ side: SkillMergeSide, path: String, title: String) -> some View {
+        Button {
+            detail.resolve(path: path, side: side)
+        } label: {
+            HStack(spacing: 3) {
+                if detail.resolutions[path] == side { Image(systemName: "checkmark") }
+                Text(title)
+            }
+            .font(.system(size: 10))
+        }
+        .buttonStyle(.bordered)
+        .tint(detail.resolutions[path] == side ? WorkbenchPorcelain.accent : .secondary)
     }
 
     private func fileRow(_ file: SkillFileComparison) -> some View {
