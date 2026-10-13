@@ -214,7 +214,10 @@ public enum SkillVersionScanner {
                         modifiedAt: readable.flatMap(newestModification),
                         comparison: compare(hash),
                         isRecordedBaseline: false,
-                        copy: nil
+                        copy: SkillCopy(
+                            directoryName: skill.directory, name: skill.name, description: skill.description,
+                            location: .appFolder(app), url: entry, contentHash: hash
+                        )
                     ))
                 }
                 seen.insert(key)
