@@ -173,8 +173,13 @@ carry the required notices.
 ## Reference projects not bundled by these relationships
 
 - [CC Switch](https://github.com/farion1231/cc-switch) — reference and
-  interoperability target for unified Skills management. License:
+  interoperability target for unified Skills management, and the reference
+  for the Usage page's request log and speed metrics. License:
   [MIT](https://github.com/farion1231/cc-switch/blob/main/LICENSE).
+- [Magpie](https://github.com/yetone/magpie) — design reference for the
+  Workbench's session reader and the Library's resource model. No Magpie
+  code is embedded. License:
+  [MIT](https://github.com/yetone/magpie/blob/main/LICENSE).
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) — ecosystem
   reference for multi-provider CLI account and quota workflows. Vibe Bar does
   not embed, launch, or require CLIProxyAPI. License:

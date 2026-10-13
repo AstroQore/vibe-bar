@@ -542,6 +542,11 @@ Vibe Bar 是一个独立项目，也得益于 Coding Agent 开源社区分享的
   AntiGravity 本地探测流程，是在参考其实现后移植、简化或重新实现的。
 - [CC Switch](https://github.com/farion1231/cc-switch) 为统一 Skills 工作流
   提供了参考，也是 Vibe Bar 识别现有跨 Agent Skill 布局时的互操作对象。
+  它的用量统计页（带每请求速度与首字时延的请求日志、按供应商 / 模型的
+  拆分）是 Workbench 用量页对标的参照。
+- [Magpie](https://github.com/yetone/magpie) 为 Workbench 的会话阅读页与
+  资源库的资源模型（来源、分配给哪些 Agent、每次改动的归属）提供了参考，
+  见 [docs/agent-library.md](docs/agent-library.md)。
 - [CodexBar 兼容性说明](docs/CODEXBAR-COMPATIBILITY.md) 记录了 provider 迁移边界、
   只读 bridge，以及它的 CLI 到底负责什么。
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 及其生态帮助我们
