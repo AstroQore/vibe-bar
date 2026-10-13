@@ -176,28 +176,38 @@ final class SessionConversationModelTests: XCTestCase {
 
     func testTheFirstTurnsArriveOneFrameAtATime() async throws {
         let source = FakeSource(turns: 12)
-        let model = SessionConversationModel(source: source, pageSize: 10, initialTurns: 4, firstFrameTurns: 1)
+        // The model's frames are opened here one at a time: on a slow runner
+        // a 30 ms sleep had already let the next turn in by the time the
+        // test looked, so the one-turn window was observed only sometimes.
+        let frames = FrameGate()
+        let model = SessionConversationModel(
+            source: source, pageSize: 10, initialTurns: 4, firstFrameTurns: 1,
+            frame: { await frames.wait() }
+        )
         model.open(summary())
         // The masthead and the contents come first, the conversation still
         // covered by its loading state.
         try await settle(model) { !model.toc.isEmpty }
         XCTAssertEqual(model.toc.count, 12)
         XCTAssertNotNil(model.stats)
+        XCTAssertNotEqual(model.phase, .ready, "nothing of the conversation before the next frame")
         // Then the newest turn alone, in a scroll view built on it...
+        await frames.open()
         try await settle(model) { model.phase == .ready }
         XCTAssertEqual(model.window.range, 11..<12)
         XCTAssertEqual(model.contentToken, 1)
         // ...and the rest of the first window above it, a turn a frame.
-        var seen: Set<Int> = [model.window.count]
-        try await settle(model) {
-            seen.insert(model.window.count)
-            return model.window.count == 4
+        for count in 2...4 {
+            await frames.open()
+            try await settle(model) { model.window.count == count }
+            XCTAssertEqual(model.window.range, (12 - count)..<12)
         }
-        XCTAssertEqual(model.window.range, 8..<12)
         XCTAssertEqual(model.loadedTurnIndices, [8, 9, 10, 11])
-        XCTAssertTrue(seen.isSubset(of: [1, 2, 3, 4]))
         XCTAssertEqual(model.contentToken, 1, "growing the window keeps the scroll view")
         XCTAssertNil(model.scrollRequest, "the view stays on the end without being asked")
+        await frames.open()
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(model.window.range, 8..<12, "the first window is complete; a spare frame adds nothing")
     }
 
     func testAPageArrivesATurnAtATimeNearestFirst() async throws {
@@ -360,5 +370,30 @@ final class SessionConversationModelTests: XCTestCase {
         model.openChild("missing")
         try await settle(model) { model.notice != nil }
         XCTAssertEqual(model.notice, .childNotFound("missing"))
+    }
+}
+
+
+/// A frame the model waits for and a test opens: `wait` suspends until the
+/// next `open`, and an `open` with nobody waiting is kept for the next
+/// `wait`, so the order of the two never matters.
+private actor FrameGate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var pending = 0
+
+    func wait() async {
+        if pending > 0 {
+            pending -= 1
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        if waiters.isEmpty {
+            pending += 1
+        } else {
+            waiters.removeFirst().resume()
+        }
     }
 }

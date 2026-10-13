@@ -182,6 +182,11 @@ public final class SessionConversationModel {
     @ObservationIgnored private var turnsTask: Task<Void, Never>?
     @ObservationIgnored private var verdictTask: Task<Void, Never>?
     @ObservationIgnored private var childTask: Task<Void, Never>?
+    /// What a staged load awaits between the frames it publishes. The
+    /// default lets the run loop draw; a test hands in a gate it opens one
+    /// frame at a time, so what it observes between frames is not a race
+    /// against the sleep.
+    @ObservationIgnored private let frame: @Sendable () async -> Void
 
     public init(
         source: any SessionConversationSource,
@@ -190,7 +195,8 @@ public final class SessionConversationModel {
         firstFrameTurns: Int = 1,
         maxSpan: Int = 60,
         markdown: SessionMarkdownCache = SessionMarkdownCache(),
-        rendering: SessionConversationRendering = .none
+        rendering: SessionConversationRendering = .none,
+        frame: @escaping @Sendable () async -> Void = SessionConversationModel.defaultFrame
     ) {
         self.source = source
         self.pageSize = max(1, pageSize)
@@ -199,6 +205,7 @@ public final class SessionConversationModel {
         self.maxSpan = max(pageSize, maxSpan)
         self.markdown = markdown
         self.rendering = rendering
+        self.frame = frame
         self.window = .tail(total: 0, pageSize: pageSize, maxSpan: maxSpan)
     }
 
@@ -394,7 +401,7 @@ public final class SessionConversationModel {
         fullTurns = full.turns
         adopt(full, toc: toc)
         update(\.subagentLinks, Self.subagentLinks(in: full.turns))
-        await Self.nextFrame()
+        await nextFrame()
         guard generation == self.generation, !Task.isCancelled else { return true }
 
         let first = SessionTurnWindow.tail(
@@ -416,7 +423,7 @@ public final class SessionConversationModel {
         // scroll view keeps still while content grows above it.
         var window = first
         while window.range.lowerBound > tail.range.lowerBound {
-            await Self.nextFrame()
+            await nextFrame()
             // Not if the reader has moved the window meanwhile (a jump from
             // the contents, a page): the window is theirs now.
             guard generation == self.generation, !Task.isCancelled, self.window == window else { return true }
@@ -444,8 +451,12 @@ public final class SessionConversationModel {
     }
 
     /// Let the run loop draw what was just published before publishing more.
-    static func nextFrame() async {
+    public static let defaultFrame: @Sendable () async -> Void = {
         try? await Task.sleep(for: .milliseconds(30))
+    }
+
+    private func nextFrame() async {
+        await frame()
     }
 
     private func adopt(_ structure: SessionStructure, toc: [SessionConversationTOCEntry]? = nil) {
@@ -654,7 +665,7 @@ public final class SessionConversationModel {
             guard let self, !Task.isCancelled, generation == self.generation else { return }
             let built = await Self.present(turns, markdown: self.markdown, style: self.textStyle, render: self.rendering.text)
             for (position, index) in order.enumerated() {
-                if position > 0 { await Self.nextFrame() }
+                if position > 0 { await nextFrame() }
                 guard !Task.isCancelled, generation == self.generation else { return }
                 // A jump from the contents replaced the window meanwhile:
                 // the rest of this page is no longer next to it.
@@ -708,7 +719,7 @@ public final class SessionConversationModel {
             guard let self, !Task.isCancelled, generation == self.generation else { return }
             let built = await Self.present(turns, markdown: self.markdown, style: self.textStyle, render: self.rendering.text)
             for index in turn..<upper {
-                if index > turn { await Self.nextFrame() }
+                if index > turn { await nextFrame() }
                 guard !Task.isCancelled, generation == self.generation else { return }
                 if index > turn {
                     // Another jump or a page moved the window meanwhile.
@@ -760,7 +771,7 @@ public final class SessionConversationModel {
         guard staged else { return }
         let generation = self.generation
         Task { [weak self] in
-            await Self.nextFrame()
+            await nextFrame()
             guard let self, generation == self.generation, self.stepLimits[turn] != nil else { return }
             self.stepLimits[turn] = nil
             self.rebuildItems()
