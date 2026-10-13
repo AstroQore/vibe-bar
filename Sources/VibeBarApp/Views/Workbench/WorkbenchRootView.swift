@@ -116,25 +116,22 @@ struct WorkbenchRootView: View {
         // One density for the whole window, resolved once: pages share the
         // popover's card metrics so a card looks the same in both surfaces.
         let density = Theme.overviewDensity(for: settingsStore.settings.popoverDensity)
+        // Three levels, left to right: the window's navigation, the page's
+        // own navigation where it has one (full height, beside the header
+        // rather than under it), then the header over the content.
+        let header = WorkbenchPageHeader(
+            page: page,
+            status: pageStatus,
+            appearanceIsDark: (appearanceOverride ?? colorScheme) == .dark,
+            onToggleAppearance: toggleAppearance,
+            onRefresh: page == .settings ? nil : refreshCurrentPage
+        )
         HStack(spacing: 0) {
             WorkbenchSidebar(selection: selectionBinding)
-                .frame(width: 206)
-            Rectangle()
-                .fill(WorkbenchPorcelain.hairline(for: colorScheme))
-                .frame(width: 1)
-            VStack(spacing: 0) {
-                WorkbenchPageHeader(
-                    page: page,
-                    status: pageStatus,
-                    appearanceIsDark: (appearanceOverride ?? colorScheme) == .dark,
-                    onToggleAppearance: toggleAppearance,
-                    onRefresh: page == .settings ? nil : refreshCurrentPage
-                )
-                detail(for: page, density: density)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(WorkbenchPorcelain.windowFill(for: colorScheme))
+                .frame(width: WorkbenchPorcelain.Navigation.sidebarWidth)
+            WorkbenchColumnDivider()
+            pageColumns(for: page, header: header, density: density)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WorkbenchPorcelain.windowFill(for: colorScheme))
@@ -234,13 +231,48 @@ struct WorkbenchRootView: View {
         )
     }
 
+    /// Everything right of the window's sidebar. Sessions and Settings put
+    /// their own navigation column first; Sessions sizes its columns from
+    /// the width it is given, so it lays out the header itself.
+    @ViewBuilder
+    private func pageColumns(
+        for page: WorkbenchPage,
+        header: WorkbenchPageHeader,
+        density: Theme.Density
+    ) -> some View {
+        switch page {
+        case .sessionManager:
+            SessionPageColumns(density: density, controller: workbench.sessionsPage, header: header)
+        case .settings:
+            HStack(spacing: 0) {
+                SettingsSidebarView(selection: $settingsDestination)
+                headed(header) {
+                    SettingsView(density: density, selection: $settingsDestination)
+                }
+            }
+        default:
+            headed(header) { detail(for: page, density: density) }
+        }
+    }
+
+    private func headed<Content: View>(
+        _ header: WorkbenchPageHeader,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            header
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The pages without a navigation column of their own.
     @ViewBuilder
     private func detail(for page: WorkbenchPage, density: Theme.Density) -> some View {
         switch page {
         case .usageStats:
             UsageStatsPage(density: density, model: workbench.usageStats, onOpenSession: openSession)
-        case .sessionManager:
-            SessionManagerPage(density: density, controller: workbench.sessionsPage)
         case .resets:
             ResetsPage(density: density)
         case .skillsManager:
@@ -249,26 +281,28 @@ struct WorkbenchRootView: View {
             LibraryMCPPage(density: density, model: workbench.library)
         case .libraryInstructions:
             LibraryInstructionsPage(density: density, model: workbench.library)
-        case .settings:
-            SettingsView(density: density, selection: $settingsDestination)
+        case .sessionManager, .settings:
+            EmptyView()
         }
     }
 }
 
+/// The window's own navigation. Its rows are the same `WorkbenchNavigationRow`
+/// a page's column uses, at the `.window` level: semibold titles and a tinted
+/// icon block per page, which is what marks this column as the top level.
 private struct WorkbenchSidebar: View {
     @Binding var selection: WorkbenchPage?
     @Environment(\.colorScheme) private var colorScheme
-    @State private var hoveredPage: WorkbenchPage?
     private let primaryPages: [WorkbenchPage] = [.usageStats, .sessionManager, .resets]
     private let libraryPages: [WorkbenchPage] = [.skillsManager, .libraryMCP, .libraryInstructions]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: WorkbenchPorcelain.Navigation.rowSpacing) {
                 ForEach(primaryPages) { page in
                     row(for: page)
                 }
-                sectionHeader(L10n.Workbench.Library.title)
+                WorkbenchNavigationSectionHeader(title: L10n.Workbench.Library.title)
                 ForEach(libraryPages) { page in
                     row(for: page)
                 }
@@ -276,67 +310,40 @@ private struct WorkbenchSidebar: View {
 
             Spacer(minLength: 12)
 
-            Divider()
-                .padding(.horizontal, 10)
+            WorkbenchColumnDivider(axis: .horizontal)
+                .padding(.horizontal, WorkbenchPorcelain.Navigation.rowPadding)
                 .padding(.bottom, 8)
 
-            row(for: .settings, secondary: true)
+            row(for: .settings)
             Text(versionLabel)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.tertiary)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, WorkbenchPorcelain.Navigation.rowPadding)
                 .padding(.top, 12)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 12)
+        .padding(.horizontal, WorkbenchPorcelain.Navigation.columnInset)
+        .padding(.vertical, WorkbenchPorcelain.Navigation.topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(WorkbenchPorcelain.sidebarFill(for: colorScheme))
     }
 
-    /// A quiet group label: the rows under it keep the same shape and
-    /// selection as every other page, so the group reads as a heading and
-    /// not as a fourth kind of control.
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 10.5, weight: .semibold))
-            .foregroundStyle(.tertiary)
-            .padding(.horizontal, 8)
-            .padding(.top, 12)
-            .padding(.bottom, 2)
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    @ViewBuilder
-    private func row(for page: WorkbenchPage, secondary: Bool = false) -> some View {
-        Button {
-            selection = page
-        } label: {
-            HStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(pageTint(page).opacity(selection == page ? 0.16 : 0.11))
-                    Image(systemName: page.systemImage)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(pageTint(page))
-                }
-                .frame(width: 20, height: 20)
-                Text(page.title)
-                    .font(.system(size: 13, weight: secondary ? .medium : .semibold))
-                Spacer(minLength: 0)
+    private func row(for page: WorkbenchPage) -> some View {
+        let isSelected = selection == page
+        return WorkbenchNavigationRow(
+            title: page.title,
+            // Settings sits apart at the bottom and reads one step quieter.
+            level: page.isPrimary ? .window : .page,
+            isSelected: isSelected,
+            action: { selection = page }
+        ) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(pageTint(page).opacity(isSelected ? 0.16 : 0.11))
+                Image(systemName: page.systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(pageTint(page))
             }
-                .foregroundStyle(selection == page ? WorkbenchPorcelain.accent : Color.primary.opacity(0.78))
-                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-                .padding(.horizontal, 8)
-                .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
-        .buttonStyle(WorkbenchSidebarRowStyle(
-            isSelected: selection == page,
-            isHovered: hoveredPage == page
-        ))
-        .onHover { hovering in
-            hoveredPage = hovering ? page : (hoveredPage == page ? nil : hoveredPage)
-        }
-        .accessibilityAddTraits(selection == page ? [.isSelected] : [])
     }
 
     private func pageTint(_ page: WorkbenchPage) -> Color {
@@ -352,54 +359,6 @@ private struct WorkbenchSidebar: View {
     private var versionLabel: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         return "Vibe Bar · " + (version ?? "Workbench")
-    }
-}
-
-private struct WorkbenchSidebarRowStyle: ButtonStyle {
-    let isSelected: Bool
-    let isHovered: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        Row(isSelected: isSelected, isHovered: isHovered) { configuration.label }
-            .opacity(configuration.isPressed ? 0.72 : 1)
-    }
-
-    /// A nested view rather than the style itself, because `isFocused` is an
-    /// environment value and a `ButtonStyle` has no body to read it from.
-    /// The focused hairline replaces the system focus ring the window
-    /// switches off; it sits over the row's selected/hovered fill, and being
-    /// the app accent rather than the porcelain hairline it stays legible on
-    /// a selected row.
-    private struct Row<Label: View>: View {
-        let isSelected: Bool
-        let isHovered: Bool
-        @ViewBuilder let label: Label
-
-        @Environment(\.colorScheme) private var colorScheme
-        @Environment(\.isFocused) private var isFocused
-
-        var body: some View {
-            label
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(backgroundFill)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(
-                            isFocused
-                                ? Color.accentColor
-                                : (isSelected ? WorkbenchPorcelain.hairline(for: colorScheme) : Color.clear),
-                            lineWidth: isFocused ? 1 : Theme.Card.hairlineWidth
-                        )
-                )
-        }
-
-        private var backgroundFill: Color {
-            if isSelected { return WorkbenchPorcelain.selectedNavigationFill(for: colorScheme) }
-            if isHovered { return WorkbenchPorcelain.hoverFill(for: colorScheme) }
-            return .clear
-        }
     }
 }
 
