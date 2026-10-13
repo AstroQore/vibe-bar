@@ -29,24 +29,66 @@ extension SessionProvider {
     var accent: Color { Theme.providerAccent(for: tool) }
 }
 
-/// The Workbench's Sessions page: four columns under one toolbar.
+/// The Sessions page with its harness column: everything right of the
+/// window's sidebar.
 ///
-/// Harnesses on the left (`SessionHarnessRail`), the session list beside
-/// them, the conversation in the middle, its contents on the right. The two
-/// outer columns give way first when the window narrows — the harness
-/// column folds to its icons, the contents column hides behind a toolbar
-/// button — so the list and the conversation keep their reading widths down
-/// to the window's minimum size. A split, not a scroll: the list is a place
-/// you keep coming back to while reading one conversation, so it stays put.
+/// The harness column (`SessionHarnessRail`) is the page's own navigation, so
+/// it runs the full height of the window beside the page header, as
+/// Settings' section column does; the header, the toolbar and the three
+/// reading columns sit to its right. Every column's width comes from the
+/// one width measured here (`SessionPageLayout`), which is why this view,
+/// not the root, places the header.
+struct SessionPageColumns<Header: View>: View {
+    let density: Theme.Density
+    let controller: SessionsPageController
+    let header: Header
+
+    var body: some View {
+        GeometryReader { proxy in
+            let layout = SessionPageLayout(
+                width: proxy.size.width,
+                railChoice: controller.railCollapsedChoice,
+                outlineChoice: controller.outlineVisibleChoice
+            )
+            HStack(spacing: 0) {
+                SessionHarnessRail(
+                    controller: controller,
+                    navigation: controller.navigation,
+                    isCollapsed: layout.isRailCollapsed
+                )
+                VStack(spacing: 0) {
+                    header
+                    SessionManagerPage(density: density, controller: controller, layout: layout)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .onAppear { controller.pageWidth = proxy.size.width }
+            .onChange(of: proxy.size.width) { _, width in controller.pageWidth = width }
+        }
+    }
+}
+
+/// The Workbench's Sessions page: one toolbar over three reading columns,
+/// beside the harness column `SessionPageColumns` puts on its left.
+///
+/// The session list, the conversation in the middle, its contents on the
+/// right. The two outer columns of the page give way first when the window
+/// narrows — the harness column folds to its marks, the contents column
+/// hides behind a toolbar button — so the list and the conversation keep
+/// their reading widths down to the window's minimum size. A split, not a
+/// scroll: the list is a place you keep coming back to while reading one
+/// conversation, so it stays put.
 struct SessionManagerPage: View {
     let density: Theme.Density
     let controller: SessionsPageController
+    let layout: SessionPageLayout
     @ObservedObject private var model: SessionManagerModel
-    @Environment(\.colorScheme) private var colorScheme
 
-    init(density: Theme.Density, controller: SessionsPageController) {
+    init(density: Theme.Density, controller: SessionsPageController, layout: SessionPageLayout) {
         self.density = density
         self.controller = controller
+        self.layout = layout
         _model = ObservedObject(wrappedValue: controller.manager)
     }
 
@@ -56,41 +98,22 @@ struct SessionManagerPage: View {
                 .padding(.horizontal, density.popoverPaddingH)
                 .padding(.top, density.popoverPaddingV)
                 .padding(.bottom, density.popoverPaddingV / 2)
-            Rectangle()
-                .fill(WorkbenchPorcelain.hairline(for: colorScheme))
-                .frame(height: Theme.Card.hairlineWidth)
-            GeometryReader { proxy in
-                let layout = SessionPageLayout(
-                    width: proxy.size.width,
-                    railChoice: controller.railCollapsedChoice,
-                    outlineChoice: controller.outlineVisibleChoice
-                )
-                HStack(spacing: 0) {
-                    SessionHarnessRail(
-                        density: density,
-                        controller: controller,
-                        navigation: controller.navigation,
-                        isCollapsed: layout.isRailCollapsed
-                    )
-                    .frame(width: layout.railWidth)
-                    divider
-                    SessionListView(density: density, controller: controller, list: controller.list)
-                        .frame(width: layout.listWidth)
-                    divider
-                    SessionConversationView(density: density, controller: controller, conversation: controller.conversation)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if layout.showsOutline {
-                        divider
-                        SessionConversationOutline(density: density, conversation: controller.conversation) {
-                            controller.outlineVisibleChoice = false
-                        }
-                        .frame(width: SessionPageLayout.outlineWidth)
+            WorkbenchColumnDivider(axis: .horizontal)
+            HStack(spacing: 0) {
+                SessionListView(density: density, controller: controller, list: controller.list)
+                    .frame(width: layout.listWidth)
+                WorkbenchColumnDivider()
+                SessionConversationView(density: density, controller: controller, conversation: controller.conversation)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if layout.showsOutline {
+                    WorkbenchColumnDivider()
+                    SessionConversationOutline(density: density, conversation: controller.conversation) {
+                        controller.outlineVisibleChoice = false
                     }
+                    .frame(width: SessionPageLayout.outlineWidth)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .onAppear { controller.pageWidth = proxy.size.width }
-                .onChange(of: proxy.size.width) { _, width in controller.pageWidth = width }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottom) { toastBanner }
@@ -105,12 +128,6 @@ struct SessionManagerPage: View {
             Text(deletionMessage)
         }
         .task { controller.activate() }
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(WorkbenchPorcelain.hairline(for: colorScheme))
-            .frame(width: Theme.Card.hairlineWidth)
     }
 
     private var deletionBinding: Binding<Bool> {
@@ -166,8 +183,10 @@ struct SessionManagerPage: View {
 /// a jump list is worth more to a reader than a harness name next to an
 /// icon that already says it. A reader's own toggle wins over both rules.
 struct SessionPageLayout: Equatable {
-    static let railExpandedWidth: CGFloat = 180
-    static let railCollapsedWidth: CGFloat = 44
+    /// The harness column is a `WorkbenchSecondaryColumn`; its widths are
+    /// the ones every page's navigation column uses.
+    static let railExpandedWidth: CGFloat = WorkbenchPorcelain.Navigation.secondaryWidth
+    static let railCollapsedWidth: CGFloat = WorkbenchPorcelain.Navigation.secondaryCollapsedWidth
     static let outlineWidth: CGFloat = 220
     static let listMinimum: CGFloat = 300
     static let listMaximum: CGFloat = 400
@@ -175,7 +194,6 @@ struct SessionPageLayout: Equatable {
 
     let isRailCollapsed: Bool
     let showsOutline: Bool
-    let railWidth: CGFloat
     let listWidth: CGFloat
 
     /// Whether a contents column fits beside a list and a conversation at
@@ -192,7 +210,6 @@ struct SessionPageLayout: Equatable {
             ?? (width < Self.railExpandedWidth + list + Self.conversationMinimum + (outline ? Self.outlineWidth : 0))
         isRailCollapsed = collapsed
         showsOutline = outline
-        railWidth = collapsed ? Self.railCollapsedWidth : Self.railExpandedWidth
         listWidth = list
     }
 }
