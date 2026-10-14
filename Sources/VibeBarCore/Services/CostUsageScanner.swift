@@ -72,7 +72,7 @@ public enum CostUsageScanner {
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/sessions"),
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/archived_sessions")
         ]
-        let files = preferringPlainRollouts(roots.flatMap { collectJSONL(under: $0) })
+        let files = preferringPlainRollouts(roots.flatMap { collectJSONL(under: $0, includingCompressed: true) })
         // Older rollouts omit the tier. The current config is an estimate
         // for those requests; explicit per-request/turn metadata wins.
         let configuredTier = codexServiceTier(homeDirectory: homeDirectory)
@@ -2709,7 +2709,13 @@ public enum CostUsageScanner {
         return order.compactMap { chosen[$0] }
     }
 
-    private static func collectJSONL(under root: URL) -> [URL] {
+    /// `.jsonl` files under `root`; with `includingCompressed`, also the
+    /// `.jsonl.zst` Codex leaves behind once `local_thread_store_compression`
+    /// has compressed a rollout. Only the Codex scan asks for those: no
+    /// other harness writes compressed logs, and a compressed copy a user
+    /// keeps beside a Claude transcript must not be scanned as a second
+    /// transcript.
+    private static func collectJSONL(under root: URL, includingCompressed: Bool = false) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         guard let enumerator = FileManager.default.enumerator(
             at: root,
@@ -2720,10 +2726,8 @@ public enum CostUsageScanner {
             options: [.skipsHiddenFiles]
         ) else { return [] }
         var out: [URL] = []
-        // `.jsonl`, plus the `.jsonl.zst` Codex leaves behind once
-        // `local_thread_store_compression` has compressed a rollout; the
-        // kit's line scanner decodes those transparently.
-        for case let url as URL in enumerator where CodexRolloutFile.isJSONL(url) {
+        for case let url as URL in enumerator
+        where includingCompressed ? CodexRolloutFile.isJSONL(url) : url.pathExtension == CodexRolloutFile.plainExtension {
             // Skip symlinks. They could resolve outside `~/.claude` /
             // `~/.codex` (e.g. an attacker with the user's UID seeding a link
             // to a different cache directory) and we don't want the scanner

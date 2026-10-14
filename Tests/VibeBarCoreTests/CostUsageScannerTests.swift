@@ -370,6 +370,33 @@ final class CostUsageScannerTests: XCTestCase {
         XCTAssertEqual(first?.jsonlFilesFound, 1)
     }
 
+    /// Only Codex writes compressed logs. A `.jsonl.zst` a user keeps
+    /// beside a Claude transcript is a backup, not a second transcript.
+    func testClaudeScanIgnoresCompressedCopies() async throws {
+        let fileManager = FileManager.default
+        let home = fileManager.temporaryDirectory
+            .appendingPathComponent("VibeBarClaudeCompressedCopyTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: home) }
+        let project = home
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent("project-a", isDirectory: true)
+        try fileManager.createDirectory(at: project, withIntermediateDirectories: true)
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let transcript = project.appendingPathComponent("session.jsonl")
+        // No message / request id: such rows are keyed by nothing and would
+        // simply be counted again from a second file.
+        let stamp = ISO8601DateFormatter().string(from: now)
+        let line = #"{"type":"assistant","timestamp":"\#(stamp)","sessionId":"s","message":{"model":"claude-haiku-4-5","usage":{"input_tokens":100,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":11}}}"#
+        try line.write(to: transcript, atomically: true, encoding: .utf8)
+        try ZstdRawFrame.wrap(Data(contentsOf: transcript)).write(to: project.appendingPathComponent("session.jsonl.zst"))
+
+        let scanned = await CostUsageScanner.scan(tool: .claude, homeDirectory: home.path, now: now)
+        let snapshot = try XCTUnwrap(scanned)
+        XCTAssertEqual(snapshot.jsonlFilesFound, 1)
+        XCTAssertEqual(snapshot.allTimeRequests, 1)
+    }
+
     func testClaudeScanDeduplicatesCrossFileSubagentRows() async throws {
         let fileManager = FileManager.default
         let home = fileManager.temporaryDirectory
