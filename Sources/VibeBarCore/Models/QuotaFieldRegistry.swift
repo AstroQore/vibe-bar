@@ -148,7 +148,7 @@ public struct QuotaFieldRegistry: Codable, Equatable, Sendable {
     /// Forget `tool`'s entries the provider stopped returning that nothing
     /// references — not selected in any mini window and never given a name,
     /// where "a name" includes a custom label on the field itself *or* on
-    /// its quota group (a discovered group's label key is
+    /// its quota group (the group's label key is `quotaGroupKey`, normally
     /// `<tool>.<bucket-id stem>`). A referenced entry stays (dimmed in the
     /// picker) so a selection survives a provider hiccup; an unreferenced
     /// one was never the user's and does not need remembering. Returns true
@@ -165,7 +165,10 @@ public struct QuotaFieldRegistry: Codable, Equatable, Sendable {
                   !liveBucketIds.contains(field.bucketId),
                   !keep.fieldIds.contains(field.id)
             else { return false }
-            let groupKey = "\(field.tool.rawValue).\(MenuBarFieldCatalog.bucketGroupStem(field.bucketId))"
+            // The same key the naming UI labels the group under: the stem
+            // for most discovered buckets, an explicit key for the ones
+            // `quotaGroupKey` folds together (Grok's shared pool).
+            let groupKey = MenuBarFieldCatalog.quotaGroupKey(tool: field.tool, bucketId: field.bucketId)
             return !keep.groupKeys.contains(groupKey)
         }
         return fields.count != before

@@ -210,6 +210,33 @@ final class GrokXSubscriptionTests: XCTestCase {
         XCTAssertEqual(buckets.first?.resetAt, unified.periodEnd, "Falls back to the JSON period end")
     }
 
+    func testRenamedSharedPoolKeepsItsFieldsThroughAnEnrichmentHiccup() {
+        var registry = QuotaFieldRegistry()
+        let reset = Date(timeIntervalSince1970: 1_792_092_466)
+        let credits = GrokCreditsBillingSnapshot(
+            usedPercent: 61, periodStart: nil, periodEnd: reset,
+            productUsage: [.init(product: "GrokBuild", usedPercent: 60), .init(product: "GrokChat", usedPercent: 1)],
+            isUnifiedBillingUser: true
+        )
+        let quota = GrokQuotaAdapter.makeQuota(
+            snapshot: GrokWebBillingSnapshot(usedPercent: 61, resetsAt: reset),
+            account: Self.account, plan: "X Ultra", email: nil, credits: credits, now: Date()
+        )
+        registry.record(tool: .grok, buckets: quota.buckets)
+        let discovered = registry.fields.filter { $0.tool == .grok }.map(\.bucketId).sorted()
+        XCTAssertEqual(discovered, ["grok_build_weekly", "grok_chat_weekly"])
+
+        // The user named the group (under the key the naming UI uses) but
+        // selected nothing; one refresh without the enrichment follows.
+        registry.prune(tool: .grok, liveBucketIds: ["weekly"],
+                       keeping: QuotaFieldKeepSet(groupKeys: ["grok.shared-pool"]))
+        XCTAssertEqual(registry.fields.filter { $0.tool == .grok }.count, 2,
+                       "A user-named group keeps its fields, dimmed, through a hiccup")
+
+        registry.prune(tool: .grok, liveBucketIds: ["weekly"], keeping: QuotaFieldKeepSet())
+        XCTAssertTrue(registry.fields.filter { $0.tool == .grok }.isEmpty, "Unreferenced fields are forgotten")
+    }
+
     func testEnrichmentDeadlineDropsATricklingAnswer() async {
         let fast = await GrokQuotaAdapter.bounded(seconds: 5) { "answer" }
         XCTAssertEqual(fast, "answer")
