@@ -24,7 +24,7 @@ import Foundation
 /// silent on failure: the CLI settings endpoint (plan display name), the
 /// credits-format billing JSON (the pool's split into Grok Build / Grok
 /// chat, and whether it is The X Subscription's unified pool — surfaced
-/// as a "Shared Pool" group of two buckets) and grok.com's subscription
+/// as a "Build" and a "Chat" group beside Weekly) and grok.com's subscription
 /// list (the plan the user actually bought, which after a move to The X
 /// Subscription is no longer what the display name says).
 public struct GrokQuotaAdapter: QuotaAdapter {
@@ -304,16 +304,18 @@ public struct GrokQuotaAdapter: QuotaAdapter {
     }
 
     /// The unified pool's split by product, one bucket each, on the pool's
-    /// own scale (they sum to the weekly percent), grouped as "Shared Pool"
-    /// and sharing the RPC's reset so the three rows age together.
+    /// own scale (they sum to the weekly percent), sharing the RPC's reset
+    /// so the rows age together. Like every per-model lane, the group names
+    /// the product ("Build", "Chat") and the title names the window: the
+    /// provider card renders grouped rows by title, so two "Weekly" rows in
+    /// one group would be indistinguishable. The mini window folds both
+    /// groups into the one `grok.shared-pool` key ("Pool").
     ///
-    /// Only for accounts xAI flags as unified: the group is one identity
-    /// everywhere (`grok.shared-pool`, labelled "Pool" in the mini window
-    /// and Settings), so a legacy account must not be routed into it under
-    /// another name. Its card keeps the single Weekly bucket as before.
+    /// Only for accounts xAI flags as unified: a legacy account must not be
+    /// routed into the pool's groups. Its card keeps the single Weekly
+    /// bucket as before.
     static func productBuckets(from credits: GrokCreditsBillingSnapshot?, resetAt: Date?) -> [QuotaBucket] {
         guard let credits, credits.isUnifiedBillingUser, !credits.productUsage.isEmpty else { return [] }
-        let groupTitle = "Shared Pool"
         return credits.productUsage.compactMap { usage in
             guard let (id, label) = Self.productBucketIdentity(usage.product) else { return nil }
             return QuotaBucket(
@@ -323,7 +325,7 @@ public struct GrokQuotaAdapter: QuotaAdapter {
                 usedPercent: usage.usedPercent,
                 resetAt: resetAt ?? credits.periodEnd,
                 rawWindowSeconds: Self.weeklyWindowSeconds,
-                groupTitle: groupTitle
+                groupTitle: label
             )
         }
     }

@@ -168,7 +168,8 @@ final class GrokXSubscriptionTests: XCTestCase {
         XCTAssertEqual(build.shortLabel, "Build")
         XCTAssertEqual(build.title, "Weekly")
         XCTAssertEqual(build.usedPercent, 60)
-        XCTAssertEqual(build.groupTitle, "Shared Pool")
+        XCTAssertEqual(build.groupTitle, "Build", "Group names the product, title names the window")
+        XCTAssertEqual(quota.bucket(id: "grok_chat_weekly")?.groupTitle, "Chat")
         XCTAssertEqual(build.resetAt, reset, "Product rows age with the RPC's reset")
         XCTAssertEqual(build.rawWindowSeconds, 604_800)
         XCTAssertEqual(quota.bucket(id: "grok_chat_weekly")?.usedPercent, 1)
@@ -197,7 +198,7 @@ final class GrokXSubscriptionTests: XCTestCase {
             isUnifiedBillingUser: false
         )
         XCTAssertTrue(GrokQuotaAdapter.productBuckets(from: legacy, resetAt: nil).isEmpty,
-                      "A legacy account must not be routed into the Shared Pool group")
+                      "A legacy account must not be routed into the pool's product groups")
 
         let unified = GrokCreditsBillingSnapshot(
             usedPercent: 13, periodStart: nil, periodEnd: legacy.periodEnd,
@@ -206,7 +207,7 @@ final class GrokXSubscriptionTests: XCTestCase {
         )
         let buckets = GrokQuotaAdapter.productBuckets(from: unified, resetAt: nil)
         XCTAssertEqual(buckets.map(\.id), ["grok_chat_weekly"], "Unknown products are not minted into buckets")
-        XCTAssertEqual(buckets.first?.groupTitle, "Shared Pool")
+        XCTAssertEqual(buckets.first?.groupTitle, "Chat")
         XCTAssertEqual(buckets.first?.resetAt, unified.periodEnd, "Falls back to the JSON period end")
     }
 
