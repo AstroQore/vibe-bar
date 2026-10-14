@@ -178,14 +178,17 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             session: session,
             now: now()
         )
-        async let creditsBilling = GrokCreditsBillingFetcher.fetch(
-            credentials: credentials,
-            session: session
-        )
-        async let subscription = GrokSubscriptionsFetcher.fetch(
-            credentials: credentials,
-            session: session
-        )
+        // Optional inventory with a wall-clock budget of its own: the
+        // fetchers' request timeouts are idle timers, and a trickling
+        // answer here must not hold a finished billing snapshot past
+        // `QuotaService`'s global deadline.
+        let session = self.session
+        async let creditsBilling = Self.bounded(seconds: Self.enrichmentDeadline) {
+            await GrokCreditsBillingFetcher.fetch(credentials: credentials, session: session)
+        }
+        async let subscription = Self.bounded(seconds: Self.enrichmentDeadline) {
+            await GrokSubscriptionsFetcher.fetch(credentials: credentials, session: session)
+        }
 
         // Billing remains the required source of quota truth. Account
         // settings only enriches the badge, so a settings outage or schema
@@ -207,6 +210,27 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             credits: await creditsBilling,
             now: now()
         )
+    }
+
+    /// Wall-clock budget for one optional enrichment call.
+    static let enrichmentDeadline: TimeInterval = 10
+
+    /// Races `operation` against a deadline; `nil` when the deadline wins.
+    /// The loser is cancelled, which `URLSession.data(for:)` honours.
+    static func bounded<T: Sendable>(
+        seconds: TimeInterval,
+        _ operation: @escaping @Sendable () async -> T?
+    ) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(seconds))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
     }
 
     /// The plan badge, by how much each source knows: grok.com's own

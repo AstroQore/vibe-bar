@@ -210,6 +210,19 @@ final class GrokXSubscriptionTests: XCTestCase {
         XCTAssertEqual(buckets.first?.resetAt, unified.periodEnd, "Falls back to the JSON period end")
     }
 
+    func testEnrichmentDeadlineDropsATricklingAnswer() async {
+        let fast = await GrokQuotaAdapter.bounded(seconds: 5) { "answer" }
+        XCTAssertEqual(fast, "answer")
+
+        let started = Date()
+        let slow: String? = await GrokQuotaAdapter.bounded(seconds: 0.2) {
+            try? await Task.sleep(for: .seconds(30))
+            return "too late"
+        }
+        XCTAssertNil(slow, "The deadline wins over a trickling answer")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "The loser is cancelled, not awaited")
+    }
+
     // MARK: - Helpers
 
     private static let account = AccountIdentity(
