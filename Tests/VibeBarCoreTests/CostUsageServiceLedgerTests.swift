@@ -84,6 +84,46 @@ final class CostUsageServiceLedgerTests: XCTestCase {
         XCTAssertEqual(compressedSummary.costMicros, plainSummary.costMicros)
     }
 
+    /// The scan cache is keyed on the rollout, not on its file name: a
+    /// rollout scanned as `.jsonl` under one configured tier and rescanned
+    /// as `.jsonl.zst` after the tier changed keeps the tier it was first
+    /// assigned, instead of repricing its history at today's config.
+    func testCompressedRolloutKeepsTheTierItWasFirstAssigned() async throws {
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let home = try makeCodexHome(now: now)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let config = home.appendingPathComponent(".codex/config.toml")
+        try #"service_tier = "fast""#.write(to: config, atomically: true, encoding: .utf8)
+        let fastScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let fast = try XCTUnwrap(fastScan)
+
+        // A fresh home at the standard tier prices the same requests lower,
+        // so a repriced rescan below would be visible.
+        let standardHome = try makeCodexHome(now: now)
+        defer { try? FileManager.default.removeItem(at: standardHome) }
+        let standardScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: standardHome.path, now: now)
+        let standard = try XCTUnwrap(standardScan)
+        XCTAssertGreaterThan(fast.allTimeCostUSD, standard.allTimeCostUSD)
+
+        try #"service_tier = "standard""#.write(to: config, atomically: true, encoding: .utf8)
+        try ZstdRawFrame.compressInPlace(home.appendingPathComponent(".codex/sessions/session.jsonl"))
+        let rescan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let rescanned = try XCTUnwrap(rescan)
+        XCTAssertEqual(rescanned.jsonlFilesFound, 1)
+        XCTAssertEqual(rescanned.allTimeCostUSD, fast.allTimeCostUSD, accuracy: 0.000_01)
+
+        let cache = CostUsageScanCacheStore.shared.checkout(homeDirectory: home.path, tool: .codex, retentionDays: nil)
+        defer {
+            CostUsageScanCacheStore.shared.checkin(cache, homeDirectory: home.path, tool: .codex, retentionDays: nil, persist: false)
+        }
+        // One entry: the rollout under its canonical identity, the plain
+        // path's entry pruned rather than kept beside it.
+        XCTAssertEqual(cache.entries.count, 1)
+        let events = try XCTUnwrap(cache.entries.values.first?.events)
+        XCTAssertEqual(events.count, 3)
+        XCTAssertEqual(Set(events.map(\.serviceTier)), ["fast"])
+    }
+
     func testScanWithSinkFillsTheLedgerWithTheSnapshotTotals() async throws {
         let now = Date(timeIntervalSince1970: 1_762_339_200)
         let home = try makeCodexHome(now: now)

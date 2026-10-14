@@ -91,11 +91,16 @@ public enum CostUsageScanner {
                 return aggregator.snapshot(jsonlFilesFound: files.count)
             }
             let (mtime, size) = fileFingerprint(file)
-            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+            // The cache identity is the rollout, not its current file name:
+            // Codex renames a week-idle rollout to `.jsonl.zst`, and a scan
+            // that keyed on the raw path would lose the tiers it had assigned
+            // to that rollout's requests and reprice them at today's config.
+            let cacheKey = CodexRolloutFile.canonicalPath(file.path)
+            if let cached = cache.reusable(for: cacheKey, mtime: mtime, size: size) {
                 let priced: [PricedUsageEvent] = autoreleasepool {
                     let retained = retainedEvents(cached, cutoff: cutoff)
                     if retained.count != cached.count {
-                        cache.store(retained, for: file.path, mtime: mtime, size: size)
+                        cache.store(retained, for: cacheKey, mtime: mtime, size: size)
                     }
                     var priced: [PricedUsageEvent] = []
                     priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
@@ -123,7 +128,7 @@ public enum CostUsageScanner {
                 // previously assigned costing tier for matching requests;
                 // changing today's config must not rewrite that history.
                 var oldTiers: [CodexCostingKey: [String?]] = [:]
-                for event in cache.entries[CostUsageScanCache.entryKey(for: file.path)]?.events ?? [] {
+                for event in cache.entries[CostUsageScanCache.entryKey(for: cacheKey)]?.events ?? [] {
                     oldTiers[CodexCostingKey(date: event.date, model: event.model,
                                             input: event.input, output: event.output, cache: event.cache), default: []]
                         .append(event.serviceTier)
@@ -193,7 +198,7 @@ public enum CostUsageScanner {
                 // fingerprint and replays the empty result. `scanGemini` has
                 // always guarded this; codex now does too.
                 if didRead {
-                    cache.store(parsed, for: file.path, mtime: mtime, size: size)
+                    cache.store(parsed, for: cacheKey, mtime: mtime, size: size)
                 }
                 return (priced, didRead)
             }
@@ -201,7 +206,7 @@ public enum CostUsageScanner {
                 await emit(eventSink, tool: .codex, file: file, mtime: mtime, size: size, events: outcome.priced)
             }
         }
-        cache.prune(known: Set(files.map(\.path)))
+        cache.prune(known: Set(files.map { CodexRolloutFile.canonicalPath($0.path) }))
         CostUsageScanCacheStore.shared.checkin(
             cache, homeDirectory: homeDirectory, tool: .codex, retentionDays: retentionDays
         )
