@@ -97,19 +97,14 @@ final class CostUsageServiceLedgerTests: XCTestCase {
         let fastScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
         let fast = try XCTUnwrap(fastScan)
 
-        // A fresh home at the standard tier prices the same requests lower,
-        // so a repriced rescan below would be visible.
-        let standardHome = try makeCodexHome(now: now)
-        defer { try? FileManager.default.removeItem(at: standardHome) }
-        let standardScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: standardHome.path, now: now)
-        let standard = try XCTUnwrap(standardScan)
-        XCTAssertGreaterThan(fast.allTimeCostUSD, standard.allTimeCostUSD)
-
         try #"service_tier = "standard""#.write(to: config, atomically: true, encoding: .utf8)
         try ZstdRawFrame.compressInPlace(home.appendingPathComponent(".codex/sessions/session.jsonl"))
         let rescan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
         let rescanned = try XCTUnwrap(rescan)
         XCTAssertEqual(rescanned.jsonlFilesFound, 1)
+        // The tier is asserted on the cached events below rather than
+        // through prices: whether the fast tier costs more depends on the
+        // pricing catalog the machine has cached, which CI does not.
         XCTAssertEqual(rescanned.allTimeCostUSD, fast.allTimeCostUSD, accuracy: 0.000_01)
 
         let cache = CostUsageScanCacheStore.shared.checkout(homeDirectory: home.path, tool: .codex, retentionDays: nil)
