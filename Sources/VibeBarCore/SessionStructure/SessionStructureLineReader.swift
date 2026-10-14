@@ -42,6 +42,15 @@ enum SessionStructureLineReader {
     }
 
     /// - Parameters:
+    ///   - maxDecompressedBytes: for a compressed log read without a
+    ///     `range`, the decompressed bytes after which the read stops as
+    ///     incomplete; a window read is bounded by its range instead. No
+    ///     ceiling by default: the file's fingerprint already carries its
+    ///     decompressed size, so every caller's size policy — the
+    ///     structure service's full-parse and background limits, the
+    ///     activity scanner's file limit — is judged on the bytes a read
+    ///     would cover, and a caller that chose to read the whole file
+    ///     meant it. The ceiling is for a caller with a budget of its own.
     ///   - isCancelled: polled once per chunk.
     ///   - body: return `false` to stop early.
     @discardableResult
@@ -50,13 +59,18 @@ enum SessionStructureLineReader {
         range: SessionStructure.ByteRange? = nil,
         maxLineBytes: Int = defaultMaxLineBytes,
         headBytes: Int = defaultHeadBytes,
+        maxDecompressedBytes: Int64? = nil,
         isCancelled: () -> Bool = { false },
         _ body: (Line) -> Bool
     ) -> Outcome {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
+        // `SessionLogByteReader` reads a compressed rollout (`.jsonl.zst`)
+        // through zstd and reports *decompressed* offsets, so a turn's
+        // byte window recorded against the plain file still lands on the
+        // same line after Codex compresses it.
+        guard let handle = SessionLogByteReader(url: url) else {
             return Outcome(completed: false, bytesRead: 0, lastLineEnd: range?.lowerBound ?? 0)
         }
-        defer { try? handle.close() }
+        defer { handle.close() }
 
         let lower = range?.lowerBound ?? 0
         let upper = range?.upperBound ?? Int64.max
@@ -64,7 +78,7 @@ enum SessionStructureLineReader {
         var skippingToNewline = false
         if lower > 0 {
             do {
-                try handle.seek(toOffset: UInt64(lower - 1))
+                try handle.seek(toOffset: lower - 1)
             } catch {
                 return Outcome(completed: false, bytesRead: 0, lastLineEnd: lower)
             }
@@ -73,6 +87,8 @@ enum SessionStructureLineReader {
         }
         let startOffset = fileOffset
         let headCap = max(0, min(headBytes, maxLineBytes))
+        let ceiling: Int64? = handle.isCompressed && range == nil ? maxDecompressedBytes : nil
+        var exceeded = false
 
         var lineBuffer: [UInt8] = []
         var lineStart: Int64 = fileOffset
@@ -166,6 +182,10 @@ enum SessionStructureLineReader {
                     }
                 }
                 fileOffset += Int64(chunk.count)
+                if let ceiling, fileOffset - startOffset > ceiling {
+                    exceeded = true
+                    break
+                }
             }
         } catch {
             return Outcome(completed: false, bytesRead: fileOffset - startOffset, lastLineEnd: lastLineEnd)
@@ -173,7 +193,7 @@ enum SessionStructureLineReader {
         if reachedEnd, !skippingToNewline, lineLength > 0, lineStart < upper {
             if !emit() { stopped = true }
         }
-        let completed = reachedEnd || (stopped && lineStart >= upper)
+        let completed = !exceeded && (reachedEnd || (stopped && lineStart >= upper))
         return Outcome(completed: completed, bytesRead: fileOffset - startOffset, lastLineEnd: lastLineEnd)
     }
 

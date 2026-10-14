@@ -40,7 +40,14 @@ portions is included in this repository at the local license link above.
   `AgentSessionKitInfo.version`, shown in Settings › System › Components.
 - License: AGPL-3.0-only — the same license as Vibe Bar, so no separate
   notice file is bundled.
-- Third-party code: none. The package has no dependencies of its own.
+- Third-party code: the package vendors the decompression half of
+  **Zstandard** v1.5.7 ([facebook/zstd](https://github.com/facebook/zstd),
+  `lib/common/` and `lib/decompress/`, no compressor, no legacy formats, no
+  assembly) as its `CZstd` target, so a Codex rollout the CLI has compressed
+  to `.jsonl.zst` can be read — macOS ships neither a zstd library nor its
+  headers. Zstandard is dual-licensed BSD 3-Clause / GPL-2.0; it is used
+  under the [BSD 3-Clause License](Resources/ThirdPartyLicenses/Zstandard.txt),
+  which is bundled with the app. The package has no other dependencies.
 
 ### vibe-bar-i18n
 
