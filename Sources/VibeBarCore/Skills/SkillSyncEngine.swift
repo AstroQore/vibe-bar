@@ -25,6 +25,22 @@ enum SkillFileSystem {
         }
     }
 
+    /// Mutation paths may not escape through a symlinked ancestor, even
+    /// when their lexical spelling is inside the allowlist.
+    static func validateDirectoryAncestors(_ url: URL, homeDirectory: String) throws {
+        let home = URL(fileURLWithPath: homeDirectory).standardizedFileURL
+        var parent = url.standardizedFileURL.deletingLastPathComponent()
+        guard SkillAppCatalog.isPath(parent, under: home) else {
+            throw SkillError.writeOutsideAllowedRoots(url.path)
+        }
+        while parent.path != home.path {
+            guard kind(of: parent) == .directory else {
+                throw SkillError.writeOutsideAllowedRoots(url.path)
+            }
+            parent.deleteLastPathComponent()
+        }
+    }
+
     /// Creates `url` and any missing ancestors up to (but never above) `root`,
     /// one component at a time. `withIntermediateDirectories: true` would do
     /// the same thing in one call, but walking the chain explicitly keeps the

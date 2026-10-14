@@ -635,7 +635,14 @@ coding-agent community:
   local-probe flow were adapted from or reimplemented with reference to it.
 - [CC Switch](https://github.com/farion1231/cc-switch) informed the unified
   Skills workflow and remains an interoperability reference for existing
-  cross-agent skill layouts.
+  cross-agent skill layouts. Its usage statistics page — the request log
+  with per-request speed and first-token timing, and the provider / model
+  breakdowns — is the reference the Workbench's Usage page measures
+  itself against.
+- [Magpie](https://github.com/yetone/magpie) informed the Workbench's
+  session reader and the Library's resource model (source, agent
+  assignment, and ownership of each change); see
+  [docs/agent-library.md](docs/agent-library.md).
 - [CodexBar compatibility notes](docs/CODEXBAR-COMPATIBILITY.md) record the
   provider migration boundary, the read-only bridge, and what its CLI does.
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) and its ecosystem

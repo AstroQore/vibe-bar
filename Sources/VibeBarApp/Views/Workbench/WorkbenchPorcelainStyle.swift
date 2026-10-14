@@ -25,6 +25,14 @@ enum WorkbenchPorcelain {
         scheme == .dark ? Color.white.opacity(0.035) : Color.white.opacity(0.58)
     }
 
+    /// Ground for a page's own navigation column — Sessions' harnesses,
+    /// Settings' sections, Sessions' contents. Half a step between the
+    /// window's sidebar and the page, so the three read as levels: the
+    /// window's navigation, the page's, then the content.
+    static func secondaryColumnFill(for scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.018) : Color.white.opacity(0.3)
+    }
+
     /// Opaque ground for content that floats over other content — a chart
     /// tooltip, a toast. Flat surfaces cast no shadow, so the only honest way
     /// for one to sit above another is to be opaque.
@@ -52,6 +60,32 @@ enum WorkbenchPorcelain {
 
     static func hoverFill(for scheme: ColorScheme) -> Color {
         scheme == .dark ? Color.white.opacity(0.065) : Color.black.opacity(0.045)
+    }
+
+    /// Geometry every navigation column in the window shares — the window's
+    /// sidebar and a page's secondary column — so a row, a group label, a
+    /// selection and a hover are the same object wherever they appear. See
+    /// `WorkbenchSecondaryColumn.swift` and `docs/DESIGN.md` § 2.1.
+    enum Navigation {
+        static let sidebarWidth: CGFloat = 206
+        static let secondaryWidth: CGFloat = 232
+        /// Rows sit this far in from either edge of their column.
+        static let columnInset: CGFloat = 10
+        /// The first row (or a secondary column's header) starts this far
+        /// down, so both columns begin on one line.
+        static let topInset: CGFloat = 12
+        static let rowHeight: CGFloat = 32
+        static let rowCornerRadius: CGFloat = 8
+        static let rowPadding: CGFloat = 8
+        static let rowSpacing: CGFloat = 2
+        static let markSize: CGFloat = 20
+        static let markSpacing: CGFloat = 8
+        static let titleSize: CGFloat = 13
+        /// Folded to its marks, a column puts each mark exactly where the
+        /// sidebar puts its icon blocks — `rowPadding` inside a row that is
+        /// `columnInset` inside the column — so the two line up rather than
+        /// the folded one reading as a strip of its own.
+        static let secondaryCollapsedWidth: CGFloat = 2 * columnInset + 2 * rowPadding + markSize
     }
 }
 

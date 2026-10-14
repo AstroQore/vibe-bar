@@ -2097,6 +2097,17 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 - **JSONL scanning must be O(n).** See
   `CostUsageScanner.forEachJSONLLine`. Use a moving cursor, not
   `removeSubrange`.
+- **A Codex `token_count` is not the end of the request it reports.**
+  Request speed and first-token time (`UsageRequestTiming`) come from the
+  logs' own line timestamps. In a Codex rollout, when a response calls a
+  tool, the tool runs and its output — the *next* request's opening line —
+  is written before the `token_count` of the request that called it. Timing
+  to the `token_count` counted tool execution as generation (a median of
+  ~17 tok/s on real rollouts) and left the next request without a start;
+  `CodexRequestTimingTracker` ends a request at its last model item or
+  `token_usage_record` instead. Lines the usage parse skips are probed from
+  their bytes (`JSONLLineProbe`), never JSON-parsed, so the scan stays as
+  cheap as it was.
 - **Avoid `TimelineView(.periodic(...))` in deep view trees** that may
   be eagerly instantiated. Scope live timers to the visible surface.
 - **New persistent state** goes through `VibeBarLocalStore` and lives

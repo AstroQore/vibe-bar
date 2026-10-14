@@ -127,9 +127,10 @@ enum SettingsDestination: Hashable {
 ///
 /// It is a page, not a window: the Workbench's own sidebar, header and
 /// density own the chrome, and everything here is content. The section
-/// column on the left is a navigator inside the page — no fill and no title
-/// of its own — so Settings reads as the fourth Workbench page rather than a
-/// second application bolted into the detail pane.
+/// column (`SettingsSidebarView`) is the page's navigation and the root puts
+/// it beside the header, as Sessions' harness column is — so Settings reads
+/// as one more Workbench page rather than a second application bolted into
+/// the detail pane. This view is the section it opens.
 struct SettingsView: View {
     let density: Theme.Density
     @Binding var selection: SettingsDestination
@@ -196,10 +197,6 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SettingsSidebarView(selection: $selection)
-
-            Divider().opacity(0.45)
-
             ScrollView(.vertical, showsIndicators: true) {
                         VStack(alignment: .leading, spacing: density.interSectionSpacing) {
                     externalChangeBanner

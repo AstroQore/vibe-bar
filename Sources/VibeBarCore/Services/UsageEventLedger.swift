@@ -95,7 +95,10 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// v4 adds the nullable request-level `project` dimension. The ledger is
     /// reconstructible, so opening an older database rebuilds it and the next
     /// cost scan replays the source logs with their harness-reported cwd.
-    static let schemaVersion = 4
+    /// v5 adds the nullable request-timing columns `duration_ms` and
+    /// `first_token_ms` (`UsageRequestTiming`), in place: see
+    /// `migrateTimingColumns`.
+    static let schemaVersion = 5
     private static let schemaVersionKey = "schema_version"
     private static let cursorToolMigrationKey = "cursor_tool_v1"
     /// Written by an earlier revision of the Cursor migration. Only read now,
@@ -230,12 +233,16 @@ public actor UsageEventLedger: CostUsageEventSink {
             throw UsageLedgerError.open
         }
         if let stored = storedSchemaVersion(database), stored != schemaVersion {
-            if stored == 3 {
-                // Project attribution is a nullable detail-only dimension.
-                // Preserve daily rollups: their source logs may already have
-                // aged out, and dropping them would erase all-time totals and
-                // historical token peaks permanently.
-                guard migrateProjectColumn(database) else { throw UsageLedgerError.open }
+            if stored == 3 || stored == 4 {
+                // Project attribution (v4) and request timing (v5) are
+                // nullable detail-only dimensions. Preserve daily rollups:
+                // their source logs may already have aged out, and dropping
+                // them would erase all-time totals and historical token peaks
+                // permanently.
+                if stored == 3 {
+                    guard migrateProjectColumn(database) else { throw UsageLedgerError.open }
+                }
+                guard migrateTimingColumns(database) else { throw UsageLedgerError.open }
             } else {
                 // Unknown historical shapes remain reconstructible from the
                 // on-disk scan cache; only those take the full reset path.
@@ -271,7 +278,9 @@ public actor UsageEventLedger: CostUsageEventSink {
                 is_sidechain INTEGER,
                 path_role TEXT,
                 source_key TEXT,
-                dedupe_key TEXT NOT NULL UNIQUE
+                dedupe_key TEXT NOT NULL UNIQUE,
+                duration_ms INTEGER,
+                first_token_ms INTEGER
             );
             CREATE INDEX IF NOT EXISTS usage_events_tool_ts_idx ON usage_events(tool, ts);
             CREATE INDEX IF NOT EXISTS usage_events_ts_id_idx ON usage_events(ts DESC, id DESC);
@@ -387,6 +396,41 @@ public actor UsageEventLedger: CostUsageEventSink {
         guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK,
               sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK
         else { return rollback() }
+        return true
+    }
+
+    /// Add the request-timing columns to an existing ledger without
+    /// discarding a single retained row.
+    ///
+    /// Both are nullable and detail-only — a daily rollup has no request to
+    /// time. The timing comes from log lines a warm scan cache never kept, so
+    /// existing rows can only be filled by re-reading the logs: dropping the
+    /// Codex and Claude fingerprints (the two scanners that time requests)
+    /// makes the next scan re-ingest every retained file, and the conflict
+    /// clause in `insertEventSQL` writes the columns onto the rows already
+    /// there. Other tools' rows have no timing to gain and keep theirs.
+    @discardableResult
+    static func migrateTimingColumns(_ database: OpaquePointer) -> Bool {
+        guard let hasDuration = hasColumn(database, table: "usage_events", column: "duration_ms"),
+              let hasFirstToken = hasColumn(database, table: "usage_events", column: "first_token_ms")
+        else { return false }
+        guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
+            return false
+        }
+        func rollback() -> Bool {
+            sqlite3_exec(database, "ROLLBACK", nil, nil, nil)
+            return false
+        }
+        var statements: [String] = []
+        if !hasDuration { statements.append("ALTER TABLE usage_events ADD COLUMN duration_ms INTEGER") }
+        if !hasFirstToken { statements.append("ALTER TABLE usage_events ADD COLUMN first_token_ms INTEGER") }
+        statements.append(
+            "DELETE FROM ingested_files WHERE tool IN ('\(ToolType.codex.rawValue)', '\(ToolType.claude.rawValue)')"
+        )
+        for sql in statements {
+            guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else { return rollback() }
+        }
+        guard sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK else { return rollback() }
         return true
     }
 
@@ -901,7 +945,9 @@ public actor UsageEventLedger: CostUsageEventSink {
                     event.isSidechain.map { Binding.integer($0 ? 1 : 0) } ?? .null,
                     event.pathRole.map { Binding.text($0.rawValue) } ?? .null,
                     event.sourceKey.map(Binding.text) ?? .null,
-                    .text(key)
+                    .text(key),
+                    event.durationMs.map(Binding.integer) ?? .null,
+                    event.firstTokenMs.map(Binding.integer) ?? .null
                 ]
                 sqlite3_reset(statement)
                 sqlite3_clear_bindings(statement)
@@ -956,12 +1002,18 @@ public actor UsageEventLedger: CostUsageEventSink {
     /// Claude tuple key is deliberately excluded: there, two rows sharing a
     /// key really are duplicate copies of one request, and the preference
     /// order below must stay the only thing that decides between them.
+    ///
+    /// The timing clause is the v5 backfill (`migrateTimingColumns`): a row
+    /// re-read from the *same* source whose request timing differs — it had
+    /// none yet, or the response was still streaming when it was first
+    /// ingested — takes the newer read. Another file's copy of the request
+    /// still has to win on the preference order.
     private static let insertEventSQL = """
         INSERT INTO usage_events(
                tool, ts, day, model, harness, project, fresh_input, output, cache_read, cache_creation,
                cost_micros, session_id, message_id, request_id, service_tier,
-               is_sidechain, path_role, source_key, dedupe_key
-           ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               is_sidechain, path_role, source_key, dedupe_key, duration_ms, first_token_ms
+           ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(dedupe_key) DO UPDATE SET
                tool = excluded.tool,
                ts = excluded.ts,
@@ -980,7 +1032,9 @@ public actor UsageEventLedger: CostUsageEventSink {
                service_tier = excluded.service_tier,
                is_sidechain = excluded.is_sidechain,
                path_role = excluded.path_role,
-               source_key = excluded.source_key
+               source_key = excluded.source_key,
+               duration_ms = excluded.duration_ms,
+               first_token_ms = excluded.first_token_ms
            WHERE
                (
                    excluded.tool = 'cursor'
@@ -998,6 +1052,13 @@ public actor UsageEventLedger: CostUsageEventSink {
                )
             OR (
                    excluded.project IS NOT usage_events.project
+                   AND COALESCE(excluded.source_key, '') = COALESCE(usage_events.source_key, '')
+               )
+            OR (
+                   (
+                       excluded.duration_ms IS NOT usage_events.duration_ms
+                       OR excluded.first_token_ms IS NOT usage_events.first_token_ms
+                   )
                    AND COALESCE(excluded.source_key, '') = COALESCE(usage_events.source_key, '')
                )
             OR (CASE WHEN COALESCE(excluded.is_sidechain, 0) = 0 THEN 0 ELSE 1 END)
@@ -1931,7 +1992,8 @@ public actor UsageEventLedger: CostUsageEventSink {
         let statement = try prepare(
             """
             SELECT id, tool, ts, model, fresh_input, output, cache_read, cache_creation,
-                   cost_micros, service_tier, session_id, source_key, harness
+                   cost_micros, service_tier, session_id, source_key, harness,
+                   duration_ms, first_token_ms
               FROM usage_events WHERE \(detail.sql)\(keyset)
              ORDER BY ts DESC, id DESC LIMIT ?
             """
@@ -1984,7 +2046,11 @@ public actor UsageEventLedger: CostUsageEventSink {
                         ? nil : sqlite3_column_int64(statement, 8),
                     serviceTier: columnText(statement, 9),
                     sessionId: columnText(statement, 10),
-                    sourceKey: columnText(statement, 11)
+                    sourceKey: columnText(statement, 11),
+                    durationMs: sqlite3_column_type(statement, 13) == SQLITE_NULL
+                        ? nil : sqlite3_column_int64(statement, 13),
+                    firstTokenMs: sqlite3_column_type(statement, 14) == SQLITE_NULL
+                        ? nil : sqlite3_column_int64(statement, 14)
                 )
             )
         }
@@ -2591,10 +2657,12 @@ extension UsageEventLedger {
         var buckets: [DashboardGroupKey: UsageLedgerDashboardFacts.PromptBucketRow] = [:]
         var detailDays: [DashboardGroupKey: UsageLedgerDashboardFacts.DayRow] = [:]
         var harnessByPair: [Int: Harness?] = [:]
+        var speed: [DashboardGroupKey: UsageSpeedSamples] = [:]
         let bucketWidth = UsageLedgerDashboardFacts.promptBucketTokens
         try forEachDashboardRow(
             """
-            SELECT ts, tool, harness, model, project, fresh_input, output, cache_read, cache_creation, cost_micros, day
+            SELECT ts, tool, harness, model, project, fresh_input, output, cache_read, cache_creation, cost_micros, day,
+                   duration_ms, first_token_ms
               FROM usage_events WHERE \(detail.sql)
             """,
             detail.bindings
@@ -2670,6 +2738,20 @@ extension UsageEventLedger {
             add(&projects, column: 4, blank: .spaces)
             add(&models, column: 3, blank: .whitespaceAndNewlines)
 
+            // Request timing, kept as raw samples per (model, harness) so the
+            // page can take medians after its harness chips narrow the rows.
+            // A blank model is grouped under id 0 and only counts per harness.
+            if sqlite3_column_type(statement, 11) != SQLITE_NULL {
+                let modelID = interner.nonBlankID(statement, 3, blank: .whitespaceAndNewlines) ?? DashboardInterner.nullID
+                let key = DashboardGroupKey(id: Int64(modelID), harness: harness)
+                speed[key, default: UsageSpeedSamples()].add(
+                    output: tokens.output,
+                    durationMs: sqlite3_column_int64(statement, 11),
+                    firstTokenMs: sqlite3_column_type(statement, 12) == SQLITE_NULL
+                        ? nil : sqlite3_column_int64(statement, 12)
+                )
+            }
+
             let prompt = tokens.prompt
             if prompt > 0 {
                 let key = DashboardGroupKey(id: prompt / bucketWidth, harness: harness)
@@ -2689,6 +2771,13 @@ extension UsageEventLedger {
         facts.projects = Array(projects.values)
         facts.models = Array(models.values)
         facts.promptBuckets = Array(buckets.values)
+        facts.speedSamples = speed.map { key, samples in
+            UsageLedgerDashboardFacts.SpeedSampleRow(
+                harness: key.harness,
+                model: interner.text(Int(key.id)),
+                samples: samples
+            )
+        }
 
         if let rollup {
             try forEachDashboardRow(

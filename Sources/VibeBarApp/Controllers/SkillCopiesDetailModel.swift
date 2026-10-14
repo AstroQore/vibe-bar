@@ -33,6 +33,11 @@ final class SkillCopiesDetailModel: ObservableObject {
     @Published private(set) var selectedPath: String?
     @Published private(set) var fileDiff: FileDiffDisplay?
     @Published private(set) var isDiffing = false
+    @Published private(set) var resolutions: [String: SkillMergeSide] = [:]
+    @Published private(set) var unresolvedCount = 0
+    @Published private(set) var differingCopiesCount = 0
+    @Published private(set) var unknownCopiesCount = 0
+    @Published private(set) var changedPaths: Set<String> = []
     @Published var layout: DiffLayout = .unified
 
     private let service: SkillsService
@@ -71,6 +76,23 @@ final class SkillCopiesDetailModel: ObservableObject {
         }
     }
 
+    var mergeCopy: SkillCopy? {
+        guard version(id: baseID)?.kind == .shared, let compared = version(id: comparedID),
+              compared.isReadable, compared.kind != .shared else { return nil }
+        return compared.copy
+    }
+
+    var canMerge: Bool {
+        mergeCopy != nil && comparison?.truncated == false && !changedPaths.isEmpty
+            && unresolvedCount == 0 && !isComparing
+    }
+
+    func resolve(path: String, side: SkillMergeSide) {
+        guard changedPaths.contains(path) else { return }
+        resolutions[path] = side
+        unresolvedCount = changedPaths.subtracting(resolutions.keys).count
+    }
+
     func setBase(_ id: String?) {
         guard id != baseID else { return }
         // Picking the compared version as the base swaps the pair, the same
@@ -101,6 +123,14 @@ final class SkillCopiesDetailModel: ObservableObject {
 
     private func apply(_ inventory: SkillVersionInventory) {
         self.inventory = inventory
+        differingCopiesCount = inventory.versions.count {
+            if case .backup = $0.kind { return false }
+            return $0.comparison == .differs
+        }
+        unknownCopiesCount = inventory.versions.count {
+            if case .backup = $0.kind { return false }
+            return $0.comparison == .unknown
+        }
         let ids = Set(inventory.versions.map(\.id))
         // Keep the user's pair while both sides still exist; otherwise start
         // from the most telling one.
@@ -125,6 +155,9 @@ final class SkillCopiesDetailModel: ObservableObject {
     }
 
     private func compare() {
+        resolutions = [:]
+        changedPaths = []
+        unresolvedCount = 0
         generation += 1
         let token = generation
         comparisonFailed = false
@@ -174,6 +207,8 @@ final class SkillCopiesDetailModel: ObservableObject {
     private func show(_ result: SkillTreeComparison) {
         isComparing = false
         comparison = result
+        changedPaths = Set(result.files.filter { $0.change != .unchanged }.map(\.path))
+        unresolvedCount = changedPaths.count
         // Stay on the open file when the new pair has it too.
         if let selectedPath, result.files.contains(where: { $0.path == selectedPath }) {
             diffSelectedFile()
@@ -230,7 +265,7 @@ final class SkillCopiesDetailModel: ObservableObject {
     }
 
     private static func signature(of skill: Skill) -> String {
-        var parts = [skill.directory, skill.contentHash ?? "-", skill.localContentHash ?? "-"]
+        var parts = [skill.updatedAt?.description ?? "-", skill.directory, skill.contentHash ?? "-", skill.localContentHash ?? "-"]
         parts += skill.otherCopies.map { "\($0.id)#\($0.contentHash ?? "-")" }
         parts += skill.apps.keys.sorted { $0.rawValue < $1.rawValue }.map { "\($0.rawValue):\(skill.apps[$0]?.method.rawValue ?? "")" }
         return parts.joined(separator: "|")

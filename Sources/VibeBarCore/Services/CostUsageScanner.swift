@@ -172,7 +172,10 @@ public enum CostUsageScanner {
                         cache: delta.cached,
                         serviceTier: serviceTier,
                         harness: harness,
-                        projectPath: projectPath
+                        projectPath: projectPath,
+                        requestStartedAt: event.requestStartedAt,
+                        firstBlockAt: event.firstBlockAt,
+                        completedAt: event.completedAt
                     )
                     guard isRetained(parsedEvent.date, cutoff: cutoff) else { continue }
                     parsed.append(parsedEvent)
@@ -214,7 +217,7 @@ public enum CostUsageScanner {
     }
 
     private struct CodexEvent {
-        struct Totals {
+        struct Totals: Equatable {
             let input: Int
             let cached: Int
             let output: Int
@@ -224,6 +227,12 @@ public enum CostUsageScanner {
         let model: String
         let totals: Totals
         let serviceTier: String?
+        /// See `CodexRequestTimingTracker`: the request this `token_count`
+        /// reports, which finished at its last model item or usage record —
+        /// not at the `token_count`, which may follow a tool's execution.
+        var requestStartedAt: Date? = nil
+        var firstBlockAt: Date? = nil
+        var completedAt: Date? = nil
     }
 
     /// Returns the file's token events plus its `session_meta` originator,
@@ -237,6 +246,7 @@ public enum CostUsageScanner {
         var currentModel = "gpt-5"
         var currentTier: String?
         var runningTotals = CodexEvent.Totals(input: 0, cached: 0, output: 0)
+        var timing = CodexRequestTimingTracker()
         let didRead = forEachJSONLLine(in: file) { lineData in
             // Every line allocates a `JSONSerialization` object graph of
             // autoreleased Foundation values. Without a pool per line they
@@ -244,6 +254,11 @@ public enum CostUsageScanner {
             // for the whole pass.
             autoreleasepool {
                 guard !lineData.isEmpty else { return }
+                // Request boundaries come from the lines the usage parse
+                // skips (prompts, tool outputs, response items, usage
+                // records); read their tag and timestamp from the first bytes.
+                let probe = CodexRequestTimingTracker.classify(lineData)
+                if let date = probe.date { timing.observe(probe.kind, at: date) }
                 guard lineData.contains(asciiSequence: "token_count") ||
                         lineData.contains(asciiSequence: "model") ||
                         lineData.contains(asciiSequence: "service_tier") ||
@@ -295,7 +310,18 @@ public enum CostUsageScanner {
                 let tier = CostUsagePricing.normalizedCodexServiceTier(
                     info["service_tier"] as? String ?? payload["service_tier"] as? String ?? obj["service_tier"] as? String
                 ) ?? currentTier
-                events.append(CodexEvent(date: timestamp, model: currentModel, totals: totals, serviceTier: tier))
+                var event = CodexEvent(date: timestamp, model: currentModel, totals: totals, serviceTier: tier)
+                // A repeated `token_count` (same totals — a rate-limit refresh,
+                // a duplicate at turn end) closes nothing: the scan drops it as
+                // an empty delta, and the request still in flight keeps its
+                // start for the `token_count` that does record it.
+                if totals != events.last?.totals {
+                    let closed = timing.close()
+                    event.requestStartedAt = closed.start
+                    event.firstBlockAt = closed.firstBlock
+                    event.completedAt = closed.completed
+                }
+                events.append(event)
             }
         }
         return didRead ? (events, originator, projectPath, true) : ([], originator, projectPath, false)
@@ -351,19 +377,46 @@ public enum CostUsageScanner {
                 let harness = claudeHarness(file: file)
                 var keyedRows: [String: CostUsageScanCache.ParsedEvent] = [:]
                 var unkeyedRows: [CostUsageScanCache.ParsedEvent] = []
+                var timing = ClaudeRequestTimingTracker()
                 let didRead = forEachJSONLLine(in: file) { lineData in
                     // See `parseCodexFile`: one pool per line keeps the
                     // per-line JSON graph from accumulating for the pass.
                     autoreleasepool {
-                        guard !lineData.isEmpty,
-                              lineData.contains(asciiSequence: "assistant"),
+                        guard !lineData.isEmpty else { return }
+                        guard lineData.contains(asciiSequence: "assistant"),
                               lineData.contains(asciiSequence: "usage")
-                        else { return }
-                        guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any],
-                              obj["type"] as? String == "assistant",
-                              let message = obj["message"] as? [String: Any],
-                              let usage = message["usage"] as? [String: Any]
-                        else { return }
+                        else {
+                            // Prompts, tool results and attachments are never
+                            // JSON-parsed; their timestamp is read from bytes
+                            // because the next response's start is the last
+                            // of them.
+                            timing.observeUnparsedLine(lineData)
+                            return
+                        }
+                        guard let obj = (try? JSONSerialization.jsonObject(with: lineData)) as? [String: Any] else {
+                            return
+                        }
+                        let lineDate = (obj["timestamp"] as? String).flatMap(parseISO)
+                        guard obj["type"] as? String == "assistant",
+                              let message = obj["message"] as? [String: Any]
+                        else {
+                            // A prompt or tool result that merely mentions
+                            // both words still opens the next request.
+                            if obj["parentUuid"] != nil, let lineDate {
+                                timing.observeConversationLine(at: lineDate)
+                            }
+                            return
+                        }
+                        let messageId = message["id"] as? String
+                        let requestId = obj["requestId"] as? String
+                        if let lineDate {
+                            if let messageId, let requestId {
+                                timing.observeBlock(key: "\(messageId)\u{0}\(requestId)", at: lineDate)
+                            } else {
+                                timing.observeConversationLine(at: lineDate)
+                            }
+                        }
+                        guard let usage = message["usage"] as? [String: Any] else { return }
 
                         let model = (message["model"] as? String) ?? "claude-sonnet-4-5"
                         let input = anyInt(usage["input_tokens"])
@@ -376,9 +429,7 @@ public enum CostUsageScanner {
                         // fallback. A fast/priority value applies the model's
                         // fast-tier multiplier at costing time.
                         let serviceTier = (usage["speed"] as? String) ?? (usage["service_tier"] as? String)
-                        let date = (obj["timestamp"] as? String).flatMap(parseISO) ?? fileMTime(file) ?? Date()
-                        let messageId = message["id"] as? String
-                        let requestId = obj["requestId"] as? String
+                        let date = lineDate ?? fileMTime(file) ?? Date()
                         let sessionId = obj["sessionId"] as? String
                             ?? obj["session_id"] as? String
                             ?? (obj["metadata"] as? [String: Any])?["sessionId"] as? String
@@ -412,7 +463,15 @@ public enum CostUsageScanner {
                 // be cached as empty against its live fingerprint, or the
                 // next pass replays the empty result forever.
                 guard didRead else { return ([], false) }
-                let parsed = keyedRows.keys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
+                let parsed = keyedRows.keys.sorted().compactMap { key -> CostUsageScanCache.ParsedEvent? in
+                    guard let row = keyedRows[key] else { return nil }
+                    let measured = timing.timing(for: key)
+                    return row.withTiming(
+                        requestStartedAt: measured.start,
+                        firstBlockAt: measured.firstBlock,
+                        completedAt: measured.completed
+                    )
+                } + unkeyedRows
                 cache.store(parsed, for: file.path, mtime: mtime, size: size)
                 allEvents.append(contentsOf: parsed)
                 return (parsed, true)

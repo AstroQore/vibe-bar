@@ -19,13 +19,8 @@ public struct SkillsInventory: Sendable, Hashable {
     }
 }
 
-/// Every copy of a skill on this Mac, and the two actions that act on one.
-///
-/// Reads come from `SkillCopyScanner`, which never writes. The only writes
-/// here land in the shared library: `replaceSharedCopy` swaps the SSOT
-/// directory's content for a copy's (after a backup), and `copyToShared`
-/// installs a built-in through the ordinary `installLocal` path. A
-/// harness's own folder is only ever the *source* of a copy.
+/// Inventories skill copies and commits shared content. Copy resolution
+/// actions in SkillsService+Resolution reuse the same commit path.
 extension SkillsService {
     public func installedSkills() async -> [Skill] {
         await inventory().installed
@@ -145,21 +140,36 @@ extension SkillsService {
             throw SkillError.sourceNotADirectory(existing.directory)
         }
         let source = try validatedCopySource(copy)
-        // Claude, Gemini CLI, Grok Build, and Mistral Vibe key their
-        // per-skill switch by name. Adopting a copy that calls itself
-        // something else would silently re-point those entries — re-enable
-        // a skill the user turned off, or apply an unrelated one — so only a
-        // copy of the same name may replace the shared one — exactly the
-        // same: Codex matches its `[[skills.config]]` name blocks by exact
-        // string, so even a case-only respelling would orphan one. The name
-        // is read from disk, not taken from `copy`. `directoryConflict` is
-        // the closest existing error: another skill occupies this name's slot.
+        if let expected = copy.contentHash, try SkillDirectoryHasher.hash(directory: source) != expected {
+            throw SkillResolutionError.contentChanged
+        }
+        return try await commitSharedContent(existing, from: source)
+    }
+
+    /// Commits an already assembled tree through the same backup, metadata,
+    /// projection and registry path as a whole-copy replacement.
+    func commitSharedContent(_ existing: Skill, from source: URL) async throws -> Skill {
+        let shared = ssotDirectory(for: existing.directory)
+        guard !existing.isLinked, SkillFileSystem.kind(of: shared) == .directory else {
+            throw SkillError.linkedSkillUnsupported(existing.directory)
+        }
+        try SkillFileSystem.validateDirectoryAncestors(shared, homeDirectory: homeDirectory)
+        // Refuse a drifted managed projection before changing shared content.
+        // It can first be resolved through the explicit overwrite action.
+        for (app, recorded) in existing.apps where app.supportsProjection && recorded.method == .copy {
+            let destination = engine.destination(for: existing.directory, app: app)
+            try SkillFileSystem.validateDirectoryAncestors(destination, homeDirectory: homeDirectory)
+            guard engine.liveMaterialization(skillDirectoryName: existing.directory, app: app, recorded: recorded) != nil else {
+                throw SkillError.directoryConflict(existing.directory)
+            }
+        }
+        guard SkillFileSystem.kind(of: source.appendingPathComponent("SKILL.md")) == .regularFile else {
+            throw SkillError.missingSkillMD(existing.directory)
+        }
         let copyName = SkillFrontmatterParser.parse(
             contentsOf: source.appendingPathComponent("SKILL.md")
-        ).name ?? copy.directoryName
-        guard copyName == existing.name else {
-            throw SkillError.directoryConflict(copyName)
-        }
+        ).name ?? existing.directory
+        guard copyName == existing.name else { throw SkillError.directoryConflict(copyName) }
 
         try backups.createBackup(of: existing.directory, skill: existing)
 
