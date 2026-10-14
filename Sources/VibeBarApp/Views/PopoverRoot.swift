@@ -2637,6 +2637,9 @@ struct ProviderBucketRow: View {
                 timePaceDisplayed: timePaceDisplayed
             )
             .opacity(isExpired ? 0.45 : 1)
+            if bucket.hasPercentage, let shares = bucket.shares {
+                QuotaShareCaption(shares: shares, fontSize: density.resetCountdownFontSize)
+            }
             if !bucket.hasPercentage {
                 QuotaLearningStatus(bucket: bucket, fontSize: density.resetCountdownFontSize)
             } else if let forecast {

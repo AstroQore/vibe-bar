@@ -77,6 +77,10 @@ public struct MCPQuotaBucketDTO: Codable, Equatable, Sendable {
     public let windowSeconds: Int?
     public let forecast: MCPQuotaForecastDTO?
     public let quantity: MCPQuotaQuantityDTO?
+    /// How the used percent splits by product, when the provider reports
+    /// it (Grok's X Subscription pool). Shares sum to `usedPercent`; they
+    /// are not allowances and carry no remaining value or forecast.
+    public let shares: [MCPQuotaShareDTO]?
 
     public init(
         id: String,
@@ -88,7 +92,8 @@ public struct MCPQuotaBucketDTO: Codable, Equatable, Sendable {
         resetAt: Date?,
         windowSeconds: Int?,
         forecast: MCPQuotaForecastDTO?,
-        quantity: MCPQuotaQuantityDTO? = nil
+        quantity: MCPQuotaQuantityDTO? = nil,
+        shares: [MCPQuotaShareDTO]? = nil
     ) {
         self.id = id
         self.title = title
@@ -100,6 +105,16 @@ public struct MCPQuotaBucketDTO: Codable, Equatable, Sendable {
         self.windowSeconds = windowSeconds
         self.forecast = forecast
         self.quantity = quantity
+        self.shares = shares
+    }
+}
+
+public struct MCPQuotaShareDTO: Codable, Equatable, Sendable {
+    public let label: String
+    public let usedPercent: Double
+    public init(_ share: QuotaBucketShare) {
+        label = share.label
+        usedPercent = share.usedPercent
     }
 }
 
@@ -188,7 +203,8 @@ extension MCPQuotaBucketDTO {
             resetAt: bucket.resetAt,
             windowSeconds: bucket.rawWindowSeconds,
             forecast: bucket.supportsForecast ? forecast.map(MCPQuotaForecastDTO.init(forecast:)) : nil,
-            quantity: bucket.quantity.map(MCPQuotaQuantityDTO.init)
+            quantity: bucket.quantity.map(MCPQuotaQuantityDTO.init),
+            shares: bucket.hasPercentage ? bucket.shares?.map(MCPQuotaShareDTO.init) : nil
         )
     }
 }
