@@ -205,20 +205,42 @@ final class GrokXSubscriptionTests: XCTestCase {
     }
 
     func testPoolSharesOnlyExistForTheUnifiedPool() {
+        let snapshot = GrokWebBillingSnapshot(usedPercent: 13, resetsAt: nil)
         let legacy = GrokCreditsBillingSnapshot(
-            usedPercent: 10, periodStart: nil, periodEnd: nil,
-            productUsage: [.init(product: "GrokChat", usedPercent: 10)],
+            usedPercent: 13, periodStart: nil, periodEnd: nil,
+            productUsage: [.init(product: "GrokChat", usedPercent: 13)],
             isUnifiedBillingUser: false
         )
-        XCTAssertNil(GrokQuotaAdapter.poolShares(from: legacy), "A legacy account's Weekly carries no split")
+        XCTAssertNil(GrokQuotaAdapter.poolShares(from: legacy, matching: snapshot), "A legacy account's Weekly carries no split")
 
         let unified = GrokCreditsBillingSnapshot(
             usedPercent: 13, periodStart: nil, periodEnd: nil,
             productUsage: [.init(product: "GrokChat", usedPercent: 10), .init(product: "GrokImagine", usedPercent: 3)],
             isUnifiedBillingUser: true
         )
-        XCTAssertEqual(GrokQuotaAdapter.poolShares(from: unified)?.map(\.label), ["Chat", "Imagine"],
+        XCTAssertEqual(GrokQuotaAdapter.poolShares(from: unified, matching: snapshot)?.map(\.label), ["Chat", "Imagine"],
                        "An unfamiliar product keeps xAI's key minus the brand prefix")
+    }
+
+    func testStaleSharesFromTheOldCycleAreNotAttached() {
+        let reset = Date(timeIntervalSince1970: 1_792_092_466)
+        let oldCycle = GrokCreditsBillingSnapshot(
+            usedPercent: 61, periodStart: nil, periodEnd: reset,
+            productUsage: [.init(product: "GrokBuild", usedPercent: 60), .init(product: "GrokChat", usedPercent: 1)],
+            isUnifiedBillingUser: true
+        )
+        // The RPC already rolled over: 0% into the next week.
+        let rolledOver = GrokWebBillingSnapshot(usedPercent: 0, resetsAt: reset.addingTimeInterval(604_800))
+        XCTAssertNil(GrokQuotaAdapter.poolShares(from: oldCycle, matching: rolledOver),
+                     "A split that sums to 61% must not decorate a 0% week")
+
+        // Same cycle, same numbers within float noise: attached.
+        let live = GrokWebBillingSnapshot(usedPercent: 61.4, resetsAt: reset.addingTimeInterval(0.2))
+        XCTAssertEqual(GrokQuotaAdapter.poolShares(from: oldCycle, matching: live)?.count, 2)
+
+        // Same percent but the JSON names another period end: not attached.
+        let otherPeriod = GrokWebBillingSnapshot(usedPercent: 61, resetsAt: reset.addingTimeInterval(3_600))
+        XCTAssertNil(GrokQuotaAdapter.poolShares(from: oldCycle, matching: otherPeriod))
     }
 
     func testEnrichmentDeadlineDropsATricklingAnswer() async {

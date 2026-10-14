@@ -290,7 +290,7 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             usedPercent: snapshot.usedPercent,
             resetAt: snapshot.resetsAt,
             rawWindowSeconds: Self.weeklyWindowSeconds,
-            shares: Self.poolShares(from: credits)
+            shares: Self.poolShares(from: credits, matching: snapshot)
         )
         return AccountQuota(
             accountId: account.id,
@@ -304,13 +304,36 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         )
     }
 
+    /// How far the credits JSON may disagree with the RPC before its shares
+    /// are treated as describing another refresh point.
+    static let shareTolerancePercent = 1.5
+    static let sharePeriodTolerance: TimeInterval = 60
+
     /// The unified pool's split by product, as shares of the Weekly bucket.
     /// `productUsage` decomposes the one pool — the values sum to the
     /// headline percent — so each entry is a share with no remaining,
     /// pace or forecast of its own, never a bucket. Only for accounts xAI
     /// flags as unified; a legacy account's Weekly carries none.
-    static func poolShares(from credits: GrokCreditsBillingSnapshot?) -> [QuotaBucketShare]? {
+    ///
+    /// The two endpoints are read at the same moment but are not one
+    /// read: across a weekly rollover the RPC can already report the new
+    /// cycle while the JSON still describes the old one. Shares are
+    /// attached only when the JSON's headline percent and period end agree
+    /// with the snapshot they would decorate; otherwise the Weekly bucket
+    /// goes out without a split rather than with the previous cycle's.
+    static func poolShares(
+        from credits: GrokCreditsBillingSnapshot?,
+        matching snapshot: GrokWebBillingSnapshot
+    ) -> [QuotaBucketShare]? {
         guard let credits, credits.isUnifiedBillingUser else { return nil }
+        if let percent = credits.usedPercent,
+           abs(percent - snapshot.usedPercent) > Self.shareTolerancePercent {
+            return nil
+        }
+        if let periodEnd = credits.periodEnd, let resetsAt = snapshot.resetsAt,
+           abs(periodEnd.timeIntervalSince(resetsAt)) > Self.sharePeriodTolerance {
+            return nil
+        }
         let shares = credits.productUsage.map {
             QuotaBucketShare(label: Self.productLabel($0.product), usedPercent: $0.usedPercent)
         }
