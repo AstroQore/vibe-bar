@@ -279,13 +279,17 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         )
     }
 
-    /// The pool's split by product, one bucket each, on the pool's own
-    /// scale (they sum to the weekly percent). Grouped as "Shared Pool"
-    /// when xAI says the account is on the unified pool, "Products"
-    /// otherwise; both share the RPC's reset so the three rows age together.
+    /// The unified pool's split by product, one bucket each, on the pool's
+    /// own scale (they sum to the weekly percent), grouped as "Shared Pool"
+    /// and sharing the RPC's reset so the three rows age together.
+    ///
+    /// Only for accounts xAI flags as unified: the group is one identity
+    /// everywhere (`grok.shared-pool`, labelled "Pool" in the mini window
+    /// and Settings), so a legacy account must not be routed into it under
+    /// another name. Its card keeps the single Weekly bucket as before.
     static func productBuckets(from credits: GrokCreditsBillingSnapshot?, resetAt: Date?) -> [QuotaBucket] {
-        guard let credits, !credits.productUsage.isEmpty else { return [] }
-        let groupTitle = credits.isUnifiedBillingUser ? "Shared Pool" : "Products"
+        guard let credits, credits.isUnifiedBillingUser, !credits.productUsage.isEmpty else { return [] }
+        let groupTitle = "Shared Pool"
         return credits.productUsage.compactMap { usage in
             guard let (id, label) = Self.productBucketIdentity(usage.product) else { return nil }
             return QuotaBucket(

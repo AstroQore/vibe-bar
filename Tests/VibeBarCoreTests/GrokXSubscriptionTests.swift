@@ -190,16 +190,24 @@ final class GrokXSubscriptionTests: XCTestCase {
         XCTAssertEqual(quota.buckets.map(\.id), ["weekly"])
     }
 
-    func testProductBucketsLabelNonUnifiedAccountsAsProducts() {
-        let credits = GrokCreditsBillingSnapshot(
+    func testProductBucketsOnlyExistForTheUnifiedPool() {
+        let legacy = GrokCreditsBillingSnapshot(
             usedPercent: 10, periodStart: nil, periodEnd: Date(timeIntervalSince1970: 1_792_092_466),
-            productUsage: [.init(product: "GrokChat", usedPercent: 10), .init(product: "GrokImagine", usedPercent: 3)],
+            productUsage: [.init(product: "GrokChat", usedPercent: 10)],
             isUnifiedBillingUser: false
         )
-        let buckets = GrokQuotaAdapter.productBuckets(from: credits, resetAt: nil)
+        XCTAssertTrue(GrokQuotaAdapter.productBuckets(from: legacy, resetAt: nil).isEmpty,
+                      "A legacy account must not be routed into the Shared Pool group")
+
+        let unified = GrokCreditsBillingSnapshot(
+            usedPercent: 13, periodStart: nil, periodEnd: legacy.periodEnd,
+            productUsage: [.init(product: "GrokChat", usedPercent: 10), .init(product: "GrokImagine", usedPercent: 3)],
+            isUnifiedBillingUser: true
+        )
+        let buckets = GrokQuotaAdapter.productBuckets(from: unified, resetAt: nil)
         XCTAssertEqual(buckets.map(\.id), ["grok_chat_weekly"], "Unknown products are not minted into buckets")
-        XCTAssertEqual(buckets.first?.groupTitle, "Products")
-        XCTAssertEqual(buckets.first?.resetAt, credits.periodEnd, "Falls back to the JSON period end")
+        XCTAssertEqual(buckets.first?.groupTitle, "Shared Pool")
+        XCTAssertEqual(buckets.first?.resetAt, unified.periodEnd, "Falls back to the JSON period end")
     }
 
     // MARK: - Helpers
