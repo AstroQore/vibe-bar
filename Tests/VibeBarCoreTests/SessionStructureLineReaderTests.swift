@@ -45,6 +45,58 @@ final class SessionStructureLineReaderTests: XCTestCase {
         XCTAssertEqual(afterWindow.outcome.lastLineEnd, beforeWindow.outcome.lastLineEnd)
     }
 
+    /// Every size policy judges a compressed log by what it decompresses
+    /// to: the fingerprint says so whether the frame header declares the
+    /// size or the stream has to be measured, and a whole-file read stops
+    /// at the decompressed ceiling instead of inflating without bound.
+    func testCompressedLogIsSizedAndBudgetedByItsDecompressedBytes() throws {
+        let directory = try SessionStructureFixtures.temporaryDirectory("compressed-size")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let line = Data((String(repeating: "x", count: 1_000) + "\n").utf8)
+        var content = Data()
+        for _ in 0..<300 { content.append(line) }
+
+        let declared = directory.appendingPathComponent("rollout-declared.jsonl.zst")
+        try ZstdRawFrame.wrap(content).write(to: declared)
+        XCTAssertEqual(ZstdFrameHeader.contentSize(of: declared), Int64(content.count))
+        XCTAssertEqual(try XCTUnwrap(SessionFileFingerprint.of(path: declared.path)).size, Int64(content.count))
+
+        let measured = directory.appendingPathComponent("rollout-measured.jsonl.zst")
+        try ZstdRawFrame.wrapWithoutContentSize(content).write(to: measured)
+        XCTAssertNil(ZstdFrameHeader.contentSize(of: measured))
+        XCTAssertEqual(try XCTUnwrap(SessionFileFingerprint.of(path: measured.path)).size, Int64(content.count))
+
+        let plain = directory.appendingPathComponent("rollout-plain.jsonl")
+        try content.write(to: plain)
+        XCTAssertEqual(try XCTUnwrap(SessionFileFingerprint.of(path: plain.path)).size, Int64(content.count))
+
+        var lines = 0
+        let capped = SessionStructureLineReader.forEachLine(in: declared, maxDecompressedBytes: 70_000) { _ in
+            lines += 1
+            return true
+        }
+        XCTAssertFalse(capped.completed, "past the ceiling the read is incomplete, not silently whole")
+        XCTAssertLessThan(lines, 300)
+        XCTAssertLessThanOrEqual(capped.bytesRead, 70_000 + Int64(SessionStructureLineReader.chunkSize))
+
+        var all = 0
+        let whole = SessionStructureLineReader.forEachLine(in: declared) { _ in
+            all += 1
+            return true
+        }
+        XCTAssertTrue(whole.completed)
+        XCTAssertEqual(all, 300)
+        var windowed = 0
+        let window = SessionStructureLineReader.forEachLine(
+            in: declared, range: SessionStructure.ByteRange(0, 2_002), maxDecompressedBytes: 1
+        ) { _ in
+            windowed += 1
+            return true
+        }
+        XCTAssertTrue(window.completed, "a window read is bounded by its range, not the ceiling")
+        XCTAssertEqual(windowed, 2)
+    }
+
     func testOffsetsBlankLinesAndMissingTrailingNewline() throws {
         let url = directory.appendingPathComponent("a.jsonl")
         try Data("alpha\n\nbeta\ngamma".utf8).write(to: url)

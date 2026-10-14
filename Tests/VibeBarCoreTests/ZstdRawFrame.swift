@@ -26,6 +26,27 @@ enum ZstdRawFrame {
         return out
     }
 
+    /// The same raw-block frame without a Frame_Content_Size — what a
+    /// streaming compressor writes when it was not told the input size.
+    /// Window_Descriptor 0x38: exponent 7, a 128 KiB window, enough for a
+    /// stored block.
+    static func wrapWithoutContentSize(_ content: Data) -> Data {
+        var out = Data([0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x38])
+        let bytes = [UInt8](content)
+        var cursor = 0
+        repeat {
+            let length = min(maxBlockSize, bytes.count - cursor)
+            let isLast = cursor + length >= bytes.count
+            let header = UInt32(length) << 3 | (isLast ? 1 : 0)
+            out.append(UInt8(header & 0xFF))
+            out.append(UInt8((header >> 8) & 0xFF))
+            out.append(UInt8((header >> 16) & 0xFF))
+            out.append(contentsOf: bytes[cursor..<cursor + length])
+            cursor += length
+        } while cursor < bytes.count
+        return out
+    }
+
     /// Replace `plain` (a `.jsonl`) with its compressed twin, the way
     /// Codex's compression worker does: write `<name>.jsonl.zst`, remove
     /// the original. Returns the compressed file's URL.

@@ -17,7 +17,14 @@ public struct SessionFileFingerprint: Hashable, Sendable, Codable {
         var info = stat()
         guard stat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { return nil }
         let nanos = Int64(info.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(info.st_mtimespec.tv_nsec)
-        return SessionFileFingerprint(mtimeNs: nanos, size: Int64(info.st_size))
+        let onDisk = Int64(info.st_size)
+        // A compressed log parses as its decompressed bytes; every size
+        // policy downstream is about parsing, so that is the size recorded.
+        if SessionLogByteReader.isCompressedName((path as NSString).lastPathComponent),
+           let logical = CompressedSessionSize.logicalSize(path: path, mtimeNs: nanos, compressedSize: onDisk) {
+            return SessionFileFingerprint(mtimeNs: nanos, size: logical)
+        }
+        return SessionFileFingerprint(mtimeNs: nanos, size: onDisk)
     }
 }
 

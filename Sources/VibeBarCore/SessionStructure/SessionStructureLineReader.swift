@@ -41,7 +41,15 @@ enum SessionStructureLineReader {
         var lastLineEnd: Int64
     }
 
+    /// The most a whole-file read of a compressed log will decompress
+    /// before giving up: `SessionStructureService` never parses a file
+    /// larger than this, so decompressing further is never useful work.
+    static let defaultMaxDecompressedBytes: Int64 = 512 * 1024 * 1024
+
     /// - Parameters:
+    ///   - maxDecompressedBytes: for a compressed log read without a
+    ///     `range`, the decompressed bytes after which the read stops as
+    ///     incomplete; a window read is bounded by its range instead.
     ///   - isCancelled: polled once per chunk.
     ///   - body: return `false` to stop early.
     @discardableResult
@@ -50,6 +58,7 @@ enum SessionStructureLineReader {
         range: SessionStructure.ByteRange? = nil,
         maxLineBytes: Int = defaultMaxLineBytes,
         headBytes: Int = defaultHeadBytes,
+        maxDecompressedBytes: Int64 = defaultMaxDecompressedBytes,
         isCancelled: () -> Bool = { false },
         _ body: (Line) -> Bool
     ) -> Outcome {
@@ -77,6 +86,8 @@ enum SessionStructureLineReader {
         }
         let startOffset = fileOffset
         let headCap = max(0, min(headBytes, maxLineBytes))
+        let ceiling: Int64? = handle.isCompressed && range == nil ? maxDecompressedBytes : nil
+        var exceeded = false
 
         var lineBuffer: [UInt8] = []
         var lineStart: Int64 = fileOffset
@@ -170,6 +181,10 @@ enum SessionStructureLineReader {
                     }
                 }
                 fileOffset += Int64(chunk.count)
+                if let ceiling, fileOffset - startOffset > ceiling {
+                    exceeded = true
+                    break
+                }
             }
         } catch {
             return Outcome(completed: false, bytesRead: fileOffset - startOffset, lastLineEnd: lastLineEnd)
@@ -177,7 +192,7 @@ enum SessionStructureLineReader {
         if reachedEnd, !skippingToNewline, lineLength > 0, lineStart < upper {
             if !emit() { stopped = true }
         }
-        let completed = reachedEnd || (stopped && lineStart >= upper)
+        let completed = !exceeded && (reachedEnd || (stopped && lineStart >= upper))
         return Outcome(completed: completed, bytesRead: fileOffset - startOffset, lastLineEnd: lastLineEnd)
     }
 
