@@ -438,10 +438,6 @@ private struct MiniBranchCell: Identifiable {
             return "Monthly"
         case "grok_bot_weekly" where tool == .cursor:
             return "Weekly"
-        // Both cells sit under the "Pool" heading, so the title names the
-        // product rather than repeating the group.
-        case "grok_build_weekly": return "Build"
-        case "grok_chat_weekly": return "Chat"
         case let id where tool == .antigravity && id.contains("gpt-oss"):
             return "GPT"
         case let id where tool == .antigravity && id.contains("sonnet"):

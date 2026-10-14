@@ -1,5 +1,20 @@
 import Foundation
 
+/// How much of a bucket's used percent one product accounts for, on the
+/// bucket's own scale (the shares sum to `usedPercent`). A share is a
+/// decomposition, not an allowance: it has no remaining value, no pace and
+/// no forecast, which is why it is a caption on its bucket rather than a
+/// bucket of its own.
+public struct QuotaBucketShare: Codable, Hashable, Sendable {
+    public var label: String
+    public var usedPercent: Double
+
+    public init(label: String, usedPercent: Double) {
+        self.label = VisibleSecretRedactor.redact(label) ?? ""
+        self.usedPercent = usedPercent.isFinite ? max(0.0, min(100.0, usedPercent)) : 0
+    }
+}
+
 public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var title: String
@@ -19,6 +34,10 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
     /// `SubscriptionHistoryStore` would read each expiry as a completed
     /// cycle and fill the reset history with them.
     public var hasRollingReset: Bool
+    /// The used percent broken down by product, when the provider reports
+    /// one (Grok's X Subscription pool: Build, Chat). Nil for every other
+    /// bucket and for every bucket cached before this field existed.
+    public var shares: [QuotaBucketShare]?
 
     public var hasPercentage: Bool { quantity.map { $0.usedPercent != nil } ?? true }
     public var supportsForecast: Bool { hasPercentage }
@@ -32,9 +51,11 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         rawWindowSeconds: Int? = nil,
         groupTitle: String? = nil,
         quantity: QuotaQuantity? = nil,
-        hasRollingReset: Bool = false
+        hasRollingReset: Bool = false,
+        shares: [QuotaBucketShare]? = nil
     ) {
         self.hasRollingReset = hasRollingReset
+        self.shares = shares.flatMap { $0.isEmpty ? nil : $0 }
         self.quantity = quantity
         self.id = id
         self.title = VisibleSecretRedactor.redact(title) ?? ""
@@ -64,6 +85,7 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         case groupTitle
         case quantity
         case hasRollingReset
+        case shares
     }
 
     public init(from decoder: Decoder) throws {
@@ -77,7 +99,8 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
             rawWindowSeconds: try container.decodeIfPresent(Int.self, forKey: .rawWindowSeconds),
             groupTitle: try container.decodeIfPresent(String.self, forKey: .groupTitle),
             quantity: try container.decodeIfPresent(QuotaQuantity.self, forKey: .quantity),
-            hasRollingReset: try container.decodeIfPresent(Bool.self, forKey: .hasRollingReset) ?? false
+            hasRollingReset: try container.decodeIfPresent(Bool.self, forKey: .hasRollingReset) ?? false,
+            shares: try container.decodeIfPresent([QuotaBucketShare].self, forKey: .shares)
         )
     }
 
@@ -94,6 +117,7 @@ public struct QuotaBucket: Codable, Identifiable, Hashable, Sendable {
         // Absent means false, which is what every bucket written before this
         // was; only the buckets that carry one pay a key.
         if hasRollingReset { try container.encode(true, forKey: .hasRollingReset) }
+        try container.encodeIfPresent(shares, forKey: .shares)
     }
 
     /// Quota-window names are ordinary UI copy, not telemetry codes. Keep

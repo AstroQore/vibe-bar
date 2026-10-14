@@ -23,8 +23,8 @@ import Foundation
 /// With a bearer, three enrichment calls run alongside the RPC, each
 /// silent on failure: the CLI settings endpoint (plan display name), the
 /// credits-format billing JSON (the pool's split into Grok Build / Grok
-/// chat, and whether it is The X Subscription's unified pool — surfaced
-/// as a "Build" and a "Chat" group beside Weekly) and grok.com's subscription
+/// chat, and whether it is The X Subscription's unified pool — carried as
+/// Build / Chat shares on the Weekly bucket) and grok.com's subscription
 /// list (the plan the user actually bought, which after a move to The X
 /// Subscription is no longer what the display name says).
 public struct GrokQuotaAdapter: QuotaAdapter {
@@ -289,12 +289,13 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             shortLabel: "Weekly",
             usedPercent: snapshot.usedPercent,
             resetAt: snapshot.resetsAt,
-            rawWindowSeconds: Self.weeklyWindowSeconds
+            rawWindowSeconds: Self.weeklyWindowSeconds,
+            shares: Self.poolShares(from: credits)
         )
         return AccountQuota(
             accountId: account.id,
             tool: .grok,
-            buckets: [weekly] + Self.productBuckets(from: credits, resetAt: snapshot.resetsAt),
+            buckets: [weekly],
             plan: plan,
             email: email,
             queriedAt: now,
@@ -303,40 +304,28 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         )
     }
 
-    /// The unified pool's split by product, one bucket each, on the pool's
-    /// own scale (they sum to the weekly percent), sharing the RPC's reset
-    /// so the rows age together. Like every per-model lane, the group names
-    /// the product ("Build", "Chat") and the title names the window: the
-    /// provider card renders grouped rows by title, so two "Weekly" rows in
-    /// one group would be indistinguishable. The mini window folds both
-    /// groups into the one `grok.shared-pool` key ("Pool").
-    ///
-    /// Only for accounts xAI flags as unified: a legacy account must not be
-    /// routed into the pool's groups. Its card keeps the single Weekly
-    /// bucket as before.
-    static func productBuckets(from credits: GrokCreditsBillingSnapshot?, resetAt: Date?) -> [QuotaBucket] {
-        guard let credits, credits.isUnifiedBillingUser, !credits.productUsage.isEmpty else { return [] }
-        return credits.productUsage.compactMap { usage in
-            guard let (id, label) = Self.productBucketIdentity(usage.product) else { return nil }
-            return QuotaBucket(
-                id: id,
-                title: "Weekly",
-                shortLabel: label,
-                usedPercent: usage.usedPercent,
-                resetAt: resetAt ?? credits.periodEnd,
-                rawWindowSeconds: Self.weeklyWindowSeconds,
-                groupTitle: label
-            )
+    /// The unified pool's split by product, as shares of the Weekly bucket.
+    /// `productUsage` decomposes the one pool — the values sum to the
+    /// headline percent — so each entry is a share with no remaining,
+    /// pace or forecast of its own, never a bucket. Only for accounts xAI
+    /// flags as unified; a legacy account's Weekly carries none.
+    static func poolShares(from credits: GrokCreditsBillingSnapshot?) -> [QuotaBucketShare]? {
+        guard let credits, credits.isUnifiedBillingUser else { return nil }
+        let shares = credits.productUsage.map {
+            QuotaBucketShare(label: Self.productLabel($0.product), usedPercent: $0.usedPercent)
         }
+        return shares.isEmpty ? nil : shares
     }
 
-    /// Only the two products the pool is known to report; an unfamiliar
-    /// product key would otherwise mint a bucket id nothing can group.
-    static func productBucketIdentity(_ product: String) -> (id: String, label: String)? {
+    /// `GrokBuild` → "Build", `GrokChat` → "Chat"; a product this does not
+    /// know keeps xAI's key minus the brand prefix.
+    static func productLabel(_ product: String) -> String {
         switch product.lowercased() {
-        case "grokbuild": return ("grok_build_weekly", "Build")
-        case "grokchat": return ("grok_chat_weekly", "Chat")
-        default: return nil
+        case "grokbuild": return "Build"
+        case "grokchat": return "Chat"
+        default:
+            let stripped = product.hasPrefix("Grok") ? String(product.dropFirst(4)) : product
+            return stripped.isEmpty ? product : stripped
         }
     }
 }

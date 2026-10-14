@@ -364,8 +364,6 @@ final class MiniQuotaWindowController: NSObject, NSWindowDelegate {
             return "cursor.other-models"
         case "grok_bot_weekly" where tool == .cursor:
             return "cursor.grok-bot"
-        case "grok_build_weekly", "grok_chat_weekly":
-            return "grok.shared-pool"
         default:
             break
         }

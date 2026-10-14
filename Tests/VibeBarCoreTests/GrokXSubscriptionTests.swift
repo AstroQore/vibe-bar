@@ -146,7 +146,7 @@ final class GrokXSubscriptionTests: XCTestCase {
 
     // MARK: - Adapter composition
 
-    func testAdapterAddsSharedPoolBucketsBesideWeekly() throws {
+    func testAdapterCarriesThePoolSplitAsSharesOnWeekly() throws {
         let now = Date(timeIntervalSince1970: 1_791_950_000)
         let reset = Date(timeIntervalSince1970: 1_792_092_466)
         let credits = try GrokCreditsBillingFetcher.parse(Data(Self.creditsPayload.utf8))
@@ -158,28 +158,40 @@ final class GrokXSubscriptionTests: XCTestCase {
             credits: credits,
             now: now
         )
-        XCTAssertEqual(quota.buckets.map(\.id), ["weekly", "grok_build_weekly", "grok_chat_weekly"])
+        XCTAssertEqual(quota.buckets.map(\.id), ["weekly"], "A share is a decomposition, never a bucket of its own")
         XCTAssertEqual(quota.plan, "X Ultra")
         let weekly = try XCTUnwrap(quota.weeklyBucket)
         XCTAssertEqual(weekly.usedPercent, 61)
-        XCTAssertNil(weekly.groupTitle, "The headline window stays directly under the SubProvider")
+        XCTAssertEqual(weekly.resetAt, reset)
+        XCTAssertEqual(weekly.shares, [
+            QuotaBucketShare(label: "Build", usedPercent: 60),
+            QuotaBucketShare(label: "Chat", usedPercent: 1)
+        ])
+        XCTAssertTrue(weekly.supportsForecast, "The pool itself still forecasts")
 
-        let build = try XCTUnwrap(quota.bucket(id: "grok_build_weekly"))
-        XCTAssertEqual(build.shortLabel, "Build")
-        XCTAssertEqual(build.title, "Weekly")
-        XCTAssertEqual(build.usedPercent, 60)
-        XCTAssertEqual(build.groupTitle, "Build", "Group names the product, title names the window")
-        XCTAssertEqual(quota.bucket(id: "grok_chat_weekly")?.groupTitle, "Chat")
-        XCTAssertEqual(build.resetAt, reset, "Product rows age with the RPC's reset")
-        XCTAssertEqual(build.rawWindowSeconds, 604_800)
-        XCTAssertEqual(quota.bucket(id: "grok_chat_weekly")?.usedPercent, 1)
-
-        for id in ["grok_build_weekly", "grok_chat_weekly"] {
-            XCTAssertEqual(MenuBarFieldCatalog.quotaGroupKey(tool: .grok, bucketId: id), "grok.shared-pool")
-        }
+        let dto = MCPQuotaBucketDTO(bucket: weekly, forecast: nil)
+        XCTAssertEqual(dto.shares?.map(\.label), ["Build", "Chat"])
+        XCTAssertEqual(dto.usedPercent, 61)
     }
 
-    func testAdapterWithoutEnrichmentKeepsTheSingleWeeklyBucket() {
+    func testSharesRoundTripThroughTheQuotaCacheAndStayOptional() throws {
+        let bucket = QuotaBucket(
+            id: "weekly", title: "Weekly", shortLabel: "Weekly", usedPercent: 61,
+            resetAt: Date(timeIntervalSince1970: 1_792_092_466), rawWindowSeconds: 604_800,
+            shares: [QuotaBucketShare(label: "Build", usedPercent: 60)]
+        )
+        let data = try JSONEncoder().encode(bucket)
+        XCTAssertEqual(try JSONDecoder().decode(QuotaBucket.self, from: data), bucket)
+
+        // A cache written before shares existed, and a bucket without any.
+        let legacy = #"{"id":"weekly","title":"Weekly","shortLabel":"Weekly","usedPercent":42}"#
+        XCTAssertNil(try JSONDecoder().decode(QuotaBucket.self, from: Data(legacy.utf8)).shares)
+        let plain = QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "Weekly", usedPercent: 1, shares: [])
+        XCTAssertNil(plain.shares, "An empty split is no split")
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(plain), as: UTF8.self).contains("shares"))
+    }
+
+    func testAdapterWithoutEnrichmentKeepsAPlainWeeklyBucket() {
         let quota = GrokQuotaAdapter.makeQuota(
             snapshot: GrokWebBillingSnapshot(usedPercent: 42, resetsAt: nil),
             account: Self.account,
@@ -189,53 +201,24 @@ final class GrokXSubscriptionTests: XCTestCase {
             now: Date()
         )
         XCTAssertEqual(quota.buckets.map(\.id), ["weekly"])
+        XCTAssertNil(quota.weeklyBucket?.shares)
     }
 
-    func testProductBucketsOnlyExistForTheUnifiedPool() {
+    func testPoolSharesOnlyExistForTheUnifiedPool() {
         let legacy = GrokCreditsBillingSnapshot(
-            usedPercent: 10, periodStart: nil, periodEnd: Date(timeIntervalSince1970: 1_792_092_466),
+            usedPercent: 10, periodStart: nil, periodEnd: nil,
             productUsage: [.init(product: "GrokChat", usedPercent: 10)],
             isUnifiedBillingUser: false
         )
-        XCTAssertTrue(GrokQuotaAdapter.productBuckets(from: legacy, resetAt: nil).isEmpty,
-                      "A legacy account must not be routed into the pool's product groups")
+        XCTAssertNil(GrokQuotaAdapter.poolShares(from: legacy), "A legacy account's Weekly carries no split")
 
         let unified = GrokCreditsBillingSnapshot(
-            usedPercent: 13, periodStart: nil, periodEnd: legacy.periodEnd,
+            usedPercent: 13, periodStart: nil, periodEnd: nil,
             productUsage: [.init(product: "GrokChat", usedPercent: 10), .init(product: "GrokImagine", usedPercent: 3)],
             isUnifiedBillingUser: true
         )
-        let buckets = GrokQuotaAdapter.productBuckets(from: unified, resetAt: nil)
-        XCTAssertEqual(buckets.map(\.id), ["grok_chat_weekly"], "Unknown products are not minted into buckets")
-        XCTAssertEqual(buckets.first?.groupTitle, "Chat")
-        XCTAssertEqual(buckets.first?.resetAt, unified.periodEnd, "Falls back to the JSON period end")
-    }
-
-    func testRenamedSharedPoolKeepsItsFieldsThroughAnEnrichmentHiccup() {
-        var registry = QuotaFieldRegistry()
-        let reset = Date(timeIntervalSince1970: 1_792_092_466)
-        let credits = GrokCreditsBillingSnapshot(
-            usedPercent: 61, periodStart: nil, periodEnd: reset,
-            productUsage: [.init(product: "GrokBuild", usedPercent: 60), .init(product: "GrokChat", usedPercent: 1)],
-            isUnifiedBillingUser: true
-        )
-        let quota = GrokQuotaAdapter.makeQuota(
-            snapshot: GrokWebBillingSnapshot(usedPercent: 61, resetsAt: reset),
-            account: Self.account, plan: "X Ultra", email: nil, credits: credits, now: Date()
-        )
-        registry.record(tool: .grok, buckets: quota.buckets)
-        let discovered = registry.fields.filter { $0.tool == .grok }.map(\.bucketId).sorted()
-        XCTAssertEqual(discovered, ["grok_build_weekly", "grok_chat_weekly"])
-
-        // The user named the group (under the key the naming UI uses) but
-        // selected nothing; one refresh without the enrichment follows.
-        registry.prune(tool: .grok, liveBucketIds: ["weekly"],
-                       keeping: QuotaFieldKeepSet(groupKeys: ["grok.shared-pool"]))
-        XCTAssertEqual(registry.fields.filter { $0.tool == .grok }.count, 2,
-                       "A user-named group keeps its fields, dimmed, through a hiccup")
-
-        registry.prune(tool: .grok, liveBucketIds: ["weekly"], keeping: QuotaFieldKeepSet())
-        XCTAssertTrue(registry.fields.filter { $0.tool == .grok }.isEmpty, "Unreferenced fields are forgotten")
+        XCTAssertEqual(GrokQuotaAdapter.poolShares(from: unified)?.map(\.label), ["Chat", "Imagine"],
+                       "An unfamiliar product keeps xAI's key minus the brand prefix")
     }
 
     func testEnrichmentDeadlineDropsATricklingAnswer() async {

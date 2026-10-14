@@ -488,6 +488,9 @@ struct QuotaGroupCard: View {
                 .font(.system(size: density.subtitleFontSize, weight: .semibold))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let shares = bucket.shares {
+                QuotaShareCaption(shares: shares, fontSize: density.subtitleFontSize)
+            }
             if let forecast {
                 QuotaForecastRow(
                     forecast: forecast,
@@ -1002,5 +1005,23 @@ struct QuotaGroupCard: View {
         let target = now.addingTimeInterval(etaSeconds)
         return ResetCountdownFormatter.string(from: target, now: now)
             .map { L10n.Quota.Pace.runsOutIn(countdown: $0) } ?? "—"
+    }
+}
+
+/// "Build 60% · Chat 1%": how a bucket's used percent splits by product.
+/// Always the used share, whatever the display mode — a share has no
+/// remaining value, so flipping it would invent an allowance.
+struct QuotaShareCaption: View {
+    let shares: [QuotaBucketShare]
+    let fontSize: CGFloat
+
+    var body: some View {
+        Text(shares.map { share in
+            "\(share.label) \(L10n.Common.percent(value: Int(share.usedPercent.rounded())))"
+        }.joined(separator: " · "))
+            .font(.system(size: fontSize).monospacedDigit())
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
