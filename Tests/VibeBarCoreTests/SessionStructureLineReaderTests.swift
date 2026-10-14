@@ -46,10 +46,11 @@ final class SessionStructureLineReaderTests: XCTestCase {
     }
 
     /// Every size policy judges a compressed log by what it decompresses
-    /// to: the fingerprint says so whether the frame header declares the
-    /// size or the stream has to be measured. A caller with a budget of
-    /// its own can cap a whole-file read; without one the read is whole,
-    /// since the caller sized the file before choosing to read it all.
+    /// to: the fingerprint carries the frame's declared content size (Codex
+    /// pledges it on every rollout it compresses); a frame without one is
+    /// sized by its file, never decoded just to be measured. A caller with
+    /// a budget of its own can cap a whole-file read; without one the read
+    /// is whole, since the caller sized the file before choosing to read it.
     func testCompressedLogIsSizedAndBudgetedByItsDecompressedBytes() throws {
         let directory = try SessionStructureFixtures.temporaryDirectory("compressed-size")
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -62,10 +63,12 @@ final class SessionStructureLineReaderTests: XCTestCase {
         XCTAssertEqual(ZstdFrameHeader.contentSize(of: declared), Int64(content.count))
         XCTAssertEqual(try XCTUnwrap(SessionFileFingerprint.of(path: declared.path)).size, Int64(content.count))
 
-        let measured = directory.appendingPathComponent("rollout-measured.jsonl.zst")
-        try ZstdRawFrame.wrapWithoutContentSize(content).write(to: measured)
-        XCTAssertNil(ZstdFrameHeader.contentSize(of: measured))
-        XCTAssertEqual(try XCTUnwrap(SessionFileFingerprint.of(path: measured.path)).size, Int64(content.count))
+        let undeclared = directory.appendingPathComponent("rollout-undeclared.jsonl.zst")
+        let frame = ZstdRawFrame.wrapWithoutContentSize(content)
+        try frame.write(to: undeclared)
+        XCTAssertNil(ZstdFrameHeader.contentSize(of: undeclared))
+        XCTAssertEqual(try XCTUnwrap(SessionFileFingerprint.of(path: undeclared.path)).size, Int64(frame.count),
+                       "no declared size: sized by the file, not decoded to be measured")
 
         let plain = directory.appendingPathComponent("rollout-plain.jsonl")
         try content.write(to: plain)

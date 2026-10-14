@@ -19,10 +19,11 @@ public struct SessionFileFingerprint: Hashable, Sendable, Codable {
         let nanos = Int64(info.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(info.st_mtimespec.tv_nsec)
         let onDisk = Int64(info.st_size)
         // A compressed log parses as its decompressed bytes; every size
-        // policy downstream is about parsing, so that is the size recorded.
+        // policy downstream is about parsing, so that is the size recorded
+        // whenever the frame declares it (Codex's always does).
         if SessionLogByteReader.isCompressedName((path as NSString).lastPathComponent),
-           let logical = CompressedSessionSize.logicalSize(path: path, mtimeNs: nanos, compressedSize: onDisk) {
-            return SessionFileFingerprint(mtimeNs: nanos, size: logical)
+           let declared = CompressedSessionSize.declaredSize(path: path) {
+            return SessionFileFingerprint(mtimeNs: nanos, size: declared)
         }
         return SessionFileFingerprint(mtimeNs: nanos, size: onDisk)
     }
