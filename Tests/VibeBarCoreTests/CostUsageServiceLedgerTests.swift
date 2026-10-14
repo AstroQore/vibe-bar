@@ -50,6 +50,103 @@ final class CostUsageServiceLedgerTests: XCTestCase {
         return home
     }
 
+    /// Codex's `local_thread_store_compression` renames a rollout to
+    /// `.jsonl.zst` with the same contents. The scan must still see it,
+    /// and the ledger must upsert the rows it already holds for that
+    /// rollout instead of counting every request a second time.
+    func testCompressedRolloutIsScannedWithoutDoubleCounting() async throws {
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let home = try makeCodexHome(now: now)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let (ledger, directory) = try UsageLedgerFixtures.makeLedger("ServiceScanZst")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let filter = UsageLedgerFixtures.wideFilter(around: now)
+
+        let plainScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now, eventSink: ledger)
+        let plain = try XCTUnwrap(plainScan)
+        let plainSummary = try await ledger.summary(filter)
+        XCTAssertEqual(plainSummary.requests, plain.allTimeRequests)
+        XCTAssertEqual(plain.jsonlFilesFound, 1)
+
+        let rollout = home.appendingPathComponent(".codex/sessions/session.jsonl")
+        try ZstdRawFrame.compressInPlace(rollout)
+
+        let compressedScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now, eventSink: ledger)
+        let compressed = try XCTUnwrap(compressedScan)
+        XCTAssertEqual(compressed.jsonlFilesFound, 1)
+        XCTAssertEqual(compressed.allTimeRequests, plain.allTimeRequests)
+        XCTAssertEqual(compressed.allTimeTokens, plain.allTimeTokens)
+        XCTAssertEqual(compressed.allTimeCostUSD, plain.allTimeCostUSD, accuracy: 0.000_01)
+
+        let compressedSummary = try await ledger.summary(filter)
+        XCTAssertEqual(compressedSummary.requests, plainSummary.requests)
+        XCTAssertEqual(compressedSummary.realTotalTokens, plainSummary.realTotalTokens)
+        XCTAssertEqual(compressedSummary.costMicros, plainSummary.costMicros)
+    }
+
+    /// The scan cache is keyed on the rollout, not on its file name: a
+    /// rollout scanned as `.jsonl` under one configured tier and rescanned
+    /// as `.jsonl.zst` after the tier changed keeps the tier it was first
+    /// assigned, instead of repricing its history at today's config.
+    func testCompressedRolloutKeepsTheTierItWasFirstAssigned() async throws {
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let home = try makeCodexHome(now: now)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let config = home.appendingPathComponent(".codex/config.toml")
+        try #"service_tier = "fast""#.write(to: config, atomically: true, encoding: .utf8)
+        let fastScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let fast = try XCTUnwrap(fastScan)
+
+        try #"service_tier = "standard""#.write(to: config, atomically: true, encoding: .utf8)
+        try ZstdRawFrame.compressInPlace(home.appendingPathComponent(".codex/sessions/session.jsonl"))
+        let rescan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let rescanned = try XCTUnwrap(rescan)
+        XCTAssertEqual(rescanned.jsonlFilesFound, 1)
+        // The tier is asserted on the cached events below rather than
+        // through prices: whether the fast tier costs more depends on the
+        // pricing catalog the machine has cached, which CI does not.
+        XCTAssertEqual(rescanned.allTimeCostUSD, fast.allTimeCostUSD, accuracy: 0.000_01)
+
+        let cache = CostUsageScanCacheStore.shared.checkout(homeDirectory: home.path, tool: .codex, retentionDays: nil)
+        defer {
+            CostUsageScanCacheStore.shared.checkin(cache, homeDirectory: home.path, tool: .codex, retentionDays: nil, persist: false)
+        }
+        // One entry: the rollout under its canonical identity, the plain
+        // path's entry pruned rather than kept beside it.
+        XCTAssertEqual(cache.entries.count, 1)
+        let events = try XCTUnwrap(cache.entries.values.first?.events)
+        XCTAssertEqual(events.count, 3)
+        XCTAssertEqual(Set(events.map(\.serviceTier)), ["fast"])
+    }
+
+    /// Codex writes the `.jsonl.zst` twin first and removes the `.jsonl`
+    /// after; a scan between the two steps sees both spellings of one
+    /// rollout and must count it once.
+    func testARolloutPresentInBothSpellingsIsCountedOnce() async throws {
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let home = try makeCodexHome(now: now)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let plainScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let plain = try XCTUnwrap(plainScan)
+
+        let rollout = home.appendingPathComponent(".codex/sessions/session.jsonl")
+        let twin = home.appendingPathComponent(".codex/sessions/session.jsonl.zst")
+        try ZstdRawFrame.wrap(Data(contentsOf: rollout)).write(to: twin)
+
+        let bothScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let both = try XCTUnwrap(bothScan)
+        XCTAssertEqual(both.jsonlFilesFound, 1)
+        XCTAssertEqual(both.allTimeRequests, plain.allTimeRequests)
+        XCTAssertEqual(both.allTimeTokens, plain.allTimeTokens)
+        XCTAssertEqual(both.allTimeCostUSD, plain.allTimeCostUSD, accuracy: 0.000_01)
+
+        try FileManager.default.removeItem(at: rollout)
+        let compressedScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let compressed = try XCTUnwrap(compressedScan)
+        XCTAssertEqual(compressed.jsonlFilesFound, 1)
+        XCTAssertEqual(compressed.allTimeRequests, plain.allTimeRequests)
+    }
+
     func testScanWithSinkFillsTheLedgerWithTheSnapshotTotals() async throws {
         let now = Date(timeIntervalSince1970: 1_762_339_200)
         let home = try makeCodexHome(now: now)
