@@ -47,8 +47,9 @@ final class SessionStructureLineReaderTests: XCTestCase {
 
     /// Every size policy judges a compressed log by what it decompresses
     /// to: the fingerprint says so whether the frame header declares the
-    /// size or the stream has to be measured, and a whole-file read stops
-    /// at the decompressed ceiling instead of inflating without bound.
+    /// size or the stream has to be measured. A caller with a budget of
+    /// its own can cap a whole-file read; without one the read is whole,
+    /// since the caller sized the file before choosing to read it all.
     func testCompressedLogIsSizedAndBudgetedByItsDecompressedBytes() throws {
         let directory = try SessionStructureFixtures.temporaryDirectory("compressed-size")
         defer { try? FileManager.default.removeItem(at: directory) }

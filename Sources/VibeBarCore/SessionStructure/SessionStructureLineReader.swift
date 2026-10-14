@@ -41,15 +41,16 @@ enum SessionStructureLineReader {
         var lastLineEnd: Int64
     }
 
-    /// The most a whole-file read of a compressed log will decompress
-    /// before giving up: `SessionStructureService` never parses a file
-    /// larger than this, so decompressing further is never useful work.
-    static let defaultMaxDecompressedBytes: Int64 = 512 * 1024 * 1024
-
     /// - Parameters:
     ///   - maxDecompressedBytes: for a compressed log read without a
     ///     `range`, the decompressed bytes after which the read stops as
-    ///     incomplete; a window read is bounded by its range instead.
+    ///     incomplete; a window read is bounded by its range instead. No
+    ///     ceiling by default: the file's fingerprint already carries its
+    ///     decompressed size, so every caller's size policy — the
+    ///     structure service's full-parse and background limits, the
+    ///     activity scanner's file limit — is judged on the bytes a read
+    ///     would cover, and a caller that chose to read the whole file
+    ///     meant it. The ceiling is for a caller with a budget of its own.
     ///   - isCancelled: polled once per chunk.
     ///   - body: return `false` to stop early.
     @discardableResult
@@ -58,7 +59,7 @@ enum SessionStructureLineReader {
         range: SessionStructure.ByteRange? = nil,
         maxLineBytes: Int = defaultMaxLineBytes,
         headBytes: Int = defaultHeadBytes,
-        maxDecompressedBytes: Int64 = defaultMaxDecompressedBytes,
+        maxDecompressedBytes: Int64? = nil,
         isCancelled: () -> Bool = { false },
         _ body: (Line) -> Bool
     ) -> Outcome {
