@@ -72,7 +72,7 @@ public enum CostUsageScanner {
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/sessions"),
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/archived_sessions")
         ]
-        let files = roots.flatMap { collectJSONL(under: $0) }
+        let files = preferringPlainRollouts(roots.flatMap { collectJSONL(under: $0) })
         // Older rollouts omit the tier. The current config is an estimate
         // for those requests; explicit per-request/turn metadata wins.
         let configuredTier = codexServiceTier(homeDirectory: homeDirectory)
@@ -2685,6 +2685,29 @@ public enum CostUsageScanner {
     }
 
     // MARK: - Helpers
+
+    /// One file per rollout. Codex's compressor writes `rollout-X.jsonl.zst`
+    /// and only then removes `rollout-X.jsonl`, so a scan that lands in
+    /// between — or after an interrupted compression — finds both spellings
+    /// of the same rollout and would count its requests twice (a doubling
+    /// `CostHistoryStore`'s max-merge would then keep). The plain file is the
+    /// one the compressor has not finished with, so it is the one kept.
+    static func preferringPlainRollouts(_ files: [URL]) -> [URL] {
+        var chosen: [String: URL] = [:]
+        var order: [String] = []
+        for file in files {
+            let key = CodexRolloutFile.canonicalPath(file.path)
+            if let existing = chosen[key] {
+                if CodexRolloutFile.isCompressed(existing), !CodexRolloutFile.isCompressed(file) {
+                    chosen[key] = file
+                }
+            } else {
+                chosen[key] = file
+                order.append(key)
+            }
+        }
+        return order.compactMap { chosen[$0] }
+    }
 
     private static func collectJSONL(under root: URL) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }

@@ -119,6 +119,34 @@ final class CostUsageServiceLedgerTests: XCTestCase {
         XCTAssertEqual(Set(events.map(\.serviceTier)), ["fast"])
     }
 
+    /// Codex writes the `.jsonl.zst` twin first and removes the `.jsonl`
+    /// after; a scan between the two steps sees both spellings of one
+    /// rollout and must count it once.
+    func testARolloutPresentInBothSpellingsIsCountedOnce() async throws {
+        let now = Date(timeIntervalSince1970: 1_762_339_200)
+        let home = try makeCodexHome(now: now)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let plainScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let plain = try XCTUnwrap(plainScan)
+
+        let rollout = home.appendingPathComponent(".codex/sessions/session.jsonl")
+        let twin = home.appendingPathComponent(".codex/sessions/session.jsonl.zst")
+        try ZstdRawFrame.wrap(Data(contentsOf: rollout)).write(to: twin)
+
+        let bothScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let both = try XCTUnwrap(bothScan)
+        XCTAssertEqual(both.jsonlFilesFound, 1)
+        XCTAssertEqual(both.allTimeRequests, plain.allTimeRequests)
+        XCTAssertEqual(both.allTimeTokens, plain.allTimeTokens)
+        XCTAssertEqual(both.allTimeCostUSD, plain.allTimeCostUSD, accuracy: 0.000_01)
+
+        try FileManager.default.removeItem(at: rollout)
+        let compressedScan = await CostUsageScanner.scan(tool: .codex, homeDirectory: home.path, now: now)
+        let compressed = try XCTUnwrap(compressedScan)
+        XCTAssertEqual(compressed.jsonlFilesFound, 1)
+        XCTAssertEqual(compressed.allTimeRequests, plain.allTimeRequests)
+    }
+
     func testScanWithSinkFillsTheLedgerWithTheSnapshotTotals() async throws {
         let now = Date(timeIntervalSince1970: 1_762_339_200)
         let home = try makeCodexHome(now: now)
