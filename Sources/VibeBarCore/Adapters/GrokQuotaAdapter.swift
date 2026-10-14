@@ -19,6 +19,14 @@ import Foundation
 /// The response is a tiny protobuf payload carrying the weekly
 /// used-percent and the next reset timestamp; both fields surface as
 /// a single `QuotaBucket(id: "weekly", ...)` on the card.
+///
+/// With a bearer, three enrichment calls run alongside the RPC, each
+/// silent on failure: the CLI settings endpoint (plan display name), the
+/// credits-format billing JSON (the pool's split into Grok Build / Grok
+/// chat, and whether it is The X Subscription's unified pool — surfaced
+/// as a "Shared Pool" group of two buckets) and grok.com's subscription
+/// list (the plan the user actually bought, which after a move to The X
+/// Subscription is no longer what the display name says).
 public struct GrokQuotaAdapter: QuotaAdapter {
     public let tool: ToolType = .grok
 
@@ -170,21 +178,48 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             session: session,
             now: now()
         )
+        async let creditsBilling = GrokCreditsBillingFetcher.fetch(
+            credentials: credentials,
+            session: session
+        )
+        async let subscription = GrokSubscriptionsFetcher.fetch(
+            credentials: credentials,
+            session: session
+        )
 
         // Billing remains the required source of quota truth. Account
         // settings only enriches the badge, so a settings outage or schema
         // change must never make the weekly quota refresh fail.
         let snapshot = try await billingSnapshot
         let detectedTier = try? await accountSettings
-        let plan = detectedTier?.subscriptionTierDisplay ?? credentials.planLabel
+        let plan = Self.planLabel(
+            subscription: await subscription,
+            settingsDisplay: detectedTier?.subscriptionTierDisplay,
+            credentialsLabel: credentials.planLabel
+        )
 
-        return makeQuota(
+        return Self.makeQuota(
             snapshot: snapshot,
             account: account,
             plan: plan,
             email: credentials.email,
-            resetCredits: await remainingResets
+            resetCredits: await remainingResets,
+            credits: await creditsBilling,
+            now: now()
         )
+    }
+
+    /// The plan badge, by how much each source knows: grok.com's own
+    /// subscription list names The X Subscription plan the user bought;
+    /// the CLI settings display name is xAI's pre-bundle label (still
+    /// `SuperGrok Heavy` for an account that moved to Ultra); the
+    /// credential file's tier is the offline fallback.
+    static func planLabel(
+        subscription: GrokSubscriptionSnapshot?,
+        settingsDisplay: String?,
+        credentialsLabel: String?
+    ) -> String? {
+        subscription?.xSubscriptionPlan ?? settingsDisplay ?? credentialsLabel
     }
 
     private func fetchWithCookies(
@@ -196,7 +231,7 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             session: session,
             now: now
         )
-        return makeQuota(
+        return Self.makeQuota(
             snapshot: snapshot,
             account: account,
             // Cookie-only sessions don't carry email / plan metadata —
@@ -205,37 +240,73 @@ public struct GrokQuotaAdapter: QuotaAdapter {
             // knows so the card chrome doesn't flicker between
             // "Grok" and "user@example.com" on each refresh.
             plan: account.plan,
-            email: account.email
+            email: account.email,
+            now: now()
         )
     }
 
-    private func makeQuota(
+    /// Seven-day credits window. Matches xAI's weekly reset cadence and
+    /// keeps `UsagePace` from rejecting a fresh cycle (its guard requires
+    /// time-until-reset <= window).
+    static let weeklyWindowSeconds = 604_800
+
+    static func makeQuota(
         snapshot: GrokWebBillingSnapshot,
         account: AccountIdentity,
         plan: String?,
         email: String?,
-        resetCredits: ResetCredits? = nil
+        resetCredits: ResetCredits? = nil,
+        credits: GrokCreditsBillingSnapshot? = nil,
+        now: Date
     ) -> AccountQuota {
-        let bucket = QuotaBucket(
+        let weekly = QuotaBucket(
             id: "weekly",
             title: "Weekly",
             shortLabel: "Weekly",
             usedPercent: snapshot.usedPercent,
             resetAt: snapshot.resetsAt,
-            // Seven-day credits window. Matches xAI's weekly reset cadence
-            // and keeps `UsagePace` from rejecting a fresh cycle (its guard
-            // requires time-until-reset <= window).
-            rawWindowSeconds: 604_800
+            rawWindowSeconds: Self.weeklyWindowSeconds
         )
         return AccountQuota(
             accountId: account.id,
             tool: .grok,
-            buckets: [bucket],
+            buckets: [weekly] + Self.productBuckets(from: credits, resetAt: snapshot.resetsAt),
             plan: plan,
             email: email,
-            queriedAt: now(),
+            queriedAt: now,
             error: nil,
             resetCredits: resetCredits
         )
+    }
+
+    /// The pool's split by product, one bucket each, on the pool's own
+    /// scale (they sum to the weekly percent). Grouped as "Shared Pool"
+    /// when xAI says the account is on the unified pool, "Products"
+    /// otherwise; both share the RPC's reset so the three rows age together.
+    static func productBuckets(from credits: GrokCreditsBillingSnapshot?, resetAt: Date?) -> [QuotaBucket] {
+        guard let credits, !credits.productUsage.isEmpty else { return [] }
+        let groupTitle = credits.isUnifiedBillingUser ? "Shared Pool" : "Products"
+        return credits.productUsage.compactMap { usage in
+            guard let (id, label) = Self.productBucketIdentity(usage.product) else { return nil }
+            return QuotaBucket(
+                id: id,
+                title: "Weekly",
+                shortLabel: label,
+                usedPercent: usage.usedPercent,
+                resetAt: resetAt ?? credits.periodEnd,
+                rawWindowSeconds: Self.weeklyWindowSeconds,
+                groupTitle: groupTitle
+            )
+        }
+    }
+
+    /// Only the two products the pool is known to report; an unfamiliar
+    /// product key would otherwise mint a bucket id nothing can group.
+    static func productBucketIdentity(_ product: String) -> (id: String, label: String)? {
+        switch product.lowercased() {
+        case "grokbuild": return ("grok_build_weekly", "Build")
+        case "grokchat": return ("grok_chat_weekly", "Chat")
+        default: return nil
+        }
     }
 }

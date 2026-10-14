@@ -27,6 +27,7 @@ enum MiniWindowGroupLabelCatalog {
         // Stable persisted key (custom labels are stored under it); the
         // wording is the L3 group name from AGENTS.md § 7.1.
         .init(id: "grok.all-models", title: "GROK · Weekly Credits", defaultLabel: "All"),
+        .init(id: "grok.shared-pool", title: "GROK · Shared Pool", defaultLabel: "Pool"),
         .init(id: "cursor.models", title: "CURSOR · Cursor Models", defaultLabel: "Cursor"),
         .init(id: "cursor.other-models", title: "CURSOR · Other Models", defaultLabel: "Other"),
         .init(id: "muse.all-models", title: "MUSE CODE · All Models", defaultLabel: "All"),

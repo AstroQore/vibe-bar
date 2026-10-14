@@ -28,7 +28,12 @@ public enum ProviderPlanDisplay {
         case .codex, .chatgptChat: brand = "ChatGPT"
         case .claude: brand = "Claude"
         case .gemini, .antigravity: brand = "Google AI"
-        case .grok: brand = canonical.lowercased().hasPrefix("supergrok") ? "SuperGrok" : "Grok"
+        case .grok:
+            // The X Subscription plans (Plus / Premium / Super / Ultra) are
+            // sold under the X brand, not Grok's.
+            if canonical.lowercased().hasPrefix("supergrok") { brand = "SuperGrok" }
+            else if canonical.hasPrefix("X ") { brand = "X" }
+            else { brand = "Grok" }
         default: brand = tool.productName
         }
         var tier = canonical
@@ -168,7 +173,31 @@ public enum ProviderPlanDisplay {
         case "supergrokpro": return "SuperGrok Pro"
         case "supergrok": return "SuperGrok"
         case "supergroklite": return "SuperGrok Lite"
+        case "xplus": return "X Plus"
+        case "xpremium": return "X Premium"
+        case "xsuper": return "X Super"
+        case "xultra": return "X Ultra"
         default: return display
+        }
+    }
+
+    /// The X Subscription plan behind a grok.com subscription tier enum.
+    ///
+    /// The tier enums predate the bundle and were not renamed with it, so
+    /// the same value names a legacy SuperGrok plan and its X Subscription
+    /// successor; the caller must already know the subscription was bought
+    /// on the commerce billing system. Only pairs verified against a real
+    /// account are listed — an unknown tier returns `nil` so the settings
+    /// display name stays in charge rather than a guess.
+    public static func grokXSubscriptionPlan(tier: String) -> String? {
+        let normalized = tier.uppercased()
+            .replacingOccurrences(of: "SUBSCRIPTION_TIER_", with: "")
+            .replacingOccurrences(of: "-", with: "_")
+        switch normalized {
+        // Verified 2026-10-14: a SuperGrok Heavy account that moved to The
+        // X Subscription's Ultra plan kept `SUPER_GROK_PRO` as its tier.
+        case "SUPER_GROK_PRO": return "X Ultra"
+        default: return nil
         }
     }
 

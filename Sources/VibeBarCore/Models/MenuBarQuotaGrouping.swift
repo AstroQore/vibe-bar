@@ -92,6 +92,8 @@ public extension MenuBarFieldCatalog {
         case "weekly_oauth_apps": return "claude.oauth"
         case "models" where tool == .cursor: return "cursor.models"
         case "other_models" where tool == .cursor: return "cursor.other-models"
+        // Both halves of Grok's shared pool are one group, like Codex Spark.
+        case "grok_build_weekly", "grok_chat_weekly": return "grok.shared-pool"
         default: break
         }
         let id = bucketId.lowercased()

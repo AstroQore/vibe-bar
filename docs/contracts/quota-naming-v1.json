@@ -133,6 +133,14 @@
         "bucket": "other_models",
         "key": "cursor.other-models",
         "tool": "cursor"
+      },
+      {
+        "bucket": "grok_build_weekly",
+        "key": "grok.shared-pool"
+      },
+      {
+        "bucket": "grok_chat_weekly",
+        "key": "grok.shared-pool"
       }
     ],
     "stemSuffixes": [
@@ -165,6 +173,7 @@
     "gemini.flash-lite": "Flash Lite",
     "gemini.pro": "Pro",
     "grok.all-models": "All",
+    "grok.shared-pool": "Pool",
     "mistralVibe.all-models": "All",
     "muse.all-models": "All",
     "museAgent.all-models": "All"
