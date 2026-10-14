@@ -6,7 +6,8 @@ import AgentSessionKit
 /// across multiple windows (today / 7d / 30d / all-time) plus a per-day history
 /// and a weekday × hour heatmap.
 ///
-/// Codex: `~/.codex/sessions/**/*.jsonl` + `~/.codex/archived_sessions/`.
+/// Codex: `~/.codex/sessions/**/*.jsonl` (or `.jsonl.zst` once Codex has
+/// compressed a week-idle rollout) + `~/.codex/archived_sessions/`.
 ///   We track running `total_token_usage` snapshots and treat consecutive
 ///   snapshots in the SAME file as a delta sequence so the same session's
 ///   cumulative tokens aren't double-counted into multiple days.
@@ -71,7 +72,7 @@ public enum CostUsageScanner {
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/sessions"),
             URL(fileURLWithPath: homeDirectory).appendingPathComponent(".codex/archived_sessions")
         ]
-        let files = roots.flatMap { collectJSONL(under: $0) }
+        let files = preferringPlainRollouts(roots.flatMap { collectJSONL(under: $0, includingCompressed: true) })
         // Older rollouts omit the tier. The current config is an estimate
         // for those requests; explicit per-request/turn metadata wins.
         let configuredTier = codexServiceTier(homeDirectory: homeDirectory)
@@ -90,11 +91,16 @@ public enum CostUsageScanner {
                 return aggregator.snapshot(jsonlFilesFound: files.count)
             }
             let (mtime, size) = fileFingerprint(file)
-            if let cached = cache.reusable(for: file.path, mtime: mtime, size: size) {
+            // The cache identity is the rollout, not its current file name:
+            // Codex renames a week-idle rollout to `.jsonl.zst`, and a scan
+            // that keyed on the raw path would lose the tiers it had assigned
+            // to that rollout's requests and reprice them at today's config.
+            let cacheKey = CodexRolloutFile.canonicalPath(file.path)
+            if let cached = cache.reusable(for: cacheKey, mtime: mtime, size: size) {
                 let priced: [PricedUsageEvent] = autoreleasepool {
                     let retained = retainedEvents(cached, cutoff: cutoff)
                     if retained.count != cached.count {
-                        cache.store(retained, for: file.path, mtime: mtime, size: size)
+                        cache.store(retained, for: cacheKey, mtime: mtime, size: size)
                     }
                     var priced: [PricedUsageEvent] = []
                     priced.reserveCapacity(eventSink == nil ? 0 : retained.count)
@@ -122,7 +128,7 @@ public enum CostUsageScanner {
                 // previously assigned costing tier for matching requests;
                 // changing today's config must not rewrite that history.
                 var oldTiers: [CodexCostingKey: [String?]] = [:]
-                for event in cache.entries[CostUsageScanCache.entryKey(for: file.path)]?.events ?? [] {
+                for event in cache.entries[CostUsageScanCache.entryKey(for: cacheKey)]?.events ?? [] {
                     oldTiers[CodexCostingKey(date: event.date, model: event.model,
                                             input: event.input, output: event.output, cache: event.cache), default: []]
                         .append(event.serviceTier)
@@ -192,7 +198,7 @@ public enum CostUsageScanner {
                 // fingerprint and replays the empty result. `scanGemini` has
                 // always guarded this; codex now does too.
                 if didRead {
-                    cache.store(parsed, for: file.path, mtime: mtime, size: size)
+                    cache.store(parsed, for: cacheKey, mtime: mtime, size: size)
                 }
                 return (priced, didRead)
             }
@@ -200,7 +206,7 @@ public enum CostUsageScanner {
                 await emit(eventSink, tool: .codex, file: file, mtime: mtime, size: size, events: outcome.priced)
             }
         }
-        cache.prune(known: Set(files.map(\.path)))
+        cache.prune(known: Set(files.map { CodexRolloutFile.canonicalPath($0.path) }))
         CostUsageScanCacheStore.shared.checkin(
             cache, homeDirectory: homeDirectory, tool: .codex, retentionDays: retentionDays
         )
@@ -2680,7 +2686,36 @@ public enum CostUsageScanner {
 
     // MARK: - Helpers
 
-    private static func collectJSONL(under root: URL) -> [URL] {
+    /// One file per rollout. Codex's compressor writes `rollout-X.jsonl.zst`
+    /// and only then removes `rollout-X.jsonl`, so a scan that lands in
+    /// between — or after an interrupted compression — finds both spellings
+    /// of the same rollout and would count its requests twice (a doubling
+    /// `CostHistoryStore`'s max-merge would then keep). The plain file is the
+    /// one the compressor has not finished with, so it is the one kept.
+    static func preferringPlainRollouts(_ files: [URL]) -> [URL] {
+        var chosen: [String: URL] = [:]
+        var order: [String] = []
+        for file in files {
+            let key = CodexRolloutFile.canonicalPath(file.path)
+            if let existing = chosen[key] {
+                if CodexRolloutFile.isCompressed(existing), !CodexRolloutFile.isCompressed(file) {
+                    chosen[key] = file
+                }
+            } else {
+                chosen[key] = file
+                order.append(key)
+            }
+        }
+        return order.compactMap { chosen[$0] }
+    }
+
+    /// `.jsonl` files under `root`; with `includingCompressed`, also the
+    /// `.jsonl.zst` Codex leaves behind once `local_thread_store_compression`
+    /// has compressed a rollout. Only the Codex scan asks for those: no
+    /// other harness writes compressed logs, and a compressed copy a user
+    /// keeps beside a Claude transcript must not be scanned as a second
+    /// transcript.
+    private static func collectJSONL(under root: URL, includingCompressed: Bool = false) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         guard let enumerator = FileManager.default.enumerator(
             at: root,
@@ -2691,7 +2726,8 @@ public enum CostUsageScanner {
             options: [.skipsHiddenFiles]
         ) else { return [] }
         var out: [URL] = []
-        for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+        for case let url as URL in enumerator
+        where includingCompressed ? CodexRolloutFile.isJSONL(url) : url.pathExtension == CodexRolloutFile.plainExtension {
             // Skip symlinks. They could resolve outside `~/.claude` /
             // `~/.codex` (e.g. an attacker with the user's UID seeding a link
             // to a different cache directory) and we don't want the scanner
