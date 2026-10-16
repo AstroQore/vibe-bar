@@ -362,25 +362,30 @@ public struct GrokQuotaAdapter: QuotaAdapter {
 
     /// xAI's product enum, as far as a live account has shown it: 2 =
     /// GrokBuild, 4 = GrokChat, 9 = GrokBot beside the JSON's names
-    /// (2026-10-14 / 2026-10-16), 10 = Cursor by grok.com's own usage page
-    /// listing "Chat · Grok Bot · Cursor" for a pool whose RPC carried
-    /// 4, 9 and 10 (2026-10-16). Anything else is not guessed.
+    /// (2026-10-14 / 2026-10-16); 10 = Cursor and 5 = Imagine by grok.com's
+    /// own usage page, which listed "Chat · Grok Bot · Cursor" then "Chat ·
+    /// Imagine · Grok Build · Grok Bot · Cursor" for pools whose RPC carried
+    /// 4 / 9 / 10 and then 2 / 4 / 5 / 9 / 10 (2026-10-16). Anything else is
+    /// not guessed.
     static func productLabel(code: UInt64) -> String? {
         switch code {
-        case 2: return "Build"
+        case 2: return "Grok Build"
         case 4: return "Chat"
+        case 5: return "Imagine"
         case 9: return "Grok Bot"
         case 10: return "Cursor"
         default: return nil
         }
     }
 
-    /// `GrokBuild` → "Build", `GrokChat` → "Chat"; a product this does not
-    /// know keeps xAI's key minus the brand prefix.
+    /// The names grok.com's usage page uses: `GrokBuild` → "Grok Build",
+    /// `GrokChat` → "Chat", `GrokImagine` → "Imagine"; a product this does
+    /// not know keeps xAI's key minus the brand prefix.
     static func productLabel(_ product: String) -> String {
         switch product.lowercased() {
-        case "grokbuild": return "Build"
+        case "grokbuild": return "Grok Build"
         case "grokchat": return "Chat"
+        case "grokimagine": return "Imagine"
         case "grokbot": return "Grok Bot"
         default:
             let stripped = product.hasPrefix("Grok") ? String(product.dropFirst(4)) : product

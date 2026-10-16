@@ -164,13 +164,13 @@ final class GrokXSubscriptionTests: XCTestCase {
         XCTAssertEqual(weekly.usedPercent, 61)
         XCTAssertEqual(weekly.resetAt, reset)
         XCTAssertEqual(weekly.shares, [
-            QuotaBucketShare(label: "Build", usedPercent: 60),
+            QuotaBucketShare(label: "Grok Build", usedPercent: 60),
             QuotaBucketShare(label: "Chat", usedPercent: 1)
         ])
         XCTAssertTrue(weekly.supportsForecast, "The pool itself still forecasts")
 
         let dto = MCPQuotaBucketDTO(bucket: weekly, forecast: nil)
-        XCTAssertEqual(dto.shares?.map(\.label), ["Build", "Chat"])
+        XCTAssertEqual(dto.shares?.map(\.label), ["Grok Build", "Chat"])
         XCTAssertEqual(dto.usedPercent, 61)
     }
 
@@ -178,7 +178,7 @@ final class GrokXSubscriptionTests: XCTestCase {
         let bucket = QuotaBucket(
             id: "weekly", title: "Weekly", shortLabel: "Weekly", usedPercent: 61,
             resetAt: Date(timeIntervalSince1970: 1_792_092_466), rawWindowSeconds: 604_800,
-            shares: [QuotaBucketShare(label: "Build", usedPercent: 60)]
+            shares: [QuotaBucketShare(label: "Grok Build", usedPercent: 60)]
         )
         let data = try JSONEncoder().encode(bucket)
         XCTAssertEqual(try JSONDecoder().decode(QuotaBucket.self, from: data), bucket)
@@ -275,11 +275,11 @@ final class GrokXSubscriptionTests: XCTestCase {
     }
 
     func testGRPCSplitIsTheFallbackWhenTheJSONEndpointIsDown() throws {
-        let frame = Self.grpcConfig(percent: 2, products: [(2, 0.6), (9, 1), (10, 0.4), (42, 0.1)], unified: true)
+        let frame = Self.grpcConfig(percent: 2, products: [(2, 0.6), (9, 1), (10, 0.4), (5, 0.2), (42, 0.1)], unified: true)
         let snapshot = try GrokWebBillingFetcher.parseGRPCWebResponse(frame, now: Date(timeIntervalSince1970: 1_792_000_000))
         let shares = try XCTUnwrap(GrokQuotaAdapter.poolShares(from: nil, matching: snapshot))
-        XCTAssertEqual(shares.map(\.label), ["Build", "Grok Bot", "Cursor", "Other"],
-                       "10 is Cursor, as grok.com's usage page lists it; an enum the table does not name is not guessed")
+        XCTAssertEqual(shares.map(\.label), ["Grok Build", "Grok Bot", "Cursor", "Imagine", "Other"],
+                       "10 is Cursor and 5 is Imagine, as grok.com's usage page lists them; an enum the table does not name is not guessed")
         XCTAssertEqual(shares.last?.usedPercent ?? 0, 0.1, accuracy: 0.0001)
 
         let legacy = try GrokWebBillingFetcher.parseGRPCWebResponse(

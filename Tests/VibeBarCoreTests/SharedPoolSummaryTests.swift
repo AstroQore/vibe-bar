@@ -25,7 +25,7 @@ final class SharedPoolSummaryTests: XCTestCase {
 
     func testOnePoolTakesCursorsFinerReadingAndGroupsTheMembers() throws {
         let shares = [
-            QuotaBucketShare(label: "Build", usedPercent: 0.6),
+            QuotaBucketShare(label: "Grok Build", usedPercent: 0.6),
             QuotaBucketShare(label: "Chat", usedPercent: 0.4),
             QuotaBucketShare(label: "Grok Bot", usedPercent: 1.0),
             QuotaBucketShare(label: "Other", usedPercent: 0.5)
@@ -35,9 +35,10 @@ final class SharedPoolSummaryTests: XCTestCase {
         XCTAssertEqual(summary.bucket.usedPercent, 2.594, accuracy: 0.0001, "xAI rounds the pool to a whole number; Cursor's decimals win")
         XCTAssertEqual(summary.bucket.resetAt, reset)
         XCTAssertNil(summary.bucket.shares, "The members carry the split; the pool row does not repeat it")
-        XCTAssertEqual(summary.members.map(\.label), ["Build", "Chat", "Grok Bot", "Other"], "One row per product, in xAI's order")
+        XCTAssertEqual(summary.members.map(\.label), ["Chat", "Grok Build", "Grok Bot", "Other"],
+                       "One row per product, in grok.com's order; the unnamed last")
         XCTAssertEqual(summary.members.map(\.member), [.grok, .grok, .grokBot, .other])
-        XCTAssertEqual(summary.members[0].usedPercent, 0.6, accuracy: 0.0001)
+        XCTAssertEqual(summary.members[0].usedPercent, 0.4, accuracy: 0.0001)
         XCTAssertEqual(summary.members[2].usedPercent, 1.0, accuracy: 0.0001)
     }
 
@@ -61,7 +62,7 @@ final class SharedPoolSummaryTests: XCTestCase {
     func testMemberMarksFollowTheProduct() {
         XCTAssertEqual(SharedPoolSummary.member(for: "Grok Bot"), .grokBot)
         XCTAssertEqual(SharedPoolSummary.member(for: "Cursor"), .cursor)
-        XCTAssertEqual(SharedPoolSummary.member(for: "Build"), .grok)
+        XCTAssertEqual(SharedPoolSummary.member(for: "Grok Build"), .grok)
         XCTAssertEqual(SharedPoolSummary.member(for: "Imagine"), .grok, "Every Grok product wears Grok's mark")
         XCTAssertEqual(SharedPoolSummary.member(for: "Other"), .other, "A product xAI has not named yet")
     }

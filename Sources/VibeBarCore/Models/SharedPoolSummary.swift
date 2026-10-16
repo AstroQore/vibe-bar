@@ -72,7 +72,12 @@ public struct SharedPoolSummary: Equatable, Sendable {
         return SharedPoolSummary(bucket: bucket, members: Self.members(from: weekly.shares ?? []))
     }
 
-    /// One row per product, in xAI's order, a repeated label folded into one.
+    /// The order grok.com's usage page lists the products in; anything it
+    /// does not name follows, in the order reported.
+    static let displayOrder = ["Chat", "Imagine", "Voice", "Grok Build", "Grok Bot", "Cursor"]
+
+    /// One row per product, in grok.com's order, a repeated label folded
+    /// into one.
     static func members(from shares: [QuotaBucketShare]) -> [MemberShare] {
         var order: [String] = []
         var totals: [String: Double] = [:]
@@ -80,7 +85,14 @@ public struct SharedPoolSummary: Equatable, Sendable {
             if totals[share.label] == nil { order.append(share.label) }
             totals[share.label, default: 0] += share.usedPercent
         }
-        return order.map { label in
+        func rank(_ label: String) -> Int {
+            Self.displayOrder.firstIndex { $0.caseInsensitiveCompare(label) == .orderedSame } ?? Self.displayOrder.count
+        }
+        let sorted = order.enumerated().sorted { lhs, rhs in
+            let (lr, rr) = (rank(lhs.element), rank(rhs.element))
+            return lr == rr ? lhs.offset < rhs.offset : lr < rr
+        }.map(\.element)
+        return sorted.map { label in
             MemberShare(label: label, member: Self.member(for: label), usedPercent: totals[label] ?? 0)
         }
     }
