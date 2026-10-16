@@ -1051,6 +1051,6 @@ struct QuotaShareCaption: View {
 
     static func percentText(_ value: Double) -> String {
         let whole = value.rounded() == value
-        return (value / 100).formatted(.percent.precision(.fractionLength(whole ? 0 : 1)))
+        return (value / 100).formatted(.percent.precision(.fractionLength(whole ? 0 : 1)).locale(AppLocale.current))
     }
 }
