@@ -1138,9 +1138,12 @@ private struct GrokCombinedCard: View {
                 embedded: true
             )
 
-            if cursorPoolShownByGrok {
+            if cursorIsUnified, !showsGrokBot {
                 // The members of the pool drawn above: Cursor and Grok Bot
-                // on the same plan, with nothing of their own to chart.
+                // on the same plan, with nothing of their own to chart. Also
+                // the row a configured Cursor keeps when no pool reading is
+                // on screen at all (its status call failed and Grok has no
+                // snapshot), so the account and its plan never vanish.
                 HStack(alignment: .center, spacing: 6) {
                     ToolBrandIconView(tool: .cursor, size: 13)
                         .opacity(0.85)
