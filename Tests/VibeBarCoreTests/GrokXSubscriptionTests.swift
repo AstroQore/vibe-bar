@@ -243,6 +243,49 @@ final class GrokXSubscriptionTests: XCTestCase {
         XCTAssertNil(GrokQuotaAdapter.poolShares(from: oldCycle, matching: otherPeriod))
     }
 
+    // MARK: - gRPC fallback for the split
+
+    /// A config message like the live one on 2026-10-16: 2% used, products
+    /// 9 and 10 at 1% each, unified flag set.
+    private static func grpcConfig(percent: Float, products: [(UInt64, Float)], unified: Bool) -> Data {
+        func varint(_ v: UInt64) -> [UInt8] {
+            var r = v; var out: [UInt8] = []
+            repeat { var b = UInt8(r & 0x7F); r >>= 7; if r != 0 { b |= 0x80 }; out.append(b) } while r != 0
+            return out
+        }
+        func fixed32(_ f: Float) -> [UInt8] { var bits = f.bitPattern.littleEndian; return withUnsafeBytes(of: &bits) { Array($0) } }
+        var config: [UInt8] = [0x0D] + fixed32(percent)
+        for (code, pct) in products {
+            let entry: [UInt8] = [0x08] + varint(code) + [0x15] + fixed32(pct)
+            config += [0x3A] + varint(UInt64(entry.count)) + entry
+        }
+        if unified { config += [0x58, 0x01] }
+        let message: [UInt8] = [0x0A] + varint(UInt64(config.count)) + config
+        var frame = Data([0x00, 0x00, 0x00, 0x00, UInt8(message.count)])
+        frame.append(contentsOf: message)
+        return frame
+    }
+
+    func testGRPCCarriesTheSplitAndTheUnifiedFlag() throws {
+        let frame = Self.grpcConfig(percent: 2, products: [(9, 1), (10, 1)], unified: true)
+        let snapshot = try GrokWebBillingFetcher.parseGRPCWebResponse(frame, now: Date(timeIntervalSince1970: 1_792_000_000))
+        XCTAssertEqual(snapshot.usedPercent, 2)
+        XCTAssertEqual(snapshot.isUnified, true)
+        XCTAssertEqual(snapshot.productShares, [.init(code: 9, usedPercent: 1), .init(code: 10, usedPercent: 1)])
+    }
+
+    func testGRPCSplitIsTheFallbackWhenTheJSONEndpointIsDown() throws {
+        let frame = Self.grpcConfig(percent: 2, products: [(2, 0.6), (9, 1), (10, 0.4)], unified: true)
+        let snapshot = try GrokWebBillingFetcher.parseGRPCWebResponse(frame, now: Date(timeIntervalSince1970: 1_792_000_000))
+        let shares = try XCTUnwrap(GrokQuotaAdapter.poolShares(from: nil, matching: snapshot))
+        XCTAssertEqual(shares.map(\.label), ["Build", "Grok Bot", "Other"], "A product the enum table does not name is not guessed")
+        XCTAssertEqual(shares.last?.usedPercent ?? 0, 0.4, accuracy: 0.0001)
+
+        let legacy = try GrokWebBillingFetcher.parseGRPCWebResponse(
+            Self.grpcConfig(percent: 2, products: [(2, 2)], unified: false), now: Date(timeIntervalSince1970: 1_792_000_000))
+        XCTAssertNil(GrokQuotaAdapter.poolShares(from: nil, matching: legacy), "No split for a legacy pool")
+    }
+
     func testEnrichmentDeadlineDropsATricklingAnswer() async {
         let fast = await GrokQuotaAdapter.bounded(seconds: 5) { "answer" }
         XCTAssertEqual(fast, "answer")

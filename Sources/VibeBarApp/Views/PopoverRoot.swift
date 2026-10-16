@@ -1091,6 +1091,15 @@ private struct GrokCombinedCard: View {
         }
         let grokBadge = planBadge(for: .grok, account: grokAccount)
         let cursorBadge = planBadge(for: .cursor, account: cursorAccount)
+        // The X Subscription: one pool read by both accounts. The product
+        // row names the plan, the pool is drawn once (Cursor's finer
+        // reading over xAI's rounded one), and the members sit under it.
+        // Only while Cursor's latest refresh succeeded: a failed refresh
+        // leaves its last snapshot cached with the error recorded beside
+        // it, and a pool drawn from that stale figure would hide both the
+        // error and the freshness warning Cursor's own section shows.
+        let cursorRefreshFailed = cursorAccount.map { quotaService.lastErrorByAccount[$0.id] != nil } ?? false
+        let sharedPool = cursorRefreshFailed ? nil : SharedPoolSummary.make(grok: grokQuota, cursor: cursorQuota)
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center, spacing: 8) {
@@ -1119,26 +1128,56 @@ private struct GrokCombinedCard: View {
             }
 
 
-            HStack(alignment: .center, spacing: 6) {
-                ToolBrandIconView(tool: .grok, size: 13)
-                    .opacity(0.85)
-                Text("Grok")
-                    .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                if let grokBadge {
-                    PlanBadgeView(text: grokBadge, fontSize: max(9, density.subtitleFontSize - 1))
+            if let sharedPool {
+                HStack(alignment: .center, spacing: 6) {
+                    BrandMarkIconView(mark: .xSubscription, size: 13)
+                        .opacity(0.85)
+                    Text("X Subscription")
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let badge = grokBadge ?? cursorBadge {
+                        PlanBadgeView(text: badge, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
                 }
+
+                // The pool row through the provider card, so the reset-credit
+                // inventory, a live error and the freshness warning stay.
+                ProviderQuotaCard(
+                    tool: .grok,
+                    density: density,
+                    compact: false,
+                    embedded: true,
+                    includedBucketIDs: ["weekly"],
+                    bucketOverride: sharedPool.bucket
+                )
+
+                if !sharedPool.members.isEmpty {
+                    SharedPoolMembersView(summary: sharedPool, density: density)
+                        .padding(.top, 2)
+                }
+            } else {
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: .grok, size: 13)
+                        .opacity(0.85)
+                    Text("Grok")
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let grokBadge {
+                        PlanBadgeView(text: grokBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
+                }
+
+                ProviderQuotaCard(
+                    tool: .grok,
+                    density: density,
+                    compact: false,
+                    embedded: true
+                )
             }
 
-            ProviderQuotaCard(
-                tool: .grok,
-                density: density,
-                compact: false,
-                embedded: true
-            )
-
-            if cursorIsUnified, !showsGrokBot {
+            if sharedPool == nil, cursorIsUnified, !showsGrokBot {
                 // The members of the pool drawn above: Cursor and Grok Bot
                 // on the same plan, with nothing of their own to chart. Also
                 // the row a configured Cursor keeps when no pool reading is
@@ -1164,7 +1203,7 @@ private struct GrokCombinedCard: View {
                 .padding(.top, 4)
             }
 
-            if showsCursor {
+            if sharedPool == nil, showsCursor {
                 HStack(alignment: .center, spacing: 6) {
                     ToolBrandIconView(tool: .cursor, size: 13)
                         .opacity(0.85)
@@ -1188,7 +1227,7 @@ private struct GrokCombinedCard: View {
 
             }
 
-            if showsGrokBot {
+            if sharedPool == nil, showsGrokBot {
                     HStack(alignment: .center, spacing: 6) {
                         BrandMarkIconView(mark: .grokBot, size: 13)
                             .opacity(0.85)
@@ -2319,6 +2358,11 @@ struct ProviderQuotaCard: View {
     /// partition marks as carrying shared metadata draws it.
     var showsResetCreditInventory: Bool = true
     var showsFreshnessWarning: Bool = true
+    /// A bucket drawn in place of the cached one with the same id — The X
+    /// Subscription's pool, read to finer precision on another account.
+    /// The card's chrome (reset credits, live error, freshness) still
+    /// comes from this tool's own account.
+    var bucketOverride: QuotaBucket?
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -2483,8 +2527,9 @@ struct ProviderQuotaCard: View {
 
     private func displayBuckets(from quota: AccountQuota?) -> [QuotaBucket] {
         guard let quota else { return [] }
-        return quota.buckets.compactMap { bucket in
-            guard includedBucketIDs?.contains(bucket.id) ?? true else { return nil }
+        return quota.buckets.compactMap { cached in
+            guard includedBucketIDs?.contains(cached.id) ?? true else { return nil }
+            let bucket = bucketOverride?.id == cached.id ? bucketOverride! : cached
             guard suppressGroupTitles else { return bucket }
             var copy = bucket
             copy.groupTitle = nil
