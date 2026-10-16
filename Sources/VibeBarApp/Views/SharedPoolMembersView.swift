@@ -12,11 +12,11 @@ struct SharedPoolMembersView: View {
     var body: some View {
         let poolUsed = max(summary.bucket.usedPercent, summary.members.map(\.usedPercent).reduce(0, +))
         VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
-            ForEach(summary.members, id: \.member) { share in
+            ForEach(summary.members, id: \.label) { share in
                 HStack(alignment: .center, spacing: 8) {
                     memberMark(share.member)
                         .frame(width: 14, height: 14)
-                    Text(memberName(share.member))
+                    Text(share.member == .other ? L10n.Quota.Group.other : share.label)
                         .font(.system(size: density.subtitleFontSize, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -51,12 +51,4 @@ struct SharedPoolMembersView: View {
         }
     }
 
-    private func memberName(_ member: SharedPoolSummary.Member) -> String {
-        switch member {
-        case .grok: return ToolType.grok.toolName
-        case .grokBot: return ToolType.cursor.quotaSubProviderName(bucketID: "grok_bot_weekly")
-        case .cursor: return ToolType.cursor.toolName
-        case .other: return L10n.Quota.Group.other
-        }
-    }
 }

@@ -10,18 +10,30 @@ import Foundation
 /// two providers report to the millisecond; two readings that do not reset
 /// together are two pools, and this summary does not exist.
 public struct SharedPoolSummary: Equatable, Sendable {
-    public enum Member: String, CaseIterable, Sendable {
+    /// The product row's name when an account is on the bundle; a glossary
+    /// term in vibe-bar-i18n, never translated.
+    public static let subProviderName = "X Subscription"
+
+    /// Which mark a product row wears.
+    public enum Member: String, Sendable {
+        /// Grok's own products: Build, Chat, Imagine, Voice, API …
         case grok
         case grokBot
         case cursor
+        /// A product xAI has not named yet.
         case other
     }
 
+    /// One product's share of the pool, as xAI lists it — "Chat 1% ·
+    /// Grok Bot 1% · Cursor 1%" on grok.com's usage page — with the mark
+    /// it wears.
     public struct MemberShare: Equatable, Sendable {
+        public let label: String
         public let member: Member
         public let usedPercent: Double
 
-        public init(member: Member, usedPercent: Double) {
+        public init(label: String, member: Member, usedPercent: Double) {
+            self.label = label
             self.member = member
             self.usedPercent = usedPercent
         }
@@ -60,16 +72,16 @@ public struct SharedPoolSummary: Equatable, Sendable {
         return SharedPoolSummary(bucket: bucket, members: Self.members(from: weekly.shares ?? []))
     }
 
-    /// Fold xAI's per-product shares into the members a user recognises:
-    /// Grok's own products together, Grok Bot, Cursor, and anything xAI has
-    /// not named yet.
+    /// One row per product, in xAI's order, a repeated label folded into one.
     static func members(from shares: [QuotaBucketShare]) -> [MemberShare] {
-        var totals: [Member: Double] = [:]
+        var order: [String] = []
+        var totals: [String: Double] = [:]
         for share in shares {
-            totals[Self.member(for: share.label), default: 0] += share.usedPercent
+            if totals[share.label] == nil { order.append(share.label) }
+            totals[share.label, default: 0] += share.usedPercent
         }
-        return Member.allCases.compactMap { member in
-            totals[member].map { MemberShare(member: member, usedPercent: $0) }
+        return order.map { label in
+            MemberShare(label: label, member: Self.member(for: label), usedPercent: totals[label] ?? 0)
         }
     }
 
@@ -77,8 +89,8 @@ public struct SharedPoolSummary: Equatable, Sendable {
         switch label.lowercased().replacingOccurrences(of: " ", with: "") {
         case "grokbot": return .grokBot
         case "cursor": return .cursor
-        case "build", "chat", "imagine", "voice", "grok": return .grok
-        default: return .other
+        case "other": return .other
+        default: return .grok
         }
     }
 }

@@ -360,14 +360,17 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         return shares.isEmpty ? nil : shares
     }
 
-    /// xAI's product enum, as far as a live account has shown it beside the
-    /// JSON's names: 2 = GrokBuild, 4 = GrokChat, 9 = GrokBot (verified
-    /// 2026-10-14 / 2026-10-16). Anything else is not guessed.
+    /// xAI's product enum, as far as a live account has shown it: 2 =
+    /// GrokBuild, 4 = GrokChat, 9 = GrokBot beside the JSON's names
+    /// (2026-10-14 / 2026-10-16), 10 = Cursor by grok.com's own usage page
+    /// listing "Chat · Grok Bot · Cursor" for a pool whose RPC carried
+    /// 4, 9 and 10 (2026-10-16). Anything else is not guessed.
     static func productLabel(code: UInt64) -> String? {
         switch code {
         case 2: return "Build"
         case 4: return "Chat"
         case 9: return "Grok Bot"
+        case 10: return "Cursor"
         default: return nil
         }
     }

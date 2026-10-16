@@ -1098,8 +1098,7 @@ private struct GrokCombinedCard: View {
         // leaves its last snapshot cached with the error recorded beside
         // it, and a pool drawn from that stale figure would hide both the
         // error and the freshness warning Cursor's own section shows.
-        let cursorRefreshFailed = cursorAccount.map { quotaService.lastErrorByAccount[$0.id] != nil } ?? false
-        let sharedPool = cursorRefreshFailed ? nil : SharedPoolSummary.make(grok: grokQuota, cursor: cursorQuota)
+        let sharedPool = SharedPoolSummary.resolve(environment: environment)
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center, spacing: 8) {

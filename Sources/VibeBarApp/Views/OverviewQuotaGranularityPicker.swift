@@ -57,14 +57,21 @@ struct OverviewQuotaPartitionCard: View {
                     titleFontSize: density.titleFontSize, subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16, badgeSize: 24)
                 Spacer()
-                Button { environment.refresh(partition.tool) } label: { Image(systemName: "arrow.clockwise") }
+                // The pool card's figure comes from Cursor's account, so its
+                // refresh pumps both and its busy state watches both.
+                let refreshTools: [ToolType] = partition.isSharedPool ? ToolType.grokFamily : [partition.tool]
+                let refreshing = refreshTools.contains { tool in
+                    environment.account(for: tool).map { quotaService.inFlightAccountIds.contains($0.id) } ?? false
+                } || accounts.contains { quotaService.inFlightAccountIds.contains($0.id) }
+                Button { refreshTools.forEach { environment.refresh($0) } } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless).help(L10n.Common.refresh)
-                    .disabled(accounts.contains { quotaService.inFlightAccountIds.contains($0.id) })
+                    .disabled(refreshing)
             }
             HStack(spacing: 6) {
-                if partition.suppressGroupTitles { BrandMarkIconView(mark: .grokBot, size: 13) }
+                if partition.isSharedPool { BrandMarkIconView(mark: .xSubscription, size: 13) }
+                else if partition.suppressGroupTitles { BrandMarkIconView(mark: .grokBot, size: 13) }
                 else { ToolBrandIconView(tool: partition.tool, size: 13) }
-                Text(partition.subProvider).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                Text(partition.displayTitle).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                 Spacer(minLength: 4)
                 if let plan { PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1)) }
             }
@@ -76,10 +83,17 @@ struct OverviewQuotaPartitionCard: View {
         }
     }
 
+    @ViewBuilder
     private func content(accountId: String?) -> some View {
+        let sharedPool = partition.isSharedPool ? SharedPoolSummary.resolve(environment: environment) : nil
         ProviderQuotaCard(tool: partition.tool, accountId: accountId, density: density, compact: false,
             embedded: true, includedBucketIDs: partition.bucketIDs.isEmpty ? nil : Set(partition.bucketIDs),
             suppressGroupTitles: partition.suppressGroupTitles,
-            showsResetCreditInventory: partition.showsSharedMetadata)
+            showsResetCreditInventory: partition.showsSharedMetadata,
+            bucketOverride: sharedPool?.bucket)
+        if let sharedPool, !sharedPool.members.isEmpty {
+            SharedPoolMembersView(summary: sharedPool, density: density)
+                .padding(.top, 2)
+        }
     }
 }
