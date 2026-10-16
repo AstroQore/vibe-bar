@@ -1056,20 +1056,26 @@ private struct GrokCombinedCard: View {
         let cursorAccount = environment.account(for: .cursor)
         let cursorQuota = cursorAccount.flatMap { quotaService.cachedQuota(for: $0.id) }
             ?? environment.quota(for: .cursor)
-        // On The X Subscription Cursor draws from Grok's weekly pool, which
-        // the Grok section above already shows with its split by product;
-        // Cursor then answers with a plan badge and no buckets of its own.
-        // A successful, empty answer is "nothing to add", not a sign-in
-        // prompt — only an unconfigured account or a failed refresh keeps
-        // the section.
-        let cursorPoolShownByGrok = cursorQuota.map { quota in
-            quota.buckets.isEmpty && quota.error == nil
-                && cursorAccount.map { quotaService.lastErrorByAccount[$0.id] == nil } ?? true
+        // On The X Subscription Cursor draws from Grok's weekly pool. Cursor
+        // then answers with its plan badge and only the `grok_bot_weekly`
+        // bucket, which is that same pool. When the Grok section above has a
+        // live snapshot the pool is already drawn there, with its split by
+        // product, so Cursor and Grok Bot collapse to one line of members.
+        // Without a Grok snapshot — Grok unconfigured, failed, or another
+        // account — the Grok Bot section stays as the pool's only view.
+        let grokQuota = grokAccount.flatMap { quotaService.cachedQuota(for: $0.id) }
+        let grokHasLivePool = grokQuota.map { !$0.buckets.isEmpty && $0.error == nil } ?? false
+            && grokAccount.map { quotaService.lastErrorByAccount[$0.id] == nil } ?? false
+        let cursorIsUnified = cursorQuota.map { quota in
+            quota.error == nil
+                && !quota.buckets.contains { $0.id == "models" || $0.id == "other_models" }
                 && cursorAccount.map { $0.source != .notConfigured } ?? true
         } ?? false
-        let showsCursor = !cursorPoolShownByGrok
+        let cursorPoolShownByGrok = cursorIsUnified && grokHasLivePool
+        let showsCursor = !cursorIsUnified
             && ((cursorAccount.map { $0.source != .notConfigured } ?? false) || cursorQuota != nil)
-        let showsGrokBot = cursorQuota?.buckets.contains { $0.id == "grok_bot_weekly" } == true
+        let showsGrokBot = !cursorPoolShownByGrok
+            && cursorQuota?.buckets.contains { $0.id == "grok_bot_weekly" } == true
         let anyInFlight = [grokAccount, cursorAccount].compactMap { $0 }.contains {
             quotaService.inFlightAccountIds.contains($0.id)
         }
@@ -1167,7 +1173,9 @@ private struct GrokCombinedCard: View {
                     includedBucketIDs: ["models", "other_models"]
                 )
 
-                if showsGrokBot {
+            }
+
+            if showsGrokBot {
                     HStack(alignment: .center, spacing: 6) {
                         BrandMarkIconView(mark: .grokBot, size: 13)
                             .opacity(0.85)
@@ -1190,7 +1198,6 @@ private struct GrokCombinedCard: View {
                         suppressGroupTitles: true,
                         showsFreshnessWarning: false
                     )
-                }
             }
         }
         .padding(density.cardPadding)

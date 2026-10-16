@@ -47,7 +47,19 @@ final class CursorUnifiedPoolTests: XCTestCase {
         let snap = CursorResponseParser.parseSummary(
             summary: summary, userInfo: nil, requestUsage: nil, grokBotUsage: bot, now: now)
         XCTAssertEqual(snap.planName, "X Ultra")
-        XCTAssertTrue(snap.buckets.isEmpty, "The pool is Grok's; neither the legacy monthly block nor Grok Bot is a bucket here")
+        XCTAssertEqual(snap.buckets.map(\.id), ["grok_bot_weekly"],
+                       "The legacy monthly block is not quota; the pool stays as the Grok Bot bucket for when Grok's own snapshot is missing")
+        XCTAssertEqual(snap.buckets.first?.usedPercent ?? 0, 1.339, accuracy: 0.001)
+    }
+
+    func testUnifiedStatusNamesThePlanWhenMembershipStillReadsLegacy() throws {
+        let legacyMembership = try CursorResponseParser.decodeUsageSummary(
+            data: Data(unifiedSummary.replacingOccurrences(of: "unified_ultra", with: "ultra").utf8))
+        let bot = try XCTUnwrap(CursorResponseParser.decodeGrokBotUsage(data: Data(unifiedGrokBot.utf8)))
+        let snap = CursorResponseParser.parseSummary(
+            summary: legacyMembership, userInfo: nil, requestUsage: nil, grokBotUsage: bot, now: now)
+        XCTAssertEqual(snap.planName, "X Ultra", "`cursorPlanName` outranks a membership type still reading as a legacy seat")
+        XCTAssertEqual(snap.buckets.map(\.id), ["grok_bot_weekly"])
     }
 
     func testMembershipTypeAloneMarksTheAccountUnified() throws {
@@ -57,7 +69,7 @@ final class CursorUnifiedPoolTests: XCTestCase {
         let snap = CursorResponseParser.parseSummary(
             summary: summary, userInfo: nil, requestUsage: nil, grokBotUsage: nil, now: now)
         XCTAssertEqual(snap.planName, "X Ultra")
-        XCTAssertTrue(snap.buckets.isEmpty)
+        XCTAssertTrue(snap.buckets.isEmpty, "No pool reading this refresh, and the legacy block is not one")
         XCTAssertTrue(CursorResponseParser.isUnified(summary: summary, grokBotUsage: nil))
     }
 

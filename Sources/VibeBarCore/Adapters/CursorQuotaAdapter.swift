@@ -289,13 +289,15 @@ enum CursorResponseParser {
 
         // An account on The X Subscription (since 2026-10-12) has one weekly
         // pool for Cursor models, shared with Grok Bot and the Grok apps,
-        // plus prepaid credit for third-party models. That pool is read once,
-        // on the Grok card (`GrokQuotaAdapter`, with its split by product),
-        // so Cursor reports no buckets of its own: `usage-summary` still
+        // plus prepaid credit for third-party models. `usage-summary` still
         // answers with the legacy monthly `plan` block for such an account
         // (a limit, zero used, a billing cycle), but Cursor's own help page
-        // says the two monthly pools belong to legacy plans only, and the
-        // Grok Bot status is the same pool again. Only the plan badge stays.
+        // says the two monthly pools belong to legacy plans only, so they
+        // are not read as quota. The pool itself is what the Grok Bot
+        // status reports; it stays as the `grok_bot_weekly` bucket, because
+        // Grok's own adapter runs on separate credentials and may be
+        // unconfigured or signed into another account. The family card is
+        // where the pool is shown once, when Grok's snapshot is at hand.
         let unified = isUnified(summary: summary, grokBotUsage: grokBotUsage)
 
         // Cursor renamed the old Auto/API lanes in August 2026. Preserve the
@@ -337,8 +339,7 @@ enum CursorResponseParser {
             ))
         }
 
-        if !unified,
-           let bot = grokBotUsage,
+        if let bot = grokBotUsage,
            let percent = bot.usagePercent,
            bot.hasNonZeroIncludedLimit != false {
             let resetAt = parseBillingCycleEnd(bot.nextResetTimestampUtc)
@@ -360,7 +361,8 @@ enum CursorResponseParser {
 
         let planName = displayPlanName(
             membershipType: summary.membershipType,
-            requestUsage: requestUsage
+            requestUsage: requestUsage,
+            unifiedPlanName: unified ? grokBotUsage?.cursorPlanName : nil
         )
         return Snapshot(buckets: buckets, planName: planName)
     }
@@ -398,8 +400,16 @@ enum CursorResponseParser {
 
     private static func displayPlanName(
         membershipType: String?,
-        requestUsage: CursorRequestUsage?
+        requestUsage: CursorRequestUsage?,
+        unifiedPlanName: String? = nil
     ) -> String? {
+        // The Grok Bot status names the X Subscription plan outright
+        // (`cursorPlanName: Ultra`); it outranks a membership type that
+        // still reads as a legacy seat during the switch.
+        if let unifiedPlanName = unifiedPlanName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !unifiedPlanName.isEmpty {
+            return "X " + unifiedPlanName.capitalized
+        }
         if let raw = membershipType?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
             // The X Subscription: `unified_<plan>`, sold under the X brand
             // like the Grok card's badge.
