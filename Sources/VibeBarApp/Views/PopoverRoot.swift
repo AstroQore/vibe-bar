@@ -1071,7 +1071,17 @@ private struct GrokCombinedCard: View {
                 && !quota.buckets.contains { $0.id == "models" || $0.id == "other_models" }
                 && cursorAccount.map { $0.source != .notConfigured } ?? true
         } ?? false
-        let cursorPoolShownByGrok = cursorIsUnified && grokHasLivePool
+        // Cursor and Grok sign in separately and may be different accounts:
+        // one pool is recognised by its reset, which the two providers
+        // report to the millisecond; two pools that do not reset together
+        // are both kept on screen.
+        let samePool: Bool = {
+            guard let grokReset = grokQuota?.weeklyBucket?.resetAt,
+                  let cursorReset = cursorQuota?.bucket(id: "grok_bot_weekly")?.resetAt
+            else { return false }
+            return abs(grokReset.timeIntervalSince(cursorReset)) < 60
+        }()
+        let cursorPoolShownByGrok = cursorIsUnified && grokHasLivePool && samePool
         let showsCursor = !cursorIsUnified
             && ((cursorAccount.map { $0.source != .notConfigured } ?? false) || cursorQuota != nil)
         let showsGrokBot = !cursorPoolShownByGrok
