@@ -76,14 +76,20 @@ public struct SharedPoolSummary: Equatable, Sendable {
     /// does not name follows, in the order reported.
     static let displayOrder = ["Chat", "Imagine", "Voice", "Grok Build", "Grok Bot", "Cursor"]
 
+    /// Labels an earlier build wrote into the quota cache, read as the
+    /// current name so an upgrade does not show them as unknown products
+    /// until the next successful refresh.
+    static let legacyLabels = ["Build": "Grok Build"]
+
     /// One row per product, in grok.com's order, a repeated label folded
     /// into one.
     static func members(from shares: [QuotaBucketShare]) -> [MemberShare] {
         var order: [String] = []
         var totals: [String: Double] = [:]
         for share in shares {
-            if totals[share.label] == nil { order.append(share.label) }
-            totals[share.label, default: 0] += share.usedPercent
+            let label = Self.legacyLabels[share.label] ?? share.label
+            if totals[label] == nil { order.append(label) }
+            totals[label, default: 0] += share.usedPercent
         }
         func rank(_ label: String) -> Int {
             Self.displayOrder.firstIndex { $0.caseInsensitiveCompare(label) == .orderedSame } ?? Self.displayOrder.count

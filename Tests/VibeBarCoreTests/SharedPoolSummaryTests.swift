@@ -67,6 +67,14 @@ final class SharedPoolSummaryTests: XCTestCase {
         XCTAssertEqual(SharedPoolSummary.member(for: "Other"), .other, "A product xAI has not named yet")
     }
 
+    func testACachedLegacyBuildLabelReadsAsGrokBuild() {
+        let members = SharedPoolSummary.members(from: [
+            QuotaBucketShare(label: "Build", usedPercent: 0.5),
+            QuotaBucketShare(label: "Chat", usedPercent: 0.2)
+        ])
+        XCTAssertEqual(members.map(\.label), ["Chat", "Grok Build"], "An upgrade's cached label is the current product, in its place")
+    }
+
     func testRepeatedLabelsFoldIntoOneRow() {
         let shares = [QuotaBucketShare(label: "Other", usedPercent: 0.3), QuotaBucketShare(label: "Other", usedPercent: 0.2)]
         let members = SharedPoolSummary.members(from: shares)
