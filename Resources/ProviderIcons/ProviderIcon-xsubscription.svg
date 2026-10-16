@@ -1,4 +1,4 @@
-<!-- Vibe Bar's own mark for The X Subscription (SpaceXAI's bundle of Grok, Grok Bot, Cursor and X Premium, 2026-10-12): two crossed strokes, the right-hand one heavier, drawn as a solid silhouette so only the alpha channel matters. Not a reproduction of any official logo; the viewBox is padded so the mark occupies the middle 80% like every other icon here. -->
-<svg width="100" height="100" viewBox="-12.5 -12.5 125 125" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path fill-rule="evenodd" clip-rule="evenodd" d="M4 6H30L96 94H70L4 6Z M63 6H88L58 44L45 27L63 6Z M4 94L41 47L54 64L30 94H4Z" fill="#000000"/>
+<!-- The X logo, for The X Subscription's plan row. From simple-icons/simple-icons 16.35.0 `icons/x.svg` (CC0 1.0; the mark itself is a trademark of X Corp., see Resources/ThirdPartyLicenses/SimpleIcons.txt), retrieved 2026-10-16. Already a single-colour silhouette, as this renderer needs; the viewBox is padded so the mark occupies the middle 80% like every other icon here. -->
+<svg width="100" height="100" viewBox="-3 -3 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z" fill="#000000"/>
 </svg>

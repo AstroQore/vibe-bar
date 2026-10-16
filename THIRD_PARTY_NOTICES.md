@@ -79,6 +79,19 @@ portions is included in this repository at the local license link above.
   ([upstream](https://github.com/lobehub/lobe-icons/blob/master/LICENSE))
 - Copyright: Copyright (c) 2023 LobeHub
 
+### Simple Icons
+
+- Project: [simple-icons/simple-icons](https://github.com/simple-icons/simple-icons)
+- Use in Vibe Bar: `Resources/ProviderIcons/ProviderIcon-xsubscription.svg` is
+  the X logo taken from that project's `icons/x.svg` at release 16.35.0, with
+  the viewBox padded so the mark sits in the middle 80% like the other icons.
+  It names The X Subscription on the SpaceXAI card. No other provider icon
+  comes from this project.
+- License: [CC0 1.0](Resources/ThirdPartyLicenses/SimpleIcons.txt)
+  ([upstream](https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md));
+  the mark itself remains X Corp.'s trademark, per the project's
+  [disclaimer](https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md).
+
 Brand marks in `Resources/ProviderIcons/` remain the trademarks of their
 respective owners; Vibe Bar draws them to identify the service a quota belongs
 to — in the menu bar, in the app's own surfaces, and, thresholded to 1-bit at
