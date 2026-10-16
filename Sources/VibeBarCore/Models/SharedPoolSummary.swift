@@ -72,15 +72,37 @@ public struct SharedPoolSummary: Equatable, Sendable {
         return SharedPoolSummary(bucket: bucket, members: Self.members(from: weekly.shares ?? []))
     }
 
-    /// One row per product, in xAI's order, a repeated label folded into one.
+    /// How grok.com's usage page breaks ties when two products used the
+    /// same share; anything it does not name follows, in the order reported.
+    static let displayOrder = ["API", "Chat", "Imagine", "Voice", "Grok Build", "Grok Bot", "Cursor"]
+
+    /// Labels an earlier build wrote into the quota cache, read as the
+    /// current name so an upgrade does not show them as unknown products
+    /// until the next successful refresh.
+    static let legacyLabels = ["Build": "Grok Build"]
+
+    /// One row per product, in grok.com's order, a repeated label folded
+    /// into one.
     static func members(from shares: [QuotaBucketShare]) -> [MemberShare] {
         var order: [String] = []
         var totals: [String: Double] = [:]
         for share in shares {
-            if totals[share.label] == nil { order.append(share.label) }
-            totals[share.label, default: 0] += share.usedPercent
+            let label = Self.legacyLabels[share.label] ?? share.label
+            if totals[label] == nil { order.append(label) }
+            totals[label, default: 0] += share.usedPercent
         }
-        return order.map { label in
+        // grok.com lists the heaviest product first and breaks ties in a
+        // fixed order ("API 3% · Imagine 2% · Chat 1% · Grok Build 1% …").
+        func rank(_ label: String) -> Int {
+            Self.displayOrder.firstIndex { $0.caseInsensitiveCompare(label) == .orderedSame } ?? Self.displayOrder.count
+        }
+        let sorted = order.enumerated().sorted { lhs, rhs in
+            let (lu, ru) = (totals[lhs.element] ?? 0, totals[rhs.element] ?? 0)
+            if lu != ru { return lu > ru }
+            let (lr, rr) = (rank(lhs.element), rank(rhs.element))
+            return lr == rr ? lhs.offset < rhs.offset : lr < rr
+        }.map(\.element)
+        return sorted.map { label in
             MemberShare(label: label, member: Self.member(for: label), usedPercent: totals[label] ?? 0)
         }
     }
