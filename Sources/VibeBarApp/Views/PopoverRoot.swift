@@ -1056,8 +1056,19 @@ private struct GrokCombinedCard: View {
         let cursorAccount = environment.account(for: .cursor)
         let cursorQuota = cursorAccount.flatMap { quotaService.cachedQuota(for: $0.id) }
             ?? environment.quota(for: .cursor)
-        let showsCursor = (cursorAccount.map { $0.source != .notConfigured } ?? false)
-            || cursorQuota != nil
+        // On The X Subscription Cursor draws from Grok's weekly pool, which
+        // the Grok section above already shows with its split by product;
+        // Cursor then answers with a plan badge and no buckets of its own.
+        // A successful, empty answer is "nothing to add", not a sign-in
+        // prompt — only an unconfigured account or a failed refresh keeps
+        // the section.
+        let cursorPoolShownByGrok = cursorQuota.map { quota in
+            quota.buckets.isEmpty && quota.error == nil
+                && cursorAccount.map { quotaService.lastErrorByAccount[$0.id] == nil } ?? true
+                && cursorAccount.map { $0.source != .notConfigured } ?? true
+        } ?? false
+        let showsCursor = !cursorPoolShownByGrok
+            && ((cursorAccount.map { $0.source != .notConfigured } ?? false) || cursorQuota != nil)
         let showsGrokBot = cursorQuota?.buckets.contains { $0.id == "grok_bot_weekly" } == true
         let anyInFlight = [grokAccount, cursorAccount].compactMap { $0 }.contains {
             quotaService.inFlightAccountIds.contains($0.id)
@@ -1110,6 +1121,29 @@ private struct GrokCombinedCard: View {
                 compact: false,
                 embedded: true
             )
+
+            if cursorPoolShownByGrok {
+                // The members of the pool drawn above: Cursor and Grok Bot
+                // on the same plan, with nothing of their own to chart.
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: .cursor, size: 13)
+                        .opacity(0.85)
+                    Text(ToolType.cursor.toolName)
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    BrandMarkIconView(mark: .grokBot, size: 13)
+                        .opacity(0.85)
+                        .padding(.leading, 6)
+                    Text("Grok Bot")
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let cursorBadge {
+                        PlanBadgeView(text: cursorBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
+                }
+                .padding(.top, 4)
+            }
 
             if showsCursor {
                 HStack(alignment: .center, spacing: 6) {

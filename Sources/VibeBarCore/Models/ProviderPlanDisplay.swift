@@ -34,6 +34,10 @@ public enum ProviderPlanDisplay {
             if canonical.lowercased().hasPrefix("supergrok") { brand = "SuperGrok" }
             else if canonical.hasPrefix("X ") { brand = "X" }
             else { brand = "Grok" }
+        case .cursor:
+            // Same bundle, same brand: a Cursor seat on The X Subscription
+            // is "X Ultra", a legacy seat keeps Cursor's own names.
+            brand = canonical.hasPrefix("X ") ? "X" : tool.productName
         default: brand = tool.productName
         }
         var tier = canonical

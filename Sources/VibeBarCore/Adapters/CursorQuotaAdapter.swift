@@ -287,9 +287,20 @@ enum CursorResponseParser {
         let billingWindow = windowSeconds(start: billingCycleStart, end: billingCycleEnd)
         var buckets: [QuotaBucket] = []
 
+        // An account on The X Subscription (since 2026-10-12) has one weekly
+        // pool for Cursor models, shared with Grok Bot and the Grok apps,
+        // plus prepaid credit for third-party models. That pool is read once,
+        // on the Grok card (`GrokQuotaAdapter`, with its split by product),
+        // so Cursor reports no buckets of its own: `usage-summary` still
+        // answers with the legacy monthly `plan` block for such an account
+        // (a limit, zero used, a billing cycle), but Cursor's own help page
+        // says the two monthly pools belong to legacy plans only, and the
+        // Grok Bot status is the same pool again. Only the plan badge stays.
+        let unified = isUnified(summary: summary, grokBotUsage: grokBotUsage)
+
         // Cursor renamed the old Auto/API lanes in August 2026. Preserve the
         // wire fields for compatibility, but use the product's current labels.
-        if let auto = autoPct {
+        if !unified, let auto = autoPct {
             buckets.append(QuotaBucket(
                 id: "models",
                 title: "Monthly",
@@ -300,7 +311,7 @@ enum CursorResponseParser {
                 groupTitle: "Cursor Models"
             ))
         }
-        if let api = apiPct {
+        if !unified, let api = apiPct {
             buckets.append(QuotaBucket(
                 id: "other_models",
                 title: "Monthly",
@@ -314,7 +325,7 @@ enum CursorResponseParser {
 
         // Older plan shapes expose one aggregate/request quota rather than the
         // two modern pools. Keep that usage visible under Cursor Models.
-        if buckets.isEmpty {
+        if !unified, buckets.isEmpty {
             buckets.append(QuotaBucket(
                 id: "models",
                 title: "Monthly",
@@ -326,7 +337,8 @@ enum CursorResponseParser {
             ))
         }
 
-        if let bot = grokBotUsage,
+        if !unified,
+           let bot = grokBotUsage,
            let percent = bot.usagePercent,
            bot.hasNonZeroIncludedLimit != false {
             let resetAt = parseBillingCycleEnd(bot.nextResetTimestampUtc)
@@ -351,6 +363,13 @@ enum CursorResponseParser {
             requestUsage: requestUsage
         )
         return Snapshot(buckets: buckets, planName: planName)
+    }
+
+    /// The Grok Bot status says so outright (`isUnified`); the membership
+    /// type (`unified_ultra`, …) is the fallback when that call failed.
+    static func isUnified(summary: CursorUsageSummary, grokBotUsage: CursorGrokBotUsage?) -> Bool {
+        if let flag = grokBotUsage?.isUnified { return flag }
+        return summary.membershipType?.lowercased().hasPrefix("unified_") ?? false
     }
 
     private static func clampPercent(_ value: Double?) -> Double? {
@@ -382,6 +401,12 @@ enum CursorResponseParser {
         requestUsage: CursorRequestUsage?
     ) -> String? {
         if let raw = membershipType?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+            // The X Subscription: `unified_<plan>`, sold under the X brand
+            // like the Grok card's badge.
+            if raw.lowercased().hasPrefix("unified_") {
+                let tier = raw.dropFirst("unified_".count).replacingOccurrences(of: "_", with: " ")
+                return tier.isEmpty ? "X Subscription" : "X " + tier.capitalized
+            }
             switch raw.lowercased() {
             case "free":            return "Free"
             case "free_trial":      return "Free Trial"
@@ -450,6 +475,34 @@ public struct CursorGrokBotUsage: Decodable, Sendable, Equatable {
     public let includedLimitZero: Bool?
     public let hasAvailableUsage: Bool?
     public let hasNonZeroIncludedLimit: Bool?
+    /// True on The X Subscription: this weekly pool is the account's one
+    /// pool, shared across Cursor, Grok Bot and the Grok apps.
+    public let isUnified: Bool?
+    /// The X Subscription plan as Cursor names it (`Ultra`).
+    public let cursorPlanName: String?
+    public let billingBrand: String?
+
+    public init(
+        currentPeriodStart: String? = nil,
+        nextResetTimestampUtc: String? = nil,
+        usagePercent: Double? = nil,
+        includedLimitZero: Bool? = nil,
+        hasAvailableUsage: Bool? = nil,
+        hasNonZeroIncludedLimit: Bool? = nil,
+        isUnified: Bool? = nil,
+        cursorPlanName: String? = nil,
+        billingBrand: String? = nil
+    ) {
+        self.currentPeriodStart = currentPeriodStart
+        self.nextResetTimestampUtc = nextResetTimestampUtc
+        self.usagePercent = usagePercent
+        self.includedLimitZero = includedLimitZero
+        self.hasAvailableUsage = hasAvailableUsage
+        self.hasNonZeroIncludedLimit = hasNonZeroIncludedLimit
+        self.isUnified = isUnified
+        self.cursorPlanName = cursorPlanName
+        self.billingBrand = billingBrand
+    }
 }
 
 public struct CursorRequestUsage: Decodable, Sendable {
