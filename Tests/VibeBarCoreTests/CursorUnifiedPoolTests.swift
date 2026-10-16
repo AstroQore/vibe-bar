@@ -111,6 +111,7 @@ final class CursorUnifiedPoolTests: XCTestCase {
         XCTAssertEqual(GrokQuotaAdapter.productLabel("GrokBot"), "Grok Bot")
         XCTAssertEqual(GrokQuotaAdapter.productLabel("GrokBuild"), "Grok Build")
         XCTAssertEqual(GrokQuotaAdapter.productLabel("GrokImagine"), "Imagine")
+        XCTAssertEqual(GrokQuotaAdapter.productLabel("GrokVoice"), "Voice")
         XCTAssertEqual(GrokQuotaAdapter.productLabel("Cursor"), "Cursor")
     }
 }

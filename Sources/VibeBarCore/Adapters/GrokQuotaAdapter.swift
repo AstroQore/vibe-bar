@@ -365,13 +365,17 @@ public struct GrokQuotaAdapter: QuotaAdapter {
     /// (2026-10-14 / 2026-10-16); 10 = Cursor, 5 = Imagine and 1 = API by
     /// grok.com's own usage page, each the one newcomer between two readings
     /// ("Chat · Grok Bot · Cursor" ↔ 4 / 9 / 10, then + Imagine ↔ + 5, then
-    /// "API 3%" ↔ 1 = 3.0, 2026-10-16). Anything else is not guessed.
+    /// "API 3%" ↔ 1 = 3.0, then "Voice 1%" ↔ 6 = 1.0, 2026-10-16). The RPC
+    /// lists only products at or above half a percent — Cursor dropped out
+    /// of both the page and the RPC at the same reading. Codes 3, 7 and 8
+    /// have not appeared; anything unlisted is not guessed.
     static func productLabel(code: UInt64) -> String? {
         switch code {
         case 1: return "API"
         case 2: return "Grok Build"
         case 4: return "Chat"
         case 5: return "Imagine"
+        case 6: return "Voice"
         case 9: return "Grok Bot"
         case 10: return "Cursor"
         default: return nil
@@ -386,6 +390,7 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         case "grokbuild": return "Grok Build"
         case "grokchat": return "Chat"
         case "grokimagine": return "Imagine"
+        case "grokvoice", "voice": return "Voice"
         case "grokapi", "api": return "API"
         case "grokbot": return "Grok Bot"
         default:
