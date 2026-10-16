@@ -1123,7 +1123,7 @@ private struct GrokCombinedCard: View {
             }
 
 
-            if let sharedPool, let grokAccount {
+            if let sharedPool {
                 HStack(alignment: .center, spacing: 6) {
                     BrandMarkIconView(mark: .xSubscription, size: 13)
                         .opacity(0.85)
@@ -1136,16 +1136,16 @@ private struct GrokCombinedCard: View {
                     }
                 }
 
-                PageClock(interval: 30) { tickDate in
-                    ProviderBucketRow(
-                        tool: .grok,
-                        accountId: grokAccount.id,
-                        bucket: sharedPool.bucket,
-                        mode: settingsStore.displayMode,
-                        density: density,
-                        now: tickDate
-                    )
-                }
+                // The pool row through the provider card, so the reset-credit
+                // inventory, a live error and the freshness warning stay.
+                ProviderQuotaCard(
+                    tool: .grok,
+                    density: density,
+                    compact: false,
+                    embedded: true,
+                    includedBucketIDs: ["weekly"],
+                    bucketOverride: sharedPool.bucket
+                )
 
                 if !sharedPool.members.isEmpty {
                     SharedPoolMembersView(summary: sharedPool, density: density)
@@ -2353,6 +2353,11 @@ struct ProviderQuotaCard: View {
     /// partition marks as carrying shared metadata draws it.
     var showsResetCreditInventory: Bool = true
     var showsFreshnessWarning: Bool = true
+    /// A bucket drawn in place of the cached one with the same id — The X
+    /// Subscription's pool, read to finer precision on another account.
+    /// The card's chrome (reset credits, live error, freshness) still
+    /// comes from this tool's own account.
+    var bucketOverride: QuotaBucket?
 
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var settingsStore: SettingsStore
@@ -2517,8 +2522,9 @@ struct ProviderQuotaCard: View {
 
     private func displayBuckets(from quota: AccountQuota?) -> [QuotaBucket] {
         guard let quota else { return [] }
-        return quota.buckets.compactMap { bucket in
-            guard includedBucketIDs?.contains(bucket.id) ?? true else { return nil }
+        return quota.buckets.compactMap { cached in
+            guard includedBucketIDs?.contains(cached.id) ?? true else { return nil }
+            let bucket = bucketOverride?.id == cached.id ? bucketOverride! : cached
             guard suppressGroupTitles else { return bucket }
             var copy = bucket
             copy.groupTitle = nil
