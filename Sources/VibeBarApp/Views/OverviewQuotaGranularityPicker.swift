@@ -62,7 +62,8 @@ struct OverviewQuotaPartitionCard: View {
                     .disabled(accounts.contains { quotaService.inFlightAccountIds.contains($0.id) })
             }
             HStack(spacing: 6) {
-                if partition.suppressGroupTitles { BrandMarkIconView(mark: .grokBot, size: 13) }
+                if partition.isSharedPool { BrandMarkIconView(mark: .xSubscription, size: 13) }
+                else if partition.suppressGroupTitles { BrandMarkIconView(mark: .grokBot, size: 13) }
                 else { ToolBrandIconView(tool: partition.tool, size: 13) }
                 Text(partition.subProvider).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                 Spacer(minLength: 4)
@@ -76,10 +77,17 @@ struct OverviewQuotaPartitionCard: View {
         }
     }
 
+    @ViewBuilder
     private func content(accountId: String?) -> some View {
+        let sharedPool = partition.isSharedPool ? SharedPoolSummary.resolve(environment: environment) : nil
         ProviderQuotaCard(tool: partition.tool, accountId: accountId, density: density, compact: false,
             embedded: true, includedBucketIDs: partition.bucketIDs.isEmpty ? nil : Set(partition.bucketIDs),
             suppressGroupTitles: partition.suppressGroupTitles,
-            showsResetCreditInventory: partition.showsSharedMetadata)
+            showsResetCreditInventory: partition.showsSharedMetadata,
+            bucketOverride: sharedPool?.bucket)
+        if let sharedPool, !sharedPool.members.isEmpty {
+            SharedPoolMembersView(summary: sharedPool, density: density)
+                .padding(.top, 2)
+        }
     }
 }

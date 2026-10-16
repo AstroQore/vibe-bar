@@ -35,9 +35,10 @@ final class SharedPoolSummaryTests: XCTestCase {
         XCTAssertEqual(summary.bucket.usedPercent, 2.594, accuracy: 0.0001, "xAI rounds the pool to a whole number; Cursor's decimals win")
         XCTAssertEqual(summary.bucket.resetAt, reset)
         XCTAssertNil(summary.bucket.shares, "The members carry the split; the pool row does not repeat it")
-        XCTAssertEqual(summary.members.map(\.member), [.grok, .grokBot, .other])
-        XCTAssertEqual(summary.members[0].usedPercent, 1.0, accuracy: 0.0001, "Grok's own products fold into one row")
-        XCTAssertEqual(summary.members[1].usedPercent, 1.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.members.map(\.label), ["Build", "Chat", "Grok Bot", "Other"], "One row per product, in xAI's order")
+        XCTAssertEqual(summary.members.map(\.member), [.grok, .grok, .grokBot, .other])
+        XCTAssertEqual(summary.members[0].usedPercent, 0.6, accuracy: 0.0001)
+        XCTAssertEqual(summary.members[2].usedPercent, 1.0, accuracy: 0.0001)
     }
 
     func testTwoAccountsThatDoNotResetTogetherAreTwoPools() {
@@ -57,11 +58,18 @@ final class SharedPoolSummaryTests: XCTestCase {
         XCTAssertTrue(summary.members.isEmpty)
     }
 
-    func testMemberMappingKnowsTheProductsAndKeepsTheRestApart() {
+    func testMemberMarksFollowTheProduct() {
         XCTAssertEqual(SharedPoolSummary.member(for: "Grok Bot"), .grokBot)
         XCTAssertEqual(SharedPoolSummary.member(for: "Cursor"), .cursor)
         XCTAssertEqual(SharedPoolSummary.member(for: "Build"), .grok)
-        XCTAssertEqual(SharedPoolSummary.member(for: "Imagine"), .grok)
-        XCTAssertEqual(SharedPoolSummary.member(for: "Something New"), .other)
+        XCTAssertEqual(SharedPoolSummary.member(for: "Imagine"), .grok, "Every Grok product wears Grok's mark")
+        XCTAssertEqual(SharedPoolSummary.member(for: "Other"), .other, "A product xAI has not named yet")
+    }
+
+    func testRepeatedLabelsFoldIntoOneRow() {
+        let shares = [QuotaBucketShare(label: "Other", usedPercent: 0.3), QuotaBucketShare(label: "Other", usedPercent: 0.2)]
+        let members = SharedPoolSummary.members(from: shares)
+        XCTAssertEqual(members.count, 1)
+        XCTAssertEqual(members[0].usedPercent, 0.5, accuracy: 0.0001)
     }
 }

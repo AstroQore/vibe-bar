@@ -337,8 +337,15 @@ enum PageModuleCatalog {
 
     @MainActor
     static func overviewQuotaPartitions(environment: AppEnvironment, settings: AppSettings) -> [OverviewQuotaPartition] {
-        settings.visibleCoreProviderList.flatMap { company in
+        // The X Subscription: Grok's and Cursor's quotas read one pool, drawn
+        // once under the bundle's name; Cursor adds no card of its own.
+        let sharedPool = SharedPoolSummary.resolve(environment: environment)
+        return settings.visibleCoreProviderList.flatMap { company in
             company.coreProviderMembers.flatMap { member -> [OverviewQuotaPartition] in
+                if sharedPool != nil, member == .grok {
+                    return [OverviewQuotaPartition.sharedPool(granularity: settings.overviewQuotaGranularity)]
+                }
+                if sharedPool != nil, member == .cursor { return [] }
                 if member == .chatgptChat && !settings.chatGPTChat.enabled { return [] }
                 if member == .cursor,
                    !(environment.account(for: .cursor).map { $0.source != .notConfigured } ?? false),
@@ -559,6 +566,19 @@ enum PageModuleCatalog {
             }
         } else if tool == .grok {
             accountId = environment.account(for: .grok)?.id
+            if let sharedPool = SharedPoolSummary.resolve(environment: environment) {
+                // One pool, one card, under the bundle's name; the members
+                // are drawn beneath it rather than as Cursor's own series.
+                let modules = QuotaGroupModuleBuilder.modules(
+                    pageTool: tool,
+                    buckets: [sharedPool.bucket],
+                    primaryAccountId: accountId,
+                    additionalQuotaSeries: [],
+                    sharedPool: sharedPool
+                )
+                guard modules.isEmpty else { return modules }
+                return [QuotaGroupModuleBuilder.placeholderModule(pageTool: tool, accountId: accountId)]
+            }
             buckets = environment.quota(for: .grok)?.buckets ?? []
             if let cursor = environment.account(for: .cursor) {
                 additional = (environment.quotaService.cachedQuota(for: cursor.id)?.buckets ?? [])

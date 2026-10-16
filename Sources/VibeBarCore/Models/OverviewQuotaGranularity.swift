@@ -14,6 +14,33 @@ public struct OverviewQuotaPartition: Hashable, Sendable {
     public let granularity: OverviewQuotaGranularity
     public let showsSharedMetadata: Bool
 
+    public init(
+        tool: ToolType,
+        subProvider: String,
+        groupTitle: String?,
+        bucketIDs: [String],
+        granularity: OverviewQuotaGranularity,
+        showsSharedMetadata: Bool
+    ) {
+        self.tool = tool
+        self.subProvider = subProvider
+        self.groupTitle = groupTitle
+        self.bucketIDs = bucketIDs
+        self.granularity = granularity
+        self.showsSharedMetadata = showsSharedMetadata
+    }
+
+    /// The one card The X Subscription's pool gets on the Overview, at every
+    /// granularity: Grok's Weekly, named after the bundle.
+    public static func sharedPool(granularity: OverviewQuotaGranularity) -> Self {
+        Self(tool: .grok, subProvider: SharedPoolSummary.subProviderName, groupTitle: nil,
+             bucketIDs: ["weekly"], granularity: granularity, showsSharedMetadata: true)
+    }
+
+    public var isSharedPool: Bool {
+        tool == .grok && subProvider == SharedPoolSummary.subProviderName
+    }
+
     public var id: String {
         let scope = Data((subProvider + "\u{0}" + (groupTitle ?? "")).utf8).base64EncodedString()
         return "overview-quota:\(tool.rawValue):\(granularity.rawValue.lowercased()):\(scope)"

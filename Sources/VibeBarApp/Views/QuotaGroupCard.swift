@@ -49,6 +49,12 @@ struct QuotaGroupModule: Identifiable {
     /// SubProvider's own mark where it has one — Grok Bot rides Cursor's
     /// account, and only the bucket says so.
     var linkedSectionBucketID: String?
+    /// A mark the linked section wears instead of a tool's: The X
+    /// Subscription's, on the pool card.
+    var linkedSectionIconMark: BrandMark?
+    /// The X Subscription's pool, when this card is it: its members are
+    /// drawn under the rows.
+    var sharedPool: SharedPoolSummary?
     /// Set on the first card of the page. It inherits the provider header —
     /// brand icon, product name, plan badge, refresh button — that the single
     /// pre-split card carried at the top.
@@ -81,7 +87,8 @@ enum QuotaGroupModuleBuilder {
         pageTool: ToolType,
         buckets: [QuotaBucket],
         primaryAccountId: String?,
-        additionalQuotaSeries: [FillTimelineSeries]
+        additionalQuotaSeries: [FillTimelineSeries],
+        sharedPool: SharedPoolSummary? = nil
     ) -> [QuotaGroupModule] {
         let primary = buckets.map {
             RawBucket(
@@ -123,7 +130,9 @@ enum QuotaGroupModuleBuilder {
             // Grok Bot is a distinct SubProvider even though its quota comes
             // from the Cursor dashboard adapter.
             var linkedSectionTitle: String?
-            let resolvedSubProviderTitle = head.tool.quotaSubProviderName(bucketID: head.bucket.id)
+            let resolvedSubProviderTitle = sharedPool != nil && head.tool == pageTool
+                ? SharedPoolSummary.subProviderName
+                : head.tool.quotaSubProviderName(bucketID: head.bucket.id)
             let sectionKey = "\(head.tool.rawValue):\(resolvedSubProviderTitle)"
             if seenSectionKeys.insert(sectionKey).inserted {
                 linkedSectionTitle = resolvedSubProviderTitle
@@ -158,6 +167,8 @@ enum QuotaGroupModuleBuilder {
                     linkedSectionTitle: linkedSectionTitle,
                     linkedSectionIconTool: head.tool,
                     linkedSectionBucketID: head.bucket.id,
+                    linkedSectionIconMark: sharedPool != nil && head.tool == pageTool ? .xSubscription : nil,
+                    sharedPool: head.tool == pageTool ? sharedPool : nil,
                     showsProviderHeader: modules.isEmpty
                 )
             )
@@ -232,6 +243,10 @@ struct QuotaGroupCard: View {
                 ForEach(module.rows) { row in
                     self.row(for: row)
                 }
+                if let sharedPool = module.sharedPool, !sharedPool.members.isEmpty {
+                    SharedPoolMembersView(summary: sharedPool, density: density)
+                        .padding(.top, 2)
+                }
                 groupHistoryChart
                 if module.linkedSectionTitle != nil,
                    let quota = module.accountId.flatMap({ quotaService.cachedQuota(for: $0) })
@@ -283,12 +298,17 @@ struct QuotaGroupCard: View {
                 // divider; the card boundary does that now, so only the name
                 // and brand icon survive.
                 HStack(alignment: .center, spacing: 6) {
-                    QuotaBrandIconView(
-                        tool: module.linkedSectionIconTool ?? module.tool,
-                        bucketID: module.linkedSectionBucketID,
-                        size: 13
-                    )
-                        .opacity(0.85)
+                    if let mark = module.linkedSectionIconMark {
+                        BrandMarkIconView(mark: mark, size: 13)
+                            .opacity(0.85)
+                    } else {
+                        QuotaBrandIconView(
+                            tool: module.linkedSectionIconTool ?? module.tool,
+                            bucketID: module.linkedSectionBucketID,
+                            size: 13
+                        )
+                            .opacity(0.85)
+                    }
                     Text(linkedSectionTitle)
                         .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
                         .foregroundStyle(.secondary)
