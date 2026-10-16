@@ -74,7 +74,7 @@ public struct SharedPoolSummary: Equatable, Sendable {
 
     /// How grok.com's usage page breaks ties when two products used the
     /// same share; anything it does not name follows, in the order reported.
-    static let displayOrder = ["API", "API / Voice", "Chat", "Imagine", "Voice", "Grok Build", "Grok Bot", "Cursor"]
+    static let displayOrder = ["API", "Chat", "Imagine", "Voice", "Grok Build", "Grok Bot", "Cursor"]
 
     /// Labels an earlier build wrote into the quota cache, read as the
     /// current name so an upgrade does not show them as unknown products
