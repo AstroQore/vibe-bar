@@ -129,13 +129,15 @@ enum QuotaGroupModuleBuilder {
             // A SubProvider name is printed once on the first card in its run.
             // Grok Bot is a distinct SubProvider even though its quota comes
             // from the Cursor dashboard adapter.
+            // The section stays keyed by the SubProvider (L2); on The X
+            // Subscription's pool card it merely reads as the plan.
             var linkedSectionTitle: String?
-            let resolvedSubProviderTitle = sharedPool != nil && head.tool == pageTool
-                ? SharedPoolSummary.subProviderName
-                : head.tool.quotaSubProviderName(bucketID: head.bucket.id)
+            let resolvedSubProviderTitle = head.tool.quotaSubProviderName(bucketID: head.bucket.id)
             let sectionKey = "\(head.tool.rawValue):\(resolvedSubProviderTitle)"
             if seenSectionKeys.insert(sectionKey).inserted {
-                linkedSectionTitle = resolvedSubProviderTitle
+                linkedSectionTitle = sharedPool != nil && head.tool == pageTool
+                    ? SharedPoolSummary.subProviderName
+                    : resolvedSubProviderTitle
             }
 
             // Two runs can in principle carry the same heading (a heading that

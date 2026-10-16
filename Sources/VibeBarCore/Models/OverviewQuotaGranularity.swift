@@ -13,6 +13,11 @@ public struct OverviewQuotaPartition: Hashable, Sendable {
     public let bucketIDs: [String]
     public let granularity: OverviewQuotaGranularity
     public let showsSharedMetadata: Bool
+    /// The X Subscription's one pool: Grok's Weekly card, still Grok's on the
+    /// quota axis (L2 stays the SubProvider, so the card's identity and layout
+    /// slot are the ones the Grok card always had), presented under the
+    /// bundle's name with Cursor and Grok Bot's shares beneath it.
+    public let isSharedPool: Bool
 
     public init(
         tool: ToolType,
@@ -20,7 +25,8 @@ public struct OverviewQuotaPartition: Hashable, Sendable {
         groupTitle: String?,
         bucketIDs: [String],
         granularity: OverviewQuotaGranularity,
-        showsSharedMetadata: Bool
+        showsSharedMetadata: Bool,
+        isSharedPool: Bool = false
     ) {
         self.tool = tool
         self.subProvider = subProvider
@@ -28,17 +34,20 @@ public struct OverviewQuotaPartition: Hashable, Sendable {
         self.bucketIDs = bucketIDs
         self.granularity = granularity
         self.showsSharedMetadata = showsSharedMetadata
+        self.isSharedPool = isSharedPool
     }
 
     /// The one card The X Subscription's pool gets on the Overview, at every
-    /// granularity: Grok's Weekly, named after the bundle.
+    /// granularity.
     public static func sharedPool(granularity: OverviewQuotaGranularity) -> Self {
-        Self(tool: .grok, subProvider: SharedPoolSummary.subProviderName, groupTitle: nil,
-             bucketIDs: ["weekly"], granularity: granularity, showsSharedMetadata: true)
+        Self(tool: .grok, subProvider: ToolType.grok.quotaSubProviderName(), groupTitle: nil,
+             bucketIDs: ["weekly"], granularity: granularity, showsSharedMetadata: true, isSharedPool: true)
     }
 
-    public var isSharedPool: Bool {
-        tool == .grok && subProvider == SharedPoolSummary.subProviderName
+    /// What the SubProvider row reads: the plan's name on the pool card, the
+    /// SubProvider's everywhere else.
+    public var displayTitle: String {
+        isSharedPool ? SharedPoolSummary.subProviderName : subProvider
     }
 
     public var id: String {
