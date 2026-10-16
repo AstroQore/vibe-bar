@@ -131,10 +131,38 @@ public enum ClaudeResponseParser {
             out.append(routine)
         }
 
+        attachWeeklyBreakdown(from: root, to: &out)
+
         if out.isEmpty {
             throw QuotaError.parseFailure("no recognized buckets")
         }
         return out
+    }
+
+    // MARK: - `seven_day_breakdown` (usage by product)
+
+    /// The "This week's usage by product" rows of claude.ai's usage page
+    /// (`seven_day_breakdown.rows[]`: `key`, `display_name`, `percent`).
+    /// Each row's percent is its share of what the week has used, so a
+    /// 100% row on a 6%-used week is 6 points of the pool; they are
+    /// attached to the Weekly bucket as shares on the pool's own scale,
+    /// the way Grok's split is, so every surface reads them alike. Rows at
+    /// 0% are skipped: a product that drew nothing is not a share.
+    static func attachWeeklyBreakdown(from root: [String: Any], to buckets: inout [QuotaBucket]) {
+        guard let index = buckets.firstIndex(where: { $0.id == "weekly" }),
+              let breakdown = root["seven_day_breakdown"] as? [String: Any],
+              let rows = breakdown["rows"] as? [[String: Any]]
+        else { return }
+        let weekly = buckets[index]
+        let shares = rows.compactMap { row -> QuotaBucketShare? in
+            guard let percent = Self.numberValue(row["percent"]), percent > 0 else { return nil }
+            let label = (row["display_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = (row["key"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let name = [label, key].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return nil }
+            return QuotaBucketShare(label: name, usedPercent: weekly.usedPercent * percent / 100)
+        }
+        guard !shares.isEmpty else { return }
+        buckets[index].shares = shares
     }
 
     // MARK: - `limits[]` array (2026-07 schema)
