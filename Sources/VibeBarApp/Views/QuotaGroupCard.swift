@@ -1032,18 +1032,25 @@ struct QuotaGroupCard: View {
 
 /// "Build 60% · Chat 1%": how a bucket's used percent splits by product.
 /// Always the used share, whatever the display mode — a share has no
-/// remaining value, so flipping it would invent an allowance.
+/// remaining value, so flipping it would invent an allowance. A share
+/// that is not a whole number keeps one decimal ("Claude Code 4.5%"), so
+/// the parts still add up to the headline the row shows above them.
 struct QuotaShareCaption: View {
     let shares: [QuotaBucketShare]
     let fontSize: CGFloat
 
     var body: some View {
         Text(shares.map { share in
-            "\(share.label) \(L10n.Common.percent(value: Int(share.usedPercent.rounded())))"
+            "\(share.label) \(Self.percentText(share.usedPercent))"
         }.joined(separator: " · "))
             .font(.system(size: fontSize).monospacedDigit())
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    static func percentText(_ value: Double) -> String {
+        let whole = value.rounded() == value
+        return (value / 100).formatted(.percent.precision(.fractionLength(whole ? 0 : 1)))
     }
 }
