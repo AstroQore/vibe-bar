@@ -35,6 +35,7 @@ final class ProviderIconResourcesTests: XCTestCase {
             "googleai",
             "anthropic",
             "grokbot",
+            "xsubscription",
             "metaai",
             "codex-session"
         ]

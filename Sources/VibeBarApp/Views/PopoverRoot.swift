@@ -1091,6 +1091,10 @@ private struct GrokCombinedCard: View {
         }
         let grokBadge = planBadge(for: .grok, account: grokAccount)
         let cursorBadge = planBadge(for: .cursor, account: cursorAccount)
+        // The X Subscription: one pool read by both accounts. The product
+        // row names the plan, the pool is drawn once (Cursor's finer
+        // reading over xAI's rounded one), and the members sit under it.
+        let sharedPool = SharedPoolSummary.make(grok: grokQuota, cursor: cursorQuota)
 
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             HStack(alignment: .center, spacing: 8) {
@@ -1119,26 +1123,56 @@ private struct GrokCombinedCard: View {
             }
 
 
-            HStack(alignment: .center, spacing: 6) {
-                ToolBrandIconView(tool: .grok, size: 13)
-                    .opacity(0.85)
-                Text("Grok")
-                    .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                if let grokBadge {
-                    PlanBadgeView(text: grokBadge, fontSize: max(9, density.subtitleFontSize - 1))
+            if let sharedPool, let grokAccount {
+                HStack(alignment: .center, spacing: 6) {
+                    BrandMarkIconView(mark: .xSubscription, size: 13)
+                        .opacity(0.85)
+                    Text("X Subscription")
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let badge = grokBadge ?? cursorBadge {
+                        PlanBadgeView(text: badge, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
                 }
+
+                PageClock(interval: 30) { tickDate in
+                    ProviderBucketRow(
+                        tool: .grok,
+                        accountId: grokAccount.id,
+                        bucket: sharedPool.bucket,
+                        mode: settingsStore.displayMode,
+                        density: density,
+                        now: tickDate
+                    )
+                }
+
+                if !sharedPool.members.isEmpty {
+                    SharedPoolMembersView(summary: sharedPool, density: density)
+                        .padding(.top, 2)
+                }
+            } else {
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: .grok, size: 13)
+                        .opacity(0.85)
+                    Text("Grok")
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let grokBadge {
+                        PlanBadgeView(text: grokBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
+                }
+
+                ProviderQuotaCard(
+                    tool: .grok,
+                    density: density,
+                    compact: false,
+                    embedded: true
+                )
             }
 
-            ProviderQuotaCard(
-                tool: .grok,
-                density: density,
-                compact: false,
-                embedded: true
-            )
-
-            if cursorIsUnified, !showsGrokBot {
+            if sharedPool == nil, cursorIsUnified, !showsGrokBot {
                 // The members of the pool drawn above: Cursor and Grok Bot
                 // on the same plan, with nothing of their own to chart. Also
                 // the row a configured Cursor keeps when no pool reading is
@@ -1164,7 +1198,7 @@ private struct GrokCombinedCard: View {
                 .padding(.top, 4)
             }
 
-            if showsCursor {
+            if sharedPool == nil, showsCursor {
                 HStack(alignment: .center, spacing: 6) {
                     ToolBrandIconView(tool: .cursor, size: 13)
                         .opacity(0.85)
@@ -1188,7 +1222,7 @@ private struct GrokCombinedCard: View {
 
             }
 
-            if showsGrokBot {
+            if sharedPool == nil, showsGrokBot {
                     HStack(alignment: .center, spacing: 6) {
                         BrandMarkIconView(mark: .grokBot, size: 13)
                             .opacity(0.85)

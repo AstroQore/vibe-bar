@@ -7,12 +7,35 @@ import Foundation
 /// and the next reset timestamp (`varint` seconds since epoch) out of
 /// the bytes.
 public struct GrokWebBillingSnapshot: Sendable, Equatable {
+    /// One entry of the pool's split by product, as the RPC carries it:
+    /// xAI's product enum and that product's share of the pool.
+    public struct ProductShare: Sendable, Equatable {
+        public let code: UInt64
+        public let usedPercent: Double
+
+        public init(code: UInt64, usedPercent: Double) {
+            self.code = code
+            self.usedPercent = usedPercent
+        }
+    }
+
     public let usedPercent: Double
     public let resetsAt: Date?
+    /// Field 7 of the config message, repeated: `{ product = 1; percent = 2 }`.
+    public let productShares: [ProductShare]
+    /// Field 11 of the config message, when present.
+    public let isUnified: Bool?
 
-    public init(usedPercent: Double, resetsAt: Date?) {
+    public init(
+        usedPercent: Double,
+        resetsAt: Date?,
+        productShares: [ProductShare] = [],
+        isUnified: Bool? = nil
+    ) {
         self.usedPercent = usedPercent
         self.resetsAt = resetsAt
+        self.productShares = productShares
+        self.isUnified = isUnified
     }
 }
 
@@ -279,7 +302,90 @@ public enum GrokWebBillingFetcher {
         guard let percent = parsedPercent ?? (noUsageYet ? 0 : nil) else {
             throw QuotaError.parseFailure("Grok billing protobuf had no usage field.")
         }
-        return GrokWebBillingSnapshot(usedPercent: percent, resetsAt: reset)
+        var shares: [GrokWebBillingSnapshot.ProductShare] = []
+        var isUnified: Bool?
+        for payload in payloads {
+            shares += productShares(in: payload)
+            if let flag = scan.varintFields.first(where: { $0.path == [1, 11] }) {
+                isUnified = flag.value != 0
+            }
+        }
+        return GrokWebBillingSnapshot(
+            usedPercent: percent,
+            resetsAt: reset,
+            productShares: shares,
+            isUnified: isUnified
+        )
+    }
+
+    /// The config message's repeated field 7, each `{ 1: product enum
+    /// (varint), 2: percent (fixed32) }`, read in order so an entry whose
+    /// product is the enum's default (and therefore omitted on the wire) can
+    /// never be paired with its neighbour's percent.
+    static func productShares(in payload: Data) -> [GrokWebBillingSnapshot.ProductShare] {
+        let bytes = [UInt8](payload)
+        var index = 0
+        var shares: [GrokWebBillingSnapshot.ProductShare] = []
+        while index < bytes.count {
+            guard let key = readVarint(bytes, index: &index) else { break }
+            guard key >> 3 == 1, key & 0x07 == 2,
+                  let length = readVarint(bytes, index: &index),
+                  length <= UInt64(bytes.count - index)
+            else {
+                guard skipField(bytes, index: &index, wireType: key & 0x07) else { break }
+                continue
+            }
+            let config = Array(bytes[index..<(index + Int(length))])
+            index += Int(length)
+            var configIndex = 0
+            while configIndex < config.count {
+                guard let configKey = readVarint(config, index: &configIndex) else { break }
+                guard configKey >> 3 == 7, configKey & 0x07 == 2,
+                      let entryLength = readVarint(config, index: &configIndex),
+                      entryLength <= UInt64(config.count - configIndex)
+                else {
+                    guard skipField(config, index: &configIndex, wireType: configKey & 0x07) else { break }
+                    continue
+                }
+                let entry = Array(config[configIndex..<(configIndex + Int(entryLength))])
+                configIndex += Int(entryLength)
+                var code: UInt64 = 0
+                var percent: Float?
+                var entryIndex = 0
+                while entryIndex < entry.count {
+                    guard let entryKey = readVarint(entry, index: &entryIndex) else { break }
+                    switch (entryKey >> 3, entryKey & 0x07) {
+                    case (1, 0):
+                        guard let value = readVarint(entry, index: &entryIndex) else { break }
+                        code = value
+                    case (2, 5):
+                        guard entryIndex + 4 <= entry.count else { break }
+                        let bits = UInt32(entry[entryIndex]) | (UInt32(entry[entryIndex + 1]) << 8)
+                            | (UInt32(entry[entryIndex + 2]) << 16) | (UInt32(entry[entryIndex + 3]) << 24)
+                        percent = Float(bitPattern: bits)
+                        entryIndex += 4
+                    default:
+                        guard skipField(entry, index: &entryIndex, wireType: entryKey & 0x07) else { break }
+                    }
+                }
+                if let percent, percent.isFinite {
+                    shares.append(.init(code: code, usedPercent: Double(max(0, min(100, percent)))))
+                }
+            }
+        }
+        return shares
+    }
+
+    private static func skipField(_ bytes: [UInt8], index: inout Int, wireType: UInt64) -> Bool {
+        switch wireType {
+        case 0: return readVarint(bytes, index: &index) != nil
+        case 1: guard index + 8 <= bytes.count else { return false }; index += 8; return true
+        case 2:
+            guard let length = readVarint(bytes, index: &index), length <= UInt64(bytes.count - index) else { return false }
+            index += Int(length); return true
+        case 5: guard index + 4 <= bytes.count else { return false }; index += 4; return true
+        default: return false
+        }
     }
 
     private struct ProtobufScan {

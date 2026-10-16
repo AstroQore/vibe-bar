@@ -321,23 +321,55 @@ public struct GrokQuotaAdapter: QuotaAdapter {
     /// attached only when the JSON's headline percent and period end agree
     /// with the snapshot they would decorate; otherwise the Weekly bucket
     /// goes out without a split rather than with the previous cycle's.
+    ///
+    /// The RPC carries the same split under inferred field numbers and
+    /// product enums, and it keeps answering when the JSON endpoint cannot
+    /// serialise a product it does not know yet (xAI answered 500 the week
+    /// Cursor joined the pool), so it is the fallback: a product the enum
+    /// table does not name is reported as "Other" rather than guessed.
     static func poolShares(
         from credits: GrokCreditsBillingSnapshot?,
         matching snapshot: GrokWebBillingSnapshot
     ) -> [QuotaBucketShare]? {
-        guard let credits, credits.isUnifiedBillingUser else { return nil }
-        if let percent = credits.usedPercent,
-           abs(percent - snapshot.usedPercent) > Self.shareTolerancePercent {
-            return nil
+        if let credits {
+            guard credits.isUnifiedBillingUser else { return nil }
+            if let percent = credits.usedPercent,
+               abs(percent - snapshot.usedPercent) > Self.shareTolerancePercent {
+                return nil
+            }
+            if let periodEnd = credits.periodEnd, let resetsAt = snapshot.resetsAt,
+               abs(periodEnd.timeIntervalSince(resetsAt)) > Self.sharePeriodTolerance {
+                return nil
+            }
+            let shares = credits.productUsage.map {
+                QuotaBucketShare(label: Self.productLabel($0.product), usedPercent: $0.usedPercent)
+            }
+            return shares.isEmpty ? nil : shares
         }
-        if let periodEnd = credits.periodEnd, let resetsAt = snapshot.resetsAt,
-           abs(periodEnd.timeIntervalSince(resetsAt)) > Self.sharePeriodTolerance {
-            return nil
+        guard snapshot.isUnified == true, !snapshot.productShares.isEmpty else { return nil }
+        var other = 0.0
+        var shares: [QuotaBucketShare] = []
+        for share in snapshot.productShares {
+            if let label = Self.productLabel(code: share.code) {
+                shares.append(QuotaBucketShare(label: label, usedPercent: share.usedPercent))
+            } else {
+                other += share.usedPercent
+            }
         }
-        let shares = credits.productUsage.map {
-            QuotaBucketShare(label: Self.productLabel($0.product), usedPercent: $0.usedPercent)
-        }
+        if other > 0 { shares.append(QuotaBucketShare(label: "Other", usedPercent: other)) }
         return shares.isEmpty ? nil : shares
+    }
+
+    /// xAI's product enum, as far as a live account has shown it beside the
+    /// JSON's names: 2 = GrokBuild, 4 = GrokChat, 9 = GrokBot (verified
+    /// 2026-10-14 / 2026-10-16). Anything else is not guessed.
+    static func productLabel(code: UInt64) -> String? {
+        switch code {
+        case 2: return "Build"
+        case 4: return "Chat"
+        case 9: return "Grok Bot"
+        default: return nil
+        }
     }
 
     /// `GrokBuild` → "Build", `GrokChat` → "Chat"; a product this does not

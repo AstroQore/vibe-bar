@@ -589,6 +589,10 @@ enum BrandMark: String, CaseIterable, Hashable {
     case cognition
     case mistralAI
     case grokBot
+    /// The X Subscription — SpaceXAI's bundle of Grok, Grok Bot, Cursor and
+    /// X Premium. Worn by the family card's plan row when an account is on
+    /// it, where the product row used to read "Grok".
+    case xSubscription
     /// The Codex **harness** — CLI, exec, the desktop app's Codex tab. On the
     /// quota axis the same adapter's SubProviders are ChatGPT Agentic and
     /// ChatGPT Work, and those keep ChatGPT's mark (`ProviderIcon-codex`);
@@ -630,6 +634,7 @@ enum BrandMark: String, CaseIterable, Hashable {
         case .cognition: return "ProviderIcon-cognition"
         case .mistralAI: return "ProviderIcon-mistral"
         case .grokBot:   return "ProviderIcon-grokbot"
+        case .xSubscription: return "ProviderIcon-xsubscription"
         case .codex:     return "ProviderIcon-codex-session"
         }
     }
@@ -653,6 +658,7 @@ enum BrandMark: String, CaseIterable, Hashable {
         case .cognition: return "hexagon"
         case .mistralAI: return "square.grid.3x3"
         case .grokBot:   return "circle.dashed"
+        case .xSubscription: return "xmark"
         case .codex:     return "terminal"
         }
     }
@@ -664,7 +670,7 @@ enum BrandMark: String, CaseIterable, Hashable {
     /// owns. Grok Bot is xAI's app, so it takes xAI's.
     var accentTool: ToolType {
         switch self {
-        case .spaceXAI, .grokBot: return .grok
+        case .spaceXAI, .grokBot, .xSubscription: return .grok
         case .googleAI:           return .gemini
         case .anthropic:          return .claude
         case .metaAI:             return .muse
