@@ -1275,7 +1275,7 @@ SubProvider → L3 quota / model group. Source of truth:
 | Google AI  | Gemini Web            | 5 Hours, Weekly                           |
 | Google AI  | AntiGravity           | Gemini Models, Claude & GPT Models        |
 | SpaceXAI   | Grok                  | Weekly Credits (carries Build / Chat shares on The X Subscription) |
-| SpaceXAI   | Cursor                | Cursor Models, Other Models               |
+| SpaceXAI   | Cursor                | Weekly (The X Subscription pool); Cursor Models, Other Models (legacy plans) |
 | SpaceXAI   | Grok Bot              | Weekly (cloud-only SubProvider)           |
 | Meta AI    | Muse Code             | 5 Hours, Weekly                           |
 | Meta AI    | Muse                  | Weekly                                    |

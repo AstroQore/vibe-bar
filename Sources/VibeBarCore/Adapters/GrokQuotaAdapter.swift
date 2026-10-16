@@ -346,6 +346,7 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         switch product.lowercased() {
         case "grokbuild": return "Build"
         case "grokchat": return "Chat"
+        case "grokbot": return "Grok Bot"
         default:
             let stripped = product.hasPrefix("Grok") ? String(product.dropFirst(4)) : product
             return stripped.isEmpty ? product : stripped

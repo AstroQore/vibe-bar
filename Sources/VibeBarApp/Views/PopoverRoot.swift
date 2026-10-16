@@ -1056,9 +1056,36 @@ private struct GrokCombinedCard: View {
         let cursorAccount = environment.account(for: .cursor)
         let cursorQuota = cursorAccount.flatMap { quotaService.cachedQuota(for: $0.id) }
             ?? environment.quota(for: .cursor)
-        let showsCursor = (cursorAccount.map { $0.source != .notConfigured } ?? false)
-            || cursorQuota != nil
-        let showsGrokBot = cursorQuota?.buckets.contains { $0.id == "grok_bot_weekly" } == true
+        // On The X Subscription Cursor draws from Grok's weekly pool. Cursor
+        // then answers with its plan badge and only the `grok_bot_weekly`
+        // bucket, which is that same pool. When the Grok section above has a
+        // live snapshot the pool is already drawn there, with its split by
+        // product, so Cursor and Grok Bot collapse to one line of members.
+        // Without a Grok snapshot — Grok unconfigured, failed, or another
+        // account — the Grok Bot section stays as the pool's only view.
+        let grokQuota = grokAccount.flatMap { quotaService.cachedQuota(for: $0.id) }
+        let grokHasLivePool = grokQuota.map { !$0.buckets.isEmpty && $0.error == nil } ?? false
+            && grokAccount.map { quotaService.lastErrorByAccount[$0.id] == nil } ?? false
+        let cursorIsUnified = cursorQuota.map { quota in
+            quota.error == nil
+                && !quota.buckets.contains { $0.id == "models" || $0.id == "other_models" }
+                && cursorAccount.map { $0.source != .notConfigured } ?? true
+        } ?? false
+        // Cursor and Grok sign in separately and may be different accounts:
+        // one pool is recognised by its reset, which the two providers
+        // report to the millisecond; two pools that do not reset together
+        // are both kept on screen.
+        let samePool: Bool = {
+            guard let grokReset = grokQuota?.weeklyBucket?.resetAt,
+                  let cursorReset = cursorQuota?.bucket(id: "grok_bot_weekly")?.resetAt
+            else { return false }
+            return abs(grokReset.timeIntervalSince(cursorReset)) < 60
+        }()
+        let cursorPoolShownByGrok = cursorIsUnified && grokHasLivePool && samePool
+        let showsCursor = !cursorIsUnified
+            && ((cursorAccount.map { $0.source != .notConfigured } ?? false) || cursorQuota != nil)
+        let showsGrokBot = !cursorPoolShownByGrok
+            && cursorQuota?.buckets.contains { $0.id == "grok_bot_weekly" } == true
         let anyInFlight = [grokAccount, cursorAccount].compactMap { $0 }.contains {
             quotaService.inFlightAccountIds.contains($0.id)
         }
@@ -1111,6 +1138,32 @@ private struct GrokCombinedCard: View {
                 embedded: true
             )
 
+            if cursorIsUnified, !showsGrokBot {
+                // The members of the pool drawn above: Cursor and Grok Bot
+                // on the same plan, with nothing of their own to chart. Also
+                // the row a configured Cursor keeps when no pool reading is
+                // on screen at all (its status call failed and Grok has no
+                // snapshot), so the account and its plan never vanish.
+                HStack(alignment: .center, spacing: 6) {
+                    ToolBrandIconView(tool: .cursor, size: 13)
+                        .opacity(0.85)
+                    Text(ToolType.cursor.toolName)
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    BrandMarkIconView(mark: .grokBot, size: 13)
+                        .opacity(0.85)
+                        .padding(.leading, 6)
+                    Text("Grok Bot")
+                        .font(.system(size: max(10, density.subtitleFontSize), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let cursorBadge {
+                        PlanBadgeView(text: cursorBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
+                }
+                .padding(.top, 4)
+            }
+
             if showsCursor {
                 HStack(alignment: .center, spacing: 6) {
                     ToolBrandIconView(tool: .cursor, size: 13)
@@ -1133,7 +1186,9 @@ private struct GrokCombinedCard: View {
                     includedBucketIDs: ["models", "other_models"]
                 )
 
-                if showsGrokBot {
+            }
+
+            if showsGrokBot {
                     HStack(alignment: .center, spacing: 6) {
                         BrandMarkIconView(mark: .grokBot, size: 13)
                             .opacity(0.85)
@@ -1156,7 +1211,6 @@ private struct GrokCombinedCard: View {
                         suppressGroupTitles: true,
                         showsFreshnessWarning: false
                     )
-                }
             }
         }
         .padding(density.cardPadding)
