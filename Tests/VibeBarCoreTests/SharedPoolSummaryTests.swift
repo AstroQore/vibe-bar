@@ -35,11 +35,11 @@ final class SharedPoolSummaryTests: XCTestCase {
         XCTAssertEqual(summary.bucket.usedPercent, 2.594, accuracy: 0.0001, "xAI rounds the pool to a whole number; Cursor's decimals win")
         XCTAssertEqual(summary.bucket.resetAt, reset)
         XCTAssertNil(summary.bucket.shares, "The members carry the split; the pool row does not repeat it")
-        XCTAssertEqual(summary.members.map(\.label), ["Chat", "Grok Build", "Grok Bot", "Other"],
-                       "One row per product, in grok.com's order; the unnamed last")
-        XCTAssertEqual(summary.members.map(\.member), [.grok, .grok, .grokBot, .other])
-        XCTAssertEqual(summary.members[0].usedPercent, 0.4, accuracy: 0.0001)
-        XCTAssertEqual(summary.members[2].usedPercent, 1.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.members.map(\.label), ["Grok Bot", "Grok Build", "Other", "Chat"],
+                       "Heaviest first, like grok.com's usage page")
+        XCTAssertEqual(summary.members.map(\.member), [.grokBot, .grok, .other, .grok])
+        XCTAssertEqual(summary.members[0].usedPercent, 1.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.members[3].usedPercent, 0.4, accuracy: 0.0001)
     }
 
     func testTwoAccountsThatDoNotResetTogetherAreTwoPools() {
@@ -72,7 +72,17 @@ final class SharedPoolSummaryTests: XCTestCase {
             QuotaBucketShare(label: "Build", usedPercent: 0.5),
             QuotaBucketShare(label: "Chat", usedPercent: 0.2)
         ])
-        XCTAssertEqual(members.map(\.label), ["Chat", "Grok Build"], "An upgrade's cached label is the current product, in its place")
+        XCTAssertEqual(members.map(\.label), ["Grok Build", "Chat"], "An upgrade's cached label is the current product, in its place")
+    }
+
+    func testTiesFollowTheUsagePagesOrder() {
+        let members = SharedPoolSummary.members(from: [
+            QuotaBucketShare(label: "Cursor", usedPercent: 1), QuotaBucketShare(label: "Grok Build", usedPercent: 1),
+            QuotaBucketShare(label: "Imagine", usedPercent: 2), QuotaBucketShare(label: "Chat", usedPercent: 1),
+            QuotaBucketShare(label: "API", usedPercent: 3), QuotaBucketShare(label: "Grok Bot", usedPercent: 1)
+        ])
+        XCTAssertEqual(members.map(\.label), ["API", "Imagine", "Chat", "Grok Build", "Grok Bot", "Cursor"],
+                       "The 2026-10-16 usage page: API 3% · Imagine 2% · Chat 1% · Grok Build 1% · Grok Bot 1% · Cursor 1%")
     }
 
     func testRepeatedLabelsFoldIntoOneRow() {

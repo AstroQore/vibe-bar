@@ -362,13 +362,13 @@ public struct GrokQuotaAdapter: QuotaAdapter {
 
     /// xAI's product enum, as far as a live account has shown it: 2 =
     /// GrokBuild, 4 = GrokChat, 9 = GrokBot beside the JSON's names
-    /// (2026-10-14 / 2026-10-16); 10 = Cursor and 5 = Imagine by grok.com's
-    /// own usage page, which listed "Chat · Grok Bot · Cursor" then "Chat ·
-    /// Imagine · Grok Build · Grok Bot · Cursor" for pools whose RPC carried
-    /// 4 / 9 / 10 and then 2 / 4 / 5 / 9 / 10 (2026-10-16). Anything else is
-    /// not guessed.
+    /// (2026-10-14 / 2026-10-16); 10 = Cursor, 5 = Imagine and 1 = API by
+    /// grok.com's own usage page, each the one newcomer between two readings
+    /// ("Chat · Grok Bot · Cursor" ↔ 4 / 9 / 10, then + Imagine ↔ + 5, then
+    /// "API 3%" ↔ 1 = 3.0, 2026-10-16). Anything else is not guessed.
     static func productLabel(code: UInt64) -> String? {
         switch code {
+        case 1: return "API"
         case 2: return "Grok Build"
         case 4: return "Chat"
         case 5: return "Imagine"
@@ -386,6 +386,7 @@ public struct GrokQuotaAdapter: QuotaAdapter {
         case "grokbuild": return "Grok Build"
         case "grokchat": return "Chat"
         case "grokimagine": return "Imagine"
+        case "grokapi", "api": return "API"
         case "grokbot": return "Grok Bot"
         default:
             let stripped = product.hasPrefix("Grok") ? String(product.dropFirst(4)) : product

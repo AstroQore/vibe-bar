@@ -275,11 +275,11 @@ final class GrokXSubscriptionTests: XCTestCase {
     }
 
     func testGRPCSplitIsTheFallbackWhenTheJSONEndpointIsDown() throws {
-        let frame = Self.grpcConfig(percent: 2, products: [(2, 0.6), (9, 1), (10, 0.4), (5, 0.2), (42, 0.1)], unified: true)
+        let frame = Self.grpcConfig(percent: 2, products: [(2, 0.6), (9, 1), (10, 0.4), (5, 0.2), (1, 0.3), (42, 0.1)], unified: true)
         let snapshot = try GrokWebBillingFetcher.parseGRPCWebResponse(frame, now: Date(timeIntervalSince1970: 1_792_000_000))
         let shares = try XCTUnwrap(GrokQuotaAdapter.poolShares(from: nil, matching: snapshot))
-        XCTAssertEqual(shares.map(\.label), ["Grok Build", "Grok Bot", "Cursor", "Imagine", "Other"],
-                       "10 is Cursor and 5 is Imagine, as grok.com's usage page lists them; an enum the table does not name is not guessed")
+        XCTAssertEqual(shares.map(\.label), ["Grok Build", "Grok Bot", "Cursor", "Imagine", "API", "Other"],
+                       "10 Cursor, 5 Imagine, 1 API as grok.com's usage page lists them; an enum the table does not name is not guessed")
         XCTAssertEqual(shares.last?.usedPercent ?? 0, 0.1, accuracy: 0.0001)
 
         let legacy = try GrokWebBillingFetcher.parseGRPCWebResponse(
