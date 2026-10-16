@@ -32,7 +32,7 @@ struct SharedPoolMembersView: View {
                         }
                     }
                     .frame(height: 5)
-                    Text(share.usedPercent / 100, format: .percent.precision(.fractionLength(1)))
+                    Text(share.usedPercent / 100, format: .percent.precision(.fractionLength(1)).locale(AppLocale.current))
                         .font(.system(size: density.subtitleFontSize, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(.primary)
                         .frame(width: 44, alignment: .trailing)

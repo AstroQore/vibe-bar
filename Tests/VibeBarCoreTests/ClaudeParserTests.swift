@@ -399,3 +399,40 @@ final class ClaudeParserTests: XCTestCase {
         XCTAssertNotNil(five.resetAt)
     }
 }
+
+final class ClaudeWeeklyBreakdownTests: XCTestCase {
+    /// The usage page's "This week's usage by product", as claude.ai's
+    /// `/api/organizations/<org>/usage` answered on 2026-10-16.
+    func testWeeklyBreakdownBecomesSharesOnThePoolsScale() throws {
+        let json = """
+        {
+          "five_hour": {"utilization": 22, "resets_at": "2026-10-16T10:50:00Z"},
+          "seven_day": {"utilization": 6, "resets_at": "2026-10-22T20:00:00Z"},
+          "seven_day_breakdown": {
+            "as_of": "2026-10-16T10:40:36Z",
+            "window_started_at": "2026-10-15T19:59:59Z",
+            "rows": [
+              {"key": "claude_code", "display_name": "Claude Code", "percent": 75},
+              {"key": "chat", "display_name": "Chats", "percent": 25},
+              {"key": "cowork", "display_name": "Cowork", "percent": 0},
+              {"key": "other", "display_name": "Other", "percent": 0}
+            ]
+          }
+        }
+        """
+        let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
+        let weekly = try XCTUnwrap(buckets.first { $0.id == "weekly" })
+        XCTAssertEqual(weekly.usedPercent, 6)
+        XCTAssertEqual(weekly.shares, [
+            QuotaBucketShare(label: "Claude Code", usedPercent: 4.5),
+            QuotaBucketShare(label: "Chats", usedPercent: 1.5)
+        ], "Shares are points of the pool, like Grok's; products that drew nothing are not listed")
+        XCTAssertNil(buckets.first { $0.id == "five_hour" }?.shares)
+    }
+
+    func testWeeklyWithoutABreakdownHasNoShares() throws {
+        let json = #"{"five_hour": {"utilization": 1}, "seven_day": {"utilization": 2}}"#
+        let buckets = try ClaudeResponseParser.parse(data: Data(json.utf8))
+        XCTAssertNil(buckets.first { $0.id == "weekly" }?.shares)
+    }
+}
