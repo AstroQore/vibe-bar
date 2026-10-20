@@ -34,7 +34,7 @@ final class SharedPoolSummaryTests: XCTestCase {
         XCTAssertEqual(summary.bucket.id, "weekly")
         XCTAssertEqual(summary.bucket.usedPercent, 2.594, accuracy: 0.0001, "xAI rounds the pool to a whole number; Cursor's decimals win")
         XCTAssertEqual(summary.bucket.resetAt, reset)
-        XCTAssertNil(summary.bucket.shares, "The members carry the split; the pool row does not repeat it")
+        XCTAssertEqual(summary.bucket.shares?.count, 4, "The pool row carries the split for its used-by-product line")
         XCTAssertEqual(summary.members.map(\.label), ["Grok Bot", "Grok Build", "Other", "Chat"],
                        "Heaviest first, like grok.com's usage page")
         XCTAssertEqual(summary.members.map(\.member), [.grokBot, .grok, .other, .grok])
