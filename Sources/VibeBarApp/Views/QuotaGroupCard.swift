@@ -245,10 +245,6 @@ struct QuotaGroupCard: View {
                 ForEach(module.rows) { row in
                     self.row(for: row)
                 }
-                if let sharedPool = module.sharedPool, !sharedPool.members.isEmpty {
-                    SharedPoolMembersView(summary: sharedPool, density: density)
-                        .padding(.top, 2)
-                }
                 groupHistoryChart
                 if module.linkedSectionTitle != nil,
                    let quota = module.accountId.flatMap({ quotaService.cachedQuota(for: $0) })
@@ -510,8 +506,13 @@ struct QuotaGroupCard: View {
                 .font(.system(size: density.subtitleFontSize, weight: .semibold))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let shares = bucket.shares {
-                QuotaShareCaption(shares: shares, fontSize: density.subtitleFontSize)
+            if let breakdown = bucket.shares.flatMap(QuotaShareBreakdown.init(shares:)) {
+                QuotaShareBreakdownView(
+                    breakdown: breakdown,
+                    accent: Theme.providerAccent(for: item.tool),
+                    fontSize: density.subtitleFontSize
+                )
+                .padding(.top, 2)
             }
             if let forecast {
                 QuotaForecastRow(
@@ -1030,27 +1031,3 @@ struct QuotaGroupCard: View {
     }
 }
 
-/// "Build 60% · Chat 1%": how a bucket's used percent splits by product.
-/// Always the used share, whatever the display mode — a share has no
-/// remaining value, so flipping it would invent an allowance. A share
-/// that is not a whole number keeps one decimal ("Claude Code 4.5%"), so
-/// the parts still add up to the headline the row shows above them.
-struct QuotaShareCaption: View {
-    let shares: [QuotaBucketShare]
-    let fontSize: CGFloat
-
-    var body: some View {
-        Text(shares.map { share in
-            "\(share.label) \(Self.percentText(share.usedPercent))"
-        }.joined(separator: " · "))
-            .font(.system(size: fontSize).monospacedDigit())
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    static func percentText(_ value: Double) -> String {
-        let whole = value.rounded() == value
-        return (value / 100).formatted(.percent.precision(.fractionLength(whole ? 0 : 1)).locale(AppLocale.current))
-    }
-}

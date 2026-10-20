@@ -1150,11 +1150,6 @@ private struct GrokCombinedCard: View {
                     includedBucketIDs: ["weekly"],
                     bucketOverride: sharedPool.bucket
                 )
-
-                if !sharedPool.members.isEmpty {
-                    SharedPoolMembersView(summary: sharedPool, density: density)
-                        .padding(.top, 2)
-                }
             } else {
                 HStack(alignment: .center, spacing: 6) {
                     ToolBrandIconView(tool: .grok, size: 13)
@@ -2735,8 +2730,13 @@ struct ProviderBucketRow: View {
                 timePaceDisplayed: timePaceDisplayed
             )
             .opacity(isExpired ? 0.45 : 1)
-            if bucket.hasPercentage, let shares = bucket.shares {
-                QuotaShareCaption(shares: shares, fontSize: density.resetCountdownFontSize)
+            if bucket.hasPercentage, let breakdown = bucket.shares.flatMap(QuotaShareBreakdown.init(shares:)) {
+                QuotaShareBreakdownView(
+                    breakdown: breakdown,
+                    accent: Theme.providerAccent(for: tool),
+                    fontSize: density.resetCountdownFontSize
+                )
+                .padding(.top, 2)
             }
             if !bucket.hasPercentage {
                 QuotaLearningStatus(bucket: bucket, fontSize: density.resetCountdownFontSize)

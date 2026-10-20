@@ -40,8 +40,8 @@ public struct SharedPoolSummary: Equatable, Sendable {
     }
 
     /// The pool as a bucket, ready to draw: Grok's Weekly, its percent
-    /// replaced by Cursor's finer reading, its shares removed (the members
-    /// below carry them).
+    /// replaced by Cursor's finer reading, its shares kept for the
+    /// used-by-product line under it.
     public let bucket: QuotaBucket
     /// Who drew from the pool, in display order, only the members with a
     /// known share. Empty when xAI reported no split.
@@ -68,7 +68,6 @@ public struct SharedPoolSummary: Equatable, Sendable {
 
         var bucket = weekly
         bucket.usedPercent = poolOnCursor.usedPercent
-        bucket.shares = nil
         return SharedPoolSummary(bucket: bucket, members: Self.members(from: weekly.shares ?? []))
     }
 

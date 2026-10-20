@@ -91,9 +91,5 @@ struct OverviewQuotaPartitionCard: View {
             suppressGroupTitles: partition.suppressGroupTitles,
             showsResetCreditInventory: partition.showsSharedMetadata,
             bucketOverride: sharedPool?.bucket)
-        if let sharedPool, !sharedPool.members.isEmpty {
-            SharedPoolMembersView(summary: sharedPool, density: density)
-                .padding(.top, 2)
-        }
     }
 }
