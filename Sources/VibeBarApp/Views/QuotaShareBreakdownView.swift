@@ -81,12 +81,16 @@ struct QuotaProductTrackLayer {
 struct QuotaProductStrip: View {
     let breakdown: QuotaShareBreakdown
     let usedPercent: Double
+    /// The bar's height: every bar draws its fill at least that wide, so the
+    /// strip does too, or it would shrink to a few pixels under a full cap.
+    let barHeight: CGFloat
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let colors = QuotaShareColors.colors(for: breakdown.rows, scheme: colorScheme)
         GeometryReader { proxy in
-            let span = proxy.size.width * CGFloat(max(0, min(100, usedPercent))) / 100
+            let raw = proxy.size.width * CGFloat(max(0, min(100, usedPercent))) / 100
+            let span = min(proxy.size.width, max(barHeight, raw))
             HStack(spacing: 1) {
                 ForEach(Array(breakdown.rows.enumerated()), id: \.element.label) { index, row in
                     Rectangle()

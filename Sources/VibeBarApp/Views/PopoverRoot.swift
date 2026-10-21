@@ -2736,7 +2736,7 @@ struct ProviderBucketRow: View {
             .opacity(isExpired ? 0.45 : 1)
             if let breakdown {
                 if mode == .used {
-                    QuotaProductStrip(breakdown: breakdown, usedPercent: bucket.usedPercent)
+                    QuotaProductStrip(breakdown: breakdown, usedPercent: bucket.usedPercent, barHeight: density.bucketBarHeight)
                         .opacity(isExpired ? 0.45 : 1)
                         .padding(.top, -1)
                 }
