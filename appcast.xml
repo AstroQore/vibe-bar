@@ -4,22 +4,22 @@
         <title>Vibe Bar</title>
         <item>
             <title>1.9.1</title>
-            <pubDate>Tue, 20 Oct 2026 19:20:31 +0000</pubDate>
-            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.1-dev.100</link>
+            <pubDate>Wed, 21 Oct 2026 07:01:27 +0000</pubDate>
+            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.1-dev.101</link>
             <sparkle:channel>dev</sparkle:channel>
-            <sparkle:version>100</sparkle:version>
+            <sparkle:version>101</sparkle:version>
             <sparkle:shortVersionString>1.9.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.9.1 (dev)
 
-See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.1-dev.100).
+See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.1-dev.101).
 ]]></description>
-            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.9.1-dev.100/Vibe-Bar-1.9.1-dev.100-macOS-arm64.zip" length="21037020" type="application/octet-stream" sparkle:edSignature="z7G0wnMikKTrqdghYM/3pM2hmO5k48SpOzszPRUtNNzXP89G98MUzpzib28Mp+AhIYsjYSsyrmFu3dkwk3aoBw=="/>
+            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.9.1-dev.101/Vibe-Bar-1.9.1-dev.101-macOS-arm64.zip" length="21052820" type="application/octet-stream" sparkle:edSignature="mUWcnm7BwPuu27KDamRO5g5C5JaPCvUOYJ4pHHMkmlxOOrV5Cqi5YKsKCuDldJDgIYOFr3VNCIq7W+2BcpraCQ=="/>
         </item>
         <item>
             <title>1.9.0</title>
-            <pubDate>Tue, 20 Oct 2026 19:20:30 +0000</pubDate>
+            <pubDate>Wed, 21 Oct 2026 07:01:26 +0000</pubDate>
             <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.0</link>
             <sparkle:version>98</sparkle:version>
             <sparkle:shortVersionString>1.9.0</sparkle:shortVersionString>
