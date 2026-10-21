@@ -36,7 +36,7 @@ struct PaceMarkerCapsule: View {
                     .fill(Theme.barColor(percent: usedPercent, mode: mode))
                     .frame(width: max(height, width * pct))
                 if let productLayer {
-                    productLayer.body(width: width, height: height, scheme: colorScheme)
+                    productLayer.body(width: width, height: height, fillWidth: max(height, width * pct), scheme: colorScheme)
                 }
                 if showMarker {
                     paceMarker
@@ -150,7 +150,7 @@ struct ForecastQuotaBar: View {
                         .frame(width: actualFillWidth)
 
                     if let productLayer {
-                        productLayer.body(width: width, height: height, scheme: colorScheme)
+                        productLayer.body(width: width, height: height, fillWidth: actualFillWidth, scheme: colorScheme)
                     }
                 }
                 .clipShape(Capsule(style: .continuous))

@@ -29,7 +29,7 @@ struct QuotaBarShape: View {
                         .fill(Theme.barColor(percent: percent, mode: mode))
                         .frame(width: max(height, width * pct))
                     if let productLayer {
-                        productLayer.body(width: width, height: height, scheme: colorScheme)
+                        productLayer.body(width: width, height: height, fillWidth: max(height, width * pct), scheme: colorScheme)
                     }
                 }
             }

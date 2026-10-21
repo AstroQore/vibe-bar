@@ -16,7 +16,8 @@ enum QuotaShareColors {
         (Color(red: 0.871, green: 0.549, blue: 0.741), Color(red: 0.914, green: 0.639, blue: 0.804)),  // pink
         (Color(red: 0.239, green: 0.247, blue: 0.322), Color(red: 0.816, green: 0.824, blue: 0.863)),  // graphite
         (Color(red: 0.541, green: 0.553, blue: 0.612), Color(red: 0.604, green: 0.616, blue: 0.675)),  // slate
-        (Color(red: 0.725, green: 0.737, blue: 0.776), Color(red: 0.431, green: 0.443, blue: 0.502))   // light gray
+        (Color(red: 0.725, green: 0.737, blue: 0.776), Color(red: 0.431, green: 0.443, blue: 0.502)),  // light gray
+        (Color(red: 0.659, green: 0.624, blue: 0.569), Color(red: 0.561, green: 0.529, blue: 0.482))   // warm gray
     ]
 
     /// Fixed slots by product name, across providers.
@@ -27,7 +28,7 @@ enum QuotaShareColors {
         "imagine": 3,
         "chat": 4,
         "voice": 5,
-        "cursor": 6, "other": 6
+        "cursor": 6, "other": 7
     ]
 
     /// One colour per row, in the breakdown's order. A product without a
@@ -57,20 +58,24 @@ struct QuotaProductTrackLayer {
     /// The bucket's used percent, 0…100: the span the products fill.
     let usedPercent: Double
 
+    /// `fillWidth` is the fill as the bar actually drew it — at least one
+    /// bar-height wide — so the products start after its rounded end rather
+    /// than over it.
     @ViewBuilder
-    func body(width: CGFloat, height: CGFloat, scheme: ColorScheme) -> some View {
+    func body(width: CGFloat, height: CGFloat, fillWidth: CGFloat, scheme: ColorScheme) -> some View {
         let colors = QuotaShareColors.colors(for: breakdown.rows, scheme: scheme)
-        let span = width * CGFloat(max(0, min(100, usedPercent))) / 100
-        ZStack(alignment: .trailing) {
-            HStack(spacing: 1) {
-                ForEach(Array(breakdown.rows.enumerated().reversed()), id: \.element.label) { index, row in
-                    Rectangle()
-                        .fill(colors[index].opacity(0.5))
-                        .frame(width: max(1, span * CGFloat(row.fraction) - 1))
-                }
+        let raw = width * CGFloat(max(0, min(100, usedPercent))) / 100
+        let span = max(0, min(raw, width - fillWidth))
+        let reversed = Array(breakdown.rows.enumerated().reversed())
+        let layout = QuotaShareSegments.layout(span: span, fractions: reversed.map(\.element.fraction))
+        HStack(spacing: layout.spacing) {
+            ForEach(Array(reversed.enumerated()), id: \.element.element.label) { position, entry in
+                Rectangle()
+                    .fill(colors[entry.offset].opacity(0.5))
+                    .frame(width: layout.widths[position])
             }
-            .frame(width: span, height: height, alignment: .trailing)
         }
+        .frame(width: span, height: height, alignment: .trailing)
         .frame(width: width, height: height, alignment: .trailing)
         .accessibilityHidden(true)
     }
@@ -91,11 +96,12 @@ struct QuotaProductStrip: View {
         GeometryReader { proxy in
             let raw = proxy.size.width * CGFloat(max(0, min(100, usedPercent))) / 100
             let span = min(proxy.size.width, max(barHeight, raw))
-            HStack(spacing: 1) {
+            let layout = QuotaShareSegments.layout(span: span, fractions: breakdown.rows.map(\.fraction))
+            HStack(spacing: layout.spacing) {
                 ForEach(Array(breakdown.rows.enumerated()), id: \.element.label) { index, row in
                     Rectangle()
                         .fill(colors[index])
-                        .frame(width: max(1, span * CGFloat(row.fraction) - 1))
+                        .frame(width: layout.widths[index])
                 }
             }
             .frame(width: span, alignment: .leading)

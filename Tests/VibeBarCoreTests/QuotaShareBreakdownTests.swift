@@ -47,3 +47,25 @@ final class QuotaShareBreakdownTests: XCTestCase {
         XCTAssertEqual(breakdown.rows.map(\.points), [3])
     }
 }
+
+final class QuotaShareSegmentsTests: XCTestCase {
+    func testSegmentsWithGapsFitTheSpanExactly() {
+        let layout = QuotaShareSegments.layout(span: 120, fractions: [0.66, 0.32, 0.02])
+        XCTAssertEqual(layout.spacing, 1)
+        XCTAssertEqual(layout.widths.reduce(0, +) + 2 * layout.spacing, 120, accuracy: 0.0001)
+    }
+
+    func testANarrowSpanDropsTheGapsAndNeverOverflows() {
+        // Seven products in four points: no room for a gap and a point each.
+        let fractions = [0.66, 0.14, 0.08, 0.08, 0.02, 0.01, 0.01]
+        let layout = QuotaShareSegments.layout(span: 4, fractions: fractions)
+        XCTAssertEqual(layout.spacing, 0)
+        XCTAssertEqual(layout.widths.reduce(0, +), 4, accuracy: 0.0001)
+        XCTAssertTrue(layout.widths.allSatisfy { $0 >= 0 })
+    }
+
+    func testAnEmptySpanDrawsNothing() {
+        let layout = QuotaShareSegments.layout(span: 0, fractions: [0.5, 0.5])
+        XCTAssertEqual(layout.widths, [0, 0])
+    }
+}
