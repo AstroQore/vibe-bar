@@ -2724,19 +2724,23 @@ struct ProviderBucketRow: View {
                     .fixedSize(horizontal: true, vertical: false)
                 }
             }
+            let breakdown = bucket.hasPercentage ? bucket.shares.flatMap(QuotaShareBreakdown.init(shares:)) : nil
             bucketBar(
                 percent: percent,
                 forecast: forecast,
-                timePaceDisplayed: timePaceDisplayed
+                timePaceDisplayed: timePaceDisplayed,
+                productLayer: mode == .remaining
+                    ? breakdown.map { QuotaProductTrackLayer(breakdown: $0, usedPercent: bucket.usedPercent) }
+                    : nil
             )
             .opacity(isExpired ? 0.45 : 1)
-            if bucket.hasPercentage, let breakdown = bucket.shares.flatMap(QuotaShareBreakdown.init(shares:)) {
-                QuotaShareBreakdownView(
-                    breakdown: breakdown,
-                    accent: Theme.providerAccent(for: tool),
-                    fontSize: density.resetCountdownFontSize
-                )
-                .padding(.top, 2)
+            if let breakdown {
+                if mode == .used {
+                    QuotaProductStrip(breakdown: breakdown, usedPercent: bucket.usedPercent)
+                        .opacity(isExpired ? 0.45 : 1)
+                        .padding(.top, -1)
+                }
+                QuotaShareLegend(breakdown: breakdown, fontSize: density.resetCountdownFontSize)
             }
             if !bucket.hasPercentage {
                 QuotaLearningStatus(bucket: bucket, fontSize: density.resetCountdownFontSize)
@@ -2757,7 +2761,8 @@ struct ProviderBucketRow: View {
     private func bucketBar(
         percent: Double,
         forecast: QuotaPaceForecast?,
-        timePaceDisplayed: Double?
+        timePaceDisplayed: Double?,
+        productLayer: QuotaProductTrackLayer? = nil
     ) -> some View {
         Group {
             if !bucket.hasPercentage {
@@ -2774,17 +2779,19 @@ struct ProviderBucketRow: View {
                         displayMode: mode
                     ),
                     forecastColor: QuotaForecastPalette.color(for: forecast.verdict),
-                    height: density.bucketBarHeight
+                    height: density.bucketBarHeight,
+                    productLayer: productLayer
                 )
             } else if let timePaceDisplayed {
                 PaceMarkerCapsule(
                     usedPercent: percent,
                     expectedPercent: timePaceDisplayed,
                     mode: mode,
-                    height: density.bucketBarHeight
+                    height: density.bucketBarHeight,
+                    productLayer: productLayer
                 )
             } else {
-                QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight)
+                QuotaBarShape(percent: percent, mode: mode, height: density.bucketBarHeight, productLayer: productLayer)
             }
         }
     }

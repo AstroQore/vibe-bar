@@ -12,6 +12,11 @@ struct PaceMarkerCapsule: View {
     let expectedPercent: Double  // 0..100 in displayed terms (already mode-adjusted)
     let mode: DisplayMode
     var height: CGFloat = 12
+    /// Remaining mode's product split, drawn in the empty part of the bar,
+    /// under the pace tick.
+    var productLayer: QuotaProductTrackLayer? = nil
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         GeometryReader { proxy in
@@ -30,6 +35,9 @@ struct PaceMarkerCapsule: View {
                 Capsule(style: .continuous)
                     .fill(Theme.barColor(percent: usedPercent, mode: mode))
                     .frame(width: max(height, width * pct))
+                if let productLayer {
+                    productLayer.body(width: width, height: height, scheme: colorScheme)
+                }
                 if showMarker {
                     paceMarker
                         .offset(x: max(0, min(width - 7, width * markerPos - 3.5)))
@@ -80,6 +88,10 @@ struct ForecastQuotaBar: View {
     let forecastProjection: QuotaForecastBarProjection
     let forecastColor: Color
     var height: CGFloat = 12
+    /// Remaining mode's product split. It joins the clipped group right after
+    /// the fill, so the confidence band and both ticks draw over it exactly
+    /// as they did before.
+    var productLayer: QuotaProductTrackLayer? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -136,6 +148,10 @@ struct ForecastQuotaBar: View {
                     Capsule(style: .continuous)
                         .fill(Theme.barColor(percent: percent, mode: mode))
                         .frame(width: actualFillWidth)
+
+                    if let productLayer {
+                        productLayer.body(width: width, height: height, scheme: colorScheme)
+                    }
                 }
                 .clipShape(Capsule(style: .continuous))
 
