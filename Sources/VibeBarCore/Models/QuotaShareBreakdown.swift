@@ -75,3 +75,18 @@ public struct QuotaShareBreakdown: Equatable, Sendable {
         return floors
     }
 }
+
+/// Segment widths that fit `span` exactly: one point of gap between
+/// segments while there is room for a point of colour in each, no gaps once
+/// there is not, and never wider than the span either way.
+public enum QuotaShareSegments {
+    public static func layout(span: CGFloat, fractions: [Double]) -> (widths: [CGFloat], spacing: CGFloat) {
+        guard span > 0, !fractions.isEmpty else { return (fractions.map { _ in 0 }, 0) }
+        let gaps = CGFloat(fractions.count - 1)
+        let spacing: CGFloat = span - gaps >= CGFloat(fractions.count) ? 1 : 0
+        let content = max(0, span - gaps * spacing)
+        let total = fractions.reduce(0, +)
+        let widths = fractions.map { total > 0 ? content * CGFloat($0 / total) : 0 }
+        return (widths, spacing)
+    }
+}

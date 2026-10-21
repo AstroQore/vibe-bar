@@ -9,6 +9,10 @@ struct QuotaBarShape: View {
     /// moving asks for the eye and, over the popover's blur, for a frame
     /// every tick.
     var indeterminate = false
+    /// Remaining mode's product split, drawn in the empty part of the bar.
+    var productLayer: QuotaProductTrackLayer? = nil
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         GeometryReader { proxy in
@@ -24,6 +28,9 @@ struct QuotaBarShape: View {
                     Capsule(style: .continuous)
                         .fill(Theme.barColor(percent: percent, mode: mode))
                         .frame(width: max(height, width * pct))
+                    if let productLayer {
+                        productLayer.body(width: width, height: height, fillWidth: max(height, width * pct), scheme: colorScheme)
+                    }
                 }
             }
             .clipShape(Capsule(style: .continuous))

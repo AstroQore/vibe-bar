@@ -1,63 +1,145 @@
 import SwiftUI
 import VibeBarCore
 
-/// The "Used by product" line under a quota row: a thin segmented bar whose
-/// full width is what the pool has used, and a legend of whole-number
-/// shares. Its own line, not segments on the quota bar above it — that bar
-/// already carries the display direction (used or remaining), the time-pace
-/// mark and the forecast projection, and colour bands would fight all
-/// three. Always in used terms: a share has no remaining value.
-struct QuotaShareBreakdownView: View {
-    let breakdown: QuotaShareBreakdown
-    let accent: Color
-    let fontSize: CGFloat
+/// Colours for the products a quota pool is split by.
+///
+/// The forecast already owns blue (Surplus), green (Enough), orange (Watch)
+/// and red (At risk), and the Used-mode fill is teal, so products draw from
+/// the one family left — violet to magenta — and two neutrals. A colour
+/// follows its product, never its rank: Claude Code and Grok Build share the
+/// first slot because they never appear in the same pool.
+enum QuotaShareColors {
+    private static let slots: [(light: Color, dark: Color)] = [
+        (Color(red: 0.357, green: 0.294, blue: 0.769), Color(red: 0.553, green: 0.498, blue: 0.941)),  // violet
+        (Color(red: 0.769, green: 0.345, blue: 0.624), Color(red: 0.847, green: 0.447, blue: 0.714)),  // magenta
+        (Color(red: 0.557, green: 0.494, blue: 0.878), Color(red: 0.663, green: 0.612, blue: 0.941)),  // light violet
+        (Color(red: 0.871, green: 0.549, blue: 0.741), Color(red: 0.914, green: 0.639, blue: 0.804)),  // pink
+        (Color(red: 0.239, green: 0.247, blue: 0.322), Color(red: 0.816, green: 0.824, blue: 0.863)),  // graphite
+        (Color(red: 0.541, green: 0.553, blue: 0.612), Color(red: 0.604, green: 0.616, blue: 0.675)),  // slate
+        (Color(red: 0.725, green: 0.737, blue: 0.776), Color(red: 0.431, green: 0.443, blue: 0.502)),  // light gray
+        (Color(red: 0.659, green: 0.624, blue: 0.569), Color(red: 0.561, green: 0.529, blue: 0.482))   // warm gray
+    ]
 
-    /// Step down from the provider's accent, heaviest product darkest.
-    private static let opacities: [Double] = [1, 0.78, 0.6, 0.47, 0.37, 0.3, 0.24, 0.2]
+    /// Fixed slots by product name, across providers.
+    private static let slotByLabel: [String: Int] = [
+        "claude code": 0, "grok build": 0,
+        "cowork": 1, "grok bot": 1,
+        "chats": 2, "api": 2,
+        "imagine": 3,
+        "chat": 4,
+        "voice": 5,
+        "cursor": 6, "other": 7
+    ]
 
-    private func color(at index: Int) -> Color {
-        accent.opacity(Self.opacities[min(index, Self.opacities.count - 1)])
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(L10n.Quota.UsedByProduct.title)
-                .font(.system(size: max(9, fontSize - 1), weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .textCase(.uppercase)
-                .tracking(0.4)
-            GeometryReader { proxy in
-                let gaps = CGFloat(max(0, breakdown.rows.count - 1)) * 2
-                let width = max(0, proxy.size.width - gaps)
-                HStack(spacing: 2) {
-                    ForEach(Array(breakdown.rows.enumerated()), id: \.element.label) { index, row in
-                        Rectangle()
-                            .fill(color(at: index))
-                            .frame(width: max(2, width * CGFloat(row.fraction)))
-                    }
-                }
-                .clipShape(Capsule())
+    /// One colour per row, in the breakdown's order. A product without a
+    /// fixed slot takes the first slot no other row in this pool uses.
+    static func colors(for rows: [QuotaShareBreakdown.Row], scheme: ColorScheme) -> [Color] {
+        var used = Set(rows.compactMap { slotByLabel[$0.label.lowercased()] })
+        return rows.map { row in
+            let slot: Int
+            if let fixed = slotByLabel[row.label.lowercased()] {
+                slot = fixed
+            } else {
+                slot = (0..<slots.count).first { !used.contains($0) } ?? slots.count - 1
+                used.insert(slot)
             }
-            .frame(height: 5)
-            .accessibilityHidden(true)
-            FlowLegend(spacing: 12, lineSpacing: 3) {
-                ForEach(Array(breakdown.rows.enumerated()), id: \.element.label) { index, row in
-                    HStack(spacing: 4) {
-                        Circle().fill(color(at: index)).frame(width: 6, height: 6)
-                        Text(row.label)
-                            .foregroundStyle(.secondary)
-                        Text(row.isBelowOnePoint
-                             ? L10n.Quota.UsedByProduct.belowOne
-                             : L10n.Common.percent(value: row.points))
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .monospacedDigit()
-                    }
-                    .font(.system(size: fontSize))
-                    .accessibilityElement(children: .combine)
-                }
+            return scheme == .dark ? slots[slot].dark : slots[slot].light
+        }
+    }
+}
+
+/// The product layer drawn inside a quota bar in Remaining mode: the empty
+/// part of the bar is exactly what has been used, so it is split by product,
+/// heaviest at the far end, translucent. It sits in the bar's clipped group
+/// right after the fill, under every forecast layer — the confidence band,
+/// the time-pace tick and the median tick draw over it unchanged.
+struct QuotaProductTrackLayer {
+    let breakdown: QuotaShareBreakdown
+    /// The bucket's used percent, 0…100: the span the products fill.
+    let usedPercent: Double
+
+    /// `fillWidth` is the fill as the bar actually drew it — at least one
+    /// bar-height wide — so the products start after its rounded end rather
+    /// than over it.
+    @ViewBuilder
+    func body(width: CGFloat, height: CGFloat, fillWidth: CGFloat, scheme: ColorScheme) -> some View {
+        let colors = QuotaShareColors.colors(for: breakdown.rows, scheme: scheme)
+        let raw = width * CGFloat(max(0, min(100, usedPercent))) / 100
+        let span = max(0, min(raw, width - fillWidth))
+        let reversed = Array(breakdown.rows.enumerated().reversed())
+        let layout = QuotaShareSegments.layout(span: span, fractions: reversed.map(\.element.fraction))
+        HStack(spacing: layout.spacing) {
+            ForEach(Array(reversed.enumerated()), id: \.element.element.label) { position, entry in
+                Rectangle()
+                    .fill(colors[entry.offset].opacity(0.5))
+                    .frame(width: layout.widths[position])
             }
         }
+        .frame(width: span, height: height, alignment: .trailing)
+        .frame(width: width, height: height, alignment: .trailing)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Used mode keeps the quota bar exactly as it is and puts the product split
+/// in a thin strip right under the fill, the same length as the fill.
+struct QuotaProductStrip: View {
+    let breakdown: QuotaShareBreakdown
+    let usedPercent: Double
+    /// The bar's height: every bar draws its fill at least that wide, so the
+    /// strip does too, or it would shrink to a few pixels under a full cap.
+    let barHeight: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let colors = QuotaShareColors.colors(for: breakdown.rows, scheme: colorScheme)
+        GeometryReader { proxy in
+            let raw = proxy.size.width * CGFloat(max(0, min(100, usedPercent))) / 100
+            let span = min(proxy.size.width, max(barHeight, raw))
+            let layout = QuotaShareSegments.layout(span: span, fractions: breakdown.rows.map(\.fraction))
+            HStack(spacing: layout.spacing) {
+                ForEach(Array(breakdown.rows.enumerated()), id: \.element.label) { index, row in
+                    Rectangle()
+                        .fill(colors[index])
+                        .frame(width: layout.widths[index])
+                }
+            }
+            .frame(width: span, alignment: .leading)
+            .clipShape(Capsule(style: .continuous))
+        }
+        .frame(height: 3)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The legend under the bar: one dot, name and whole-number share per
+/// product, wrapping onto as many lines as the width needs.
+struct QuotaShareLegend: View {
+    let breakdown: QuotaShareBreakdown
+    let fontSize: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let colors = QuotaShareColors.colors(for: breakdown.rows, scheme: colorScheme)
+        FlowLegend(spacing: 12, lineSpacing: 3) {
+            ForEach(Array(breakdown.rows.enumerated()), id: \.element.label) { index, row in
+                HStack(spacing: 4) {
+                    Circle().fill(colors[index]).frame(width: 6, height: 6)
+                    Text(row.label)
+                        .foregroundStyle(.secondary)
+                    Text(row.isBelowOnePoint
+                         ? L10n.Quota.UsedByProduct.belowOne
+                         : L10n.Common.percent(value: row.points))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+                }
+                .font(.system(size: fontSize))
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.Quota.UsedByProduct.title)
     }
 }
 

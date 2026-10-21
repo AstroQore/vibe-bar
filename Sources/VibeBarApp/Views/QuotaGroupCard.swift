@@ -487,8 +487,25 @@ struct QuotaGroupCard: View {
                     .fixedSize(horizontal: true, vertical: false)
                 }
             }
-            quotaReferenceBar(used: used, pace: pace, forecast: forecast, learning: !bucket.hasPercentage)
+            let breakdown = bucket.hasPercentage ? bucket.shares.flatMap(QuotaShareBreakdown.init(shares:)) : nil
+            quotaReferenceBar(
+                used: used,
+                pace: pace,
+                forecast: forecast,
+                learning: !bucket.hasPercentage,
+                productLayer: mode == .remaining
+                    ? breakdown.map { QuotaProductTrackLayer(breakdown: $0, usedPercent: bucket.usedPercent) }
+                    : nil
+            )
                 .opacity(isExpired ? 0.45 : 1)
+            if let breakdown {
+                if mode == .used {
+                    QuotaProductStrip(breakdown: breakdown, usedPercent: bucket.usedPercent, barHeight: max(10, density.bucketBarHeight))
+                        .opacity(isExpired ? 0.45 : 1)
+                        .padding(.top, -1)
+                }
+                QuotaShareLegend(breakdown: breakdown, fontSize: density.subtitleFontSize)
+            }
             if bucket.hasPercentage {
             percentageAxis
             referenceLegend(
@@ -506,14 +523,6 @@ struct QuotaGroupCard: View {
                 .font(.system(size: density.subtitleFontSize, weight: .semibold))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let breakdown = bucket.shares.flatMap(QuotaShareBreakdown.init(shares:)) {
-                QuotaShareBreakdownView(
-                    breakdown: breakdown,
-                    accent: Theme.providerAccent(for: item.tool),
-                    fontSize: density.subtitleFontSize
-                )
-                .padding(.top, 2)
-            }
             if let forecast {
                 QuotaForecastRow(
                     forecast: forecast,
@@ -555,7 +564,8 @@ struct QuotaGroupCard: View {
         used: Double,
         pace: UsagePace?,
         forecast: QuotaPaceForecast?,
-        learning: Bool = false
+        learning: Bool = false,
+        productLayer: QuotaProductTrackLayer? = nil
     ) -> some View {
         let barHeight = max(10, density.bucketBarHeight)
         if learning {
@@ -572,17 +582,19 @@ struct QuotaGroupCard: View {
                     displayMode: mode
                 ),
                 forecastColor: QuotaForecastPalette.color(for: forecast.verdict),
-                height: barHeight
+                height: barHeight,
+                productLayer: productLayer
             )
         } else if let pace {
             PaceMarkerCapsule(
                 usedPercent: displayedPercent(fromUsed: used),
                 expectedPercent: displayedPercent(fromUsed: pace.expectedUsedPercent),
                 mode: mode,
-                height: barHeight
+                height: barHeight,
+                productLayer: productLayer
             )
         } else {
-            QuotaBarShape(percent: displayedPercent(fromUsed: used), mode: mode, height: barHeight)
+            QuotaBarShape(percent: displayedPercent(fromUsed: used), mode: mode, height: barHeight, productLayer: productLayer)
         }
     }
 
