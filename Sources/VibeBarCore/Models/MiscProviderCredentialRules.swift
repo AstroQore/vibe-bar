@@ -146,7 +146,7 @@ public enum MiscManualCookieRules {
         }
 
         if tool == .ollama, !OllamaQuotaAdapter.hasRecognizedSessionCookie(header) {
-            return "No Ollama session cookie found in the pasted text. Copy the ollama.com Cookie header while signed in — it must include wos-session or a legacy session cookie."
+            return L10n.Settings.Misc.ollamaCookieMissing
         }
         return nil
     }

@@ -380,10 +380,10 @@ private struct MiscQuotaBody: View {
     @ViewBuilder
     private func ollamaCreditDetails(_ credits: OllamaCreditUsage) -> some View {
         if let balance = credits.balanceUSD {
-            creditAmountRow(L10n.Settings.DisplayMode.remaining, usd: balance)
+            creditAmountRow(L10n.Quota.Misc.creditBalance, usd: balance)
         }
         if let used = credits.monthlyUsedUSD {
-            let label = "\(L10n.Quota.Group.monthly) · \(L10n.Quota.Mode.used)"
+            let label = L10n.Quota.Misc.monthlyCreditsUsed
             creditAmountRow(label, usd: used)
         }
         if let refill = credits.refillText {

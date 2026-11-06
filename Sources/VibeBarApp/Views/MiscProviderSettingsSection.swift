@@ -298,8 +298,8 @@ struct MiscProviderCredentialRows: View {
             ApiKeyField(
                 tool: .openCodeGo,
                 instanceID: instanceID,
-                prompt: tool.menuTitle,
-                helpText: "Stored in macOS Keychain."
+                prompt: L10n.Settings.Misc.Prompt.openCodeGo,
+                helpText: L10n.Settings.Misc.apiKeyStorageNote
             )
         case .kilo:
             ApiKeyField(
@@ -314,7 +314,7 @@ struct MiscProviderCredentialRows: View {
             CookieSourceControls(
                 tool: .ollama,
                 instanceID: instanceID,
-                manualPrompt: "Paste ollama.com Cookie header (wos-session=... or a legacy session cookie)"
+                manualPrompt: L10n.Settings.Misc.Prompt.ollama
             )
         case .openRouter:
             VStack(alignment: .leading, spacing: 4) {
@@ -422,13 +422,13 @@ extension ToolType {
         case .baiduQianfan:
             return "Sign in at console.bce.baidu.com with the Baidu Cloud account that owns the Coding Plan; Vibe Bar keeps the BCE console jar. There is no API key for this usage endpoint."
         case .openCodeGo:
-            return "Use an API key from the OpenCode workspace that owns your Go subscription."
+            return L10n.Settings.Misc.Setup.openCodeGo
         case .kilo:
             return "The key comes from app.kilo.ai → API Keys and is optional — `kilo login` writes an auth file Vibe Bar reads instead."
         case .kiro:
             return "Kiro has neither a key to paste nor a cookie to import: Vibe Bar shells out to the locally installed kiro-cli. Install it from kiro.dev, run `kiro-cli login` in Terminal, then Probe."
         case .ollama:
-            return "Vibe Bar reads Ollama Cloud usage from your browser session. Sign in at ollama.com, then import the Cookie header with wos-session or a legacy session cookie."
+            return L10n.Settings.Misc.Setup.ollama
         case .openRouter:
             return "The key comes from openrouter.ai → Keys and only needs to read credits. Set the API URL when you route OpenRouter through a proxy."
         case .warp:
@@ -599,7 +599,7 @@ struct ApiKeyField: View {
             draft = ""
             triggerRefresh()
         } else {
-            saveError = "Could not save to Keychain."
+            saveError = L10n.Error.keychainSave
         }
     }
 
@@ -607,7 +607,7 @@ struct ApiKeyField: View {
         guard !isOpenCodeGoRefreshing else { return }
         let removed = MiscCredentialStore.delete(tool: tool, kind: .apiKey, instanceID: instanceID)
         if tool == .openCodeGo, !removed {
-            saveError = "Could not confirm key removal from Keychain."
+            saveError = L10n.Error.keychainRemove
             return
         }
         hasStored = false
