@@ -44,13 +44,18 @@ public actor SessionReviewIndex {
         /// to subtract from `SessionIndexStore.harnessCounts()` so a chip
         /// counts the rows its filter can actually show.
         public var hiddenRowsByHarness: [Harness: Int]
+        /// Listed counts computed from the same SQLite snapshot as the
+        /// exclusions, even while another connection commits an index batch.
+        public var listedRowsByHarness: [Harness: Int]
 
         public init(
             countsByParent: [String: Int] = [:],
-            hiddenRowsByHarness: [Harness: Int] = [:]
+            hiddenRowsByHarness: [Harness: Int] = [:],
+            listedRowsByHarness: [Harness: Int] = [:]
         ) {
             self.countsByParent = countsByParent
             self.hiddenRowsByHarness = hiddenRowsByHarness
+            self.listedRowsByHarness = listedRowsByHarness
         }
 
         public static let empty = Overview()
@@ -98,16 +103,18 @@ public actor SessionReviewIndex {
         // harness not null — so the subtraction is exact.
         try query(
             """
-            SELECT harness, COUNT(*)
+            SELECT harness, COUNT(*),
+                   SUM(CASE WHEN provider_variant LIKE ?1 ESCAPE '\\' THEN 1 ELSE 0 END)
               FROM sessions
              WHERE harness IS NOT NULL
-               AND provider_variant LIKE ?1 ESCAPE '\\'
              GROUP BY harness
             """,
             [.text(Self.likePrefix(prefix))]
         ) { statement in
             guard let raw = Self.text(statement, 0), let harness = Harness(rawValue: raw) else { return }
-            overview.hiddenRowsByHarness[harness] = Int(sqlite3_column_int64(statement, 1))
+            let hidden = Int(sqlite3_column_int64(statement, 2))
+            if hidden > 0 { overview.hiddenRowsByHarness[harness] = hidden }
+            overview.listedRowsByHarness[harness] = Int(sqlite3_column_int64(statement, 1)) - hidden
         }
         return overview
     }

@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SafeLog.info("Vibe Bar started in demo mode")
             return
         }
+        env.startSessionIndexMaintenance()
         do {
             try LoginItemController.reconcileDesiredState(env.settingsStore.settings.launchAtLogin)
         } catch {
@@ -67,27 +68,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         CookieRefreshScheduler.shared.start()
         observeCookieRefreshes(environment: env)
-
-        // Session-index maintenance (excerpt trims, FTS merge, vacuum) runs
-        // off the launch path: the Workbench may never open on a headless
-        // MCP-only day, so launch is the trigger that always exists. The
-        // compactor throttles itself to one completed pass per day.
-        Task.detached(priority: .utility) {
-            // Before the compactor, and before anything reads the index: a
-            // parser upgrade only reaches files the index has already
-            // fingerprinted if their cursors are dropped first. Behind the
-            // maintenance gate, so a refresh that is already walking those
-            // files cannot skip one on the cursor this deletes. A step that
-            // dropped cursors re-reads them at once: an MCP-only day never
-            // opens the Workbench, and the MCP tools back-fill only an empty
-            // index. The shared index is opened only in that case.
-            await SessionIndexReparse.runIfNeededBehindGate(refreshAfterDrop: {
-                guard let service = await MainActor.run(body: { env.sessionIndex.service }) else { return }
-                await service.refreshIndex()
-            })
-            try? await Task.sleep(for: .seconds(60))
-            await SessionIndexCompactor.standard.compactIfDue()
-        }
 
         SafeLog.info("Vibe Bar started")
     }
@@ -242,6 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // an agent connecting during shutdown gets a clean "not running"
         // rather than a connection to a half-stopped environment.
         environment?.mcp?.stop()
+        environment?.stopSessionIndexMaintenance()
         environment?.settingsStore.flush()
         environment?.scheduler.stop()
         environment?.serviceStatus.stop()

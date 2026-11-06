@@ -64,6 +64,8 @@ final class AppEnvironment: ObservableObject {
     private var einkWakeObserver: NSObjectProtocol?
     private var workbenchServicesStorage: WorkbenchServices?
     private var sessionIndexStorage: SharedSessionIndex?
+    private var sessionIndexPreparation: Task<SessionIndexReparse.Outcome?, Never>?
+    private var sessionIndexMaintenance: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
     private var routineBudgetInFlightAccountIds: Set<String> = []
     private var lastRoutineBudgetAttemptByAccount: [String: Date] = [:]
@@ -946,9 +948,32 @@ final class AppEnvironment: ObservableObject {
     /// never opens the SQLite file at all.
     var sessionIndex: SharedSessionIndex {
         if let sessionIndexStorage { return sessionIndexStorage }
-        let index = SharedSessionIndex(settingsStore: settingsStore)
+        let index = SharedSessionIndex(settingsStore: settingsStore, startupPreparation: sessionIndexPreparation)
         sessionIndexStorage = index
         return index
+    }
+
+    func startSessionIndexMaintenance() {
+        // A parser upgrade drops stale cursors before any scheduled or
+        // foreground scan. An unchanged parser leaves the index unopened.
+        let preparation = Task.detached(priority: .utility) {
+            await SessionIndexReparse.runIfNeededBehindGate()
+        }
+        sessionIndexPreparation = preparation
+        sessionIndexMaintenance = Task(priority: .utility) { [weak self] in
+            if let outcome = await preparation.value, outcome.cursorsDropped > 0, !Task.isCancelled {
+                await self?.sessionIndex.refreshes?.refreshAfterPreparation()
+            }
+            do { try await SuspendingClock().sleep(for: .seconds(60)) }
+            catch { return }
+            _ = await SessionIndexCompactor.standard.compactIfDue()
+        }
+    }
+
+    func stopSessionIndexMaintenance() {
+        sessionIndexMaintenance?.cancel()
+        sessionIndexPreparation?.cancel()
+        sessionIndexStorage?.refreshes?.stop()
     }
 
     /// Front an already-open Workbench without creating one. Used by the Dock

@@ -90,8 +90,7 @@ final class SessionCountsConsistencyTests: XCTestCase {
         // counts less the Auto Review rows it hides.
         let page = try await SessionVisibleRows.page(index, limit: 100)
         let overview = try await reviews.overview()
-        let harnessCounts = try await store.harnessCounts()
-        let railCodex = (harnessCounts[.codex] ?? 0) - (overview.hiddenRowsByHarness[.codex] ?? 0)
+        let railCodex = overview.listedRowsByHarness[.codex]
         let listed = try await SessionVisibleRows.page(index, harnesses: [.codex], limit: 100)
         XCTAssertEqual(railCodex, listed.totalCount)
         XCTAssertEqual(railCodex, 3, "parent, subagent, headless run; the two reviews are not rows")

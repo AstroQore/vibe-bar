@@ -29,7 +29,8 @@ struct SessionListView: View {
                 // "No sessions match" is a verdict, and one frame of it while
                 // the off-main rows build is still running would be a wrong
                 // one. Hold the space instead.
-                if model.isPreparingRows || (!model.rows.isEmpty && list.rows.isEmpty && list.hiddenCounts.isEmpty) {
+                if model.isLoadingSummaries || model.isPreparingRows
+                    || (!model.rows.isEmpty && list.hiddenCounts.isEmpty) {
                     Color.clear
                 } else {
                     emptyState
@@ -212,7 +213,9 @@ struct SessionListView: View {
             return L10n.Workbench.Sessions.Empty.indexUnavailableDetail
         }
         if hasNoHarnessSelected { return L10n.Usage.NoHarnessSelected.detail }
-        if model.indexProgress != nil { return L10n.Workbench.Sessions.Empty.scanningDetail }
+        if model.indexProgress != nil || model.isBuildingIndex {
+            return L10n.Workbench.Sessions.Empty.scanningDetail
+        }
         if !model.searchText.isEmpty {
             return L10n.Workbench.Sessions.Empty.searchNoMatchDetail
         }

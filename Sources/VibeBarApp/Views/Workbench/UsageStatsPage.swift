@@ -41,14 +41,7 @@ struct UsageStatsPage: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
-            UsageStallProbe.shared.start()
-            model.activate()
-            // Held open on purpose: the background fill should stop when
-            // this page goes away, and a `.task` that returns immediately
-            // cannot tell it that.
-            await model.pollWhileVisible()
-        }
+        .onAppear { UsageStallProbe.shared.start() }
     }
 
     @ViewBuilder

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Observation
 import VibeBarCore
@@ -66,10 +67,12 @@ final class UsageStatsViewModel {
     @ObservationIgnored private let ledger: UsageEventLedger?
     @ObservationIgnored private let sessionIndex: () -> SharedSessionIndex
     @ObservationIgnored private var aggregatorStorage: UsageDashboardAggregator?
-    @ObservationIgnored private var indexService: SessionIndexService?
+    @ObservationIgnored private var indexUpdates: AnyCancellable?
+    @ObservationIgnored private var indexUpdateTask: Task<Void, Never>?
+    @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var observedIndexGeneration: UInt64?
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
     @ObservationIgnored private var generation: UInt64 = 0
-    @ObservationIgnored private var hasLoadedOnce = false
     /// How long a sweep waits when nothing is left to fill.
     @ObservationIgnored private let idleInterval: Duration = .seconds(45)
 
@@ -90,7 +93,6 @@ final class UsageStatsViewModel {
     private var aggregator: UsageDashboardAggregator {
         if let aggregatorStorage { return aggregatorStorage }
         let shared = sessionIndex()
-        indexService = shared.service
         let aggregator = UsageDashboardAggregator(
             ledger: ledger,
             sessions: shared.service.map { SessionIndexDashboardSource(service: $0) },
@@ -104,49 +106,74 @@ final class UsageStatsViewModel {
     // MARK: Lifecycle
 
     func activate() {
-        guard !hasLoadedOnce else {
-            reload()
-            return
+        guard pollTask == nil else { return }
+        let shared = sessionIndex()
+        let aggregator = self.aggregator
+        if let refreshes = shared.refreshes, let service = shared.service {
+            if observedIndexGeneration == nil { observedIndexGeneration = refreshes.state.generation }
+            indexUpdates = refreshes.$state.removeDuplicates {
+                $0.generation == $1.generation
+                    && $0.isDiscovering == $1.isDiscovering
+                    && ($0.progress == nil) == ($1.progress == nil)
+            }.sink { [weak self] state in
+                guard let self else { return }
+                self.indexUpdateTask?.cancel()
+                self.indexUpdateTask = Task { [weak self] in
+                    let scanning = state.isDiscovering || state.progress != nil
+                    let page = scanning ? try? await SessionVisibleRows.page(service, limit: 1) : nil
+                    guard let self, !Task.isCancelled else { return }
+                    let building = page?.totalCount == 0
+                    if self.isBuildingIndex != building { self.isBuildingIndex = building }
+                    guard self.observedIndexGeneration != state.generation else { return }
+                    await aggregator.invalidateSessions()
+                    guard !Task.isCancelled else { return }
+                    self.observedIndexGeneration = state.generation
+                    self.reload(silently: true)
+                }
+            }
+            refreshes.setVisible(.usage, true)
         }
-        hasLoadedOnce = true
         reload()
+        pollTask = Task { [weak self] in await self?.pollWhileVisible() }
     }
 
-    /// Fill the session caches while the page is visible. `UsageStatsPage`
-    /// awaits this in its `.task`, so SwiftUI cancels it when the page goes.
-    func pollWhileVisible() async {
-        await refreshIndexIfDue()
+    /// Fill the sidecars while the page is visible. The shared index stays
+    /// warm on its own schedule after this task is cancelled.
+    private func pollWhileVisible() async {
         while !Task.isCancelled {
-            // The query on screen; a filter change lands in the next sweep.
             let report = await aggregator.enrich(snapshot.query)
-            if Task.isCancelled { break }
+            if Task.isCancelled { return }
             isEnriching = report.hasMore
             if report.changed {
                 await aggregator.invalidateSessions()
+                guard !Task.isCancelled else { return }
                 reload(silently: true)
             }
             do {
                 try await Task.sleep(for: report.hasMore ? .milliseconds(400) : idleInterval)
             } catch {
-                break
+                return
             }
             if !report.hasMore {
-                // Idle wake-up: pick up whatever a cost scan or a CLI wrote
-                // meanwhile — re-scanning the index once its ten minutes are
-                // up. A snapshot equal to the one on screen is not assigned,
-                // so this costs no render.
-                await refreshIndexIfDue()
-                await aggregator.invalidateSessions()
+                // Pick up new ledger entries and the rolling time window.
                 reload(silently: true)
             }
         }
-        isEnriching = false
     }
 
     func stop() {
+        if indexUpdates != nil { sessionIndex().refreshes?.setVisible(.usage, false) }
+        indexUpdates?.cancel()
+        indexUpdates = nil
+        indexUpdateTask?.cancel()
+        indexUpdateTask = nil
+        pollTask?.cancel()
+        pollTask = nil
         reloadTask?.cancel()
         reloadTask = nil
         isLoading = false
+        isEnriching = false
+        isBuildingIndex = false
     }
 
     func refresh() {
@@ -334,27 +361,5 @@ final class UsageStatsViewModel {
             queries.append(UsageDashboardQuery(range: other, interval: interval, model: model, project: project))
         }
         await aggregator.warm(queries)
-    }
-
-    /// Re-scan the session index on activation and while the page stays
-    /// open, on the Sessions page's terms: at most every ten minutes, one
-    /// sweep at a time, behind the maintenance gate
-    /// (`SessionIndexRefreshThrottle`). Sessions a CLI wrote since the last
-    /// scan would otherwise never reach these cards unless the user opened
-    /// Sessions first.
-    private func refreshIndexIfDue() async {
-        _ = aggregator
-        guard let service = indexService,
-              await SessionIndexRefreshThrottle.shared.isDue
-        else { return }
-        let isEmpty = await SessionIndexDashboardSource(service: service).totalSessionCount() == 0
-        if isEmpty { isBuildingIndex = true }
-        let refreshed = await SessionIndexRefreshThrottle.shared.refreshIfDue {
-            await service.refreshIndex()
-        }
-        isBuildingIndex = false
-        guard refreshed, !Task.isCancelled else { return }
-        await aggregator.invalidateSessions()
-        reload(silently: true)
     }
 }

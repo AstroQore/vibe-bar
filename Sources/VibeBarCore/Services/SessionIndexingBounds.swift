@@ -109,24 +109,12 @@ public enum SessionIndexingBounds {
                     fileByteSize: size
                 )
             }
-            let head = try copyHead(
-                of: fileURL,
+            return try readHead(
+                adapter: adapter,
+                fileURL: fileURL,
                 limit: headByteLimit,
                 scratchDirectory: scratchDirectory,
                 isCancelled: isCancelled
-            )
-            defer { try? FileManager.default.removeItem(at: head) }
-            if isCancelled() { throw CancellationError() }
-            let parsed = try adapter.parseTranscript(fileURL: head, range: nil)
-            if isCancelled() { throw CancellationError() }
-            return BoundedTranscript(
-                document: TranscriptDocument(
-                    messages: parsed.messages,
-                    totalMessageCount: parsed.totalMessageCount,
-                    truncated: true
-                ),
-                isHeadTruncated: true,
-                fileByteSize: size
             )
         }
     }
@@ -406,40 +394,62 @@ public enum SessionIndexingBounds {
         )
     }
 
-    /// Streams the first `limit` bytes of `fileURL` into a scratch file.
-    /// Constant memory; the caller deletes the copy after parsing. Scratch
-    /// lives under `~/.vibebar` because that directory is the only place
-    /// the app writes; `SessionIndexCompactor` sweeps anything a crash
-    /// leaves behind.
-    ///
-    /// The cancellation check is per chunk, which is the only granularity
-    /// this loop has — and the reason the copy is chunked at all.
-    static func copyHead(
-        of fileURL: URL,
+    /// The indexer calls this directly for zstd to budget decoded bytes,
+    /// even when the archive is physically small. Viewer and MCP entry
+    /// points still select their read path from the on-disk size.
+    static func readHead(
+        adapter: any SessionProviderAdapter,
+        fileURL: URL,
         limit: Int64,
         scratchDirectory: URL,
         isCancelled: () -> Bool = { Task.isCancelled }
-    ) throws -> URL {
+    ) throws -> BoundedTranscript {
+        try autoreleasepool {
+            let head = try copyHead(
+                of: fileURL, limit: limit, scratchDirectory: scratchDirectory, isCancelled: isCancelled
+            )
+            defer { try? FileManager.default.removeItem(at: head.url) }
+            if isCancelled() { throw CancellationError() }
+            let parsed = try adapter.parseTranscript(fileURL: head.url, range: nil)
+            if isCancelled() { throw CancellationError() }
+            return BoundedTranscript(
+                document: TranscriptDocument(
+                    messages: parsed.messages,
+                    totalMessageCount: parsed.totalMessageCount,
+                    truncated: parsed.truncated || head.truncated
+                ),
+                isHeadTruncated: head.truncated,
+                fileByteSize: SessionParsing.fileSize(fileURL)
+            )
+        }
+    }
+
+    /// Streams a decoded prefix into a private scratch file. One extra byte
+    /// distinguishes a prefix ending exactly at the limit from true EOF.
+    private static func copyHead(
+        of fileURL: URL,
+        limit: Int64,
+        scratchDirectory: URL,
+        isCancelled: () -> Bool
+    ) throws -> (url: URL, truncated: Bool) {
+        if isCancelled() { throw CancellationError() }
+        guard let source = SessionLogByteReader(url: fileURL) else { throw CocoaError(.fileReadUnknown) }
+        defer { source.close() }
         try FileManager.default.createDirectory(
             at: scratchDirectory,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
-        let destination = scratchDirectory
-            .appendingPathComponent("head-\(UUID().uuidString).\(fileURL.pathExtension)")
+        let fileExtension = source.isCompressed ? "jsonl" : fileURL.pathExtension
+        let destination = scratchDirectory.appendingPathComponent("head-\(UUID().uuidString).\(fileExtension)")
         var completed = false
-        // A cancelled copy must not leave its partial file behind: nothing
-        // else knows this path, so `SessionIndexCompactor`'s scratch sweep
-        // would be the only thing that ever removed it.
         defer { if !completed { try? FileManager.default.removeItem(at: destination) } }
-        let source = try FileHandle(forReadingFrom: fileURL)
-        defer { try? source.close() }
         FileManager.default.createFile(atPath: destination.path, contents: nil, attributes: [.posixPermissions: 0o600])
         let sink = try FileHandle(forWritingTo: destination)
         defer { try? sink.close() }
 
         var remaining = limit
-        let chunk = 4 * 1024 * 1024
+        let chunk = 128 * 1024
         while remaining > 0 {
             if isCancelled() { throw CancellationError() }
             let want = Int(min(Int64(chunk), remaining))
@@ -447,8 +457,10 @@ public enum SessionIndexingBounds {
             try sink.write(contentsOf: data)
             remaining -= Int64(data.count)
         }
+        if isCancelled() { throw CancellationError() }
+        let truncated = remaining == 0 ? (try source.read(upToCount: 1))?.isEmpty == false : false
         completed = true
-        return destination
+        return (destination, truncated)
     }
 
     // MARK: - Transcript trimming
@@ -504,11 +516,13 @@ public enum SessionIndexingBounds {
     }
 }
 
-/// One adapter, bounded. Everything except `parseTranscript` forwards.
+/// One adapter with the indexer's transcript and metadata read bounds.
 struct BoundedSessionAdapter: SessionProviderAdapter {
     let inner: any SessionProviderAdapter
     let policy: SessionIndexExcerptPolicy
     let scratchDirectory: URL
+
+    private static let metadataHeadByteLimit = 256 * 1024
 
     var provider: SessionProvider { inner.provider }
 
@@ -529,6 +543,51 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
         CodexReviewLinkRepair.repaired(try inner.extractMetadata(fileURL: fileURL), fileURL: fileURL)
     }
 
+    func boundedIndexReadPlan(
+        fileURL: URL,
+        sourceBytes: Int64,
+        indexBodies: Bool
+    ) -> SessionIndexReadPlan? {
+        let compressed = provider == .codex && CodexRolloutFile.isCompressed(fileURL)
+        guard sourceBytes > 0, fileURL.pathExtension == "jsonl" || compressed,
+              !indexBodies || policy.headParseByteLimit > 0
+        else { return nil }
+
+        let headLimit = Self.metadataHeadByteLimit
+        let extractMetadata: @Sendable () throws -> SessionSummary
+        switch inner {
+        case let adapter as CodexSessionAdapter:
+            extractMetadata = {
+                let summary = try adapter.extractMetadata(fileURL: fileURL, headByteLimit: headLimit)
+                return CodexReviewLinkRepair.repaired(summary, fileURL: fileURL, headerLimit: headLimit)
+            }
+        case let adapter as ClaudeSessionAdapter:
+            extractMetadata = { try adapter.extractMetadata(fileURL: fileURL, headByteLimit: headLimit) }
+        case let adapter as ClaudeCoworkSessionAdapter:
+            extractMetadata = { try adapter.extractMetadata(fileURL: fileURL, headByteLimit: headLimit) }
+        default:
+            return nil
+        }
+
+        if compressed {
+            // Decoded windows, independent of the compressed file size.
+            let body = indexBodies ? policy.headParseByteLimit + 1 : 0
+            return SessionIndexReadPlan(
+                estimatedBytes: body + 2 * Int64(headLimit),
+                requiresFullRefresh: true,
+                extractMetadata: extractMetadata
+            )
+        }
+
+        // Two head windows cover Codex review repair or Cowork project
+        // inference. Tail and small-file line count have fixed bounds.
+        let head = min(sourceBytes, Int64(headLimit))
+        let tail = min(sourceBytes, JSONLHeadTail.wholeFileThreshold + 1)
+        let count = sourceBytes <= JSONLHeadTail.wholeFileThreshold ? sourceBytes : 0
+        let body = indexBodies ? min(sourceBytes, policy.headParseByteLimit) : 0
+        return SessionIndexReadPlan(estimatedBytes: body + 2 * head + tail + count, extractMetadata: extractMetadata)
+    }
+
     /// Forwarded, not defaulted: an adapter whose sessions are not one file
     /// each (Devin's rows in one database) answers per session, and the
     /// protocol's default would stat the locator and see nothing change.
@@ -546,19 +605,16 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
         guard range == nil else {
             return try inner.parseTranscript(fileURL: fileURL, range: range)
         }
-        let read = try SessionIndexingBounds.readTranscript(
-            adapter: inner,
-            fileURL: fileURL,
-            headByteLimit: policy.headParseByteLimit,
-            scratchDirectory: scratchDirectory,
-            // Explicitly opted out. The indexing sweep's cancellation story
-            // belongs to the kit's `refreshIndex`, and making a throw here
-            // mean "cancelled" would silently turn a cancelled pass into a
-            // pass that skipped files — indistinguishable, in the index,
-            // from files that failed to parse. The viewer is the caller that
-            // needs the abort, and it passes its own check.
-            isCancelled: { false }
-        )
+        let read: SessionIndexingBounds.BoundedTranscript
+        if provider == .codex, CodexRolloutFile.isCompressed(fileURL), policy.headParseByteLimit > 0 {
+            read = try SessionIndexingBounds.readHead(
+                adapter: inner, fileURL: fileURL, limit: policy.headParseByteLimit, scratchDirectory: scratchDirectory
+            )
+        } else {
+            read = try SessionIndexingBounds.readTranscript(
+                adapter: inner, fileURL: fileURL, headByteLimit: policy.headParseByteLimit, scratchDirectory: scratchDirectory
+            )
+        }
         return SessionIndexingBounds.trimmed(
             read.document,
             policy: policy,

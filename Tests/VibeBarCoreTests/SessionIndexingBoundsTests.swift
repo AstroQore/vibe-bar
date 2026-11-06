@@ -174,6 +174,36 @@ final class SessionIndexingBoundsTests: XCTestCase {
         XCTAssertTrue((try? FileManager.default.contentsOfDirectory(atPath: scratchURL.path))?.isEmpty ?? true)
     }
 
+    func testCompressedIndexingBoundsDecodedBytesAndDetectsEndOfFile() throws {
+        let first = Data((codexLine(role: "user", text: "First indexed message") + "\n").utf8)
+        let last = Data(("\n" + codexLine(role: "assistant", text: "Far beyond the decoded budget") + "\n").utf8)
+        let compressed = ZstdRawFrame.wrap(first) + ZstdRawFrame.repeatedByte(32, count: 32 * 1024) + ZstdRawFrame.wrap(last)
+        let fileURL = directory.appendingPathComponent("rollout-decoded.jsonl.zst")
+        try compressed.write(to: fileURL)
+        let inner = CodexSessionAdapter(homeDirectory: directory.path)
+        let adapter = BoundedSessionAdapter(
+            inner: inner,
+            policy: SessionIndexExcerptPolicy(headParseByteLimit: 1024),
+            scratchDirectory: scratchURL
+        )
+
+        XCTAssertLessThan(compressed.count, 1024)
+        let truncated = try adapter.parseTranscript(fileURL: fileURL, range: nil)
+        XCTAssertTrue(truncated.truncated)
+        XCTAssertEqual(truncated.messages.map(\.text), ["First indexed message"])
+
+        try ZstdRawFrame.wrap(first).write(to: fileURL)
+        let exactLimit = try SessionIndexingBounds.readHead(
+            adapter: inner, fileURL: fileURL, limit: Int64(first.count), scratchDirectory: scratchURL
+        )
+        XCTAssertFalse(exactLimit.isHeadTruncated)
+        XCTAssertEqual(exactLimit.document.messages.count, 1)
+
+        try Data(ZstdRawFrame.wrap(first).dropLast()).write(to: fileURL)
+        XCTAssertThrowsError(try adapter.parseTranscript(fileURL: fileURL, range: nil))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: scratchURL.path).isEmpty)
+    }
+
     func testReadTranscriptWithNoLimitReadsTheWholeFile() throws {
         let first = codexLine(role: "user", text: "alpha bravo charlie")
         let second = codexLine(role: "assistant", text: "delta echo foxtrot")
@@ -274,27 +304,24 @@ final class SessionIndexingBoundsTests: XCTestCase {
         XCTAssertEqual(adapter.parseCount.value, 1)
     }
 
-    /// The indexing wrapper opts out on purpose: a throw there would be
-    /// indistinguishable, in the index, from a file that failed to parse.
-    func testIndexingAdapterIgnoresAmbientCancellation() async throws {
+    func testCancelledIndexingDoesNotStartATranscriptParse() async throws {
         let line = codexLine(role: "user", text: "alpha bravo charlie")
         let fileURL = directory.appendingPathComponent("rollout-indexing.jsonl")
         try Data((line + "\n").utf8).write(to: fileURL)
 
-        let adapter = BoundedSessionAdapter(
-            inner: CodexSessionAdapter(homeDirectory: directory.path),
-            policy: .standard,
-            scratchDirectory: scratchURL
-        )
-        let task = Task { () -> [String] in
-            // Park until cancellation has actually landed, so the parse below
-            // definitely runs inside a cancelled task rather than racing it.
+        let parser = CountingAdapter(inner: CodexSessionAdapter(homeDirectory: directory.path))
+        let adapter = BoundedSessionAdapter(inner: parser, policy: .standard, scratchDirectory: scratchURL)
+        let task = Task {
             while !Task.isCancelled { await Task.yield() }
-            return try adapter.parseTranscript(fileURL: fileURL, range: nil).messages.map(\.text)
+            return try adapter.parseTranscript(fileURL: fileURL, range: nil)
         }
         task.cancel()
-        let texts = try await task.value
-        XCTAssertEqual(texts, ["alpha bravo charlie"])
+        do {
+            _ = try await task.value
+            XCTFail("An index task cancelled before the read must not parse a transcript")
+        } catch is CancellationError {
+            XCTAssertEqual(parser.parseCount.value, 0)
+        }
     }
 
     /// A thread-safe call counter — the cancellation predicate is

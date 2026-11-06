@@ -38,11 +38,6 @@ final class MCPController: ObservableObject, MCPDataSource {
     private var socketServer: MCPSocketServer?
     private var cancellables: Set<AnyCancellable> = []
 
-    /// One opportunistic scan per process when the index has never been built.
-    /// Without it, `sessions.search` answers "nothing" until the user happens
-    /// to open the Workbench, which reads as a bug rather than as an empty
-    /// index.
-    private var didAttemptSessionBackfill = false
     /// Built on the first `sessions.transcript` call. See `transcriptRegistry`.
     private var registryStorage: SessionProviderRegistry?
     /// Latched once the index is known to hold rows, so `readingSessions`
@@ -362,7 +357,7 @@ final class MCPController: ObservableObject, MCPDataSource {
             didObservePopulatedIndex = true
             return first
         }
-        guard await isSessionIndexUnbuilt(), await backfillSessionIndexIfNeeded(index) else {
+        guard await isSessionIndexUnbuilt(), await backfillSessionIndexIfNeeded(), !Task.isCancelled else {
             return first
         }
         return try await read(index)
@@ -664,29 +659,13 @@ final class MCPController: ObservableObject, MCPDataSource {
         return service
     }
 
-    /// Returns true when a scan actually ran, so the caller re-queries.
-    private func backfillSessionIndexIfNeeded(_ index: SessionIndexService) async -> Bool {
-        guard !didAttemptSessionBackfill else { return false }
-        didAttemptSessionBackfill = true
-        // Same gate the Workbench's refresh takes: one indexer at a time, and
-        // never on top of the daily compaction pass. The wait is cancellable
-        // and claims nothing when it throws, so a client that disconnects
-        // mid-wait does not strand the gate.
-        let gate = SessionIndexMaintenanceGate.shared
-        do {
-            try await gate.acquire()
-        } catch {
-            // Gave up while queued. The one-per-process flag stays set: this
-            // was still the process's one opportunistic backfill attempt.
-            return false
+    private func backfillSessionIndexIfNeeded() async -> Bool {
+        guard !Task.isCancelled, let shared = environment?.sessionIndex,
+              let store = shared.store, let refreshes = shared.refreshes
+        else { return false }
+        return await refreshes.backfillIfNeeded {
+            ((try? await store.sessionCount()) ?? 0) > 0
         }
-        guard !Task.isCancelled else {
-            await gate.release()
-            return false
-        }
-        await index.refreshIndex()
-        await gate.release()
-        return true
     }
 
     // MARK: - MCPDataSource: status and pricing
