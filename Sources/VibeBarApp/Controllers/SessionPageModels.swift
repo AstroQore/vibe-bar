@@ -95,9 +95,13 @@ final class SessionsPageController {
         manager.$harnessCounts
             .sink { [weak self] counts in
                 self?.navigation.update(counts: counts)
-                // New counts mean the index moved; so may the listed set.
-                self?.navigation.invalidateListedPaths()
             }
+            .store(in: &cancellables)
+        // Replacing a source can leave every displayed count unchanged.
+        // Path membership follows index contents, not count publications.
+        manager.$indexGeneration
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.navigation.invalidateListedPaths() }
             .store(in: &cancellables)
         manager.$harnessFilter
             .sink { [weak self] filter in self?.navigation.update(selection: filter) }

@@ -325,7 +325,7 @@ final class SessionManagerModel: ObservableObject {
     /// refresh, a rebuild, a delete). Everything derived from a whole-index
     /// query — the review counts and the harness chip counts — is fetched
     /// once per value of this rather than on every filter change.
-    private var indexGeneration: UInt64 = 0
+    @Published private(set) var indexGeneration: UInt64 = 0
     private var indexDerivedGeneration: UInt64?
     /// Parent rows already resolved for auto-review hits, valid for one
     /// `indexGeneration`.
