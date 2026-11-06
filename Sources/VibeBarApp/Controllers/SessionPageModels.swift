@@ -49,6 +49,7 @@ final class SessionsPageController {
 
     @ObservationIgnored private var cancellables: Set<AnyCancellable> = []
     @ObservationIgnored private var paging = SessionListAutoPaging()
+    @ObservationIgnored private var needsConversationResume = false
 
     init(manager: SessionManagerModel, structure: SessionStructureService) {
         self.manager = manager
@@ -94,9 +95,13 @@ final class SessionsPageController {
         manager.$harnessCounts
             .sink { [weak self] counts in
                 self?.navigation.update(counts: counts)
-                // New counts mean the index moved; so may the listed set.
-                self?.navigation.invalidateListedPaths()
             }
+            .store(in: &cancellables)
+        // Replacing a source can leave every displayed count unchanged.
+        // Path membership follows index contents, not count publications.
+        manager.$indexGeneration
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.navigation.invalidateListedPaths() }
             .store(in: &cancellables)
         manager.$harnessFilter
             .sink { [weak self] filter in self?.navigation.update(selection: filter) }
@@ -129,11 +134,18 @@ final class SessionsPageController {
 
     func activate() {
         manager.activate()
-        navigation.scheduleThreadCountRefresh(immediately: true)
+        list.resume()
+        navigation.scheduleThreadCountRefresh()
+        if needsConversationResume {
+            needsConversationResume = false
+            conversation.resumeLoading()
+        }
     }
 
     func stop() {
+        manager.stop()
         list.stop()
+        needsConversationResume = needsConversationResume || conversation.phase == .loading
         conversation.stop()
         navigation.stop()
     }
@@ -244,6 +256,8 @@ final class SessionNavigationModel {
 
     func invalidateListedPaths() {
         listedPathsCache = nil
+        refreshTask?.cancel()
+        refreshTask = nil
         scheduleThreadCountRefresh()
     }
 
@@ -267,11 +281,10 @@ final class SessionNavigationModel {
     /// Thread counts come from the sidecar, which the list fills as it
     /// reads stats; re-reading it is one grouped query, debounced so a
     /// stream of stats batches costs one.
-    func scheduleThreadCountRefresh(immediately: Bool = false) {
-        if !immediately, refreshTask != nil { return }
-        refreshTask?.cancel()
+    func scheduleThreadCountRefresh() {
+        guard refreshTask == nil else { return }
         refreshTask = Task { [weak self, structure, listedPaths] in
-            if !immediately { try? await Task.sleep(for: .seconds(2)) }
+            try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled, let self else { return }
             let listed: [Harness: Set<String>]
             if let cached = self.listedPathsCache {
@@ -427,6 +440,12 @@ final class SessionListModel {
         // What was queued or being read, and not answered, is asked for
         // again next time — the batch in flight included.
         requests.cancel()
+    }
+
+    func resume() {
+        guard !source.isEmpty else { return }
+        rebuild()
+        enqueue(source.map(\.summary), atFront: true)
     }
 
     func listing(for summary: SessionSummary) -> SessionStructureListing? {

@@ -169,7 +169,7 @@ there, not in the package.
 
 **Where it comes from.** `Package.swift` pins the package to an exact
 tag on GitHub (`.package(url: "https://github.com/AstroQore/agent-session-kit.git",
-exact: "0.12.0")`), so a plain clone builds and a release build resolves the
+exact: "0.13.0")`), so a plain clone builds and a release build resolves the
 same package the developer built against — `Package.resolved` is
 gitignored here, and the exact pin is what stands in for it.
 
@@ -516,6 +516,34 @@ adapters open the SQLite stores through the package's
 `LiveSQLiteReader`, which only ever
 opens the real file `SQLITE_OPEN_READONLY` and falls back to a private
 temp-directory snapshot it deletes again.
+
+### Session index refresh
+
+The Sessions page draws its cached first page before loading the whole-index
+harness and Auto Review counts. Reads go straight to the store through the
+kit's nonisolated query methods, so provider discovery and source parsing can
+be in progress at the same time.
+
+`SessionIndexRefreshCoordinator` owns the index work for the process.
+Sessions and Usage subscribe while visible. A manual refresh, MCP backfill
+and launch reparse share the same queue and the compactor's maintenance
+gate. Closing the Workbench ends its subscriptions and sidecar work. A
+committed batch advances the index generation when it changes indexed data.
+
+Opening Sessions or Usage first enables an app-lifetime utility task. It
+checks recent indexed sources every two minutes and starts full discovery
+when the last completed discovery is at least ten minutes old. The
+directory walk runs separately from candidate processing. A batch may
+check up to 512 sources and read up to 32 changed sources within a 16 MiB
+estimated read budget and a 250 ms soft time budget checked between sources.
+A source can use up to 9 MiB of the estimate. Ordinary Codex, Claude and Cowork JSONL can fit via
+bounded metadata windows and the 8 MiB transcript head limit. Compressed
+Codex rollouts use a decoded prefix under the same limit. Oversized
+whole-file sources are picked up by a full refresh. Pending batches yield
+between slices. Low Power Mode and serious or critical thermal pressure
+pause periodic work while still allowing a visible page to request the
+first batch of an empty cache. A busy maintenance gate defers every
+bounded batch.
 
 ### 5.1 The local MCP server
 
@@ -1252,10 +1280,10 @@ stamps each step only after every one of its deletes reports `SQLITE_DONE`,
 so a pass that is already walking those files cannot skip one on a cursor
 being deleted, and a refusal is retried on the next launch rather than
 recorded as done. A dropped cursor only marks a file for re-reading, so when
-any step dropped one, the launch runs an indexing pass right away inside the
-same hold of the gate (`refreshAfterDrop`): the Workbench refreshes only when
-it is opened, and the MCP tools back-fill only an empty index, so without it
-an agents-only Mac would keep the old reading indefinitely.
+any step dropped one, the launch requests a full pass through the shared
+coordinator. Every pass waits for the cursor preparation, so an overlapping
+manual refresh can satisfy that re-read. An agents-only Mac also gets the
+repair.
 
 ### 7.1 Provider and harness naming
 

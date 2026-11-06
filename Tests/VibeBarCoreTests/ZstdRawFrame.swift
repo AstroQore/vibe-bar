@@ -26,6 +26,22 @@ enum ZstdRawFrame {
         return out
     }
 
+    /// A one-block run-length encoded frame whose expansion is much
+    /// larger than the compressed bytes. A decoder may read it after a
+    /// raw prefix frame in the same log.
+    static func repeatedByte(_ byte: UInt8, count: Int) -> Data {
+        precondition((1...maxBlockSize).contains(count))
+        var out = Data([0x28, 0xB5, 0x2F, 0xFD, 0xE0])
+        var size = UInt64(count).littleEndian
+        withUnsafeBytes(of: &size) { out.append(contentsOf: $0) }
+        let header = UInt32(count) << 3 | 0b011  // RLE, last block
+        out.append(UInt8(header & 0xFF))
+        out.append(UInt8((header >> 8) & 0xFF))
+        out.append(UInt8((header >> 16) & 0xFF))
+        out.append(byte)
+        return out
+    }
+
     /// The same raw-block frame without a Frame_Content_Size — what a
     /// streaming compressor writes when it was not told the input size.
     /// Window_Descriptor 0x38: exponent 7, a 128 KiB window, enough for a

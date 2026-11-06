@@ -59,6 +59,11 @@ enum WorkbenchPage: String, CaseIterable, Identifiable {
 @MainActor
 final class WorkbenchNavigation: ObservableObject {
     @Published private(set) var selectedPage: WorkbenchPage?
+    @Published private(set) var presentationRevision: UInt64 = 0
+
+    func reopen() {
+        presentationRevision &+= 1
+    }
     /// A Settings section requested from outside the window (demo mode's
     /// `settings:<section>` surface). Consumed once by the root view, which
     /// owns the live selection.
@@ -242,7 +247,10 @@ struct WorkbenchRootView: View {
     ) -> some View {
         switch page {
         case .sessionManager:
-            SessionPageColumns(density: density, controller: workbench.sessionsPage, header: header)
+            let controller = workbench.sessionsPage
+            SessionPageColumns(density: density, controller: controller, header: header)
+                .task(id: navigation.presentationRevision) { controller.activate() }
+                .onDisappear { controller.manager.deactivate() }
         case .settings:
             HStack(spacing: 0) {
                 SettingsSidebarView(selection: $settingsDestination)
@@ -272,7 +280,10 @@ struct WorkbenchRootView: View {
     private func detail(for page: WorkbenchPage, density: Theme.Density) -> some View {
         switch page {
         case .usageStats:
-            UsageStatsPage(density: density, model: workbench.usageStats, onOpenSession: openSession)
+            let model = workbench.usageStats
+            UsageStatsPage(density: density, model: model, onOpenSession: openSession)
+                .task(id: navigation.presentationRevision) { model.activate() }
+                .onDisappear { model.stop() }
         case .resets:
             ResetsPage(density: density)
         case .skillsManager:

@@ -127,7 +127,6 @@ struct SessionManagerPage: View {
         } message: {
             Text(deletionMessage)
         }
-        .task { controller.activate() }
     }
 
     private var deletionBinding: Binding<Bool> {

@@ -115,7 +115,7 @@ final class SessionManagerModel: ObservableObject {
         }
     }
 
-    struct ProjectGroup: Identifiable, Sendable {
+    struct ProjectGroup: Identifiable, Equatable, Sendable {
         let project: ProjectBucket
         let rows: [Row]
 
@@ -151,8 +151,9 @@ final class SessionManagerModel: ObservableObject {
     @Published private(set) var labelHits: [SessionSummary] = [] {
         didSet { refreshRows() }
     }
-    @Published private(set) var indexProgress: IndexProgress?
+    @Published private(set) var indexProgress: SessionIndexRefreshCoordinator.Progress?
     @Published private(set) var isIndexAvailable = true
+    @Published private(set) var isBuildingIndex = false
 
     /// Derived once per input change rather than per render: the list is
     /// read from three views on the page, and re-sorting a few thousand
@@ -250,16 +251,6 @@ final class SessionManagerModel: ObservableObject {
     @Published private(set) var pendingDeletion: SessionDeletionCascade.Plan?
     @Published private(set) var toast: String?
 
-    struct IndexProgress: Equatable {
-        let done: Int
-        let total: Int
-
-        var fraction: Double {
-            guard total > 0 else { return 0 }
-            return min(1, Double(done) / Double(total))
-        }
-    }
-
     /// Whether selecting a session also reads its flat transcript. The
     /// Sessions page answers no for a provider its turn view can read —
     /// that view parses the log its own way, and reading it twice would pay
@@ -301,9 +292,12 @@ final class SessionManagerModel: ObservableObject {
 
     private var searchTask: Task<Void, Never>?
     private var directoryFilterTask: Task<Void, Never>?
-    private var refreshTask: Task<Void, Never>?
+    private var indexUpdates: AnyCancellable?
+    private var summaryTask: Task<Void, Never>?
+    private var indexDerivedTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var rowsTask: Task<Void, Never>?
+    private var needsRowsRefresh = false
     /// Reads the reviews a deletion takes with it, before the confirmation
     /// is shown. Held so a second request (or Cancel) supersedes it.
     private var deletionPlanTask: Task<Void, Never>?
@@ -312,6 +306,7 @@ final class SessionManagerModel: ObservableObject {
     /// full parses, of which two were discarded on arrival by a generation
     /// check that had already let them allocate everything.
     private var transcriptTask: Task<Void, Never>?
+    private var needsTranscriptResume = false
     /// What the open transcript was read for — kept so "Load entire
     /// transcript" re-reads it with the same focus.
     private var transcriptRequest: SessionTranscriptMerge.Request?
@@ -321,7 +316,6 @@ final class SessionManagerModel: ObservableObject {
     private var transcriptGeneration: UInt64 = 0
     private var searchGeneration: UInt64 = 0
     private var summaryGeneration: UInt64 = 0
-    private var lastScanFinishedAt: Date?
     /// Auto Reviews per parent session id — one small entry per parent, from
     /// `SessionReviewIndex.overview()`. The reviews themselves are read only
     /// when a transcript opens or a deletion is planned.
@@ -331,20 +325,11 @@ final class SessionManagerModel: ObservableObject {
     /// refresh, a rebuild, a delete). Everything derived from a whole-index
     /// query — the review counts and the harness chip counts — is fetched
     /// once per value of this rather than on every filter change.
-    private var indexGeneration: UInt64 = 0
+    @Published private(set) var indexGeneration: UInt64 = 0
     private var indexDerivedGeneration: UInt64?
     /// Parent rows already resolved for auto-review hits, valid for one
     /// `indexGeneration`.
     private var parentSummaryCache: [String: SessionSummary] = [:]
-
-    /// Floor between two activation sweeps.
-    ///
-    /// This used to be 30 seconds, which made every Workbench tab click cost
-    /// a full walk of every provider's session tree — 11 000 files on a busy
-    /// Mac. Re-opening the window after a while still rescans (the CLIs were
-    /// writing the whole time it was shut); moving between pages does not.
-    /// The Refresh button ignores this entirely.
-    private static let rescanMinimumInterval: TimeInterval = 10 * 60
 
     /// Long enough that a fast typist never pays for an intermediate query,
     /// short enough that pausing to read the list feels like it already ran.
@@ -353,9 +338,6 @@ final class SessionManagerModel: ObservableObject {
     /// matches — the same ceiling the full-text search has.
     private nonisolated static let labelScanPageSize = 1_000
     private nonisolated static let labelHitLimit = 200
-    /// The index reports per file; publishing every one of those would put
-    /// thousands of main-actor hops between the user and a scroll.
-    private nonisolated static let progressStride = 250
     private static let summaryPageSize = 250
     /// Most Auto Reviews one transcript merges. The busiest session on a
     /// heavy Mac has a few hundred; this only bounds a pathological one.
@@ -445,123 +427,90 @@ final class SessionManagerModel: ObservableObject {
 
     // MARK: - Lifecycle
 
-    /// Cached rows first, disk second — and the two are never sequenced.
-    ///
-    /// The summary query answers from the last scan and paints immediately;
-    /// the scan, when one is due at all, runs behind it and re-queries when
-    /// it lands. Re-opening the window after a while re-scans, since the CLIs
-    /// have been writing sessions the whole time it was shut, but switching
-    /// between Workbench pages must not.
     func activate() {
-        reloadSummaryPage(reset: true)
-        guard refreshTask == nil else { return }
-        if let last = lastScanFinishedAt, Date().timeIntervalSince(last) < Self.rescanMinimumInterval {
-            return
+        guard indexUpdates == nil, let refreshes = index.refreshes else { return }
+        indexGeneration = refreshes.state.generation
+        parentSummaryCache.removeAll(keepingCapacity: true)
+        reloadSummaryPage(reset: true, preservingLoadedRows: true)
+        rerunSearch()
+        if needsRowsRefresh {
+            needsRowsRefresh = false
+            refreshRows()
         }
-        refreshIndex()
+        if needsTranscriptResume {
+            needsTranscriptResume = false
+            read(transcriptRequest, force: true)
+        }
+        indexUpdates = refreshes.$state.sink { [weak self] state in
+            self?.applyIndexState(state)
+        }
+        refreshes.setVisible(.sessions, true)
     }
 
-    /// Wind down everything this page has in flight.
-    ///
-    /// Cancelling the tasks is only half of it: each of them owns a piece of
-    /// published "…in progress" state that its completion path would have
-    /// cleared, and a cancelled task never reaches that path. Leaving them
-    /// set is what would make a reopened Workbench sit on "Reading the
-    /// session log…" or a permanent scan bar for a task that no longer
-    /// exists, until the user happened to click something.
-    func stop() {
+    private func applyIndexState(_ state: SessionIndexRefreshCoordinator.State) {
+        if indexProgress != state.progress { indexProgress = state.progress }
+        let building = state.isDiscovering && summaries.isEmpty
+        if isBuildingIndex != building { isBuildingIndex = building }
+        guard indexGeneration != state.generation else { return }
+        indexGeneration = state.generation
+        parentSummaryCache.removeAll(keepingCapacity: true)
+        reloadSummaryPage(reset: true, preservingLoadedRows: true)
+        rerunSearch()
+    }
+
+    /// A tab change ends its observation of the app-wide refresh. The
+    /// selected conversation can finish independently.
+    func deactivate() {
+        indexUpdates?.cancel()
+        indexUpdates = nil
+        index.refreshes?.setVisible(.sessions, false)
         searchTask?.cancel()
-        directoryFilterTask?.cancel()
-        refreshTask?.cancel()
-        toastTask?.cancel()
-        rowsTask?.cancel()
-        deletionPlanTask?.cancel()
-        cancelTranscriptParse()
         searchTask = nil
+        directoryFilterTask?.cancel()
         directoryFilterTask = nil
-        refreshTask = nil
+        summaryTask?.cancel()
+        summaryTask = nil
+        indexDerivedTask?.cancel()
+        indexDerivedTask = nil
+
+        isLoadingSummaries = false
+        indexProgress = nil
+        isBuildingIndex = false
+    }
+
+    /// Closing the Workbench also cancels work specific to the window.
+    func stop() {
+        deactivate()
+        toastTask?.cancel()
         toastTask = nil
+        needsRowsRefresh = needsRowsRefresh || isPreparingRows
+        rowsTask?.cancel()
         rowsTask = nil
+        deletionPlanTask?.cancel()
         deletionPlanTask = nil
+        needsTranscriptResume = needsTranscriptResume || isLoadingTranscript
+        cancelTranscriptParse()
 
         isLoadingTranscript = false
         isPreparingRows = false
-        isLoadingSummaries = false
-        indexProgress = nil
     }
 
     // MARK: - Index
 
     func refreshIndex() {
-        guard let service else { return }
-        refreshTask?.cancel()
-        indexProgress = IndexProgress(done: 0, total: 0)
-        let progress: @Sendable (Int, Int) -> Void = { [weak self] done, total in
-            guard done == total || done % Self.progressStride == 0 else { return }
-            guard let self else { return }
-            Task { @MainActor in
-                self.indexProgress = IndexProgress(done: done, total: total)
-            }
-        }
-        refreshTask = Task { [weak self] in
-            // Wait out a compaction pass rather than fighting it for the
-            // write lock; `SessionIndexMaintenanceGate` explains the split.
-            // The wait is cancellable, and it claims nothing when it throws,
-            // so the closing Workbench does not leave the gate held.
-            let gate = SessionIndexMaintenanceGate.shared
-            do {
-                try await gate.acquire()
-            } catch {
-                await MainActor.run { self?.indexProgress = nil }
-                return
-            }
-            // Cancelled while queued: hand the gate straight back rather than
-            // starting an 11 000-file sweep for a window that is closing.
-            guard !Task.isCancelled else {
-                await gate.release()
-                await MainActor.run { self?.indexProgress = nil }
-                return
-            }
-            await service.refreshIndex(progress: progress)
-            await gate.release()
-            guard let self, !Task.isCancelled else { return }
-            self.indexProgress = nil
-            self.refreshTask = nil
-            self.lastScanFinishedAt = Date()
-            self.invalidateIndexDerivedState()
-            self.reloadSummaryPage(reset: true)
-            self.rerunSearch()
-            // A refresh is when churn lands in the index, so it is the
-            // natural moment to ask for maintenance. The compactor
-            // throttles itself; most calls return without touching SQLite.
-            Task.detached(priority: .utility) {
-                await SessionIndexCompactor.standard.compactIfDue()
-            }
+        guard let task = index.refreshes?.requestRefresh() else { return }
+        Task.detached(priority: .utility) {
+            if await task.value { _ = await SessionIndexCompactor.standard.compactIfDue() }
         }
     }
 
-    /// Everything derived from a whole-index query is stale now.
-    private func invalidateIndexDerivedState() {
-        indexGeneration &+= 1
-        parentSummaryCache.removeAll(keepingCapacity: true)
-    }
-
-    /// Throw the index away and rebuild it from disk. The escape hatch for a
-    /// stale or half-written database — nothing here touches a session file.
+    /// Throw the cache away under the same gate as refresh, then re-read
+    /// the sources. A background slice cannot repopulate it from an old round.
     func rebuildIndex() {
-        guard let store else { return }
-        refreshTask?.cancel()
-        indexProgress = IndexProgress(done: 0, total: 0)
+        guard let task = index.refreshes?.requestRefresh(rebuild: true) else { return }
         Task { [weak self] in
-            let cleared = (try? await store.eraseAll()) != nil
-            guard let self else { return }
-            if !cleared { self.show(toast: L10n.Workbench.Sessions.Toast.indexNotCleared) }
-            self.invalidateIndexDerivedState()
-            self.summaries = []
-            self.hits = []
-            self.labelHits = []
-            self.totalSessionCount = 0
-            self.refreshIndex()
+            guard !(await task.value) else { return }
+            self?.show(toast: L10n.Workbench.Sessions.Toast.indexNotCleared)
         }
     }
 
@@ -573,84 +522,101 @@ final class SessionManagerModel: ObservableObject {
         reloadSummaryPage(reset: false)
     }
 
-    private func reloadSummaryPage(reset: Bool) {
+    private func reloadSummaryPage(reset: Bool, preservingLoadedRows: Bool = false) {
         guard let service else { return }
         if reset { refreshAntigravityModelLabels() }
+        summaryTask?.cancel()
         summaryGeneration &+= 1
         let generation = summaryGeneration
         // No harness selected queries nothing. Asking the index for an empty
-        // harness list would be reading its "no filter" convention as the
-        // opposite of what the user just said.
+        // harness list would mean "no filter".
         if HarnessSelection.isNothing(harnessFilter) {
-            summaries = []
+            if !summaries.isEmpty { summaries = [] }
+            if totalSessionCount != 0 { totalSessionCount = 0 }
             isLoadingSummaries = false
             reconcileSelection()
+            reloadIndexDerivedState()
             return
         }
         let offset = reset ? 0 : summaries.count
+        let wanted = preservingLoadedRows ? max(Self.summaryPageSize, summaries.count) : Self.summaryPageSize
         let harnesses = harnessFilter.map { Array($0).sorted { $0.rawValue < $1.rawValue } }
         let since = dateRange.start()
         let order = summaryOrder
-        // Chip counts and the Auto Review counts are whole-index facts: they
-        // do not depend on the harness, date, sort or directory filter that
-        // triggered this reload, so they are read once per index generation.
-        // The review counts come grouped from SQLite — one entry per parent,
-        // every review counted — rather than as a capped list of summaries.
-        let currentIndexGeneration = indexGeneration
-        let needsIndexDerived = reset && indexDerivedGeneration != currentIndexGeneration
         let includes = directoryIncludes
         let excludes = directoryExcludes
-        let reviewIndex = self.reviewIndex
-        isLoadingSummaries = true
-        Task { [weak self] in
-            let page = try? await SessionVisibleRows.page(
-                service,
-                harnesses: harnesses,
-                since: since,
-                projectIncludes: includes,
-                projectExcludes: excludes,
-                order: order,
-                offset: offset,
-                limit: Self.summaryPageSize
-            )
-            let counts = needsIndexDerived ? (try? await service.harnessCounts()) : nil
-            let overview = needsIndexDerived ? (try? await reviewIndex.overview()) : nil
-            guard let self, generation == self.summaryGeneration else { return }
-            // Both or neither: chip counts that never had the hidden reviews
-            // taken off would otherwise stick for the whole generation.
-            if needsIndexDerived, counts != nil, overview != nil {
-                self.indexDerivedGeneration = currentIndexGeneration
-            }
-            self.isLoadingSummaries = false
-            guard let page else { return }
+        // An index update in the background must not flash the loading state
+        // over an already-populated list.
+        if !preservingLoadedRows || summaries.isEmpty { isLoadingSummaries = true }
+        summaryTask = Task { [weak self] in
+            var fetched: [SessionSummary] = []
+            var total: Int?
+            repeat {
+                guard !Task.isCancelled else { return }
+                guard let page = try? await SessionVisibleRows.page(
+                    service,
+                    harnesses: harnesses,
+                    since: since,
+                    projectIncludes: includes,
+                    projectExcludes: excludes,
+                    order: order,
+                    offset: offset + fetched.count,
+                    limit: min(Self.summaryPageSize, wanted - fetched.count)
+                ) else { break }
+                total = page.totalCount
+                fetched.append(contentsOf: page.summaries)
+                if page.summaries.isEmpty || offset + fetched.count >= page.totalCount { break }
+            } while fetched.count < wanted
+            guard let self, !Task.isCancelled, generation == self.summaryGeneration else { return }
+            if self.isLoadingSummaries { self.isLoadingSummaries = false }
+            guard let total else { return }
             if reset {
-                self.summaries = Array(page.summaries.prefix(Self.maximumLoadedSummaries))
+                if fetched != self.summaries { self.summaries = fetched }
             } else {
                 let existing = Set(self.summaries.map(\.id))
                 let room = max(0, Self.maximumLoadedSummaries - self.summaries.count)
-                self.summaries.append(contentsOf: page.summaries
-                    .filter { !existing.contains($0.id) }
-                    .prefix(room))
+                let added = fetched.filter { !existing.contains($0.id) }.prefix(room)
+                if !added.isEmpty { self.summaries.append(contentsOf: added) }
             }
-            self.totalSessionCount = page.totalCount
-            // A demo launch opens the newest session so the transcript pane
-            // is populated in a capture; a real launch leaves the choice to
-            // the user.
+            if self.totalSessionCount != total { self.totalSessionCount = total }
             if DemoMode.isEnabled, self.selectsFirstSummaryInDemo, self.selection == nil,
-               let first = page.summaries.first {
+               let first = fetched.first {
                 self.select(first)
             }
-            if var counts {
-                for (harness, hidden) in overview?.hiddenRowsByHarness ?? [:] {
-                    counts[harness] = max(0, (counts[harness] ?? 0) - hidden)
-                }
-                self.harnessCounts = counts
+            if !preservingLoadedRows { self.reconcileSelection() }
+
+            // The first page has landed. Whole-index aggregates are an
+            // independent read, valid across filter changes.
+            self.reloadIndexDerivedState()
+        }
+    }
+
+    private func reloadIndexDerivedState() {
+        let generation = indexGeneration
+        guard indexDerivedGeneration != generation, indexDerivedTask == nil else { return }
+        let reviewIndex = self.reviewIndex
+        let firstRows = rowsTask
+        indexDerivedTask = Task(priority: .utility) { [weak self] in
+            // Do not let a fast aggregate cancel the row build that draws
+            // the cached list for the first time.
+            await firstRows?.value
+            guard !Task.isCancelled else { return }
+            let overview = try? await reviewIndex.overview()
+            guard let self, !Task.isCancelled else { return }
+            self.indexDerivedTask = nil
+            guard generation == self.indexGeneration else {
+                self.reloadIndexDerivedState()
+                return
             }
-            if let overview {
+            guard let overview else { return }
+            self.indexDerivedGeneration = generation
+            if self.harnessCounts != overview.listedRowsByHarness {
+                self.harnessCounts = overview.listedRowsByHarness
+            }
+            if self.reviewCountsByParent != overview.countsByParent {
                 self.reviewCountsByParent = overview.countsByParent
                 self.refreshRows()
             }
-            self.reconcileSelection()
         }
     }
 
@@ -724,7 +690,7 @@ final class SessionManagerModel: ObservableObject {
         let found = (try? await fullText) ?? []
         let labelled = await labels
         guard !Task.isCancelled, generation == searchGeneration else { return }
-        labelHits = labelled
+        if labelHits != labelled { labelHits = labelled }
 
         // Resolve every Auto Review child to its parent in one hop, then fold
         // — the same rule `sessions.search` applies (`SessionVisibleRows`).
@@ -746,8 +712,11 @@ final class SessionManagerModel: ObservableObject {
             if let review = entry.matchedReview { relatedHits[entry.hit.summary.id] = review }
         }
         guard !Task.isCancelled, generation == searchGeneration else { return }
-        relatedHitByParent = relatedHits
-        hits = folded.map(\.hit)
+        let newHits = folded.map(\.hit)
+        if relatedHitByParent != relatedHits || hits != newHits {
+            relatedHitByParent = relatedHits
+            hits = newHits
+        }
     }
 
     private var summaryOrder: SessionSummaryOrder {
@@ -860,8 +829,8 @@ final class SessionManagerModel: ObservableObject {
             }
             let output = await Self.buildRows(input)
             guard let self, !Task.isCancelled else { return }
-            self.rows = output.rows
-            self.groupedRows = output.groupedRows
+            if self.rows != output.rows { self.rows = output.rows }
+            if self.groupedRows != output.groupedRows { self.groupedRows = output.groupedRows }
             self.isPreparingRows = false
         }
     }
@@ -1661,12 +1630,16 @@ final class SessionManagerModel: ObservableObject {
         let removed = outcomes.filter(\.success).map(\.summary)
         // The index is a cache of the filesystem, so the rows go now rather
         // than waiting for the next scan's prune pass to notice.
-        if let store, !removed.isEmpty {
-            try? await store.removeSessions(sourcePathIn: removed.map(\.sourcePath))
-            invalidateIndexDerivedState()
+        if let store, let refreshes = index.refreshes, !removed.isEmpty {
+            let paths = removed.map(\.sourcePath)
+            await refreshes.mutate {
+                (try? await store.removeSessions(sourcePathIn: paths)) != nil
+            }
+            if let selection, removed.contains(where: { $0.id == selection.id }) {
+                select(nil)
+            }
         }
         checkedIDs.subtract(removed.map(\.id))
-        reloadSummaryPage(reset: true)
 
         let failures = outcomes.filter { !$0.success }
         if failures.isEmpty {
@@ -1703,21 +1676,23 @@ final class SessionManagerModel: ObservableObject {
         guard enabled != settingsStore.settings.sessionBodyIndexingEnabled else { return }
         settingsStore.settings.sessionBodyIndexingEnabled = enabled
         index.bodyIndexing.set(enabled)
-        guard let store else { return }
+        guard let store, let refreshes = index.refreshes else { return }
         if enabled {
             refreshIndex()
             return
         }
+        searchTask?.cancel()
+        searchGeneration &+= 1
         hits = []
         labelHits = []
         Task { [weak self] in
-            var dropped = false
-            do {
-                try await store.dropBodyIndex()
-                try await store.setBodyIndexingMode(false)
-                dropped = true
-            } catch {
-                dropped = false
+            let dropped = await refreshes.mutate {
+                do {
+                    try await store.applyBodyIndexingMode(false)
+                    return true
+                } catch {
+                    return false
+                }
             }
             guard let self else { return }
             self.show(toast: dropped
@@ -1743,74 +1718,5 @@ final class SessionManagerModel: ObservableObject {
     func dismissToast() {
         toastTask?.cancel()
         toast = nil
-    }
-}
-
-/// The app's one connection to `~/.vibebar/session_index.sqlite3`.
-///
-/// Three components used to open their own: the Workbench's Sessions page,
-/// `MCPController` (on the first `sessions.*` call), and
-/// `SessionIndexCompactor`. Nothing coordinated them, so an MCP backfill and
-/// a Workbench refresh could run two full 11 000-file passes over the same
-/// 1 GB database at once, each waiting out the other's busy timeout. Two
-/// connections to one WAL database are legal; two *indexers* are just twice
-/// the work.
-///
-/// The compactor still keeps its own handle — it runs once a day, needs raw
-/// SQLite, and is fenced by `SessionIndexMaintenanceGate` instead.
-@MainActor
-final class SharedSessionIndex {
-    /// `nil` when the database would not open. Same shape as the usage
-    /// ledger in `AppEnvironment`: that costs the Sessions page its index,
-    /// not the app its launch.
-    let store: SessionIndexStore?
-    let service: SessionIndexService?
-    /// Auto Review rows by parent, on a read-only connection of its own —
-    /// shared by the Sessions page and the MCP session tools so the two read
-    /// the same answer. See `SessionReviewIndex`.
-    let reviews = SessionReviewIndex(databaseURL: VibeBarLocalStore.sessionIndexURL)
-    /// The privacy switch, mirrored where the index actor can read it
-    /// without a main-actor hop — and, unlike a captured `Bool`, re-read on
-    /// every pass. Following the setting for the life of the app is what
-    /// makes "Index message text" reach the MCP surface too.
-    let bodyIndexing: BodyIndexingFlag
-
-    private var cancellables: Set<AnyCancellable> = []
-
-    init(settingsStore: SettingsStore, homeDirectory: String = RealHomeDirectory.path) {
-        let flag = BodyIndexingFlag(settingsStore.settings.sessionBodyIndexingEnabled)
-        self.bodyIndexing = flag
-
-        let opened: SessionIndexStore?
-        do {
-            opened = try SessionIndexStore(url: VibeBarLocalStore.sessionIndexURL)
-        } catch {
-            SafeLog.warn("Opening the session index failed: \(SafeLog.sanitize(error.localizedDescription))")
-            opened = nil
-        }
-        self.store = opened
-        self.service = opened.map {
-            SessionIndexService(
-                homeDirectory: homeDirectory,
-                store: $0,
-                // The indexer gets the bounded adapters: oversized rollouts
-                // are parsed from a head copy (memory) and excerpts are
-                // pre-trimmed to the host policy (index size). The raw
-                // registry stays with the transcript viewer and the deleter,
-                // which must see whole sessions.
-                registry: SessionIndexingBounds.boundedRegistry(
-                    SessionProviderRegistry.standard(homeDirectory: homeDirectory),
-                    scratchDirectory: VibeBarLocalStore
-                        .sessionIndexScratchDirectoryURL(homeDirectory: homeDirectory)
-                ),
-                bodyIndexing: { flag.current }
-            )
-        }
-
-        settingsStore.$settings
-            .map(\.sessionBodyIndexingEnabled)
-            .removeDuplicates()
-            .sink { enabled in flag.set(enabled) }
-            .store(in: &cancellables)
     }
 }

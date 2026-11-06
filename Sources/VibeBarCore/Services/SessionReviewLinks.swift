@@ -245,14 +245,18 @@ public enum CodexReviewLinkRepair {
     /// `session_meta` record carries the base instructions and runs to tens
     /// of kilobytes; this only stops a newline-free file from being read
     /// whole.
-    static let headerByteLimit = 4 * 1024 * 1024
+    private static let headerByteLimit = 4 * 1024 * 1024
 
     public static func repaired(_ summary: SessionSummary, fileURL: URL) -> SessionSummary {
+        repaired(summary, fileURL: fileURL, headerLimit: headerByteLimit)
+    }
+
+    static func repaired(_ summary: SessionSummary, fileURL: URL, headerLimit: Int) -> SessionSummary {
         guard summary.provider == .codex,
               let target = CodexSessionAdapter.autoReviewParentSessionID(providerVariant: summary.providerVariant),
               target.caseInsensitiveCompare(summary.sessionID) == .orderedSame
         else { return summary }
-        let parent = parentThreadID(fileURL: fileURL).flatMap { candidate -> String? in
+        let parent = parentThreadID(fileURL: fileURL, headerLimit: headerLimit).flatMap { candidate -> String? in
             candidate.caseInsensitiveCompare(summary.sessionID) == .orderedSame ? nil : candidate
         }
         return summary.replacingProviderVariant(
@@ -262,8 +266,8 @@ public enum CodexReviewLinkRepair {
 
     /// `session_meta.payload.parent_thread_id` of the first `session_meta`
     /// record in the head — the record the kit's own pass read.
-    static func parentThreadID(fileURL: URL) -> String? {
-        let head = JSONLHeadTail.headLines(url: fileURL, count: 10, maxBytes: headerByteLimit)
+    static func parentThreadID(fileURL: URL, headerLimit: Int) -> String? {
+        let head = JSONLHeadTail.headLines(url: fileURL, count: 10, maxBytes: headerLimit)
         for line in head {
             guard let object = SessionParsing.json(line),
                   object["type"] as? String == "session_meta"

@@ -97,7 +97,10 @@ final class WorkbenchServices: ObservableObject {
     /// re-opening is still instant and `activate()` restarts what it needs.
     func stopBackgroundWork() {
         usageStatsStorage?.stop()
-        sessionsStorage?.stop()
-        sessionsPageStorage?.stop()
+        if let sessionsPageStorage {
+            sessionsPageStorage.stop()
+        } else {
+            sessionsStorage?.stop()
+        }
     }
 }
