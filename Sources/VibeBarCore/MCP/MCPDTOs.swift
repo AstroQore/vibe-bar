@@ -135,6 +135,7 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
     public let inFlight: Bool
     public let error: String?
     public let chatAllowance: MCPChatAllowanceDTO?
+    public let ollamaCredits: MCPOllamaCreditUsageDTO?
 
     public init(
         accountId: String,
@@ -149,7 +150,8 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
         lastAttempted: Date?,
         inFlight: Bool,
         error: String?,
-        chatAllowance: MCPChatAllowanceDTO? = nil
+        chatAllowance: MCPChatAllowanceDTO? = nil,
+        ollamaCredits: MCPOllamaCreditUsageDTO? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -164,6 +166,20 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
         self.inFlight = inFlight
         self.error = error
         self.chatAllowance = chatAllowance
+        self.ollamaCredits = ollamaCredits
+    }
+}
+
+/// Dollar-denominated credit figures reported by Ollama's settings page.
+public struct MCPOllamaCreditUsageDTO: Codable, Equatable, Sendable {
+    public let balanceUSD: Double?
+    public let monthlyUsedUSD: Double?
+    public let refillText: String?
+
+    init(_ credits: OllamaCreditUsage) {
+        balanceUSD = credits.balanceUSD
+        monthlyUsedUSD = credits.monthlyUsedUSD
+        refillText = credits.refillText
     }
 }
 
@@ -236,7 +252,8 @@ extension MCPQuotaAccountDTO {
             lastAttempted: lastAttempted,
             inFlight: inFlight,
             error: error?.agentFacingMessage,
-            chatAllowance: quota.chatGPTChat.map(MCPChatAllowanceDTO.init)
+            chatAllowance: quota.chatGPTChat.map(MCPChatAllowanceDTO.init),
+            ollamaCredits: quota.ollamaCredits.map(MCPOllamaCreditUsageDTO.init)
         )
     }
 }

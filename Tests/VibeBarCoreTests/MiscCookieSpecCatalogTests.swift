@@ -13,6 +13,7 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
         .zai,                // API key
         .minimax,            // API key
         .volcengineAgentPlan, // AK/SK signed Ark API
+        .openCodeGo,         // API key
         .kilo,               // API key / ~/.local/share/kilo/auth.json
         .kiro,               // local `kiro-cli` probe
         .openRouter,         // API key
@@ -35,7 +36,7 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
         )
     }
 
-    func testCatalogCoversExactlyTheFifteenCookieProviders() {
+    func testCatalogCoversExactlyTheFourteenCookieProviders() {
         XCTAssertEqual(
             MiscCookieSpecCatalog.allCookieSourcedTools,
             [
@@ -52,12 +53,11 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
                 .tencentTokenPlan,
                 .volcengine,
                 .baiduQianfan,
-                .openCodeGo,
                 .ollama
             ],
             "allCookieSourcedTools should follow ToolType declaration order."
         )
-        XCTAssertEqual(MiscCookieSpecCatalog.allSpecs.count, 15)
+        XCTAssertEqual(MiscCookieSpecCatalog.allSpecs.count, 14)
     }
 
     /// Guards the copy-paste failure mode the catalog invites: a switch
@@ -73,7 +73,6 @@ final class MiscCookieSpecCatalogTests: XCTestCase {
             .kimi: KimiQuotaAdapter.cookieSpec,
             .mimo: MimoQuotaAdapter.cookieSpec,
             .ollama: OllamaQuotaAdapter.cookieSpec,
-            .openCodeGo: OpenCodeGoQuotaAdapter.cookieSpec,
             .tencentHunyuan: TencentHunyuanQuotaAdapter.cookieSpec,
             .tencentTokenPlan: TencentTokenPlanQuotaAdapter.cookieSpec,
             .volcengine: VolcengineQuotaAdapter.cookieSpec

@@ -88,25 +88,6 @@ final class MiscProviderParserTests: XCTestCase {
         XCTAssertNotNil(snapshot.buckets[1].resetAt)
     }
 
-    func testOpenCodeGoParserMapsRollingWeeklyMonthly() throws {
-        let json = """
-        {
-          "rollingUsage": {"usagePercent": 10, "resetInSec": 100},
-          "weeklyUsage": {"usagePercent": 25, "resetInSec": 200},
-          "monthlyUsage": {"usagePercent": 50, "resetInSec": 300}
-        }
-        """
-        let snapshot = try OpenCodeGoResponseParser.parse(text: json, now: now)
-
-        XCTAssertEqual(snapshot.buckets.map(\.id), [
-            "opencodego.rolling",
-            "opencodego.weekly",
-            "opencodego.monthly"
-        ])
-        XCTAssertEqual(snapshot.buckets[2].usedPercent, 50.0, accuracy: 0.01)
-        XCTAssertEqual(OpenCodeGoResponseParser.normalizeWorkspaceID("https://opencode.ai/workspace/wrk_abc123/go"), "wrk_abc123")
-    }
-
     func testOllamaParserMapsCloudUsage() throws {
         let html = """
         <div id="header-email">dev@example.com</div>

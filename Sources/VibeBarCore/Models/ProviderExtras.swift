@@ -10,6 +10,7 @@ public struct ProviderExtras: Sendable, Equatable, Codable, Hashable {
     public let extraUsageLimitUSD: Double?      // overage cap
     public let extraUsageEnabled: Bool          // whether the user has opted in
     public let updatedAt: Date
+    public let ollamaCredits: OllamaCreditUsage?
 
     public init(
         tool: ToolType,
@@ -18,7 +19,8 @@ public struct ProviderExtras: Sendable, Equatable, Codable, Hashable {
         extraUsageSpendUSD: Double? = nil,
         extraUsageLimitUSD: Double? = nil,
         extraUsageEnabled: Bool = false,
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        ollamaCredits: OllamaCreditUsage? = nil
     ) {
         self.tool = tool
         self.creditsRemainingUSD = creditsRemainingUSD
@@ -27,10 +29,25 @@ public struct ProviderExtras: Sendable, Equatable, Codable, Hashable {
         self.extraUsageLimitUSD = extraUsageLimitUSD
         self.extraUsageEnabled = extraUsageEnabled
         self.updatedAt = updatedAt
+        self.ollamaCredits = ollamaCredits
     }
 
     public var hasAnyData: Bool {
-        creditsRemainingUSD != nil || extraUsageSpendUSD != nil
+        creditsRemainingUSD != nil || extraUsageSpendUSD != nil || ollamaCredits?.hasReportedAmounts == true
+    }
+}
+
+/// Dollar-denominated wallet observations from Ollama's settings page.
+public struct OllamaCreditUsage: Codable, Hashable, Sendable {
+    public let balanceUSD: Double?
+    public let monthlyUsedUSD: Double?
+    public let refillText: String?
+
+    var hasReportedAmounts: Bool {
+        [balanceUSD, monthlyUsedUSD].contains { amount in
+            guard let amount else { return false }
+            return amount.isFinite && amount >= 0
+        }
     }
 }
 

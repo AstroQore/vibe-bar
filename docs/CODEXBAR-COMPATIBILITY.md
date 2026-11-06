@@ -77,6 +77,42 @@ candidate lists above. An earlier read-only **CodexBar Bridge** card on the
 Misc page, which displayed an installed CodexBar CLI's `dashboard-v1` windows,
 was removed once the providers AQ uses had native adapters.
 
+## OpenCode Go and Ollama follow-up (2026-11-07)
+
+These two provider updates were checked against
+[`CodexBar@b3b4d569`](https://github.com/steipete/CodexBar/tree/b3b4d569755c3752265c6d60020de097ee4cfb04).
+The broader research baseline above remains the earlier review.
+
+### OpenCode Go API
+
+The native adapter uses the bearer-authenticated
+`GET https://opencode.ai/zen/go/v1/usage` endpoint. Each copy reads its own
+API key from Keychain; the default copy can also use `OPENCODE_API_KEY`.
+A rejected configured key remains an error for that copy. The three reported
+usage windows retain percentage units, including values below 1%, and use
+absolute ISO reset timestamps. Missing reset timestamps remain unknown.
+The old browser-session and workspace-page fetch path has been retired.
+
+Reference: [CodexBar's API request and parser](https://github.com/steipete/CodexBar/blob/b3b4d569755c3752265c6d60020de097ee4cfb04/Sources/CodexBarCore/Providers/OpenCodeGo/OpenCodeGoUsageFetcher.swift).
+
+### Ollama credit wallets
+
+Vibe Bar reads monthly included usage and reported wallet amounts from the
+Ollama settings page. Legacy subscriptions still report their session and
+weekly windows. When a copy has multiple signed-in cookie slots and any slot
+reports a wallet, the copy shows the first successful slot in its saved order.
+A wallet, plan, and usage windows come from the same login. Configure each
+Ollama account as a separate copy to see multiple wallets side by side.
+
+Monthly included usage becomes a quota percentage when the page reports a
+meter or both used and included dollar amounts. Wallet balances, monthly
+credits used, and refill captions remain absolute observations. No spending
+limit is inferred from a refill target. Existing session and weekly counters
+remain supported for legacy subscriptions.
+
+References: [Ollama pricing and migration rules](https://ollama.com/pricing)
+and [CodexBar's wallet regression fixtures](https://github.com/steipete/CodexBar/blob/b3b4d569755c3752265c6d60020de097ee4cfb04/Tests/CodexBarTests/OllamaCreditWalletTests.swift).
+
 ## What the CodexBar CLI does
 
 It is not the OpenAI Codex coding CLI. It exposes CodexBar's provider fetchers,

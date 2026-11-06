@@ -1672,7 +1672,7 @@ AstroQore/vibe-bar-i18n                 ← the only place a string is written
   implementations/swift/                ← VibeBarLocalization: L10n + .lproj, generated, committed
           │  pinned by tag
           ▼
-Package.swift  .package(url: ".../vibe-bar-i18n.git", exact: "0.13.0")
+Package.swift  .package(url: ".../vibe-bar-i18n.git", exact: "0.31.0")
 Sources/VibeBarCore  imports and re-exports VibeBarLocalization (AppLocalization.swift)
 Scripts/build_app.sh copies vibe-bar-i18n_VibeBarLocalization.bundle into Vibe Bar.app
 ```

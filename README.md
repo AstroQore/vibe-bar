@@ -130,6 +130,10 @@ Bailian, Volcengine Coding and Agent Plans, Tencent Hunyuan, Baidu Qianfan and
 Warp. Sign in through the app's own WebView, import a browser cookie, or paste
 a key — whatever the provider's console offers.
 
+For OpenCode Go, paste an API key from the workspace with your Go subscription
+in **Settings → Misc Providers → OpenCode Go**. The default card can also
+use `OPENCODE_API_KEY` from the app's environment.
+
 ![The Misc page: OpenCode Go, Ollama, Zhipu GLM and MiniMax plan windows](docs/screenshots/popover-misc-light.png)
 
 ## The Workbench

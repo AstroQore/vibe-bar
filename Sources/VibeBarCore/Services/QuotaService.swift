@@ -686,7 +686,7 @@ public final class QuotaService: ObservableObject {
         lastAttemptedByAccount[account.id] = now
         if error.isCredentialState,
            let cached = lastSuccessByAccount[account.id],
-           !cached.buckets.isEmpty,
+           cached.hasUsageData,
            now.timeIntervalSince(cached.queriedAt) < Self.credentialFallbackMaxAge {
             lastErrorByAccount.removeValue(forKey: account.id)
             return
@@ -697,7 +697,7 @@ public final class QuotaService: ObservableObject {
     private func cachedOrEmpty(for account: AccountIdentity, error: QuotaError) -> AccountQuota {
         if var cached = lastSuccessByAccount[account.id] {
             if error.isCredentialState,
-               !cached.buckets.isEmpty,
+               cached.hasUsageData,
                Date().timeIntervalSince(cached.queriedAt) < Self.credentialFallbackMaxAge {
                 cached.error = nil
                 return cached
