@@ -177,18 +177,19 @@ public final class AccountStore: ObservableObject {
         return String(accountID.dropFirst(prefix.count))
     }
 
-    /// Builds the stable placeholder identities for misc-provider instances
-    /// without probing any primary-provider credentials or the Keychain.
+    /// Builds stable identities for misc-provider instances. Demo and test
+    /// callers default to no credential probe.
     nonisolated static func miscAccounts(
         for instances: [MiscProviderInstance],
-        now: Date = Date()
+        now: Date = Date(),
+        hasOpenCodeGoAPIKey: (String) -> Bool = { _ in false }
     ) -> [AccountIdentity] {
         instances.map { instance in
             AccountIdentity(
                 id: miscAccountId(forInstanceID: instance.id),
                 tool: instance.tool,
                 alias: instance.displayName ?? instance.tool.menuTitle,
-                source: .notConfigured,
+                source: instance.tool == .openCodeGo && hasOpenCodeGoAPIKey(instance.id) ? .apiToken : .notConfigured,
                 createdAt: now,
                 updatedAt: now
             )
@@ -218,7 +219,7 @@ enum AccountDetector {
 
         // One Keychain read and decode of the vault for the whole pass: Muse,
         // Mistral Vibe, Devin and Cursor each look up their cookie slots in it,
-        // and the cookie stores below read it too. Dropping the cache first
+        // and OpenCode Go looks up its API key. Dropping the cache first
         // means a credential changed since the last pass is still seen.
         //
         // A reload superseded before its probe even started has nothing to
@@ -267,7 +268,9 @@ enum AccountDetector {
         detected.append(CursorSessionResolver.accountIdentity())
 
         // Misc provider instances always present, regardless of credentials.
-        detected.append(contentsOf: AccountStore.miscAccounts(for: request.miscProviderInstances))
+        detected.append(contentsOf: AccountStore.miscAccounts(for: request.miscProviderInstances) { instanceID in
+            OpenCodeGoQuotaAdapter.resolveAPIKey(for: instanceID) != nil
+        })
 
         return detected
     }

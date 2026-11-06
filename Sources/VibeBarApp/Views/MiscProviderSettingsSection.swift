@@ -295,21 +295,12 @@ struct MiscProviderCredentialRows: View {
                 )
             }
         case .openCodeGo:
-            VStack(alignment: .leading, spacing: 4) {
-                CookieSourceControls(
-                    tool: .openCodeGo,
-                    instanceID: instanceID,
-                    manualPrompt: "Paste opencode.ai Cookie header (__Host-auth=... or auth=...)"
-                )
-                WorkspaceIDField(
-                    tool: .openCodeGo,
-                    instanceID: instanceID,
-                    prompt: L10n.Settings.Misc.Prompt.workspace
-                )
-                Text(L10n.Settings.Misc.workspaceNote)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
+            ApiKeyField(
+                tool: .openCodeGo,
+                instanceID: instanceID,
+                prompt: tool.menuTitle,
+                helpText: "Stored in macOS Keychain."
+            )
         case .kilo:
             ApiKeyField(
                 tool: .kilo,
@@ -323,7 +314,7 @@ struct MiscProviderCredentialRows: View {
             CookieSourceControls(
                 tool: .ollama,
                 instanceID: instanceID,
-                manualPrompt: "Paste ollama.com Cookie header (session=... or next-auth.session-token=...)"
+                manualPrompt: "Paste ollama.com Cookie header (wos-session=... or a legacy session cookie)"
             )
         case .openRouter:
             VStack(alignment: .leading, spacing: 4) {
@@ -431,13 +422,13 @@ extension ToolType {
         case .baiduQianfan:
             return "Sign in at console.bce.baidu.com with the Baidu Cloud account that owns the Coding Plan; Vibe Bar keeps the BCE console jar. There is no API key for this usage endpoint."
         case .openCodeGo:
-            return "Sign in at opencode.ai in your browser, then import: Vibe Bar keeps the __Host-auth (or auth) cookie. There is no API key for Go usage."
+            return "Use an API key from the OpenCode workspace that owns your Go subscription."
         case .kilo:
             return "The key comes from app.kilo.ai → API Keys and is optional — `kilo login` writes an auth file Vibe Bar reads instead."
         case .kiro:
             return "Kiro has neither a key to paste nor a cookie to import: Vibe Bar shells out to the locally installed kiro-cli. Install it from kiro.dev, run `kiro-cli login` in Terminal, then Probe."
         case .ollama:
-            return "Ollama Cloud usage is only exposed to a signed-in web session — there is no API key for it. Sign in at ollama.com, then import; Vibe Bar keeps the session (or next-auth.session-token) cookie."
+            return "Vibe Bar reads Ollama Cloud usage from your browser session. Sign in at ollama.com, then import the Cookie header with wos-session or a legacy session cookie."
         case .openRouter:
             return "The key comes from openrouter.ai → Keys and only needs to read credits. Set the API URL when you route OpenRouter through a proxy."
         case .warp:
@@ -541,6 +532,12 @@ struct ApiKeyField: View {
     @State private var saveError: String?
     @State private var saveWarning: String?
 
+    private var accountID: String { AccountStore.miscAccountId(forInstanceID: instanceID) }
+
+    private var isOpenCodeGoRefreshing: Bool {
+        tool == .openCodeGo && quotaService.inFlightAccountIds.contains(accountID)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
@@ -548,12 +545,13 @@ struct ApiKeyField: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(save)
                 Button(L10n.Common.save, action: save)
-                    .disabled(draft.isEmpty)
+                    .disabled(draft.isEmpty || isOpenCodeGoRefreshing)
                 if hasStored {
                     Button(role: .destructive, action: clear) {
                         Image(systemName: "trash")
                     }
                     .help(L10n.Settings.Misc.removeApiKey(provider: tool.menuTitle))
+                    .disabled(isOpenCodeGoRefreshing)
                 }
             }
             HStack(spacing: 4) {
@@ -581,6 +579,7 @@ struct ApiKeyField: View {
     }
 
     private func save() {
+        guard !isOpenCodeGoRefreshing else { return }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // Shape-check before writing: a key that is silently the wrong kind
@@ -605,7 +604,12 @@ struct ApiKeyField: View {
     }
 
     private func clear() {
-        MiscCredentialStore.delete(tool: tool, kind: .apiKey, instanceID: instanceID)
+        guard !isOpenCodeGoRefreshing else { return }
+        let removed = MiscCredentialStore.delete(tool: tool, kind: .apiKey, instanceID: instanceID)
+        if tool == .openCodeGo, !removed {
+            saveError = "Could not confirm key removal from Keychain."
+            return
+        }
         hasStored = false
         saveError = nil
         saveWarning = nil
@@ -613,8 +617,16 @@ struct ApiKeyField: View {
     }
 
     private func triggerRefresh() {
-        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
-        Task { _ = await quotaService.refresh(account) }
+        if tool == .openCodeGo {
+            quotaService.clear(accountId: accountID)
+        }
+        Task {
+            if tool == .openCodeGo {
+                await environment.reloadAccounts()
+            }
+            guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
+            _ = await quotaService.refresh(account)
+        }
     }
 }
 
@@ -1530,59 +1542,6 @@ struct EnterpriseHostField: View {
             return
         }
         settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
-    }
-}
-
-/// Plain-text workspace/project id stored in non-sensitive misc
-/// settings. OpenCode Go accepts either `wrk_...` or the full dashboard
-/// URL; the adapter normalizes it at fetch time.
-struct WorkspaceIDField: View {
-    let tool: ToolType
-    let instanceID: String
-    let prompt: String
-
-    @EnvironmentObject var settingsStore: SettingsStore
-    @EnvironmentObject var environment: AppEnvironment
-    @EnvironmentObject var quotaService: QuotaService
-    @State private var draft: String = ""
-
-    var body: some View {
-        HStack(spacing: 6) {
-            TextField(prompt, text: $draft, onCommit: save)
-                .textFieldStyle(.roundedBorder)
-            Button(L10n.Common.save, action: save)
-                .disabled(draft == currentRaw)
-            if !currentRaw.isEmpty {
-                Button(role: .destructive, action: clear) {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .help(L10n.Settings.Misc.clearWorkspace)
-            }
-        }
-        .onAppear { draft = currentRaw }
-    }
-
-    private var currentRaw: String {
-        settingsStore.settings.miscProviderSettings(forInstanceID: instanceID).workspaceID ?? ""
-    }
-
-    private func save() {
-        var current = settingsStore.settings.miscProviderSettings(forInstanceID: instanceID)
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        current.workspaceID = trimmed.isEmpty ? nil : trimmed
-        settingsStore.settings.setMiscProviderInstanceSettings(current, forID: instanceID)
-        triggerRefresh()
-    }
-
-    private func clear() {
-        draft = ""
-        save()
-    }
-
-    private func triggerRefresh() {
-        guard let account = environment.accountStore.account(forMiscProviderInstanceID: instanceID) else { return }
-        Task { _ = await quotaService.refresh(account) }
     }
 }
 

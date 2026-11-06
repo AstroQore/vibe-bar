@@ -115,6 +115,9 @@ Kimi、MiniMax、讯飞星火、阿里百炼、火山引擎 Coding/Agent Plan、
 和 Warp。在应用自带的 WebView 里登录、导入浏览器 Cookie，或者粘贴一个 Key——
 服务商控制台提供什么就用什么。
 
+在 **设置 → 其他厂商 → OpenCode Go** 中粘贴 Go 订阅所在工作区的 API Key。
+默认卡片也可以读取应用环境中的 `OPENCODE_API_KEY`。
+
 ![Misc 页面：OpenCode Go、Ollama、智谱 GLM 与 MiniMax 的套餐窗口](docs/screenshots/popover-misc-light.png)
 
 ## Workbench

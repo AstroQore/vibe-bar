@@ -38,6 +38,15 @@ public struct AccountQuota: Codable, Hashable, Sendable {
         self.chatGPTChat = chatGPTChat
     }
 
+    public var ollamaCredits: OllamaCreditUsage? {
+        guard tool == .ollama, providerExtras?.tool == .ollama,
+              let credits = providerExtras?.ollamaCredits, credits.hasReportedAmounts
+        else { return nil }
+        return credits
+    }
+
+    public var hasUsageData: Bool { !buckets.isEmpty || ollamaCredits != nil }
+
     public func bucket(id: String) -> QuotaBucket? {
         buckets.first { $0.id == id }
     }

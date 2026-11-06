@@ -108,7 +108,14 @@ final class AppEnvironment: ObservableObject {
             retentionProvider: { [weak settings] in
                 settings?.settings.costData.retentionDays ?? CostDataSettings.defaultRetentionDays
             },
-            initialAccountIds: accounts.accounts.map(\.id),
+            initialAccountIds: accounts.accounts.compactMap { account in
+                // An old OpenCode Go cookie cache must not hide setup when
+                // this instance has no API key.
+                if account.tool == .openCodeGo, account.source == .notConfigured, !DemoMode.isEnabled {
+                    return nil
+                }
+                return account.id
+            },
             chatGPTChatWebFallback: { account, settings, cookie in
                 try await ChatGPTChatWebFetcher.fetch(account: account, settings: settings, cookieHeader: cookie)
             },

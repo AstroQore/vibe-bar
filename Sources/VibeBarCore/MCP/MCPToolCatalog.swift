@@ -172,7 +172,9 @@ public enum MCPToolCatalog {
             This is the quota axis: L1 company (OpenAI, Anthropic, Google AI, SpaceXAI, Meta AI), L2 \
             SubProvider (ChatGPT Agentic, Claude, Gemini Web, AntiGravity, Grok, Cursor, Muse Code, Muse), L3 \
             buckets ('5 Hours', 'Weekly', per-model groups). Answers 'how much Codex / Claude / Gemini / \
-            Grok / Cursor / Muse Code / Muse do I have left'. Percentages come back both used and remaining. 'lastUpdated' is when the numbers \
+            Grok / Cursor / Muse Code / Muse do I have left'. Percentages come back both used and remaining. \
+            Ollama's reported credit wallet is under accounts[].ollamaCredits, separate from quota buckets. \
+            'lastUpdated' is when the numbers \
             were fetched; 'lastAttempted' is when a refresh last ran, successful or not — quote \
             'generatedAt' when reporting. For tokens spent or money, use usage.summary or cost.snapshot \
             instead: those speak harnesses, not quota.

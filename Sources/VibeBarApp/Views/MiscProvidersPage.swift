@@ -125,17 +125,22 @@ private struct MiscProviderGroupCard: View {
     @EnvironmentObject var quotaService: QuotaService
 
     var body: some View {
+        let quota = aggregateQuota
         MiscProviderCardShell(density: density) {
             header
             Divider().opacity(0.25)
-            MiscQuotaBody(
-                tool: group.tool,
-                density: density,
-                quota: aggregateQuota,
-                liveError: aggregateQuota?.error,
-                lastUpdated: latestUpdated,
-                isCompact: false
-            )
+            // Credit wallets belong to individual copies. Only quota windows
+            // have an aggregate to show above the per-copy rows.
+            if quota.ollamaCredits == nil || !quota.buckets.isEmpty {
+                MiscQuotaBody(
+                    tool: group.tool,
+                    density: density,
+                    quota: quota,
+                    liveError: quota.error,
+                    lastUpdated: latestUpdated,
+                    isCompact: false
+                )
+            }
             if shouldShowPerInstanceRows {
                 Divider().opacity(0.2)
                 VStack(alignment: .leading, spacing: max(6, density.bucketRowSpacing)) {
@@ -175,6 +180,7 @@ private struct MiscProviderGroupCard: View {
         var seenBucketIDs = Set<String>()
         for instance in group.instances {
             guard let quota = environment.quota(for: instance),
+                  quota.ollamaCredits == nil,
                   !quota.buckets.isEmpty,
                   quota.error == nil else {
                 return true
@@ -228,14 +234,14 @@ private struct MiscProviderGroupCard: View {
             .max()
     }
 
-    private var aggregateQuota: AccountQuota? {
+    private var aggregateQuota: AccountQuota {
         let queriedAt = group.instances
             .compactMap { environment.quota(for: $0)?.queriedAt }
             .max() ?? Date()
         let results: [MiscQuotaAggregator.SlotResult] = group.instances.enumerated().map { index, instance in
             let accountID = AccountStore.miscAccountId(forInstanceID: instance.id)
             let label = instance.displayTitle(fallback: "Copy \(index + 1)")
-            if let quota = environment.quota(for: instance), !quota.buckets.isEmpty {
+            if let quota = environment.quota(for: instance), quota.hasUsageData {
                 return .init(slotID: nil, sourceLabel: label, outcome: .success(quota))
             }
             let error = quotaService.lastErrorByAccount[accountID]
@@ -331,10 +337,15 @@ private struct MiscQuotaBody: View {
 
     var body: some View {
         let visibleError = displayableError(liveError, with: quota)
-        if let buckets = quota?.buckets, !buckets.isEmpty {
+        let credits = instanceID == nil ? nil : quota?.ollamaCredits
+        if let quota, !quota.buckets.isEmpty || credits != nil {
             VStack(alignment: .leading, spacing: max(4, density.bucketRowSpacing - (isCompact ? 2 : 0))) {
-                ForEach(buckets) { bucket in
+                ForEach(quota.buckets) { bucket in
                     miscBucketRow(bucket)
+                }
+                if let credits {
+                    if !quota.buckets.isEmpty { Divider().opacity(0.2) }
+                    ollamaCreditDetails(credits)
                 }
                 if let lastUpdated {
                     Text(ResetCountdownFormatter.updatedAgo(from: lastUpdated, now: Date()))
@@ -358,12 +369,39 @@ private struct MiscQuotaBody: View {
         guard let error else { return nil }
         guard error.isCredentialState,
               let quota,
-              !quota.buckets.isEmpty,
+              quota.hasUsageData,
               Date().timeIntervalSince(quota.queriedAt) < 30 * 60
         else {
             return error
         }
         return nil
+    }
+
+    @ViewBuilder
+    private func ollamaCreditDetails(_ credits: OllamaCreditUsage) -> some View {
+        if let balance = credits.balanceUSD {
+            creditAmountRow(L10n.Settings.DisplayMode.remaining, usd: balance)
+        }
+        if let used = credits.monthlyUsedUSD {
+            let label = "\(L10n.Quota.Group.monthly) · \(L10n.Quota.Mode.used)"
+            creditAmountRow(label, usd: used)
+        }
+        if let refill = credits.refillText {
+            Text(verbatim: refill)
+                .font(.system(size: density.resetCountdownFontSize))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func creditAmountRow(_ label: String, usd: Double) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+            Spacer()
+            Text(usd.formatted(.currency(code: "USD").locale(AppLocale.current)))
+                .fontWeight(.semibold)
+                .monospacedDigit()
+        }
+        .font(.system(size: density.bucketTitleFontSize - (isCompact ? 2 : 1)))
     }
 
     private func miscBucketRow(_ bucket: QuotaBucket) -> some View {
