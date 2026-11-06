@@ -159,7 +159,7 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             // route/argument that WebKit can learn.
             return message.contains("Gemini Web batchexecute HTTP")
         case .noCredential, .needsLogin, .credentialRejected,
-             .rateLimited, .notImplemented, .unknown:
+             .rateLimited, .openCodeGoSubscriptionRequired, .notImplemented, .unknown:
             return false
         }
     }

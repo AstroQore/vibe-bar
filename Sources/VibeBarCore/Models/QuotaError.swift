@@ -15,6 +15,7 @@ public enum QuotaError: Error, Equatable, Hashable, Sendable {
     case credentialRejected(String)
     case network(String)
     case rateLimited
+    case openCodeGoSubscriptionRequired
     case parseFailure(String)
     case notImplemented
     case unknown(String)
@@ -33,6 +34,7 @@ public enum QuotaError: Error, Equatable, Hashable, Sendable {
                 ? L10n.Error.network
                 : L10n.Error.networkWithReason(reason: m)
         case .rateLimited:     return L10n.Error.rateLimited
+        case .openCodeGoSubscriptionRequired: return L10n.Error.openCodeGoSubscriptionRequired
         // The adapter's own diagnosis is the whole point of the payload:
         // "no Coding Plan subscription on this account" is actionable in a
         // way "Response format changed" never was. Only a genuinely empty
@@ -84,7 +86,7 @@ public enum QuotaError: Error, Equatable, Hashable, Sendable {
         switch self {
         case .noCredential, .needsLogin, .credentialRejected:
             return true
-        case .network, .rateLimited, .parseFailure, .notImplemented, .unknown:
+        case .network, .rateLimited, .openCodeGoSubscriptionRequired, .parseFailure, .notImplemented, .unknown:
             return false
         }
     }

@@ -64,7 +64,7 @@ final class OpenCodeGoQuotaAdapterTests: XCTestCase {
         let failureCases: [(Int, String, QuotaError)] = [
             (401, #"{"error":{"type":"AuthError","message":"do not display this upstream body"}}"#, .credentialRejected("")),
             (403, #"{"error":{"type":"EntitlementError","message":"do not display this upstream body"}}"#,
-             .parseFailure(L10n.Error.openCodeGoSubscriptionRequired)),
+             .openCodeGoSubscriptionRequired),
             (403, "unexpected access error", .network("HTTP 403")),
             (429, "rate limited", .rateLimited),
             (503, "unavailable", .network("HTTP 503"))

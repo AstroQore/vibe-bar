@@ -75,7 +75,7 @@ public struct OpenCodeGoQuotaAdapter: QuotaAdapter {
         case 401:
             throw QuotaError.credentialRejected("")
         case 403 where OpenCodeGoUsageResponse.requiresSubscription(data):
-            throw QuotaError.parseFailure(L10n.Error.openCodeGoSubscriptionRequired)
+            throw QuotaError.openCodeGoSubscriptionRequired
         case 429:
             throw QuotaError.rateLimited
         default:

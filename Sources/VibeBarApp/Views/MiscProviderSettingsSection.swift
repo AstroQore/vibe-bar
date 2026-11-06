@@ -520,6 +520,20 @@ private struct CopyNameField: View {
 /// On save we trigger a one-shot refresh of the underlying tool so
 /// the misc card flips out of "Set up" state immediately.
 struct ApiKeyField: View {
+    private enum SaveError {
+        case validation(String)
+        case keychainSave
+        case keychainRemove
+
+        var message: String {
+            switch self {
+            case .validation(let message): return message
+            case .keychainSave: return L10n.Error.keychainSave
+            case .keychainRemove: return L10n.Error.keychainRemove
+            }
+        }
+    }
+
     let tool: ToolType
     let instanceID: String
     let prompt: String
@@ -529,7 +543,7 @@ struct ApiKeyField: View {
     @EnvironmentObject var quotaService: QuotaService
     @State private var draft: String = ""
     @State private var hasStored: Bool = false
-    @State private var saveError: String?
+    @State private var saveError: SaveError?
     @State private var saveWarning: String?
 
     private var accountID: String { AccountStore.miscAccountId(forInstanceID: instanceID) }
@@ -563,7 +577,7 @@ struct ApiKeyField: View {
                     .foregroundStyle(hasStored ? .secondary : .tertiary)
             }
             if let saveError {
-                Text(saveError)
+                Text(saveError.message)
                     .font(.caption2)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -588,7 +602,7 @@ struct ApiKeyField: View {
         let verdict = MiscCredentialFieldRules.check(tool: tool, kind: .apiKey, value: trimmed)
         guard verdict.allowsSave else {
             saveWarning = nil
-            saveError = verdict.message
+            saveError = verdict.message.map(SaveError.validation)
             return
         }
         let ok = MiscCredentialStore.writeString(trimmed, tool: tool, kind: .apiKey, instanceID: instanceID)
@@ -599,7 +613,7 @@ struct ApiKeyField: View {
             draft = ""
             triggerRefresh()
         } else {
-            saveError = L10n.Error.keychainSave
+            saveError = .keychainSave
         }
     }
 
@@ -607,7 +621,7 @@ struct ApiKeyField: View {
         guard !isOpenCodeGoRefreshing else { return }
         let removed = MiscCredentialStore.delete(tool: tool, kind: .apiKey, instanceID: instanceID)
         if tool == .openCodeGo, !removed {
-            saveError = L10n.Error.keychainRemove
+            saveError = .keychainRemove
             return
         }
         hasStored = false

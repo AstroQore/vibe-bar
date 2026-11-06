@@ -145,7 +145,7 @@ public struct ZaiQuotaAdapter: QuotaAdapter {
             return true
         case .parseFailure(let message):
             return message.contains("empty body")
-        case .noCredential, .network, .rateLimited, .notImplemented, .unknown:
+        case .noCredential, .network, .rateLimited, .openCodeGoSubscriptionRequired, .notImplemented, .unknown:
             return false
         }
     }
