@@ -246,6 +246,88 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
         )
     }
 
+    // MARK: - OpenAI quota order
+
+    private let chatGPTPage = PageLayoutPageID.detail(.codex)
+    private let chatGPTMain = PageLayoutModuleID(rawValue: "quota-group:codex:all")
+    private let chatGPTImage = PageLayoutModuleID(rawValue: "quota-group:chatgptChat:image-generation")
+    private let chatGPTResearch = PageLayoutModuleID(rawValue: "quota-group:chatgptChat:deep-research")
+
+    private func previousChatGPTDefault(hasCostData: Bool = true) -> StoredPageLayout {
+        let resetHistory = PageLayoutModuleID(rawValue: "reset-history-compare:codex")
+        let costColumn: [PageLayoutModuleID] = hasCostData ? [
+            .cost(tool: .codex),
+            PageLayoutModuleID(rawValue: "cost-history:codex"),
+            .modelBreakdown(tool: .codex),
+            resetHistory,
+            PageLayoutModuleID(rawValue: "heatmap-year:codex"),
+            PageLayoutModuleID(rawValue: "heatmap-activity:codex"),
+            .status
+        ] : [PageLayoutModuleID(rawValue: "cost-empty:codex"), resetHistory, .status]
+        return StoredPageLayout(
+            mode: .manual,
+            ratio: .narrowWide,
+            columns: [[chatGPTImage, chatGPTResearch, chatGPTMain], costColumn],
+            hidden: [chatGPTResearch]
+        )
+    }
+
+    func testChatGPTUntouchedManualDefaultsMoveMainQuotaFirst() throws {
+        for hasCostData in [true, false] {
+            let before = previousChatGPTDefault(hasCostData: hasCostData)
+            let result = PageLayoutDefaultsMigration.migrate(layouts: [chatGPTPage: before], applied: [])
+            let after = try XCTUnwrap(result.layouts[chatGPTPage])
+            XCTAssertEqual(after.columns[0], [chatGPTMain, chatGPTImage, chatGPTResearch])
+            XCTAssertEqual(after.columns[1], before.columns[1])
+            XCTAssertEqual(after.mode, before.mode)
+            XCTAssertEqual(after.ratio, before.ratio)
+            XCTAssertEqual(after.hidden, before.hidden)
+            XCTAssertTrue(result.applied.contains(PageLayoutDefaultsMigration.chatGPTQuotaOrderIdentifier))
+        }
+    }
+
+    func testChatGPTNewDefaultsAndPagesWithoutSavedLayoutsStayAsTheyAre() {
+        let old = previousChatGPTDefault()
+        let current = StoredPageLayout(mode: .manual, ratio: .narrowWide,
+            columns: [[chatGPTMain, chatGPTImage, chatGPTResearch], old.columns[1]])
+        let result = PageLayoutDefaultsMigration.migrate(layouts: [chatGPTPage: current], applied: [])
+        XCTAssertEqual(result.layouts[chatGPTPage], current)
+        XCTAssertTrue(result.applied.contains(PageLayoutDefaultsMigration.chatGPTQuotaOrderIdentifier))
+        XCTAssertNil(PageLayoutDefaultsMigration.migrate(layouts: [:], applied: []).layouts[chatGPTPage])
+    }
+
+    func testChatGPTCustomizedLayoutsDoNotMatchTheFormerDefault() {
+        let old = previousChatGPTDefault()
+        var changedAnalytics = old.columns
+        changedAnalytics[1].swapAt(0, 1)
+        var extraGroup = old.columns
+        extraGroup[0].append(.quotaGroup(tool: .codex, groupKey: "spark"))
+        let customized = [
+            StoredPageLayout(mode: .manual, ratio: .narrowWide,
+                columns: [[chatGPTResearch, chatGPTImage, chatGPTMain], old.columns[1]]),
+            StoredPageLayout(mode: .manual, ratio: .narrowWide,
+                columns: [[chatGPTImage, chatGPTMain, chatGPTResearch], old.columns[1]]),
+            StoredPageLayout(mode: .manual, ratio: .narrowWide, columns: changedAnalytics),
+            StoredPageLayout(mode: .manual, ratio: .narrowWide, columns: extraGroup),
+            StoredPageLayout(mode: .manual, ratio: .equal, columns: old.columns),
+            StoredPageLayout(mode: .manual, ratio: .narrowWide, columns: old.columns,
+                segments: [[chatGPTImage, chatGPTResearch, chatGPTMain], old.columns[1]])
+        ]
+        for layout in customized {
+            let result = PageLayoutDefaultsMigration.migrate(layouts: [chatGPTPage: layout], applied: [])
+            XCTAssertEqual(result.layouts[chatGPTPage], layout)
+        }
+        XCTAssertEqual(PageLayoutDefaultsMigration.migratedChatGPTQuotaOrder([page: old])[page], old)
+    }
+
+    func testChatGPTQuotaOrderMigrationRunsOnceEvenIfUserRestoresTheOldOrder() {
+        let old = previousChatGPTDefault()
+        let first = PageLayoutDefaultsMigration.migrate(layouts: [chatGPTPage: old], applied: [])
+        let second = PageLayoutDefaultsMigration.migrate(layouts: [chatGPTPage: old], applied: first.applied)
+        XCTAssertEqual(second.layouts[chatGPTPage], old)
+        XCTAssertEqual(second.applied, first.applied)
+    }
+
     // MARK: - The Overview is left to resolve itself
 
     private let overview = PageLayoutPageID.overview
@@ -444,7 +526,8 @@ final class PageLayoutDefaultsMigrationTests: XCTestCase {
             result.applied,
             [
                 PageLayoutDefaultsMigration.providerRightColumnIdentifier,
-                PageLayoutDefaultsMigration.overviewQuotaBandIdentifier
+                PageLayoutDefaultsMigration.overviewQuotaBandIdentifier,
+                PageLayoutDefaultsMigration.chatGPTQuotaOrderIdentifier
             ]
         )
         XCTAssertTrue(result.layouts.isEmpty)
