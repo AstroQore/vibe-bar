@@ -704,7 +704,7 @@ final class ChatGPTChatTests: XCTestCase {
         XCTAssertTrue(ChatGPTChatSettings().enabled)
         XCTAssertTrue(ChatGPTChatSettings().trackProModels)
         XCTAssertEqual(MenuBarFieldCatalog.chatGPTChatFields.count, 6)
-        XCTAssertEqual(ToolType.codex.coreProviderMembers.first, .chatgptChat)
+        XCTAssertEqual(ToolType.codex.coreProviderMembers, [.codex, .chatgptChat])
     }
 }
 

@@ -145,15 +145,22 @@ struct OpenAICombinedQuotaCard: View {
         }
         CardShell(density: density) {
             HStack(spacing: 8) {
-                ProviderSectionTitle(tool: .codex, title: ToolType.chatGPTQuotaTitle, subtitle: nil,
+                ProviderSectionTitle(tool: .codex, title: ToolType.codex.vendorName, subtitle: nil,
                                      titleFontSize: density.titleFontSize, subtitleFontSize: density.subtitleFontSize,
                                      iconSize: 16, badgeSize: 24)
                 Spacer(minLength: 4)
-                if let commonBadge {
-                    PlanBadgeView(text: commonBadge, fontSize: max(9, density.subtitleFontSize - 1))
-                }
                 SectionRefreshButton(isRefreshing: isRefreshing) {
                     environment.refresh(tools: presentation.refreshTools)
+                }
+            }
+            HStack(spacing: 6) {
+                ToolBrandIconView(tool: .codex, size: 13)
+                Text(ToolType.chatGPTQuotaTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if let commonBadge {
+                    PlanBadgeView(text: commonBadge, fontSize: max(9, density.subtitleFontSize - 1))
                 }
             }
             if tools.isEmpty {
@@ -163,19 +170,25 @@ struct OpenAICombinedQuotaCard: View {
                     ProviderQuotaCard(tool: .codex, density: density, embedded: true)
                 }
             }
-            ForEach(tools, id: \.self) { tool in
-                if tool != tools.first { Divider() }
-                let sourceLabel = ChatGPTQuotaPresentation.sourceLabel(for: tool)
-                if tools.count > 1, commonBadge == nil, let plan = presentation.planBadge(for: tool) {
-                    HStack(spacing: 6) {
-                        Text(sourceLabel)
-                            .font(.system(size: density.subtitleFontSize, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1))
+            VStack(alignment: .leading, spacing: density.bucketGroupSpacing) {
+                ForEach(tools, id: \.self) { tool in
+                    if tool != tools.first {
+                        Divider()
+                            .opacity(0.18)
+                            .padding(.vertical, 1)
                     }
+                    let sourceLabel = ChatGPTQuotaPresentation.sourceLabel(for: tool)
+                    if tools.count > 1, commonBadge == nil, let plan = presentation.planBadge(for: tool) {
+                        HStack(spacing: 6) {
+                            Text(sourceLabel)
+                                .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1))
+                        }
+                    }
+                    ProviderQuotaCard(tool: tool, density: density, embedded: true,
+                                      statusSource: tools.count > 1 ? sourceLabel : nil)
                 }
-                ProviderQuotaCard(tool: tool, density: density, embedded: true,
-                                  statusSource: tools.count > 1 ? sourceLabel : nil)
             }
         }
     }

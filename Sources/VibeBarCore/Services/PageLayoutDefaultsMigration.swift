@@ -39,6 +39,10 @@ public enum PageLayoutDefaultsMigration {
     /// four cards it used to also hold move out of a stored quota band.
     public static let overviewQuotaBandIdentifier = "overview-quota-band-v1"
 
+    /// The OpenAI page now starts with the main quota group, followed by
+    /// Image Generation and Deep Research under its ChatGPT product heading.
+    public static let chatGPTQuotaOrderIdentifier = "chatgpt-quota-order-v1"
+
     /// The cards 1.6.2 moved out of the Overview's `.quota` phase — three to a
     /// history band of their own, Usage Mix to the cost band.
     ///
@@ -86,6 +90,9 @@ public enum PageLayoutDefaultsMigration {
         }
         if applied.insert(overviewQuotaBandIdentifier).inserted {
             layouts = migratedOverviewQuotaBand(layouts)
+        }
+        if applied.insert(chatGPTQuotaOrderIdentifier).inserted {
+            layouts = migratedChatGPTQuotaOrder(layouts)
         }
         return (layouts, applied)
     }
@@ -180,6 +187,46 @@ public enum PageLayoutDefaultsMigration {
                 hidden: layout.hidden
             )
         }
+        return result
+    }
+
+    /// Move the main OpenAI quota ahead of the two ChatGPT feature groups
+    /// only when the entire saved page still matches its former default.
+    public static func migratedChatGPTQuotaOrder(
+        _ layouts: [PageLayoutPageID: StoredPageLayout]
+    ) -> [PageLayoutPageID: StoredPageLayout] {
+        let page = PageLayoutPageID.detail(.codex)
+        let image = PageLayoutModuleID(rawValue: "quota-group:chatgptChat:image-generation")
+        let research = PageLayoutModuleID(rawValue: "quota-group:chatgptChat:deep-research")
+        let main = PageLayoutModuleID(rawValue: "quota-group:codex:all")
+        guard let layout = layouts[page],
+              layout.columns.count == 2,
+              layout.segments.isEmpty,
+              layout.ratio == previousProviderRatio,
+              layout.columns[0] == [image, research, main]
+        else { return layouts }
+
+        // Freeze both right-column defaults using the same cost signatures
+        // as the earlier provider migration. Additional or rearranged cards
+        // identify a customized page and prevent this repair.
+        let resetHistory = resetHistoryID(.codex)
+        var costColumn = previousCostTail(.codex)
+        costColumn.insert(resetHistory, at: 3)
+        costColumn.append(.status)
+        let emptyCostColumn = previousEmptyCostTail(.codex) + [resetHistory, .status]
+        guard layout.columns[1] == costColumn || layout.columns[1] == emptyCostColumn
+        else { return layouts }
+
+        var columns = layout.columns
+        columns[0] = [main, image, research]
+        var result = layouts
+        result[page] = StoredPageLayout(
+            mode: layout.mode,
+            ratio: layout.ratio,
+            columns: columns,
+            segments: layout.segments,
+            hidden: layout.hidden
+        )
         return result
     }
 

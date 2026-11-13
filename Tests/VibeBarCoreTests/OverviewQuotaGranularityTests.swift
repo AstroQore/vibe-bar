@@ -52,17 +52,17 @@ final class OverviewQuotaGranularityTests: XCTestCase {
                        cards(.subProvider, sources).map(\.id))
 
         let models = cards(.model, sources)
-        XCTAssertEqual(models.map(\.tool), [.chatgptChat, .chatgptChat, .codex, .codex])
-        XCTAssertEqual(models.flatMap(\.bucketIDs), ["image_gen", "deep_research", "weekly", "spark_weekly"])
-        XCTAssertEqual(models.compactMap(\.groupTitle), ["Image Generation", "Deep Research", "Spark"])
+        XCTAssertEqual(models.map(\.tool), [.codex, .codex, .chatgptChat, .chatgptChat])
+        XCTAssertEqual(models.flatMap(\.bucketIDs), ["weekly", "spark_weekly", "image_gen", "deep_research"])
+        XCTAssertEqual(models.compactMap(\.groupTitle), ["Spark", "Image Generation", "Deep Research"])
         XCTAssertTrue(models.allSatisfy { $0.displayTitle == "ChatGPT" && !$0.isCombinedChatGPT })
         XCTAssertEqual(models.map(\.id), [
-            "overview-quota:chatgptChat:model:Q2hhdEdQVCBDaGF0AEltYWdlIEdlbmVyYXRpb24=",
-            "overview-quota:chatgptChat:model:Q2hhdEdQVCBDaGF0AERlZXAgUmVzZWFyY2g=",
             "overview-quota:codex:model:Q2hhdEdQVCBBZ2VudGljAA==",
-            "overview-quota:codex:model:Q2hhdEdQVCBBZ2VudGljAFNwYXJr"
+            "overview-quota:codex:model:Q2hhdEdQVCBBZ2VudGljAFNwYXJr",
+            "overview-quota:chatgptChat:model:Q2hhdEdQVCBDaGF0AEltYWdlIEdlbmVyYXRpb24=",
+            "overview-quota:chatgptChat:model:Q2hhdEdQVCBDaGF0AERlZXAgUmVzZWFyY2g="
         ])
-        XCTAssertEqual(ToolType.chatGPTQuotaSources(includeChat: true), [.chatgptChat, .codex])
+        XCTAssertEqual(ToolType.chatGPTQuotaSources(includeChat: true), [.codex, .chatgptChat])
         XCTAssertEqual(ToolType.chatGPTQuotaSources(includeChat: false), [.codex])
     }
 

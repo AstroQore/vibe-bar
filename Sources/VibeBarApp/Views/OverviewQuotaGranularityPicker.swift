@@ -54,7 +54,7 @@ struct OverviewQuotaPartitionCard: View {
         CardShell(density: density) {
             HStack {
                 ProviderSectionTitle(tool: partition.tool,
-                    title: partition.tool.isChatGPTQuotaSource ? partition.displayTitle : partition.tool.vendorName, subtitle: nil,
+                    title: partition.tool.vendorName, subtitle: nil,
                     titleFontSize: density.titleFontSize, subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16, badgeSize: 24)
                 Spacer()
@@ -66,16 +66,11 @@ struct OverviewQuotaPartitionCard: View {
                 let refreshing = refreshTools.contains { tool in
                     environment.account(for: tool).map { quotaService.inFlightAccountIds.contains($0.id) } ?? false
                 } || accounts.contains { quotaService.inFlightAccountIds.contains($0.id) }
-                if partition.tool.isChatGPTQuotaSource, let plan {
-                    PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1))
-                }
                 SectionRefreshButton(isRefreshing: refreshing) {
                     environment.refresh(tools: refreshTools)
                 }
             }
-            if !partition.tool.isChatGPTQuotaSource {
-                subProviderHeading(plan: plan)
-            }
+            subProviderHeading(plan: plan)
             if accounts.isEmpty {
                 content(accountId: nil)
             } else {

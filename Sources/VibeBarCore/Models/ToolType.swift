@@ -200,7 +200,7 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
 
     /// The adapters remain separate even where their quotas share one card.
     public static func chatGPTQuotaSources(includeChat: Bool) -> [Self] {
-        includeChat ? [.chatgptChat, .codex] : [.codex]
+        includeChat ? [.codex, .chatgptChat] : [.codex]
     }
 
     /// Quota sources represented by one L1 company filter / aggregate row.
