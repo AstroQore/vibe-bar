@@ -759,6 +759,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 forKey: .pageLayoutPresets
             )) ?? [:]
         )
+        if let overview = self.pageLayouts[.overview] {
+            self.pageLayouts[.overview] = OverviewQuotaPartition.combiningChatGPT(in: overview)
+        }
+        if let presets = self.pageLayoutPresets[.overview] {
+            self.pageLayoutPresets[.overview] = presets.map {
+                StoredPageLayoutPreset(name: $0.name, layout: OverviewQuotaPartition.combiningChatGPT(in: $0.layout))
+            }
+        }
+        if let groups = self.studioCardGroups[PageLayoutPageID.overview.rawValue] {
+            self.studioCardGroups[PageLayoutPageID.overview.rawValue] = StudioCardGroups.normalized(
+                OverviewQuotaPartition.combiningChatGPT(in: groups.map { $0.map(PageLayoutModuleID.init(rawValue:)) })
+                    .map { $0.map(\.rawValue) }
+            )
+        }
         // Absent key means "settings written before auto re-import
         // existed", which must decode to off — an upgrade cannot start
         // reading browser cookie stores in the background on its own.

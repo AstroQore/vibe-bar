@@ -72,7 +72,7 @@ enum UpcomingResets {
                           resetAt > now, resetAt <= horizon,
                           bucket.usedPercent >= 1
                     else { continue }
-                    let subProvider = tool.quotaSubProviderName(bucketID: bucket.id)
+                    let subProvider = tool.nativeQuotaProductName(bucketID: bucket.id)
                     let group = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let snapshot = environment.costService.snapshot(for: tool)
                     let forecast = environment.quotaService.paceForecast(

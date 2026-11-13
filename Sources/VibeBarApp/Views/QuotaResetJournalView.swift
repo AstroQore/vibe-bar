@@ -158,7 +158,7 @@ struct QuotaResetJournalView: View {
             Image(systemName: kind.symbol).foregroundStyle(kind.color).frame(width: 16, height: 16)
             VStack(alignment: .leading, spacing: 4) {
                 Text(kind.title).font(.system(size: 12, weight: .medium)).foregroundStyle(.primary)
-                Text(credit.tool.vendorName + " · " + credit.tool.quotaSubProviderName())
+                Text(credit.tool.vendorName + " · " + credit.tool.nativeQuotaProductName())
                     .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                 if inferred {
                     Text(L10n.ResetJournal.creditInferred).font(.caption).foregroundStyle(.secondary)
@@ -268,7 +268,7 @@ struct QuotaResetJournalView: View {
         let bucket = quotaService.cachedQuota(for: sample.accountId)?.bucket(id: sample.bucketId)
         let title = bucket?.title ?? ResetHistoryLanes.retiredBucketTitle(
             tool: sample.tool, bucketId: sample.bucketId, registry: quotaService.fieldRegistry)
-        return sample.tool.vendorName + " · " + sample.tool.quotaSubProviderName(bucketID: sample.bucketId)
+        return sample.tool.vendorName + " · " + sample.tool.nativeQuotaProductName(bucketID: sample.bucketId)
             + " · " + QuotaGroupLabelLocalizer.displayComposed(title)
     }
     private func date(_ value: Date?) -> String {

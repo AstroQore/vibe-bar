@@ -780,9 +780,13 @@ private struct OverviewWaterfall: View {
                 tools: settingsStore.settings.visibleCoreProviderList.filter(\.supportsStatusPage)
             )
         case let .overviewQuotaPart(partition):
-            OverviewQuotaPartitionCard(partition: partition, density: density)
+            if partition.isCombinedChatGPT {
+                OpenAICombinedQuotaCard(density: density)
+            } else {
+                OverviewQuotaPartitionCard(partition: partition, density: density)
+            }
         case let .overviewQuota(tool):
-            if tool == .codex && settingsStore.settings.chatGPTChat.enabled {
+            if tool == .codex {
                 OpenAICombinedQuotaCard(density: density)
             } else if tool == .gemini {
                 // Gemini Web and AntiGravity share one Google AI company card.
@@ -2091,6 +2095,7 @@ private struct ProviderPageModule: View {
     let density: Theme.Density
     let mode: DisplayMode
     @EnvironmentObject private var environment: AppEnvironment
+    @EnvironmentObject private var settingsStore: SettingsStore
     /// Tick from the page's single clock. Plain data — this view never starts
     /// a timer, however many quota groups the page ends up arranging.
     let now: Date
@@ -2099,9 +2104,7 @@ private struct ProviderPageModule: View {
     /// cookie-backed ones) says how to connect it, rather than reporting the
     /// empty quota as missing utilization.
     private var awaitingSetupHint: String? {
-        guard let account = environment.account(for: context.pageTool),
-              account.source == .notConfigured
-        else { return nil }
+        guard environment.account(for: context.pageTool)?.source == .notConfigured else { return nil }
         return ProviderQuotaCard.loginHint(for: context.pageTool)
     }
 
@@ -2117,9 +2120,9 @@ private struct ProviderPageModule: View {
                     // Only the provider-header card draws the refresh
                     // button, so only it needs the tools behind it.
                     refreshTools: group.showsProviderHeader
-                        ? PageModuleCatalog.quotaRefreshTools(for: context.pageTool)
+                        ? PageModuleCatalog.quotaRefreshTools(for: context.pageTool, settings: settingsStore.settings)
                         : [],
-                    emptyMessage: group.rows.isEmpty
+                    emptyMessage: group.rows.isEmpty && context.pageTool != .codex
                         ? (awaitingSetupHint ?? L10n.Quota.Group.noUtilization)
                         : nil
                 )
@@ -2127,12 +2130,10 @@ private struct ProviderPageModule: View {
         case .serviceStatus:
             ServiceStatusCard(tools: [context.pageTool], density: density)
         case .resetHistoryCompare:
-            // Scoped to the page's family, so the Google AI page keeps
-            // AntiGravity beside Gemini Web and the SpaceXAI page keeps
-            // Cursor beside Grok — the same pairing the refresh button uses.
+            // A source can still have recorded resets after tracking it is turned off.
             ResetHistoryCompareCard(
                 density: density,
-                tools: PageModuleCatalog.quotaRefreshTools(for: context.pageTool),
+                tools: PageModuleCatalog.quotaHistoryTools(for: context.pageTool),
                 titleOverride: L10n.ResetHistory.cardTitle
             )
         case .costHeader:
@@ -2352,6 +2353,8 @@ struct ProviderQuotaCard: View {
     /// partition marks as carrying shared metadata draws it.
     var showsResetCreditInventory: Bool = true
     var showsFreshnessWarning: Bool = true
+    /// In a shared product card, identify which source a status line applies to.
+    var statusSource: String?
     /// A bucket drawn in place of the cached one with the same id — The X
     /// Subscription's pool, read to finer precision on another account.
     /// The card's chrome (reset credits, live error, freshness) still
@@ -2408,7 +2411,7 @@ struct ProviderQuotaCard: View {
             }
 
             if let freshnessWarning = currentFreshnessWarning {
-                Label(freshnessWarning.label, systemImage: "clock.badge.exclamationmark")
+                Label(statusText(freshnessWarning.label), systemImage: "clock.badge.exclamationmark")
                     .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2601,12 +2604,17 @@ struct ProviderQuotaCard: View {
         }
     }
 
-    private var emptyMessage: String { Self.loginHint(for: tool) }
+    private var emptyMessage: String {
+        if tool.isChatGPTQuotaSource, let account = resolvedAccount, account.source != .notConfigured {
+            return L10n.Quota.Group.noUtilization
+        }
+        return Self.loginHint(for: tool)
+    }
 
     /// What a provider's quota card says when it has nothing to show yet.
     static func loginHint(for tool: ToolType) -> String {
         switch tool {
-        case .chatgptChat: return L10n.Quota.Chat.connectionHelp
+        case .chatgptChat: return L10n.Error.noAccountFound
         case .codex:  return L10n.Quota.Login.codex
         case .claude: return L10n.Quota.Login.claude
         case .grok: return L10n.Quota.Login.grok
@@ -2627,12 +2635,16 @@ struct ProviderQuotaCard: View {
     private func messageRow(text: String, color: Color) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "info.circle").foregroundStyle(color)
-            Text(text)
+            Text(statusText(text))
                 .font(.system(size: density.subtitleFontSize))
                 .foregroundStyle(color)
             Spacer()
         }
         .padding(.vertical, 2)
+    }
+
+    private func statusText(_ text: String) -> String {
+        statusSource.map { "\($0) · \(text)" } ?? text
     }
 
     private func displayableError(

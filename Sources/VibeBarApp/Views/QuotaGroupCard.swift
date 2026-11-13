@@ -41,9 +41,12 @@ struct QuotaGroupModule: Identifiable {
     /// pre-split card so an existing chart keeps its state.
     let chartKey: String
     let rows: [Row]
-    /// Set on the first card of a SubProvider run (ChatGPT Agentic, Claude,
-    /// Gemini Web, AntiGravity, Grok, Cursor, or Grok Bot).
+    /// Set on the first card of a SubProvider run when it has a heading of
+    /// its own. ChatGPT has one product heading for its two sources.
     let linkedSectionTitle: String?
+    /// Metadata such as freshness and reset credits belongs to the source
+    /// account, even when the source does not have a SubProvider heading.
+    let showsSourceMetadata: Bool
     let linkedSectionIconTool: ToolType?
     /// The bucket the linked section starts at, so its header can wear the
     /// SubProvider's own mark where it has one — Grok Bot rides Cursor's
@@ -134,7 +137,8 @@ enum QuotaGroupModuleBuilder {
             var linkedSectionTitle: String?
             let resolvedSubProviderTitle = head.tool.quotaSubProviderName(bucketID: head.bucket.id)
             let sectionKey = "\(head.tool.rawValue):\(resolvedSubProviderTitle)"
-            if seenSectionKeys.insert(sectionKey).inserted {
+            let showsSourceMetadata = seenSectionKeys.insert(sectionKey).inserted
+            if showsSourceMetadata, pageTool != .codex {
                 linkedSectionTitle = sharedPool != nil && head.tool == pageTool
                     ? SharedPoolSummary.subProviderName
                     : resolvedSubProviderTitle
@@ -167,6 +171,7 @@ enum QuotaGroupModuleBuilder {
                         )
                     },
                     linkedSectionTitle: linkedSectionTitle,
+                    showsSourceMetadata: showsSourceMetadata,
                     linkedSectionIconTool: head.tool,
                     linkedSectionBucketID: head.bucket.id,
                     linkedSectionIconMark: sharedPool != nil && head.tool == pageTool ? .xSubscription : nil,
@@ -202,7 +207,8 @@ enum QuotaGroupModuleBuilder {
             showsGroupTitle: true,
             chartKey: QuotaBucketGrouping.key(accountId: nil, itemTool: pageTool, title: title),
             rows: [],
-            linkedSectionTitle: pageTool.quotaSubProviderName(),
+            linkedSectionTitle: pageTool == .codex ? nil : pageTool.quotaSubProviderName(),
+            showsSourceMetadata: true,
             linkedSectionIconTool: pageTool,
             showsProviderHeader: true
         )
@@ -237,23 +243,23 @@ struct QuotaGroupCard: View {
         VStack(alignment: .leading, spacing: density.cardSpacing) {
             header
             if let emptyMessage {
-                Text(emptyMessage)
-                    .font(.system(size: density.subtitleFontSize))
-                    .foregroundStyle(.tertiary)
-                    .padding(.vertical, 8)
+                emptyText(emptyMessage)
             } else {
                 ForEach(module.rows) { row in
                     self.row(for: row)
                 }
                 groupHistoryChart
-                if module.linkedSectionTitle != nil,
-                   let quota = module.accountId.flatMap({ quotaService.cachedQuota(for: $0) })
-                       ?? environment.quota(for: module.tool),
-                   case let ledger = quotaService.resetCreditLedger[quota.accountId] ?? [],
-                   ResetCreditsRow.shows(credits: quota.resetCredits, ledger: ledger) {
-                    Divider()
-                    ResetCreditsRow(credits: quota.resetCredits, ledger: ledger, buckets: quota.buckets, density: density)
-                }
+            }
+            if module.showsSourceMetadata,
+               let quota = module.accountId.flatMap({ quotaService.cachedQuota(for: $0) })
+                   ?? environment.quota(for: module.tool),
+               case let ledger = quotaService.resetCreditLedger[quota.accountId] ?? [],
+               ResetCreditsRow.shows(credits: quota.resetCredits, ledger: ledger) {
+                Divider()
+                ResetCreditsRow(credits: quota.resetCredits, ledger: ledger, buckets: quota.buckets, density: density)
+            }
+            if module.pageTool == .codex, module.showsProviderHeader {
+                unavailableChatGPTSources
             }
         }
         .padding(density.cardPadding)
@@ -276,7 +282,7 @@ struct QuotaGroupCard: View {
                 HStack(alignment: .center, spacing: 8) {
                     ProviderSectionTitle(
                         tool: module.pageTool,
-                        title: module.pageTool.vendorName,
+                        title: module.pageTool == .codex ? ToolType.chatGPTQuotaTitle : module.pageTool.vendorName,
                         subtitle: nil,
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
@@ -284,10 +290,11 @@ struct QuotaGroupCard: View {
                         badgeSize: 24
                     )
                     Spacer(minLength: 4)
+                    if module.pageTool == .codex, let plan = chatGPTPresentation.commonPlanBadge {
+                        PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
                     SectionRefreshButton(isRefreshing: isRefreshing) {
-                        for refreshTool in refreshTools {
-                            environment.refresh(refreshTool)
-                        }
+                        environment.refresh(tools: refreshTools)
                     }
                 }
             }
@@ -319,8 +326,16 @@ struct QuotaGroupCard: View {
                     }
                 }
             }
+            if let sourcePlan = chatGPTSourcePlanBadge {
+                HStack(spacing: 6) {
+                    Text(ChatGPTQuotaPresentation.sourceLabel(for: module.tool))
+                        .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    PlanBadgeView(text: sourcePlan, fontSize: max(9, density.subtitleFontSize - 1))
+                }
+            }
             if let warning = providerFreshnessWarning {
-                Label(warning.label, systemImage: "clock.badge.exclamationmark")
+                Label(scopedWarning(warning.label), systemImage: "clock.badge.exclamationmark")
                     .font(.system(size: max(9, density.subtitleFontSize - 1), weight: .medium))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -338,6 +353,50 @@ struct QuotaGroupCard: View {
         }
     }
 
+    private var chatGPTPresentation: ChatGPTQuotaPresentation {
+        ChatGPTQuotaPresentation(environment: environment, settings: settingsStore.settings)
+    }
+
+    private var chatGPTSourcePlanBadge: String? {
+        guard module.pageTool == .codex, module.showsSourceMetadata else { return nil }
+        let presentation = chatGPTPresentation
+        guard presentation.connectedTools.count > 1, presentation.commonPlanBadge == nil
+        else { return nil }
+        return presentation.planBadge(for: module.tool)
+    }
+
+    private func scopedWarning(_ label: String) -> String {
+        guard module.pageTool == .codex, chatGPTPresentation.connectedTools.count > 1 else { return label }
+        return "\(ChatGPTQuotaPresentation.sourceLabel(for: module.tool)) · \(label)"
+    }
+
+    @ViewBuilder
+    private var unavailableChatGPTSources: some View {
+        let tools = chatGPTPresentation.connectedTools
+        if tools.isEmpty, module.rows.isEmpty {
+            if settingsStore.settings.chatGPTChat.enabled {
+                ChatGPTQuotaSetupRow(density: density)
+            } else {
+                emptyText(ProviderQuotaCard.loginHint(for: .codex))
+            }
+        }
+        ForEach(tools, id: \.self) { tool in
+            if environment.quota(for: tool)?.buckets.isEmpty ?? true {
+                ProviderQuotaCard(tool: tool, density: density, embedded: true,
+                                  showsResetCreditInventory: false,
+                                  showsFreshnessWarning: tool != module.tool || !module.rows.isEmpty,
+                                  statusSource: tools.count > 1 ? ChatGPTQuotaPresentation.sourceLabel(for: tool) : nil)
+            }
+        }
+    }
+
+    private func emptyText(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: density.subtitleFontSize))
+            .foregroundStyle(.tertiary)
+            .padding(.vertical, 8)
+    }
+
     private var isRefreshing: Bool {
         refreshTools.contains { refreshTool in
             guard let id = environment.account(for: refreshTool)?.id else { return false }
@@ -346,7 +405,7 @@ struct QuotaGroupCard: View {
     }
 
     private var providerFreshnessWarning: QuotaFreshnessLabel.Description? {
-        guard module.showsProviderHeader || module.linkedSectionTitle != nil,
+        guard module.showsProviderHeader || module.showsSourceMetadata,
               let accountId = module.accountId,
               // A provider still waiting to be connected has nothing stale:
               // the card's own hint says what to do, and the failed attempt

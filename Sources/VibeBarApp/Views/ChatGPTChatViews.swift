@@ -46,7 +46,7 @@ struct ChatGPTChatSettingsSection: View {
     @EnvironmentObject var environment: AppEnvironment
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("ChatGPT Chat").font(.headline)
+            Text(ToolType.chatGPTQuotaTitle).font(.headline)
             Toggle(L10n.Quota.Chat.enable, isOn: $settingsStore.settings.chatGPTChat.enabled)
             Text(L10n.Quota.Chat.featuresHelp).font(.caption).foregroundStyle(.secondary)
             if settingsStore.settings.chatGPTChat.enabled {
@@ -68,42 +68,115 @@ struct ChatGPTChatSettingsSection: View {
     }
 }
 
-struct OpenAICombinedQuotaCard: View {
+/// Resolves the product heading and plan without changing which account any
+/// quota row is read from. The Web feature source can use a separate login.
+@MainActor
+struct ChatGPTQuotaPresentation {
+    let environment: AppEnvironment
+    let settings: AppSettings
+
+    var refreshTools: [ToolType] {
+        ToolType.chatGPTQuotaSources(includeChat: settings.chatGPTChat.enabled)
+    }
+
+    var connectedTools: [ToolType] {
+        refreshTools.filter { tool in
+            guard let account = environment.account(for: tool) else { return false }
+            return account.source != .notConfigured
+        }
+    }
+
+    func planBadge(for tool: ToolType) -> String? {
+        settings.planBadgeLabel(for: tool, quotaPlan: environment.quota(for: tool)?.plan,
+                                accountPlan: environment.account(for: tool)?.plan)
+    }
+
+    var commonPlanBadge: String? {
+        ProviderPlanDisplay.chatGPTQuotaBadge(sources: connectedTools.map { tool in
+            (plan: environment.quota(for: tool)?.plan ?? environment.account(for: tool)?.plan,
+             label: planBadge(for: tool))
+        })
+    }
+
+    static func sourceLabel(for tool: ToolType) -> String {
+        tool == .chatgptChat ? "chatgpt.com" : ToolType.codex.toolName
+    }
+}
+
+extension ToolType {
+    /// Native quota labels group both OpenAI sources under the product name.
+    /// The source name and ID used by caches and clients remain unchanged.
+    func nativeQuotaProductName(bucketID: String? = nil) -> String {
+        isChatGPTQuotaSource ? Self.chatGPTQuotaTitle : quotaSubProviderName(bucketID: bucketID)
+    }
+}
+
+/// OpenAI's settings offer both the web sign-in and the Codex connection.
+struct ChatGPTQuotaSetupRow: View {
     let density: Theme.Density
-    @EnvironmentObject var settingsStore: SettingsStore
-    @EnvironmentObject var environment: AppEnvironment
+    @EnvironmentObject private var environment: AppEnvironment
 
     var body: some View {
+        VStack(alignment: .leading, spacing: density.bucketRowSpacing) {
+            Text(L10n.Error.noAccountFound)
+                .foregroundStyle(.secondary)
+            Button(L10n.Common.openSettings) {
+                environment.showSettings(.coreProvider(.codex))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .font(.system(size: density.subtitleFontSize))
+    }
+}
+
+struct OpenAICombinedQuotaCard: View {
+    let density: Theme.Density
+    @EnvironmentObject private var settingsStore: SettingsStore
+    @EnvironmentObject private var environment: AppEnvironment
+    @EnvironmentObject private var quotaService: QuotaService
+
+    var body: some View {
+        let presentation = ChatGPTQuotaPresentation(environment: environment, settings: settingsStore.settings)
+        let tools = presentation.connectedTools
+        let commonBadge = presentation.commonPlanBadge
+        let isRefreshing = presentation.refreshTools.contains { tool in
+            environment.account(for: tool).map { quotaService.inFlightAccountIds.contains($0.id) } ?? false
+        }
         CardShell(density: density) {
-            HStack {
-                ProviderSectionTitle(tool: .codex, title: "OpenAI", subtitle: nil,
+            HStack(spacing: 8) {
+                ProviderSectionTitle(tool: .codex, title: ToolType.chatGPTQuotaTitle, subtitle: nil,
                                      titleFontSize: density.titleFontSize, subtitleFontSize: density.subtitleFontSize,
                                      iconSize: 16, badgeSize: 24)
-                Spacer()
-                Button { for tool in ToolType.codex.coreProviderMembers { environment.refresh(tool) } }
-                    label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless).help(L10n.Common.refresh)
+                Spacer(minLength: 4)
+                if let commonBadge {
+                    PlanBadgeView(text: commonBadge, fontSize: max(9, density.subtitleFontSize - 1))
+                }
+                SectionRefreshButton(isRefreshing: isRefreshing) {
+                    environment.refresh(tools: presentation.refreshTools)
+                }
             }
-            if settingsStore.settings.chatGPTChat.enabled {
-                subProviderHeader(.chatgptChat)
-                ProviderQuotaCard(tool: .chatgptChat, density: density, embedded: true)
-                Divider()
+            if tools.isEmpty {
+                if settingsStore.settings.chatGPTChat.enabled {
+                    ChatGPTQuotaSetupRow(density: density)
+                } else {
+                    ProviderQuotaCard(tool: .codex, density: density, embedded: true)
+                }
             }
-            subProviderHeader(.codex)
-            ProviderQuotaCard(tool: .codex, density: density, embedded: true)
+            ForEach(tools, id: \.self) { tool in
+                if tool != tools.first { Divider() }
+                let sourceLabel = ChatGPTQuotaPresentation.sourceLabel(for: tool)
+                if tools.count > 1, commonBadge == nil, let plan = presentation.planBadge(for: tool) {
+                    HStack(spacing: 6) {
+                        Text(sourceLabel)
+                            .font(.system(size: density.subtitleFontSize, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1))
+                    }
+                }
+                ProviderQuotaCard(tool: tool, density: density, embedded: true,
+                                  statusSource: tools.count > 1 ? sourceLabel : nil)
+            }
         }
     }
-    private func subProviderHeader(_ tool: ToolType) -> some View {
-        HStack(spacing: 6) {
-            ToolBrandIconView(tool: tool, size: 13)
-            Text(tool.productName).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            Spacer(minLength: 4)
-            if let label = settingsStore.settings.planBadgeLabel(for: tool,
-                quotaPlan: environment.quota(for: tool)?.plan,
-                accountPlan: environment.account(for: tool)?.plan) {
-                PlanBadgeView(text: label, fontSize: max(9, density.subtitleFontSize - 1))
-            }
-        }
-    }
-
 }

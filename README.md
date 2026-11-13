@@ -83,7 +83,7 @@ same layout for every core provider.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/popover-openai-light.png" alt="The OpenAI page: ChatGPT Agentic and Codex Spark quotas with reset history and fill curves beside cost, models and activity"><br><sub><strong>OpenAI</strong> — ChatGPT Agentic and GPT-5.3 Codex Spark windows, reset history, quota history, cost, model ranking, and a year of activity.</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-openai-light.png" alt="The OpenAI page: ChatGPT and Codex Spark quotas with reset history and fill curves beside cost, models and activity"><br><sub><strong>OpenAI</strong> — ChatGPT and GPT-5.3 Codex Spark windows, reset history, quota history, cost, model ranking, and a year of activity.</sub></td>
     <td width="50%"><img src="docs/screenshots/popover-anthropic-light.png" alt="The Anthropic page: 5 Hours, Weekly and Fable windows with their forecasts"><br><sub><strong>Anthropic</strong> — 5 Hours, Weekly and per-model weekly windows, each with its own forecast and cycle history.</sub></td>
   </tr>
   <tr>
@@ -368,8 +368,7 @@ the room costs more than the pixels it saves.
 
 | Surface | Quota and status | Cost and activity |
 | --- | --- | --- |
-| ChatGPT / Codex | Codex subscription windows, Spark, OpenAI status | `~/.codex/sessions/**/*.jsonl` |
-| ChatGPT Chat | Image Generation, Deep Research and estimated Chat-model counts; [setup](docs/chatgpt-chat.md) | Saved cloud Chat history (Work excluded) |
+| ChatGPT | Codex subscription windows, Spark, Image Generation, Deep Research and estimated Chat-model counts in one card; OpenAI status; [setup](docs/chatgpt-chat.md) | `~/.codex/sessions/**/*.jsonl`; saved cloud Chat history for message counts (Work excluded) |
 | Claude Code / Cowork | 5 Hours, Weekly, per-model weekly, Anthropic status | `~/.claude/projects/**/*.jsonl`, Claude.app's Cowork transcripts |
 | Gemini + AntiGravity | Gemini Web quotas, local AntiGravity language-server quotas | Local Gemini / AntiGravity usage records |
 | Grok + Cursor | Grok quota, Cursor Models and Other Models, Grok Bot weekly, SpaceXAI + Cursor status | Local Grok records, Cursor account usage events; Grok Bot is quota-only |
@@ -662,7 +661,7 @@ coding-agent community:
   carries the small Vibe Bar-specific supplement layer, plus the few
   corrections that outrank a wrong public price, and
   [AstroQore VibeBar Quota Limits](https://github.com/AstroQore/vibebar-quota-limits)
-  the published per-plan allowances no provider reports itself (ChatGPT Chat's
+  the published per-plan allowances no provider reports itself (ChatGPT's
   Pro-model limits), refreshed on the same schedule.
 
 Vibe Bar also directly uses

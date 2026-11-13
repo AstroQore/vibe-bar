@@ -1524,8 +1524,11 @@ upstream labels — canonicalize the display, never the stored value.
 
 ### ChatGPT Chat allowances
 
-`ToolType.chatgptChat` is an independent, quota-only member of OpenAI, shown
-before ChatGPT Agentic. It reads Image Generation and Deep Research remainders
+`ToolType.chatgptChat` is an independent, quota-only source that appears
+with Codex under one ChatGPT product heading on the native Overview and
+OpenAI quota page. Overview's company and SubProvider views use a single
+card; model groups, forecasts, reset credits, and history still belong to
+the source account. It reads Image Generation and Deep Research remainders
 through the Codex CLI's OAuth bearer first (`ChatGPTChatOAuthTransport`: the
 same `~/.codex/auth.json` / Keychain credential and headers the Codex quota
 uses — chatgpt.com accepts it for `/backend-api/conversation/init`, verified
