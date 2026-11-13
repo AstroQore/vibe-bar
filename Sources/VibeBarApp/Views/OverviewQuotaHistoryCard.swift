@@ -234,9 +234,9 @@ struct OverviewQuotaHistoryCard: View {
                 Button(L10n.Quota.History.showBusiest) { showOnlyBusiest() }
             }
             Divider()
-            ForEach(curvesByTool, id: \.0) { tool, toolCurves in
+            ForEach(curvesByProduct, id: \.0) { tool, productCurves in
                 Section(displayTitle(for: tool)) {
-                    ForEach(toolCurves) { curve in
+                    ForEach(productCurves) { curve in
                         Toggle(isOn: binding(for: curve)) {
                             Text(
                                 curve.accountQualifier
@@ -326,12 +326,13 @@ struct OverviewQuotaHistoryCard: View {
         return curves.filter { !hidden.contains($0.id) }
     }
 
-    private var curvesByTool: [(ToolType, [OverviewQuotaCurve])] {
+    private var curvesByProduct: [(ToolType, [OverviewQuotaCurve])] {
         var order: [ToolType] = []
         var grouped: [ToolType: [OverviewQuotaCurve]] = [:]
         for curve in curves {
-            if grouped[curve.tool] == nil { order.append(curve.tool) }
-            grouped[curve.tool, default: []].append(curve)
+            let product = curve.tool.isChatGPTQuotaSource ? .codex : curve.tool
+            if grouped[product] == nil { order.append(product) }
+            grouped[product, default: []].append(curve)
         }
         return order.map { ($0, grouped[$0] ?? []) }
     }
@@ -593,7 +594,8 @@ struct OverviewQuotaHistoryCard: View {
     // MARK: - Naming
 
     private func displayTitle(for tool: ToolType) -> String {
-        tool == .gemini ? "Gemini" : tool.menuTitle
+        if tool.isChatGPTQuotaSource { return tool.nativeQuotaProductName() }
+        return tool == .gemini ? "Gemini" : tool.menuTitle
     }
 
     /// Claude titles six different quotas "Weekly" and only the group name

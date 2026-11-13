@@ -193,10 +193,20 @@ public enum ToolType: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
-    /// L2 members represented by one L1 company filter / aggregate row.
+    /// The quota product shown on the native Overview and provider page.
+    public static let chatGPTQuotaTitle = "ChatGPT"
+
+    public var isChatGPTQuotaSource: Bool { self == .codex || self == .chatgptChat }
+
+    /// The adapters remain separate even where their quotas share one card.
+    public static func chatGPTQuotaSources(includeChat: Bool) -> [Self] {
+        includeChat ? [.chatgptChat, .codex] : [.codex]
+    }
+
+    /// Quota sources represented by one L1 company filter / aggregate row.
     public var coreProviderMembers: [ToolType] {
         switch coreProviderRepresentative ?? self {
-        case .codex: [.chatgptChat, .codex]
+        case .codex: Self.chatGPTQuotaSources(includeChat: true)
         case .claude: [.claude]
         case .muse: [.muse, .museAgent]
         case .devin: [.devin]

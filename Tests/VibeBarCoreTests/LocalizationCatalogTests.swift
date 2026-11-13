@@ -49,6 +49,19 @@ final class LocalizationCatalogTests: XCTestCase {
 
     // MARK: - Behaviour
 
+    func testRetainedGoEntitlementErrorFollowsLanguageChanges() {
+        let restore = AppLocalization.languageOverride
+        defer { AppLocalization.languageOverride = restore }
+        let error = QuotaError.openCodeGoSubscriptionRequired
+
+        AppLocalization.languageOverride = .english
+        XCTAssertEqual(error.userFacingMessage, "OpenCode Go subscription required.")
+        AppLocalization.languageOverride = .simplifiedChinese
+        XCTAssertEqual(error.userFacingMessage, "需要有效的 OpenCode Go 订阅。")
+        XCTAssertEqual(error.agentFacingMessage, error.userFacingMessage)
+        XCTAssertFalse(error.isCredentialState)
+    }
+
     func testAnExplicitOverrideWinsOverTheSystemLanguage() {
         let restore = AppLocalization.languageOverride
         defer { AppLocalization.languageOverride = restore }

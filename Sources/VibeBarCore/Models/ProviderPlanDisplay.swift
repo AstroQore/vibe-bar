@@ -108,6 +108,22 @@ public enum ProviderPlanDisplay {
         }
     }
 
+    /// One product badge when the visible sources agree. Compare full plan
+    /// names before formatting so a compact label or a custom label cannot
+    /// make different reported plans appear to be the same tier.
+    public static func chatGPTQuotaBadge(
+        sources: [(plan: String?, label: String?)]
+    ) -> String? {
+        guard let first = sources.first else { return nil }
+        if sources.count == 1 { return first.label }
+        guard let plan = displayName(for: .codex, rawPlan: first.plan),
+              sources.dropFirst().allSatisfy({
+                  displayName(for: .codex, rawPlan: $0.plan) == plan && $0.label == first.label
+              })
+        else { return nil }
+        return first.label
+    }
+
     /// Keep the legacy $200 `pro` and $100 `prolite` identities readable
     /// alongside explicit price-tier ids. A multiplier no longer names a plan.
     /// Keep that mapping local to OpenAI; other providers also use "pro".

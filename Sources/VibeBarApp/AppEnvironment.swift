@@ -108,7 +108,14 @@ final class AppEnvironment: ObservableObject {
             retentionProvider: { [weak settings] in
                 settings?.settings.costData.retentionDays ?? CostDataSettings.defaultRetentionDays
             },
-            initialAccountIds: accounts.accounts.map(\.id),
+            initialAccountIds: accounts.accounts.compactMap { account in
+                // An old OpenCode Go cookie cache must not hide setup when
+                // this instance has no API key.
+                if account.tool == .openCodeGo, account.source == .notConfigured, !DemoMode.isEnabled {
+                    return nil
+                }
+                return account.id
+            },
             chatGPTChatWebFallback: { account, settings, cookie in
                 try await ChatGPTChatWebFetcher.fetch(account: account, settings: settings, cookieHeader: cookie)
             },
@@ -746,16 +753,27 @@ final class AppEnvironment: ObservableObject {
     }
 
     func refresh(_ tool: ToolType) {
-        guard !DemoMode.isEnabled else { return }
+        refresh(tools: [tool])
+    }
+
+    func refresh(tools: [ToolType]) {
+        guard !tools.isEmpty, !DemoMode.isEnabled else { return }
         refreshWebCookiePresence()
-        recheckPrimaryRouteHealth(provider: tool)
-        // User-initiated: let the cookie re-import run again even if a
-        // scheduled refresh already found the browser signed out.
-        MiscCookieAutoImporter.shared.resetCooldown(for: tool)
+        for tool in tools {
+            recheckPrimaryRouteHealth(provider: tool)
+            // User-initiated: let the cookie re-import run again even if a
+            // scheduled refresh already found the browser signed out.
+            MiscCookieAutoImporter.shared.resetCooldown(for: tool)
+        }
+        // The sources on one card share a single account reload. Each
+        // adapter still fetches using the account it was resolved against.
         reloadAccounts { [weak self] in
-            guard let self, let account = self.account(for: tool) else { return }
-            Task { @MainActor in
-                _ = await self.quotaService.refresh(account)
+            guard let self else { return }
+            for tool in tools {
+                guard let account = self.account(for: tool) else { continue }
+                Task { @MainActor in
+                    _ = await self.quotaService.refresh(account)
+                }
             }
         }
     }

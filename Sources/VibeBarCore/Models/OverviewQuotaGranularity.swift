@@ -47,11 +47,70 @@ public struct OverviewQuotaPartition: Hashable, Sendable {
     /// What the SubProvider row reads: the plan's name on the pool card, the
     /// SubProvider's everywhere else.
     public var displayTitle: String {
-        isSharedPool ? SharedPoolSummary.subProviderName : subProvider
+        if isSharedPool { return SharedPoolSummary.subProviderName }
+        return tool.isChatGPTQuotaSource ? ToolType.chatGPTQuotaTitle : subProvider
+    }
+
+    public var isCombinedChatGPT: Bool { tool == .codex && granularity == .subProvider }
+
+    // The combined card owns its visibility settings. Reusing a source's
+    // ID would turn a previous "hide Codex" setting into "hide ChatGPT".
+    public static let combinedChatGPTModuleID = PageLayoutModuleID("overview-quota:codex:subprovider:chatgpt")
+    static let legacyCodexModuleID = legacySubProviderModuleID(tool: .codex, name: "ChatGPT Agentic")
+    static let legacyChatModuleID = legacySubProviderModuleID(tool: .chatgptChat, name: "ChatGPT Chat")
+
+    private static func legacySubProviderModuleID(tool: ToolType, name: String) -> PageLayoutModuleID {
+        PageLayoutModuleID(partitionID(tool: tool, granularity: .subProvider, name: name, groupTitle: nil))
+    }
+
+    /// Keep the new position when present, then the former Codex position,
+    /// then the former Chat position. Drop the other positions for the card.
+    static func combiningChatGPT(in groups: [[PageLayoutModuleID]]) -> [[PageLayoutModuleID]] {
+        let combined = combinedChatGPTModuleID
+        let positions = [combined, legacyCodexModuleID, legacyChatModuleID]
+        let ids = Set(groups.joined())
+        guard let preferred = positions.first(where: ids.contains) else { return groups }
+
+        var placed = false
+        return groups.map { group in
+            group.compactMap { id in
+                guard positions.contains(id) else { return id }
+                guard id == preferred, !placed else { return nil }
+                placed = true
+                return combined
+            }
+        }
+    }
+
+    static func combiningChatGPT(in layout: StoredPageLayout) -> StoredPageLayout {
+        let chat = legacyChatModuleID
+        let codex = legacyCodexModuleID
+        let combined = combinedChatGPTModuleID
+        let saved = Set(layout.columns.joined()).union(layout.segments.joined()).union(layout.hidden)
+        guard saved.contains(chat) || saved.contains(codex) else { return layout }
+
+        var hidden = layout.hidden.filter { $0 != codex && $0 != chat }
+        // When upgrading old settings, hiding one source still leaves the
+        // other visible. If the combined card already has a saved setting,
+        // use that setting.
+        if !saved.contains(combined), layout.hidden.contains(codex), layout.hidden.contains(chat) {
+            hidden.append(combined)
+        }
+        return StoredPageLayout(mode: layout.mode, ratio: layout.ratio,
+                                columns: combiningChatGPT(in: layout.columns),
+                                segments: combiningChatGPT(in: layout.segments),
+                                hidden: hidden)
     }
 
     public var id: String {
-        let scope = Data((subProvider + "\u{0}" + (groupTitle ?? "")).utf8).base64EncodedString()
+        if isCombinedChatGPT { return Self.combinedChatGPTModuleID.rawValue }
+        return Self.partitionID(tool: tool, granularity: granularity, name: subProvider, groupTitle: groupTitle)
+    }
+
+    private static func partitionID(
+        tool: ToolType, granularity: OverviewQuotaGranularity, name: String, groupTitle: String?
+    ) -> String {
+        let scope = Data((name + "\u{0}" + (groupTitle ?? "")).utf8).base64EncodedString()
         return "overview-quota:\(tool.rawValue):\(granularity.rawValue.lowercased()):\(scope)"
     }
 
@@ -64,6 +123,10 @@ public struct OverviewQuotaPartition: Hashable, Sendable {
         buckets: [QuotaBucket],
         granularity: OverviewQuotaGranularity
     ) -> [Self] {
+        // The Codex partition owns the common card even before either
+        // source returns data. At model granularity each source keeps its
+        // own set of partitions, including stable IDs for saved layouts.
+        if tool == .chatgptChat, granularity == .subProvider { return [] }
         guard !buckets.isEmpty else {
             return [Self(tool: tool, subProvider: tool.quotaSubProviderName(), groupTitle: nil,
                          bucketIDs: [], granularity: granularity, showsSharedMetadata: true)]

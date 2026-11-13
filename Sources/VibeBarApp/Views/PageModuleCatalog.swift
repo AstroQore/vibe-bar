@@ -235,24 +235,26 @@ enum PageModuleCatalog {
             )
         }
         if settings.overviewQuotaGranularity == .company {
-        for tool in settings.visibleCoreProviderList {
-            result.append(
-                PageModuleDescriptor(
-                    id: .custom("overview-quota:\(tool.rawValue)"),
-                    kind: .overviewQuota(tool),
-                    displayName: "\(tool.vendorName) Quota",
-                    defaultColumn: 0,
-                    accent: .provider(tool),
-                    masonryPhase: .quota,
-                    fallbackHeight: FallbackHeight.quota
+            for tool in settings.visibleCoreProviderList {
+                let title = tool == .codex ? ToolType.chatGPTQuotaTitle : "\(tool.vendorName) Quota"
+                result.append(
+                    PageModuleDescriptor(
+                        id: .custom("overview-quota:\(tool.rawValue)"),
+                        kind: .overviewQuota(tool),
+                        displayName: title,
+                        defaultColumn: 0,
+                        accent: .provider(tool),
+                        masonryPhase: .quota,
+                        fallbackHeight: FallbackHeight.quota
+                    )
                 )
-            )
-        }
+            }
         } else {
             for part in overviewQuotaPartitions(environment: environment, settings: settings) {
                 result.append(PageModuleDescriptor(
                     id: .custom(part.id), kind: .overviewQuotaPart(part),
-                    displayName: [part.tool.vendorName, part.subProvider, part.groupTitle].compactMap { $0 }.joined(separator: " · "),
+                    displayName: [part.tool.isChatGPTQuotaSource ? nil : part.tool.vendorName, part.displayTitle, part.groupTitle]
+                        .compactMap { $0 }.joined(separator: " · "),
                     defaultColumn: 0, accent: .provider(part.tool), masonryPhase: .quota,
                     fallbackHeight: FallbackHeight.quota
                 ))
@@ -506,6 +508,9 @@ enum PageModuleCatalog {
 
     private static func quotaGroupDisplayName(_ module: QuotaGroupModule) -> String {
         let scope = module.title ?? "All Models"
+        if module.pageTool == .codex {
+            return module.rows.isEmpty ? ToolType.chatGPTQuotaTitle : "\(ToolType.chatGPTQuotaTitle) · \(scope)"
+        }
         // A linked SubProvider's groups (AntiGravity under Google AI) say whose they
         // are; the page tool's own groups do not need repeating.
         guard module.tool != module.pageTool else { return scope }
@@ -549,15 +554,14 @@ enum PageModuleCatalog {
         } else if tool == .codex {
             accountId = environment.account(for: .codex)?.id
             buckets = environment.quota(for: .codex)?.buckets ?? []
-            if let chat = environment.account(for: .chatgptChat) {
+            if environment.settingsStore.settings.chatGPTChat.enabled,
+               let chat = environment.account(for: .chatgptChat) {
                 additional = (environment.quotaService.cachedQuota(for: chat.id)?.buckets ?? [])
                     .map { FillTimelineSeries(tool: .chatgptChat, accountId: chat.id, bucket: $0) }
             }
         } else if tool == .muse {
-            // Muse, Meta AI's second SubProvider, stacks under Muse Code the
-            // way ChatGPT Chat stacks with ChatGPT Agentic. Only buckets it
-            // actually returned are drawn, so a Muse nobody set up adds no
-            // card to the page.
+            // Muse, Meta AI's second SubProvider, stacks under Muse Code.
+            // A Muse nobody set up adds no card to the page.
             accountId = environment.account(for: .muse)?.id
             buckets = environment.quota(for: .muse)?.buckets ?? []
             if let agent = environment.account(for: .museAgent) {
@@ -599,7 +603,13 @@ enum PageModuleCatalog {
     }
 
     /// Tools whose refresh button the provider-header quota card pumps.
-    static func quotaRefreshTools(for tool: ToolType) -> [ToolType] {
+    static func quotaRefreshTools(for tool: ToolType, settings: AppSettings) -> [ToolType] {
+        if tool == .codex { return ToolType.chatGPTQuotaSources(includeChat: settings.chatGPTChat.enabled) }
+        return quotaHistoryTools(for: tool)
+    }
+
+    /// History keeps past observations even when a source is turned off.
+    static func quotaHistoryTools(for tool: ToolType) -> [ToolType] {
         switch tool {
         case .codex: ToolType.codex.coreProviderMembers
         case .muse: ToolType.muse.coreProviderMembers

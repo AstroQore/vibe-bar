@@ -53,33 +53,45 @@ struct OverviewQuotaPartitionCard: View {
             accountPlan: accounts.compactMap(\.plan).first)
         CardShell(density: density) {
             HStack {
-                ProviderSectionTitle(tool: partition.tool, title: partition.tool.vendorName, subtitle: nil,
+                ProviderSectionTitle(tool: partition.tool,
+                    title: partition.tool.isChatGPTQuotaSource ? partition.displayTitle : partition.tool.vendorName, subtitle: nil,
                     titleFontSize: density.titleFontSize, subtitleFontSize: density.subtitleFontSize,
                     iconSize: 16, badgeSize: 24)
                 Spacer()
                 // The pool card's figure comes from Cursor's account, so its
                 // refresh pumps both and its busy state watches both.
-                let refreshTools: [ToolType] = partition.isSharedPool ? ToolType.grokFamily : [partition.tool]
+                let refreshTools = partition.tool.isChatGPTQuotaSource
+                    ? ToolType.chatGPTQuotaSources(includeChat: settingsStore.settings.chatGPTChat.enabled)
+                    : partition.isSharedPool ? ToolType.grokFamily : [partition.tool]
                 let refreshing = refreshTools.contains { tool in
                     environment.account(for: tool).map { quotaService.inFlightAccountIds.contains($0.id) } ?? false
                 } || accounts.contains { quotaService.inFlightAccountIds.contains($0.id) }
-                Button { refreshTools.forEach { environment.refresh($0) } } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless).help(L10n.Common.refresh)
-                    .disabled(refreshing)
+                if partition.tool.isChatGPTQuotaSource, let plan {
+                    PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1))
+                }
+                SectionRefreshButton(isRefreshing: refreshing) {
+                    environment.refresh(tools: refreshTools)
+                }
             }
-            HStack(spacing: 6) {
-                if partition.isSharedPool { BrandMarkIconView(mark: .xSubscription, size: 13) }
-                else if partition.suppressGroupTitles { BrandMarkIconView(mark: .grokBot, size: 13) }
-                else { ToolBrandIconView(tool: partition.tool, size: 13) }
-                Text(partition.displayTitle).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                if let plan { PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1)) }
+            if !partition.tool.isChatGPTQuotaSource {
+                subProviderHeading(plan: plan)
             }
             if accounts.isEmpty {
                 content(accountId: nil)
             } else {
                 ForEach(accounts, id: \.id) { account in content(accountId: account.id) }
             }
+        }
+    }
+
+    private func subProviderHeading(plan: String?) -> some View {
+        HStack(spacing: 6) {
+            if partition.isSharedPool { BrandMarkIconView(mark: .xSubscription, size: 13) }
+            else if partition.suppressGroupTitles { BrandMarkIconView(mark: .grokBot, size: 13) }
+            else { ToolBrandIconView(tool: partition.tool, size: 13) }
+            Text(partition.displayTitle).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            if let plan { PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1)) }
         }
     }
 

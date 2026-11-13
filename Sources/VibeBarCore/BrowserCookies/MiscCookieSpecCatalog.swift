@@ -27,7 +27,6 @@ public enum MiscCookieSpecCatalog {
         case .kimi:              return KimiQuotaAdapter.cookieSpec
         case .mimo:              return MimoQuotaAdapter.cookieSpec
         case .ollama:            return OllamaQuotaAdapter.cookieSpec
-        case .openCodeGo:        return OpenCodeGoQuotaAdapter.cookieSpec
         case .tencentHunyuan:    return TencentHunyuanQuotaAdapter.cookieSpec
         case .tencentTokenPlan:  return TencentTokenPlanQuotaAdapter.cookieSpec
         case .volcengine:        return VolcengineQuotaAdapter.cookieSpec
@@ -40,7 +39,7 @@ public enum MiscCookieSpecCatalog {
         // families, which carry their own dedicated credential paths.
         case .chatgptChat, .codex, .claude, .gemini, .antigravity, .grok, .muse,
              .copilot, .zai, .minimax, .volcengineAgentPlan,
-             .kilo, .kiro, .openRouter, .warp:
+             .openCodeGo, .kilo, .kiro, .openRouter, .warp:
             return nil
         }
     }

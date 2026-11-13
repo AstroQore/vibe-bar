@@ -8,6 +8,7 @@ public enum QuotaCacheStore {
         var queriedAt: Date
         var chatGPTChat: ChatGPTChatSummary?
         var resetCredits: ResetCredits?
+        var ollamaCredits: OllamaCreditUsage?
 
         init(_ quota: AccountQuota) {
             self.tool = quota.tool
@@ -16,6 +17,7 @@ public enum QuotaCacheStore {
             self.queriedAt = quota.queriedAt
             self.chatGPTChat = quota.chatGPTChat
             self.resetCredits = quota.resetCredits
+            self.ollamaCredits = quota.ollamaCredits
         }
 
         func quota(accountId: String) -> AccountQuota {
@@ -27,7 +29,9 @@ public enum QuotaCacheStore {
                 email: nil,
                 queriedAt: queriedAt,
                 error: nil,
-                providerExtras: nil,
+                providerExtras: ollamaCredits.map {
+                    ProviderExtras(tool: .ollama, updatedAt: queriedAt, ollamaCredits: $0)
+                },
                 resetCredits: resetCredits,
                 chatGPTChat: chatGPTChat
             )

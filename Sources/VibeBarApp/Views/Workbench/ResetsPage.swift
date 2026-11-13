@@ -101,7 +101,7 @@ struct ResetsPage: View {
         let buckets: [QuotaBucket]
         let headline: QuotaBucket
         let forecast: QuotaPaceForecast?
-        var id: String { "\(accountId)/\(subProviderName)/\(groupTitle ?? "")" }
+        var id: String { "\(accountId)/\(tool.quotaSubProviderName(bucketID: headline.id))/\(groupTitle ?? "")" }
         /// The SubProvider name is a proper noun and stays as its owner spells
         /// it; the group beside it may be a generic window word ("Weekly"),
         /// whose contract value is English and whose *shown* label is not.
@@ -122,7 +122,7 @@ struct ResetsPage: View {
                 else { continue }
                 let accountLabel = accounts.count > 1 ? account.displayLabel : nil
                 var byGroup: [String: [QuotaBucket]] = [:]
-                var meta: [String: (sub: String, group: String?)] = [:]
+                var titles: [String: String] = [:]
                 var order: [String] = []
                 for bucket in quota.buckets {
                     let sub = tool.quotaSubProviderName(bucketID: bucket.id)
@@ -135,12 +135,12 @@ struct ResetsPage: View {
                     let key = "\(sub)/\(group ?? "")"
                     if byGroup[key] == nil {
                         order.append(key)
-                        meta[key] = (sub, group)
+                        titles[key] = group
                     }
                     byGroup[key, default: []].append(bucket)
                 }
                 for key in order {
-                    guard let buckets = byGroup[key], let info = meta[key],
+                    guard let buckets = byGroup[key],
                           let headline = buckets.max(by: {
                               ($0.rawWindowSeconds ?? 0) < ($1.rawWindowSeconds ?? 0)
                           })
@@ -149,8 +149,8 @@ struct ResetsPage: View {
                         tool: tool,
                         accountId: account.id,
                         accountLabel: accountLabel,
-                        subProviderName: info.sub,
-                        groupTitle: info.group,
+                        subProviderName: tool.nativeQuotaProductName(bucketID: headline.id),
+                        groupTitle: titles[key],
                         plan: quota.plan,
                         buckets: buckets,
                         headline: headline,
@@ -421,7 +421,7 @@ struct ResetsPage: View {
                 guard at >= monthStart, at < monthEnd, at <= now,
                       (sample.rawWindowSeconds ?? 86_400) >= 86_400
                 else { continue }
-                let sub = sample.tool.quotaSubProviderName(bucketID: sample.bucketId)
+                let sub = sample.tool.nativeQuotaProductName(bucketID: sample.bucketId)
                 let title = quota?.bucket(id: sample.bucketId)?.title
                 let name = title.map { "\(sub) · \(QuotaGroupLabelLocalizer.display($0))" } ?? sub
                 out.append(CalendarEntry(
@@ -450,7 +450,7 @@ struct ResetsPage: View {
                           resetAt >= max(monthStart, now), resetAt < monthEnd,
                           (bucket.rawWindowSeconds ?? 86_400) >= 86_400
                     else { continue }
-                    let sub = tool.quotaSubProviderName(bucketID: bucket.id)
+                    let sub = tool.nativeQuotaProductName(bucketID: bucket.id)
                     out.append(CalendarEntry(
                         id: "next.\(account.id).\(bucket.id)",
                         tool: tool,

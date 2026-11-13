@@ -1,7 +1,13 @@
-# ChatGPT Chat allowances
+# ChatGPT allowances
 
-ChatGPT Chat appears above ChatGPT Agentic under OpenAI. It tracks Image
-Generation and Deep Research, and — when asked to — the GPT-6 Pro and
+The ChatGPT card shows feature allowances and Codex limits together on the
+Overview. The model view and the OpenAI page still show each named quota
+group. Use the card's refresh button to update both sources. Allowances and
+history stay with their source accounts; a common plan badge describes the
+plan name when both sources agree.
+
+The feature source tracks Image Generation and Deep Research, and — when
+asked to — the GPT-6 Pro and
 GPT-5.6 Sol Pro message allowances. Enable it in OpenAI settings; a Codex
 login is enough, and the existing browser import or built-in login works
 too. No browser extension is required.
@@ -19,7 +25,7 @@ current defaults once, and a choice made after that is kept.
 The adapter reads the service remainder and reset time. It tries the Codex
 CLI's OAuth bearer first — the credential the Codex quota already reads — and
 only then the web cookie and the WebView session, so a Codex login needs no
-separate web login for Chat. It reuses Agentic's `/wham/usage` plan parser
+separate web login for Chat. It reuses the Codex source's `/wham/usage` plan parser
 through whichever Chat transport answered. There are no fixed feature totals.
 
 The service never states a total, so two figures stand in for it. From the

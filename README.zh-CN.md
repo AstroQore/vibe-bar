@@ -75,7 +75,7 @@ Agent 也能来问同样的问题。
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/popover-openai-light.png" alt="OpenAI 页面：ChatGPT Agentic 与 Codex Spark 额度、重置历史与消耗曲线，右侧是成本、模型与活动"><br><sub><strong>OpenAI</strong> —— ChatGPT Agentic 与 GPT-5.3 Codex Spark 窗口、重置历史、额度历史、成本、模型排行和一整年的活动。</sub></td>
+    <td width="50%"><img src="docs/screenshots/popover-openai-light.png" alt="OpenAI 页面：ChatGPT 与 Codex Spark 额度、重置历史与消耗曲线，右侧是成本、模型与活动"><br><sub><strong>OpenAI</strong> —— ChatGPT 与 GPT-5.3 Codex Spark 窗口、重置历史、额度历史、成本、模型排行和一整年的活动。</sub></td>
     <td width="50%"><img src="docs/screenshots/popover-anthropic-light.png" alt="Anthropic 页面：5 Hours、Weekly 与 Fable 窗口及各自的预测"><br><sub><strong>Anthropic</strong> —— 5 Hours、Weekly 和按模型的周窗口，各有各的预测与周期历史。</sub></td>
   </tr>
   <tr>
@@ -114,6 +114,9 @@ Copilot、OpenCode Go、Ollama Cloud、OpenRouter、Kilo、Kiro、智谱 GLM、�
 Kimi、MiniMax、讯飞星火、阿里百炼、火山引擎 Coding/Agent Plan、腾讯混元、百度千帆
 和 Warp。在应用自带的 WebView 里登录、导入浏览器 Cookie，或者粘贴一个 Key——
 服务商控制台提供什么就用什么。
+
+在 **设置 → 其他厂商 → OpenCode Go** 中粘贴 Go 订阅所在工作区的 API Key。
+默认卡片也可以读取应用环境中的 `OPENCODE_API_KEY`。
 
 ![Misc 页面：OpenCode Go、Ollama、智谱 GLM 与 MiniMax 的套餐窗口](docs/screenshots/popover-misc-light.png)
 
@@ -313,8 +316,7 @@ API Key 发到 `dot.mindreset.tech`，由那边画到你的设备上。在你填
 
 | 页面 | 配额与状态 | 成本与活动 |
 | --- | --- | --- |
-| ChatGPT / Codex | Codex 订阅窗口、Spark、OpenAI 状态 | `~/.codex/sessions/**/*.jsonl` |
-| ChatGPT Chat | 绘图、Deep Research 剩余额度与 Chat 模型历史估算；[配置说明](docs/chatgpt-chat.md) | 已保存的云端 Chat 历史（排除 Work） |
+| ChatGPT | 同一卡片展示 Codex 订阅窗口、Spark、绘图、Deep Research 剩余额度与 Chat 模型历史估算；OpenAI 状态；[配置说明](docs/chatgpt-chat.md) | `~/.codex/sessions/**/*.jsonl`；已保存的云端 Chat 历史用于消息计数（排除 Work） |
 | Claude Code / Cowork | 5 Hours、Weekly、按模型的周窗口、Anthropic 状态 | `~/.claude/projects/**/*.jsonl`，以及 Claude.app 的 Cowork transcript |
 | Gemini + AntiGravity | Gemini Web 配额、本地 AntiGravity Language Server 配额 | 本地 Gemini / AntiGravity 用量记录 |
 | Grok + Cursor | Grok 配额、Cursor Models 与 Other Models、Grok Bot 周配额、SpaceXAI + Cursor 状态 | 本地 Grok 记录、Cursor 账户用量事件；Grok Bot 仅显示配额 |
@@ -561,7 +563,7 @@ Vibe Bar 是一个独立项目，也得益于 Coding Agent 开源社区分享的
   [AstroQore VibeBar Model Pricing](https://github.com/AstroQore/vibebar-model-pricing)
   维护少量 Vibe Bar 专用补充条目，以及优先于公开目录、用于纠正错误价格的少数条目；
   [AstroQore VibeBar Quota Limits](https://github.com/AstroQore/vibebar-quota-limits)
-  维护服务端不返回的各套餐公开额度（ChatGPT Chat 的 Pro 模型限额），按同一周期刷新。
+  维护服务端不返回的各套餐公开额度（ChatGPT 的 Pro 模型限额），按同一周期刷新。
 
 Vibe Bar 还直接使用
 [SweetCookieKit](https://github.com/steipete/SweetCookieKit) 读取本地浏览器 Cookie，

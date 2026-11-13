@@ -52,7 +52,7 @@ enum ResetHistoryLanes {
                     liveBucketIds.insert(bucket.id)
                     guard bucket.supportsForecast else { continue }
                     let key = SubscriptionHistoryKey(accountId: account.id, bucketId: bucket.id)
-                    let subProvider = tool.quotaSubProviderName(bucketID: bucket.id)
+                    let subProvider = tool.nativeQuotaProductName(bucketID: bucket.id)
                     let trimmed = bucket.groupTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
                     // A group titled after its own SubProvider is the primary
                     // lane (Grok Bot), not a model group.
@@ -211,7 +211,7 @@ enum ResetHistoryLanes {
             tool: tool,
             bucketId: bucketId,
             company: tool.vendorName,
-            subProvider: tool.quotaSubProviderName(bucketID: bucketId),
+            subProvider: tool.nativeQuotaProductName(bucketID: bucketId),
             groupTitle: nil,
             bucketTitle: retiredBucketTitle(tool: tool, bucketId: bucketId, registry: registry),
             accountLabel: accountLabel,

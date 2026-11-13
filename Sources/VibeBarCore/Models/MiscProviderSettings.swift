@@ -43,9 +43,8 @@ public struct MiscProviderSettings: Codable, Equatable, Sendable {
     /// Self-hosted endpoint override (e.g. GitHub Enterprise for
     /// Copilot, Z.ai self-hosted for Z.ai).
     public var enterpriseHost: URL?
-    /// Optional provider-specific workspace/project identifier. Used
-    /// by web dashboards such as OpenCode Go that scope usage under a
-    /// workspace path.
+    /// Legacy dashboard workspace identifier, retained for settings
+    /// compatibility. OpenCode Go now resolves the workspace from its key.
     public var workspaceID: String?
     /// Override the browser auto-import order for this provider.
     public var preferredBrowser: BrowserKind?

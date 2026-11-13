@@ -105,7 +105,7 @@ struct ResetCreditsRecordCard: View {
                 Circle()
                     .fill(Theme.providerAccent(for: record.tool))
                     .frame(width: 6, height: 6)
-                Text(record.tool.quotaSubProviderName().uppercased())
+                Text(record.tool.nativeQuotaProductName().uppercased())
                     .font(.system(size: 10, weight: .bold))
                     .tracking(0.4)
                 Spacer(minLength: 6)
