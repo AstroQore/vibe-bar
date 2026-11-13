@@ -104,9 +104,7 @@ enum QuotaGroupModuleBuilder {
         let additional = additionalQuotaSeries.map {
             RawBucket(id: $0.id, tool: $0.tool, accountId: $0.accountId, bucket: $0.bucket)
         }
-        let raw = pageTool == .codex
-            ? additional.filter { $0.tool == .chatgptChat } + primary + additional.filter { $0.tool != .chatgptChat }
-            : primary + additional
+        let raw = primary + additional
         guard !raw.isEmpty else { return [] }
 
         // Groups are runs of adjacent rows sharing a chart key — the same
@@ -138,7 +136,9 @@ enum QuotaGroupModuleBuilder {
             let resolvedSubProviderTitle = head.tool.quotaSubProviderName(bucketID: head.bucket.id)
             let sectionKey = "\(head.tool.rawValue):\(resolvedSubProviderTitle)"
             let showsSourceMetadata = seenSectionKeys.insert(sectionKey).inserted
-            if showsSourceMetadata, pageTool != .codex {
+            if pageTool == .codex {
+                if modules.isEmpty { linkedSectionTitle = ToolType.chatGPTQuotaTitle }
+            } else if showsSourceMetadata {
                 linkedSectionTitle = sharedPool != nil && head.tool == pageTool
                     ? SharedPoolSummary.subProviderName
                     : resolvedSubProviderTitle
@@ -207,7 +207,7 @@ enum QuotaGroupModuleBuilder {
             showsGroupTitle: true,
             chartKey: QuotaBucketGrouping.key(accountId: nil, itemTool: pageTool, title: title),
             rows: [],
-            linkedSectionTitle: pageTool == .codex ? nil : pageTool.quotaSubProviderName(),
+            linkedSectionTitle: pageTool == .codex ? ToolType.chatGPTQuotaTitle : pageTool.quotaSubProviderName(),
             showsSourceMetadata: true,
             linkedSectionIconTool: pageTool,
             showsProviderHeader: true
@@ -282,7 +282,7 @@ struct QuotaGroupCard: View {
                 HStack(alignment: .center, spacing: 8) {
                     ProviderSectionTitle(
                         tool: module.pageTool,
-                        title: module.pageTool == .codex ? ToolType.chatGPTQuotaTitle : module.pageTool.vendorName,
+                        title: module.pageTool.vendorName,
                         subtitle: nil,
                         titleFontSize: density.titleFontSize,
                         subtitleFontSize: density.subtitleFontSize,
@@ -290,9 +290,6 @@ struct QuotaGroupCard: View {
                         badgeSize: 24
                     )
                     Spacer(minLength: 4)
-                    if module.pageTool == .codex, let plan = chatGPTPresentation.commonPlanBadge {
-                        PlanBadgeView(text: plan, fontSize: max(9, density.subtitleFontSize - 1))
-                    }
                     SectionRefreshButton(isRefreshing: isRefreshing) {
                         environment.refresh(tools: refreshTools)
                     }
@@ -432,6 +429,7 @@ struct QuotaGroupCard: View {
     }
 
     private var subProviderPlanBadge: String? {
+        if module.pageTool == .codex { return chatGPTPresentation.commonPlanBadge }
         let account = environment.account(for: module.tool)
         let quotaPlan = account.flatMap { quotaService.cachedQuota(for: $0.id)?.plan }
             ?? environment.quota(for: module.tool)?.plan
