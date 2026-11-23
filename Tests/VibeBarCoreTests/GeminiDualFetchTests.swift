@@ -38,6 +38,16 @@ final class GeminiDualFetchTests: XCTestCase {
         )
     }
 
+    func testCalibrationDistinguishesGoogleSignInFromUsageAndOtherHosts() throws {
+        for path in ["/v3/signin/identifier", "/ServiceLogin", "/AccountChooser"] {
+            XCTAssertTrue(GeminiQuotaAdapter.isGoogleSignInURL(try XCTUnwrap(URL(string: "https://accounts.google.com" + path))))
+        }
+        for url in ["https://gemini.google.com/usage", "https://accounts.google.com/ListAccounts",
+                    "https://example.org/signin", "http://accounts.google.com/signin"] {
+            XCTAssertFalse(GeminiQuotaAdapter.isGoogleSignInURL(try XCTUnwrap(URL(string: url))))
+        }
+    }
+
     func testOAuthAccountThrowsUnknownBecauseCLIQuotaIsRemoved() async throws {
         let (adapter, temp) = try makeEmptyHomeAdapter()
         defer { cleanup(temp) }
@@ -111,8 +121,8 @@ final class GeminiDualFetchTests: XCTestCase {
             let cookie = request.value(forHTTPHeaderField: "Cookie") ?? ""
             if request.httpMethod == "GET" {
                 getCookies.append(cookie)
-                // Only the live session's page carries the XSRF token.
-                let body = cookie.contains("live")
+                // A session can also make it past bootstrap before calibration redirects to sign-in.
+                let body = cookie.contains("live") || cookie.contains("redirect")
                     ? #"<script>window.WIZ_global_data={"SNlM0e":"synthetic-xsrf"};</script>"#
                     : "<html>signed out</html>"
                 return (response, Data(body.utf8))
@@ -128,12 +138,14 @@ final class GeminiDualFetchTests: XCTestCase {
             browserCookieImporter: {
                 [
                     .init(header: "__Secure-1PSID=synthetic-stale", sourceLabel: "Safari", cookieCount: 1),
+                    .init(header: "__Secure-1PSID=synthetic-redirect", sourceLabel: "Chrome (Old)", cookieCount: 1),
                     .init(header: "__Secure-1PSID=synthetic-live", sourceLabel: "Chrome (Default)", cookieCount: 1)
                 ]
             },
             storeCookieHeader: { stored.append($0) },
             webFallback: { account, header in
                 fallbackHeaders.append(header)
+                if header.contains("redirect") { throw QuotaError.needsLogin }
                 return AccountQuota(
                     accountId: account.id,
                     tool: .gemini,
@@ -158,7 +170,8 @@ final class GeminiDualFetchTests: XCTestCase {
         )
 
         _ = try await adapter.fetch(for: account)
-        XCTAssertEqual(fallbackHeaders.values, ["__Secure-1PSID=synthetic-live"])
+        XCTAssertEqual(fallbackHeaders.values, ["__Secure-1PSID=synthetic-redirect", "__Secure-1PSID=synthetic-live"])
+        XCTAssertEqual(getCookies.values.filter { $0.contains("redirect") }.count, 1)
         XCTAssertEqual(stored.values, ["__Secure-1PSID=synthetic-live"])
 
         // The stale store was answered once and is set aside: a second

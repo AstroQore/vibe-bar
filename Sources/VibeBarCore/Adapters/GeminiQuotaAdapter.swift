@@ -77,6 +77,7 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             // rather than one per refresh.
             let candidates = browserCookieImporter()
             let currentTime = now()
+            var calibrationLoginError: Error?
             for imported in candidates where imported.header != header {
                 guard !forcedReimportGate.isRejected(
                     imported.header,
@@ -93,9 +94,15 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
                         continue
                     }
                     if shouldCalibrate(error), let webFallback {
-                        let calibrated = try await webFallback(account, imported.header)
-                        storeCookieHeader(imported.header)
-                        return calibrated
+                        do {
+                            let calibrated = try await webFallback(account, imported.header)
+                            storeCookieHeader(imported.header)
+                            return calibrated
+                        } catch QuotaError.needsLogin {
+                            forcedReimportGate.reject(imported.header, now: currentTime)
+                            calibrationLoginError = QuotaError.needsLogin
+                            continue
+                        }
                     }
                     throw error
                 }
@@ -124,9 +131,16 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             if shouldCalibrate(initialError), let webFallback {
                 return try await webFallback(account, header)
             }
-            throw initialError
+            throw calibrationLoginError ?? initialError
         }
         return quota(from: snapshot, for: account)
+    }
+
+    public static func isGoogleSignInURL(_ url: URL) -> Bool {
+        guard url.scheme == "https", url.host?.lowercased() == "accounts.google.com" else { return false }
+        let path = url.path.lowercased().split(separator: "/")
+        return path.contains("signin") || path.contains("servicelogin")
+            || path.contains("accountchooser") || path.contains("interactivelogin")
     }
 
     private func quota(

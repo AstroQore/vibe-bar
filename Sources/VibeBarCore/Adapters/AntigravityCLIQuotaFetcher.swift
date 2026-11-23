@@ -1,14 +1,9 @@
 import Darwin
 import Foundation
 
-/// Reads AntiGravity's live quota from the installed `agy` CLI when the
-/// desktop language server is absent or exposes only a partial quota summary.
-///
-/// `agy` hosts the same tokenless loopback HTTPS service while its TUI is
-/// alive. Vibe Bar never sends a prompt or scrapes the TUI: it keeps a PTY
-/// drained, probes the local ports, reads the quota RPCs, then terminates only
-/// the process it launched. An already-running user-owned `agy` is reused and
-/// never stopped.
+/// Read quota from a running legacy CLI service, or start a private agy
+/// terminal and read its official /usage panel. Only processes created by
+/// this fetcher receive input and are terminated when the read finishes.
 enum AntigravityCLIQuotaFetcher {
     private static let readinessTimeout: TimeInterval = 15
     private static let pollIntervalNanoseconds: UInt64 = 350_000_000
@@ -32,6 +27,10 @@ enum AntigravityCLIQuotaFetcher {
         // Start the readiness window only once the launched process exists, so
         // probing stale user-owned `agy` processes above never eats into it.
         do {
+            if let panel = try await process.usagePanel() {
+                await process.stop()
+                return panel
+            }
             let snapshot = try await fetch(
                 pid: process.pid,
                 deadline: Date().addingTimeInterval(readinessTimeout),
@@ -192,6 +191,40 @@ private final class AntigravityCLIQuotaProcess: @unchecked Sendable {
     }
 
     var isRunning: Bool { process.isRunning }
+
+    /// Send the documented slash command only to this private process after
+    /// its prompt is ready. Never write into an existing user's terminal.
+    func usagePanel() async throws -> AntigravityResponseParser.Snapshot? {
+        let deadline = ContinuousClock.now + .seconds(9)
+        var screen = Data()
+        var requested = false
+        var buffer = [UInt8](repeating: 0, count: 16_384)
+        while isRunning, ContinuousClock.now < deadline, screen.count < 512 * 1_024 {
+            try Task.checkCancellation()
+            let count = read(primaryFD, &buffer, buffer.count)
+            if count > 0 {
+                screen.append(contentsOf: buffer.prefix(count))
+                let text = String(decoding: screen, as: UTF8.self)
+                if requested {
+                    if let snapshot = AntigravityResponseParser.parseUsagePanel(text, now: Date()) {
+                        return snapshot
+                    }
+                } else if text.contains("for shortcuts") {
+                    try primaryHandle.write(contentsOf: Data("/usage".utf8))
+                    try await Task.sleep(for: .milliseconds(150))
+                    try primaryHandle.write(contentsOf: Data([13]))
+                    screen.removeAll()
+                    requested = true
+                } else if text.contains("\u{1B}[6n") {
+                    try primaryHandle.write(contentsOf: Data("\u{1B}[1;1R".utf8))
+                    screen.removeAll()
+                }
+            } else {
+                try await Task.sleep(for: .milliseconds(80))
+            }
+        }
+        return nil
+    }
 
     func drainOutput() {
         var buffer = [UInt8](repeating: 0, count: 8_192)

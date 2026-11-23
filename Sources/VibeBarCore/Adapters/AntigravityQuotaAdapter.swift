@@ -294,6 +294,48 @@ enum AntigravityResponseParser {
         return Snapshot(buckets: buckets, planName: nil, email: nil)
     }
 
+    /// Current agy releases expose these rows through the official /usage
+    /// command. Only accept a complete panel with explicit remaining values.
+    static func parseUsagePanel(_ output: String, now: Date) -> Snapshot? {
+        let screen = output.replacingOccurrences(
+            of: #"\x1B\[[0-?]*[ -/]*[@-~]"#, with: "", options: .regularExpression
+        )
+        guard screen.contains("Models & Quota") else { return nil }
+        let lines = screen.components(separatedBy: .newlines).map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }
+        var group: QuotaSummaryGroupKind?
+        var buckets: [QuotaSummarySlot: QuotaBucket] = [:]
+        for (index, line) in lines.enumerated() {
+            switch line {
+            case "GEMINI MODELS": group = .gemini
+            case "CLAUDE AND GPT MODELS": group = .claudeGPT
+            case "Weekly Limit Remaining", "Five Hour Limit Remaining":
+                guard let group, index + 2 < lines.count,
+                      let value = lines[index + 1].split(separator: "]").last,
+                      value.hasSuffix("%"),
+                      let percent = Double(value.dropLast().trimmingCharacters(in: .whitespaces)),
+                      (0...100).contains(percent) else { continue }
+                let reset = lines[index + 2]
+                var resetAt: Date?
+                if let duration = reset.wholeMatch(of: #/Refreshes in (?:(\d+)h\s*)?(?:(\d+)m)?/#),
+                   duration.1 != nil || duration.2 != nil {
+                    let hours = Double(duration.1 ?? "") ?? 0
+                    let minutes = Double(duration.2 ?? "") ?? 0
+                    resetAt = now.addingTimeInterval(3600 * hours + 60 * minutes)
+                } else if reset != "Quota available" {
+                    continue
+                }
+                let slot = QuotaSummarySlot(group: group, cadence: line.hasPrefix("Weekly") ? .weekly : .fiveHour)
+                buckets[slot] = quotaBucket(slot: slot, remainingFraction: percent / 100, resetAt: resetAt)
+            default: continue
+            }
+        }
+        guard buckets.count == QuotaSummarySlot.displayOrder.count else { return nil }
+        return Snapshot(buckets: QuotaSummarySlot.displayOrder.compactMap { buckets[$0] },
+                        planName: nil, email: nil)
+    }
+
     static func parseUserStatus(data: Data) throws -> Snapshot {
         let response: AntigravityAPIResponse
         do {

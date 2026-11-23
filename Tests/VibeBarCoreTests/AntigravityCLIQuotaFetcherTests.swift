@@ -2,6 +2,33 @@ import XCTest
 @testable import VibeBarCore
 
 final class AntigravityCLIQuotaFetcherTests: XCTestCase {
+    func testOfficialUsagePanelPreservesGroupAndResetState() throws {
+        let panel = """
+        Models & Quota
+        GEMINI MODELS
+        Weekly Limit Remaining
+        [██] 75.25%
+        Refreshes in 100h 12m
+        Five Hour Limit Remaining
+        [██] 82.5%
+        Refreshes in 30m
+        CLAUDE AND GPT MODELS
+        Weekly Limit Remaining
+        [██] 99%
+        Refreshes in 3h
+        Five Hour Limit Remaining
+        [██] 100%
+        Quota available
+        """
+        let now = Date(timeIntervalSince1970: 1_000)
+        let snapshot = try XCTUnwrap(AntigravityResponseParser.parseUsagePanel(panel, now: now))
+        XCTAssertEqual(snapshot.buckets.map(\.id), ["gemini_five_hour", "gemini_weekly", "claude_gpt_five_hour", "claude_gpt_weekly"])
+        XCTAssertEqual(snapshot.buckets[0].usedPercent, 17.5, accuracy: 0.001)
+        XCTAssertEqual(snapshot.buckets[1].resetAt, now.addingTimeInterval(360_720))
+        XCTAssertNil(snapshot.buckets[2].resetAt)
+        XCTAssertNil(AntigravityResponseParser.parseUsagePanel(panel.replacingOccurrences(of: "75.25%", with: "pending"), now: now))
+    }
+
     func testParsesOnlyExactAgyProcessNames() {
         let output = """
           101 /Users/example/.local/bin/agy

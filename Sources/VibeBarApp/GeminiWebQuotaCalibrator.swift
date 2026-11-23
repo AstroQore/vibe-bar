@@ -149,6 +149,13 @@ private final class GeminiCalibrationSession: NSObject, WKNavigationDelegate, WK
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // The quota RPC can answer with a permission error inside HTTP 200.
+        // A completed navigation to Google's sign-in page confirms that the
+        // imported Gemini session needs renewal; there is no quota to learn.
+        if let url = webView.url, GeminiQuotaAdapter.isGoogleSignInURL(url) {
+            finish(with: .failure(QuotaError.needsLogin))
+            return
+        }
         guard !didRetryUsageNavigation else { return }
         didRetryUsageNavigation = true
         Task { @MainActor [weak self, weak webView] in
