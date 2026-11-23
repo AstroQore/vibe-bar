@@ -2184,6 +2184,13 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
   Google rpcid from search results, persist response bodies/cookies, or route
   Gemini live quota through Gemini CLI credentials. Always normalize the
   resulting buckets to 5 Hours followed by Weekly.
+  Keep per-refresh session cookies isolated to the Gemini HTTPS origin. A
+  Google traffic-check redirect ends the automatic request. The import UI
+  reports saving a browser session separately from verifying both live
+  windows. Starting the app with `--import-gemini-cookies` opens the Google AI
+  settings and invokes that same user-initiated import. An authenticated
+  usage page rendered without a captured RPC can
+  supply both labelled percentages and reset times when it says it just updated.
 - **Forecast overlays need one coherent visual vocabulary.** The current quota
   remains the primary summary-bar layer. The elapsed-time-only pace uses the
   substantial neutral inset tick established by `PaceMarkerCapsule`; the

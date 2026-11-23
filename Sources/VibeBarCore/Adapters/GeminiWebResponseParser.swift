@@ -172,6 +172,37 @@ public enum GeminiWebResponseParser {
         return GeminiWebQuotaSnapshot(buckets: buckets, planName: planName, email: email)
     }
 
+    /// The English usage page renders each percentage and reset time in
+    /// its own labelled list item. Accept a snapshot only when both rows
+    /// describe a plausible current window in the page's local time zone.
+    public static func renderedUsage(rows: [String], plan: String?, now: Date, timeZone: TimeZone) -> GeminiWebQuotaSnapshot? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        var buckets: [QuotaBucket] = []
+        for (type, label) in [(1, "Current usage"), (2, "Weekly limit")] {
+            let matches = rows.filter { $0.components(separatedBy: .newlines).first?.trimmingCharacters(in: .whitespaces) == label }
+            guard matches.count == 1, let row = matches.first,
+                  let percent = row.firstMatch(of: #/\b(\d{1,3}(?:\.\d+)?)% used\b/#),
+                  let used = Double(percent.1), (0...100).contains(used),
+                  let reset = row.firstMatch(of: #/Resets (?:([A-Z][a-z]{2}) (\d{1,2}) )?at (\d{1,2}):(\d{2}) (AM|PM)/#),
+                  let hour = Int(reset.3), (1...12).contains(hour),
+                  let minute = Int(reset.4), (0..<60).contains(minute) else { return nil }
+            var parts = DateComponents(hour: hour % 12 + (reset.5 == "PM" ? 12 : 0), minute: minute, second: 0)
+            if let month = reset.1, let day = reset.2 {
+                let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                guard let index = months.firstIndex(of: String(month)), let day = Int(day) else { return nil }
+                parts.month = index + 1
+                parts.day = day
+            }
+            let descriptor = bucketDescriptor(forType: type)
+            guard let date = calendar.nextDate(after: now.addingTimeInterval(-59), matching: parts, matchingPolicy: .strict),
+                  let duration = descriptor.windowSeconds, date.timeIntervalSince(now) <= Double(duration) + 60 else { return nil }
+            buckets.append(QuotaBucket(id: descriptor.id, title: descriptor.title, shortLabel: descriptor.shortLabel,
+                                       usedPercent: used, resetAt: date, rawWindowSeconds: duration))
+        }
+        return GeminiWebQuotaSnapshot(buckets: buckets, planName: plan, email: nil)
+    }
+
     /// Normalize both fresh responses and persisted caches. Older cache files
     /// may retain the server's weekly-first order even after a protocol change
     /// prevents an immediate refresh; every surface should still render the

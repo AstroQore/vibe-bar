@@ -63,6 +63,9 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         do {
             snapshot = try await fetcher.fetch(cookieHeader: header)
         } catch let initialError {
+            if initialError as? QuotaError == GeminiWebQuotaFetcher.trafficVerificationError {
+                throw initialError
+            }
             // Google rotates the browser session more often than Vibe Bar's
             // persisted Keychain copy. Refresh it directly from an installed
             // browser once before surfacing a login error; this keeps the

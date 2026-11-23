@@ -8,6 +8,20 @@ import XCTest
 /// JSON payload) against fixtures captured from a live PRO session
 /// with the numbers scrubbed to synthetic values.
 final class GeminiWebResponseParserTests: XCTestCase {
+    func testRenderedUsageMatchesEachLabelAndRollsMidnightAndNewYear() throws {
+        let clock = ISO8601DateFormatter()
+        let now = try XCTUnwrap(clock.date(from: "2026-12-31T22:15:13Z"))
+        let zone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let rows = ["Weekly limit\nResets Jan 4 at 3:05 AM\n9% used", "Current usage\ninfo\n1% used\nResets at 1:05 AM"]
+        let quota = try XCTUnwrap(GeminiWebResponseParser.renderedUsage(rows: rows, plan: "Ultra", now: now, timeZone: zone))
+        XCTAssertEqual(quota.buckets.map(\.id), ["five_hour", "weekly"])
+        XCTAssertEqual(quota.buckets.map(\.usedPercent), [1, 9])
+        XCTAssertEqual(quota.buckets.map(\.resetAt), [clock.date(from: "2027-01-01T01:05:00Z"), clock.date(from: "2027-01-04T03:05:00Z")])
+        XCTAssertNil(GeminiWebResponseParser.renderedUsage(rows: [rows[0]], plan: nil, now: now, timeZone: zone))
+        XCTAssertNil(GeminiWebResponseParser.renderedUsage(rows: rows + [rows[0]], plan: nil, now: now, timeZone: zone))
+        XCTAssertNil(GeminiWebResponseParser.renderedUsage(rows: [rows[1], rows[0].replacingOccurrences(of: "Jan 4", with: "Jan 25")], plan: nil, now: now, timeZone: zone))
+    }
+
     // MARK: - stripAntiHijackingPrefix
 
     func testStripAntiHijackingPrefixRemovesProperPrefix() {

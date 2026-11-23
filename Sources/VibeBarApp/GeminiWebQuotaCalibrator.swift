@@ -49,6 +49,7 @@ private final class GeminiCalibrationSession: NSObject, WKNavigationDelegate, WK
     private var timeoutTask: Task<Void, Never>?
     private var candidate: Candidate?
     private var resolved = false
+    private var sawRenderedMismatch = false
     private var didRetryUsageNavigation = false
 
     init(account: AccountIdentity, cookieHeader: String) {
@@ -96,7 +97,9 @@ private final class GeminiCalibrationSession: NSObject, WKNavigationDelegate, WK
             timeoutTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 18_000_000_000)
                 guard let self, !Task.isCancelled else { return }
-                if let candidate = self.candidate {
+                if let rendered = await self.renderedUsage() {
+                    self.finish(with: .success(rendered))
+                } else if let candidate = self.candidate, !self.sawRenderedMismatch {
                     self.finish(with: .success(self.quota(from: candidate)))
                 } else {
                     self.finish(with: .failure(QuotaError.parseFailure(
@@ -189,6 +192,7 @@ private final class GeminiCalibrationSession: NSObject, WKNavigationDelegate, WK
             let matches = expected.allSatisfy { value in
                 rendered.contains { abs($0 - value) <= 2.0 }
             }
+            sawRenderedMismatch = !matches
             guard matches else { return }
             finish(with: .success(quota(from: candidate)))
             return
@@ -200,6 +204,33 @@ private final class GeminiCalibrationSession: NSObject, WKNavigationDelegate, WK
         guard attempt < 2 else { return }
         try? await Task.sleep(nanoseconds: 700_000_000)
         await validateAgainstRenderedPage(candidate, attempt: attempt + 1)
+    }
+
+    /// A signed-in usage page may render from its bootstrap data without
+    /// sending a new quota RPC. Accept only the freshly rendered labelled
+    /// windows from the exact Gemini origin. Login and challenge pages are
+    /// never interpreted as meters.
+    private func renderedUsage() async -> AccountQuota? {
+        guard let webView, let url = webView.url, url.scheme == "https",
+              url.host == "gemini.google.com", url.path == "/usage" else { return nil }
+        let script = #"""
+        (() => {
+          if (location.origin !== 'https://gemini.google.com' || location.pathname !== '/usage') return null;
+          const list = document.querySelector('ul[aria-label="Usage windows"]');
+          if (!list || !document.body.innerText.includes('Updated just now')) return null;
+          const plan = document.body.innerText.split('\n').map(s => s.trim()).find(s => /^(ultra|pro|plus|free)$/i.test(s));
+          return { rows: Array.from(list.children, node => node.innerText), plan: plan || "",
+                   zone: Intl.DateTimeFormat().resolvedOptions().timeZone };
+        })()
+        """#
+        guard let payload = try? await webView.evaluateJavaScript(script) as? [String: Any],
+              let rows = payload["rows"] as? [String], let zone = payload["zone"] as? String,
+              let timeZone = TimeZone(identifier: zone) else { return nil }
+        let plan = (payload["plan"] as? String).flatMap { $0.isEmpty ? nil : $0.capitalized }
+        let now = Date()
+        guard let snapshot = GeminiWebResponseParser.renderedUsage(rows: rows, plan: plan, now: now, timeZone: timeZone) else { return nil }
+        return AccountQuota(accountId: account.id, tool: .gemini, buckets: snapshot.buckets, plan: snapshot.planName,
+                            email: account.email, queriedAt: now, error: nil)
     }
 
     private func quota(from candidate: Candidate) -> AccountQuota {

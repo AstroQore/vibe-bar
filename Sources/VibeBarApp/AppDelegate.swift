@@ -66,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         presentOnboardingIfNeeded(environment: env, hadSettingsFile: hadSettingsFile)
 
+        if CommandLine.arguments.contains("--import-gemini-cookies") {
+            env.showSettings(.coreProvider(.gemini))
+            env.importGeminiBrowserCookies()
+        }
         CookieRefreshScheduler.shared.start()
         observeCookieRefreshes(environment: env)
 

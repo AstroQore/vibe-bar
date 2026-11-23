@@ -48,6 +48,65 @@ final class GeminiDualFetchTests: XCTestCase {
         }
     }
 
+    func testBootstrapCanUpdateFirstPartyCookiesBeforePostingQuota() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let posted = LockedStrings()
+        GeminiAdapterStubURLProtocol.handler = { request in
+            let url = try XCTUnwrap(request.url)
+            if request.httpMethod == "GET" {
+                let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                    headerFields: ["Set-Cookie": "fixture=updated; Path=/; Secure; HttpOnly"]))
+                return (response, Data(#"<script>{"SNlM0e":"fixture"}</script>"#.utf8))
+            }
+            posted.append(request.value(forHTTPHeaderField: "Cookie") ?? "")
+            let row: [Any] = ["wrb.fr", GeminiWebUsageRecipe.fallback.rpcID, "[2,[[1,0.25,1,[[1800000000]]],[1,0.1,2,[[1800003000]]]],false]", NSNull()]
+            let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (response, try JSONSerialization.data(withJSONObject: [row]))
+        }
+        let fetcher = GeminiWebQuotaFetcher(session: URLSession(configuration: config), recipeProvider: { .fallback })
+        let quota = try await fetcher.fetch(cookieHeader: "fixture=original")
+        XCTAssertEqual(quota.buckets.count, 2)
+        XCTAssertEqual(posted.values, ["fixture=updated"])
+    }
+
+    func testSignInBootstrapTokenCannotValidateAnImportedSession() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let methods = LockedStrings()
+        GeminiAdapterStubURLProtocol.handler = { request in
+            methods.append(request.httpMethod ?? "")
+            let login = try XCTUnwrap(URL(string: "https://accounts.google.com/v3/signin/identifier"))
+            let response = try XCTUnwrap(HTTPURLResponse(url: login, statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (response, Data(#"<script>{"SNlM0e":"synthetic-login-token"}</script>"#.utf8))
+        }
+        let signedOut = await GeminiWebQuotaFetcher.isSignedOut(cookieHeader: "SID=synthetic", session: session)
+        XCTAssertTrue(signedOut)
+        XCTAssertEqual(methods.values, ["GET"])
+    }
+
+    func testTrafficCheckDefersToUserWithoutTryingOtherProfiles() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let methods = LockedStrings()
+        GeminiAdapterStubURLProtocol.handler = { request in
+            methods.append(request.httpMethod ?? "")
+            let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 302,
+                                                          httpVersion: nil, headerFields: ["Location": "https://www.google.com/sorry/index"]))
+            return (response, Data())
+        }
+        let adapter = GeminiQuotaAdapter(session: URLSession(configuration: config), cookieHeader: { "SID=synthetic" },
+                                         browserCookieImporter: { XCTFail("Do not retry a traffic check with another profile"); return [] })
+        do {
+            _ = try await adapter.fetch(for: account(source: .webCookie))
+            XCTFail("Expected verification requirement")
+        } catch let error as QuotaError {
+            XCTAssertEqual(error, GeminiWebQuotaFetcher.trafficVerificationError)
+        }
+        XCTAssertEqual(methods.values, ["GET"])
+    }
+
     func testOAuthAccountThrowsUnknownBecauseCLIQuotaIsRemoved() async throws {
         let (adapter, temp) = try makeEmptyHomeAdapter()
         defer { cleanup(temp) }
@@ -197,6 +256,18 @@ final class GeminiDualFetchTests: XCTestCase {
         )
         XCTAssertEqual(result?.sourceLabel, "Chrome (Default)")
         XCTAssertEqual(stored.values, ["live"])
+    }
+
+    func testImportReportsTrafficCheckSeparatelyFromSavingCookies() async throws {
+        let checked = LockedStrings()
+        let stored = LockedStrings()
+        let result = try await GeminiBrowserCookieImporter.importValidatedAndStoreFromBrowsers(
+            validate: { header in checked.append(header); return GeminiWebQuotaFetcher.trafficVerificationError },
+            candidates: { [.init(header: "first", sourceLabel: "A", cookieCount: 1), .init(header: "second", sourceLabel: "B", cookieCount: 1)] },
+            store: { stored.append($0) })
+        XCTAssertEqual(result?.validationError, GeminiWebQuotaFetcher.trafficVerificationError)
+        XCTAssertEqual(checked.values, ["first"])
+        XCTAssertEqual(stored.values, ["first"])
     }
 
     func testValidatedImportKeepsFirstCandidateWhenAllAreSignedOut() async throws {

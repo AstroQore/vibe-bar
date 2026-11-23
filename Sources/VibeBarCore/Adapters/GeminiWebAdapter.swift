@@ -24,6 +24,7 @@ import Foundation
 struct GeminiWebQuotaFetcher: Sendable {
     /// Set to `true` now that the live quota endpoint is implemented.
     static let spikeComplete = true
+    static let trafficVerificationError = QuotaError.network("Google requested a traffic check before returning Gemini usage. The imported session has not been verified.")
     static let quotaRPCId = GeminiWebUsageRecipe.fallback.rpcID
 
     private let session: URLSession
@@ -59,23 +60,50 @@ struct GeminiWebQuotaFetcher: Sendable {
     /// out. Transport errors and response-shape drift answer false: neither
     /// says anything about whether the session is alive.
     static func isSignedOut(cookieHeader: String, session: URLSession? = nil) async -> Bool {
+        await validationError(cookieHeader: cookieHeader, session: session) == .needsLogin
+    }
+
+    static func validationError(cookieHeader: String, session: URLSession? = nil) async -> QuotaError? {
         do {
-            _ = try await GeminiWebQuotaFetcher(session: session ?? validationSession).fetch(cookieHeader: cookieHeader)
-            return false
+            let snapshot = try await GeminiWebQuotaFetcher(session: session ?? validationSession).fetch(cookieHeader: cookieHeader)
+            let ids = Set(snapshot.buckets.map(\.id))
+            guard ids.contains(GeminiWebResponseParser.currentUsageBucketId), ids.contains(GeminiWebResponseParser.weeklyUsageBucketId) else {
+                return .parseFailure("Gemini usage did not return both quota windows.")
+            }
+            return nil
+        } catch let error as QuotaError {
+            return error
         } catch {
-            return (error as? QuotaError) == .needsLogin
+            return .network(error.localizedDescription)
         }
     }
 
     func fetch(cookieHeader: String, email: String? = nil) async throws -> GeminiWebQuotaSnapshot {
         let trimmed = cookieHeader.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw QuotaError.noCredential }
-        let xsrf = try await fetchXsrfToken(cookieHeader: trimmed)
+        // Isolate each imported profile. Let the official Gemini origin
+        // update its own cookies during this one refresh. The jar is never
+        // persisted, shared with another profile or sent to a sibling origin.
+        let config = session.configuration
+        config.httpCookieStorage = URLSessionConfiguration.ephemeral.httpCookieStorage
+        config.httpShouldSetCookies = true
+        config.httpCookieAcceptPolicy = .onlyFromMainDocumentDomain
+        config.urlCache = nil
+        guard let jar = config.httpCookieStorage else { throw QuotaError.noCredential }
+        for pair in CookieHeaderNormalizer.pairs(from: trimmed) {
+            if let cookie = HTTPCookie(properties: [.name: pair.name, .value: pair.value, .domain: "gemini.google.com",
+                                                     .path: "/", .secure: true]) {
+                jar.setCookie(cookie)
+            }
+        }
+        let client = URLSession(configuration: config)
+        defer { client.finishTasksAndInvalidate() }
+        let xsrf = try await fetchXsrfToken(client: client)
         let learned = recipeProvider()
         do {
             return try await fetch(
                 recipe: learned,
-                cookieHeader: trimmed,
+                client: client,
                 xsrfToken: xsrf,
                 email: email
             )
@@ -86,10 +114,11 @@ struct GeminiWebQuotaFetcher: Sendable {
             // that re-derived the fallback's own rpcID and argument differs
             // from `.fallback` on `learnedAt` alone, and replaying it buys a
             // second identical round trip and the same failure.
-            guard !learned.matchesContract(of: .fallback) else { throw error }
+            guard error as? QuotaError != Self.trafficVerificationError,
+                  !learned.matchesContract(of: .fallback) else { throw error }
             return try await fetch(
                 recipe: .fallback,
-                cookieHeader: trimmed,
+                client: client,
                 xsrfToken: xsrf,
                 email: email
             )
@@ -98,12 +127,12 @@ struct GeminiWebQuotaFetcher: Sendable {
 
     private func fetch(
         recipe: GeminiWebUsageRecipe,
-        cookieHeader: String,
+        client: URLSession,
         xsrfToken: String,
         email: String?
     ) async throws -> GeminiWebQuotaSnapshot {
         let payload = try await postQuotaRequest(
-            cookieHeader: cookieHeader,
+            client: client,
             xsrfToken: xsrfToken,
             recipe: recipe
         )
@@ -115,29 +144,35 @@ struct GeminiWebQuotaFetcher: Sendable {
         )
     }
 
-    private func fetchXsrfToken(cookieHeader: String) async throws -> String {
+    private func fetchXsrfToken(client: URLSession) async throws -> String {
         guard let url = URL(string: "https://gemini.google.com/usage?pli=1") else {
             throw QuotaError.unknown("Gemini Web URL malformed.")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        if let cookies = client.configuration.httpCookieStorage?.cookies(for: url) {
+            request.setValue(HTTPCookie.requestHeaderFields(with: cookies)["Cookie"], forHTTPHeaderField: "Cookie")
+        }
         request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
         request.setValue(
             "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             forHTTPHeaderField: "Accept"
         )
-        request.httpShouldHandleCookies = false
+        request.mainDocumentURL = URL(string: "https://gemini.google.com/usage")
 
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await client.data(for: request, delegate: GeminiWebRedirectDelegate())
         } catch {
             throw QuotaError.network(error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse else {
             throw QuotaError.network("Gemini Web initial GET returned no HTTP response.")
+        }
+        if GeminiWebRedirectDelegate.requiresVerification(http) { throw Self.trafficVerificationError }
+        if let target = GeminiWebRedirectDelegate.redirectTarget(http), GeminiQuotaAdapter.isGoogleSignInURL(target) {
+            throw QuotaError.needsLogin
         }
         switch http.statusCode {
         case 401, 403: throw QuotaError.needsLogin
@@ -146,14 +181,28 @@ struct GeminiWebQuotaFetcher: Sendable {
         default:
             throw QuotaError.network("Gemini Web initial GET HTTP \(http.statusCode).")
         }
+        // URLSession follows the /usage redirect. Google's sign-in HTML
+        // also contains SNlM0e, but that token cannot authorize a quota RPC.
+        if let landedURL = http.url, GeminiQuotaAdapter.isGoogleSignInURL(landedURL) {
+            throw QuotaError.needsLogin
+        }
         guard let body = String(data: data, encoding: .utf8) else {
             throw QuotaError.parseFailure("Gemini Web initial GET body not UTF-8.")
         }
-        return try Self.extractXsrfToken(from: body)
+        let token = try Self.extractXsrfToken(from: body)
+        // Some URL protocols deliver the response before updating the
+        // configured cookie store. Apply the official origin's successful
+        // bootstrap response before constructing the second request.
+        if let finalURL = http.url, finalURL.scheme == "https", finalURL.host == "gemini.google.com",
+           let fields = http.allHeaderFields as? [String: String], let jar = client.configuration.httpCookieStorage {
+            let issued = HTTPCookie.cookies(withResponseHeaderFields: fields, for: finalURL)
+            jar.setCookies(issued, for: finalURL, mainDocumentURL: finalURL)
+        }
+        return token
     }
 
     private func postQuotaRequest(
-        cookieHeader: String,
+        client: URLSession,
         xsrfToken: String,
         recipe: GeminiWebUsageRecipe
     ) async throws -> Data {
@@ -173,14 +222,16 @@ struct GeminiWebQuotaFetcher: Sendable {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        if let cookies = client.configuration.httpCookieStorage?.cookies(for: url) {
+            request.setValue(HTTPCookie.requestHeaderFields(with: cookies)["Cookie"], forHTTPHeaderField: "Cookie")
+        }
         request.setValue("application/x-www-form-urlencoded;charset=UTF-8",
                          forHTTPHeaderField: "Content-Type")
         request.setValue("1", forHTTPHeaderField: "X-Same-Domain")
         request.setValue("https://gemini.google.com", forHTTPHeaderField: "Origin")
         request.setValue("https://gemini.google.com/usage?pli=1", forHTTPHeaderField: "Referer")
         request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
-        request.httpShouldHandleCookies = false
+        request.mainDocumentURL = URL(string: "https://gemini.google.com/usage")
 
         let requestEnvelope: [Any] = [[[recipe.rpcID, recipe.argument, NSNull(), "generic"]]]
         guard let envelopeData = try? JSONSerialization.data(withJSONObject: requestEnvelope),
@@ -194,12 +245,16 @@ struct GeminiWebQuotaFetcher: Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await client.data(for: request, delegate: GeminiWebRedirectDelegate())
         } catch {
             throw QuotaError.network(error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse else {
             throw QuotaError.network("Gemini Web batchexecute returned no HTTP response.")
+        }
+        if GeminiWebRedirectDelegate.requiresVerification(http) { throw Self.trafficVerificationError }
+        if let target = GeminiWebRedirectDelegate.redirectTarget(http), GeminiQuotaAdapter.isGoogleSignInURL(target) {
+            throw QuotaError.needsLogin
         }
         switch http.statusCode {
         case 401, 403: throw QuotaError.needsLogin
@@ -237,5 +292,32 @@ struct GeminiWebQuotaFetcher: Sendable {
 
     nonisolated private static var safariUA: String {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+    }
+}
+
+/// Leave a Google traffic check for the visible usage page. Following
+/// these redirects unattended just loops and can trigger more traffic checks.
+private final class GeminiWebRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    static func requiresVerification(_ response: HTTPURLResponse) -> Bool {
+        redirectTarget(response).map(isTrafficCheck) == true
+    }
+
+    static func redirectTarget(_ response: HTTPURLResponse) -> URL? {
+        guard (300..<400).contains(response.statusCode), let location = response.value(forHTTPHeaderField: "Location") else { return nil }
+        return URL(string: location, relativeTo: response.url)?.absoluteURL
+    }
+
+    private static func isTrafficCheck(_ url: URL) -> Bool {
+        url.scheme == "https" && url.host?.lowercased() == "www.google.com" && url.path.hasPrefix("/sorry/")
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        guard let url = request.url, url.scheme == "https", url.host == "gemini.google.com", url.port == nil || url.port == 443 else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
     }
 }
