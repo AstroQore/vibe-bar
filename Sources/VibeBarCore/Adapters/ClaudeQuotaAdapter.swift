@@ -161,8 +161,9 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
                 continue
             }
         }
-        guard await reimportWebCookieOnStale(),
-              let fresh = storedWebCookieHeaders().first, !headers.contains(fresh)
+        let reimported = await reimportWebCookieOnStale()
+        SafeLog.net("Claude stored web session(s) rejected (\(headers.count)); browser re-import \(reimported ? "found a session" : "found none")")
+        guard reimported, let fresh = storedWebCookieHeaders().first, !headers.contains(fresh)
         else { throw QuotaError.needsLogin }
         return try await fetchWithWebCookiesOnce(for: account, cookieHeader: fresh)
     }

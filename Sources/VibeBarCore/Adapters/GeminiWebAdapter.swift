@@ -185,7 +185,11 @@ struct GeminiWebQuotaFetcher: Sendable {
             throw QuotaError.network("Gemini usage query returned no HTTP response.")
         }
         if GeminiWebRedirectDelegate.requiresVerification(http) { throw Self.trafficVerificationError }
-        if GeminiWebRedirectDelegate.redirectTarget(http) != nil { throw QuotaError.needsLogin }
+        if let target = GeminiWebRedirectDelegate.redirectTarget(http) {
+            SafeLog.net("Gemini usage query redirected to \(target.host ?? "?")\(SafeLog.sanitize(target.path))")
+            throw QuotaError.needsLogin
+        }
+        if http.statusCode != 200 { SafeLog.net("Gemini usage query HTTP \(http.statusCode)") }
         switch http.statusCode {
         case 200: break
         case 401, 403: throw QuotaError.needsLogin

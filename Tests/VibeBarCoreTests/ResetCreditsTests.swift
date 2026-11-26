@@ -79,4 +79,22 @@ final class ResetCreditsTests: XCTestCase {
         XCTAssertEqual(decoded.resetCredits?.availableCount, 2)
         XCTAssertEqual(decoded.resetCredits?.nextExpiresAt, expiry)
     }
+
+    func testCarriedForwardDropsGrantsThatHaveLapsed() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let soon = now.addingTimeInterval(3_600)
+        let credits = ResetCredits(
+            availableCount: 3,
+            availableExpirations: [now.addingTimeInterval(-60), soon, soon],
+            tokens: [
+                ResetCreditToken(id: "lapsed", remaining: 1, expiresAt: now.addingTimeInterval(-60)),
+                ResetCreditToken(id: "live", remaining: 2, expiresAt: soon)
+            ]
+        )
+        let carried = credits.carriedForward(now: now)
+        XCTAssertEqual(carried.availableCount, 2)
+        XCTAssertEqual(carried.availableExpirations, [soon, soon])
+        XCTAssertEqual(carried.nextExpiresAt, soon)
+        XCTAssertEqual(carried.tokens, credits.tokens)
+    }
 }

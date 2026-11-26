@@ -48,6 +48,23 @@ public struct ResetCredits: Codable, Hashable, Sendable {
     /// decide whether to render the row at all).
     public var hasAvailable: Bool { availableCount > 0 }
 
+    /// These credits as a later refresh may show them when its source could
+    /// not report credits at all: grants that have since lapsed no longer
+    /// count as spendable.
+    public func carriedForward(now: Date) -> ResetCredits {
+        guard let tokens else { return self }
+        let live = tokens.filter { $0.remaining > 0 && ($0.expiresAt.map { $0 > now } ?? true) }
+        let expirations = live.flatMap { token in
+            token.expiresAt.map { Array(repeating: $0, count: token.remaining) } ?? []
+        }
+        let available = live.reduce(0) { $0 + $1.remaining }
+        var copy = self
+        copy.availableCount = min(availableCount, available)
+        copy.availableExpirations = expirations.count == copy.availableCount ? expirations.sorted() : nil
+        copy.nextExpiresAt = copy.availableExpirations?.min()
+        return copy
+    }
+
     /// Bucket ids the available credits clear, in first-seen order. Empty
     /// when the provider does not say (Codex, Grok).
     public var clearedBucketIDs: [String] {

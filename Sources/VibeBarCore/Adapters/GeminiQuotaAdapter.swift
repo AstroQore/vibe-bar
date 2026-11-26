@@ -79,6 +79,7 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             // aside for an hour so a dead store costs one request per hour
             // rather than one per refresh.
             let candidates = browserCookieImporter()
+            SafeLog.net("Gemini stored session failed (\((initialError as? QuotaError)?.logSafeMessage ?? "error")); \(candidates.count) browser session(s) to try")
             let currentTime = now()
             var calibrationLoginError: Error?
             for imported in candidates where imported.header != header {
