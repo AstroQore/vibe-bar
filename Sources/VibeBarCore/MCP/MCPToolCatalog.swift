@@ -174,6 +174,8 @@ public enum MCPToolCatalog {
             buckets ('5 Hours', 'Weekly', per-model groups). Answers 'how much Codex / Claude / Gemini / \
             Grok / Cursor / Muse Code / Muse do I have left'. Percentages come back both used and remaining. \
             Ollama's reported credit wallet is under accounts[].ollamaCredits, separate from quota buckets. \
+            Manual usage-limit resets (Codex, Claude, Grok) are under accounts[].resetCredits: how many are \
+            left and, per credit, when it expires and which bucket ids it clears. \
             'lastUpdated' is when the numbers \
             were fetched; 'lastAttempted' is when a refresh last ran, successful or not — quote \
             'generatedAt' when reporting. For tokens spent or money, use usage.summary or cost.snapshot \

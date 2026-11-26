@@ -136,6 +136,9 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
     public let error: String?
     public let chatAllowance: MCPChatAllowanceDTO?
     public let ollamaCredits: MCPOllamaCreditUsageDTO?
+    /// Manual usage-limit resets the account can still spend. Absent when
+    /// the provider has no such credits or its source did not report them.
+    public let resetCredits: MCPResetCreditsDTO?
 
     public init(
         accountId: String,
@@ -151,7 +154,8 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
         inFlight: Bool,
         error: String?,
         chatAllowance: MCPChatAllowanceDTO? = nil,
-        ollamaCredits: MCPOllamaCreditUsageDTO? = nil
+        ollamaCredits: MCPOllamaCreditUsageDTO? = nil,
+        resetCredits: MCPResetCreditsDTO? = nil
     ) {
         self.accountId = accountId
         self.tool = tool
@@ -167,6 +171,30 @@ public struct MCPQuotaAccountDTO: Codable, Equatable, Sendable {
         self.error = error
         self.chatAllowance = chatAllowance
         self.ollamaCredits = ollamaCredits
+        self.resetCredits = resetCredits
+    }
+}
+
+/// Reset credits (Codex, Claude, Grok): how many are left and, per credit,
+/// when it lapses and which of this account's `buckets[].id` it clears.
+/// `credits` can be shorter than `availableCount` when a provider reports a
+/// count without every expiry; `clears` is empty when it does not say.
+/// Provider grant ids are never emitted.
+public struct MCPResetCreditsDTO: Codable, Equatable, Sendable {
+    public struct Credit: Codable, Equatable, Sendable {
+        public let expiresAt: Date
+        public let clears: [String]
+    }
+
+    public let availableCount: Int
+    public let nextExpiresAt: Date?
+    public let credits: [Credit]
+
+    init(_ credits: ResetCredits) {
+        availableCount = credits.availableCount
+        let spendable = credits.availableCount > 0 ? credits.spendable : []
+        self.credits = spendable.map { Credit(expiresAt: $0.expiresAt, clears: $0.clears) }
+        nextExpiresAt = spendable.map(\.expiresAt).min()
     }
 }
 
@@ -253,7 +281,8 @@ extension MCPQuotaAccountDTO {
             inFlight: inFlight,
             error: error?.agentFacingMessage,
             chatAllowance: quota.chatGPTChat.map(MCPChatAllowanceDTO.init),
-            ollamaCredits: quota.ollamaCredits.map(MCPOllamaCreditUsageDTO.init)
+            ollamaCredits: quota.ollamaCredits.map(MCPOllamaCreditUsageDTO.init),
+            resetCredits: quota.resetCredits.map(MCPResetCreditsDTO.init)
         )
     }
 }
