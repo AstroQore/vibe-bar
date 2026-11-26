@@ -534,13 +534,15 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
         inner.discoverSessionFiles(homeDirectory: homeDirectory)
     }
 
-    /// The kit's metadata, with one host-side correction: an old Codex
+    /// The kit's metadata, with two host-side corrections. A Claude row
+    /// takes the desktop app's title (`ClaudeTitleRepair`). And an old Codex
     /// guardian rollout that the kit linked to itself is re-pointed at its
     /// real parent, or unlinked when it never recorded one. See
     /// `CodexReviewLinkRepair`. Only the indexer sees this; the deleter's
     /// re-parse compares session ids, which the repair never changes.
     func extractMetadata(fileURL: URL) throws -> SessionSummary {
-        CodexReviewLinkRepair.repaired(try inner.extractMetadata(fileURL: fileURL), fileURL: fileURL)
+        let summary = CodexReviewLinkRepair.repaired(try inner.extractMetadata(fileURL: fileURL), fileURL: fileURL)
+        return ClaudeTitleRepair.repaired(summary)
     }
 
     func boundedIndexReadPlan(
@@ -562,7 +564,9 @@ struct BoundedSessionAdapter: SessionProviderAdapter {
                 return CodexReviewLinkRepair.repaired(summary, fileURL: fileURL, headerLimit: headLimit)
             }
         case let adapter as ClaudeSessionAdapter:
-            extractMetadata = { try adapter.extractMetadata(fileURL: fileURL, headByteLimit: headLimit) }
+            extractMetadata = {
+                ClaudeTitleRepair.repaired(try adapter.extractMetadata(fileURL: fileURL, headByteLimit: headLimit))
+            }
         case let adapter as ClaudeCoworkSessionAdapter:
             extractMetadata = { try adapter.extractMetadata(fileURL: fileURL, headByteLimit: headLimit) }
         default:

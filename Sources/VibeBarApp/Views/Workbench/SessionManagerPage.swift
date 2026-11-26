@@ -240,6 +240,10 @@ struct SessionFiltersBar: View {
                 HStack(spacing: 7) {
                     searchField
                     searchScopeMenu
+                    // Early in the strip: it decides which sessions the list
+                    // holds at all, and at the end it sat past the right edge
+                    // of a narrow window, in a strip with no scroll bar.
+                    threadsMenu
                     directoryFilterButton
                     indexStatus
                     SectionRefreshButton(isRefreshing: model.indexProgress != nil) {
@@ -248,7 +252,6 @@ struct SessionFiltersBar: View {
                     .help(L10n.Workbench.Sessions.refreshHelp)
                     rangeMenu
                     sortMenu
-                    threadsMenu
                     optionsMenu
                     deleteControls
                     outlineToggle
@@ -445,12 +448,12 @@ struct SessionFiltersBar: View {
             Text(L10n.Workbench.Sessions.Threads.foldedNote)
             Divider()
             Toggle(
-                L10n.Workbench.Sessions.Threads.showExec(count: AppLocale.number(list.showsExec ? execShown : exec)),
+                L10n.Workbench.Sessions.Threads.showExec(count: AppLocale.number(list.showsExec || list.isSearching ? execShown : exec)),
                 isOn: Binding(get: { list.showsExec }, set: { list.showsExec = $0 })
             )
             Toggle(
                 L10n.Workbench.Sessions.Threads.showAutomation(
-                    count: AppLocale.number(list.showsAutomation ? automationShown : automation)
+                    count: AppLocale.number(list.showsAutomation || list.isSearching ? automationShown : automation)
                 ),
                 isOn: Binding(get: { list.showsAutomation }, set: { list.showsAutomation = $0 })
             )
