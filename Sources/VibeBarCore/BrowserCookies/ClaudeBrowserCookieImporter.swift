@@ -65,14 +65,7 @@ public enum ClaudeBrowserCookieImporter {
             }
 
             for store in stores {
-                let pairs = store.records.map { record in
-                    (name: record.name, value: record.value)
-                }
-                guard !isDeviceBound(cookieNames: pairs.map(\.name)) else {
-                    logger?("\(browser.displayName) (\(store.store.profile.name)) Claude session is device-bound; skipping")
-                    continue
-                }
-                guard let header = sessionHeader(from: pairs) else { continue }
+                guard let header = sessionHeader(from: store.records, now: Date()) else { continue }
                 let label = "\(browser.displayName) (\(store.store.profile.name))"
                 return Result(
                     header: header,
@@ -85,13 +78,27 @@ public enum ClaudeBrowserCookieImporter {
         return nil
     }
 
+    /// The header one browser store can contribute right now.
+    ///
     /// claude.ai binds a Chrome session to the device (Device Bound Session
     /// Credentials): the session key is only honoured next to a
     /// `__Host-sessionBinding` cookie that Chrome re-signs every few minutes
-    /// with a key that never leaves the browser. A session key copied out of
-    /// such a store is rejected, so the store is not an import source.
-    public static func isDeviceBound(cookieNames: [String]) -> Bool {
-        cookieNames.contains { $0.hasPrefix("__Host-sessionBinding") }
+    /// with a key that never leaves the browser. A bound store is therefore
+    /// usable only while one of those cookies is still inside its lifetime;
+    /// the header carries it, and the next refresh imports a newer one.
+    public static func sessionHeader(from records: [BrowserCookieRecord], now: Date) -> String? {
+        var pairs = records.filter { $0.name == "sessionKey" }.map { (name: $0.name, value: $0.value) }
+        guard let sessionKey = sessionHeader(from: pairs) else { return nil }
+        let bindingNames = ClaudeWebCookieStore.sessionBindingCookieNames
+        let binding = records.filter { bindingNames.contains($0.name) }
+        guard !binding.isEmpty else { return sessionKey }
+        pairs = binding
+            .filter { ($0.expires ?? .distantPast) > now && !$0.value.isEmpty }
+            .map { (name: $0.name, value: $0.value) }
+        guard !pairs.isEmpty else { return nil }
+        return ClaudeWebCookieStore.minimizedCookieHeader(
+            from: ([sessionKey] + pairs.map { "\($0.name)=\($0.value)" }).joined(separator: "; ")
+        )
     }
 
     public static func sessionHeader(from cookies: [(name: String, value: String)]) -> String? {

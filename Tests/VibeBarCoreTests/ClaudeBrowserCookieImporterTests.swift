@@ -1,3 +1,4 @@
+import SweetCookieKit
 import XCTest
 @testable import VibeBarCore
 
@@ -24,10 +25,29 @@ final class ClaudeBrowserCookieImporterTests: XCTestCase {
         ]))
     }
 
-    func testChromeDeviceBoundSessionIsNotAnImportSource() {
-        XCTAssertTrue(ClaudeBrowserCookieImporter.isDeviceBound(
-            cookieNames: ["sessionKey", "sessionKeyV3", "__Host-sessionBinding", "__Host-sessionBindingGrace"]
+    func testDeviceBoundStoreIsImportedOnlyWithALiveBindingCookie() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func record(_ name: String, _ value: String, expiresIn seconds: TimeInterval) -> BrowserCookieRecord {
+            BrowserCookieRecord(domain: "claude.ai", name: name, path: "/", value: value,
+                                expires: now.addingTimeInterval(seconds), isSecure: true, isHTTPOnly: true)
+        }
+        let key = record("sessionKey", "sk-ant-test", expiresIn: 86_400)
+
+        // An unbound store (Safari, Firefox, the in-app sign-in) needs nothing else.
+        XCTAssertEqual(ClaudeBrowserCookieImporter.sessionHeader(from: [key], now: now), "sessionKey=sk-ant-test")
+        // Chrome: the binding cookie travels with the key while it is alive.
+        XCTAssertEqual(
+            ClaudeBrowserCookieImporter.sessionHeader(
+                from: [key, record("__Host-sessionBinding", "bind", expiresIn: -5),
+                       record("__Host-sessionBindingGrace", "grace", expiresIn: 300)],
+                now: now
+            ),
+            "sessionKey=sk-ant-test; __Host-sessionBindingGrace=grace"
+        )
+        // Once every binding cookie has lapsed the key alone is rejected, so
+        // the store contributes nothing.
+        XCTAssertNil(ClaudeBrowserCookieImporter.sessionHeader(
+            from: [key, record("__Host-sessionBinding", "bind", expiresIn: -5)], now: now
         ))
-        XCTAssertFalse(ClaudeBrowserCookieImporter.isDeviceBound(cookieNames: ["sessionKey", "sessionKeyV3", "cf_clearance"]))
     }
 }
