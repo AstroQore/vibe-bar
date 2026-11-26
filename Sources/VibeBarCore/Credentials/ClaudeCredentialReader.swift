@@ -80,24 +80,32 @@ public enum ClaudeCredentialReader {
     /// Security.framework read above is refused, and an ad-hoc rebuild would
     /// lose any access the user granted by hand. Reading through the same
     /// tool is how Claude Code itself gets the item back and raises no prompt.
-    /// The result is held in memory briefly so account detection and a
-    /// refresh do not each start a process.
+    /// A successful read is held in memory for a minute, and never past the
+    /// token's own expiry, so account detection and a refresh do not each
+    /// start a process. A miss is not remembered: signing in to Claude Code
+    /// must be seen by the next refresh.
     private static func readFromSecurityTool(source: CredentialSource) -> ClaudeCredential? {
         if DemoMode.isEnabled { return nil }
         let now = Date()
-        if let cached = securityToolCache.withLock({ $0 }), now.timeIntervalSince(cached.readAt) < 300 {
-            return cached.credential.map {
-                ClaudeCredential(accessToken: $0.accessToken, expiresAt: $0.expiresAt,
-                                 rateLimitTier: $0.rateLimitTier, source: source)
-            }
+        func resolved(_ credential: ClaudeCredential) -> ClaudeCredential {
+            ClaudeCredential(accessToken: credential.accessToken, expiresAt: credential.expiresAt,
+                             rateLimitTier: credential.rateLimitTier, source: source)
         }
-        let credential = runSecurityTool().flatMap { try? decode(jsonString: $0, source: source) }
+        if let cached = securityToolCache.withLock({ $0 }),
+           now.timeIntervalSince(cached.readAt) < 60,
+           cached.credential.expiresAt.map({ $0 > now }) ?? true {
+            return resolved(cached.credential)
+        }
+        guard let credential = runSecurityTool().flatMap({ try? decode(jsonString: $0, source: source) }) else {
+            securityToolCache.withLock { $0 = nil }
+            return nil
+        }
         securityToolCache.withLock { $0 = (credential, now) }
         return credential
     }
 
     private static let securityToolCache =
-        OSAllocatedUnfairLock<(credential: ClaudeCredential?, readAt: Date)?>(initialState: nil)
+        OSAllocatedUnfairLock<(credential: ClaudeCredential, readAt: Date)?>(initialState: nil)
 
     private static func runSecurityTool() -> String? {
         let process = Process()
