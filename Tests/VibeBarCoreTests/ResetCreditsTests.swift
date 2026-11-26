@@ -120,4 +120,41 @@ final class ResetCreditsTests: XCTestCase {
         // A provider with no per-credit reach still lists each credit.
         XCTAssertEqual(ResetCredits(availableCount: 1, availableExpirations: [sooner]).spendable.map(\.clears), [[]])
     }
+
+    func testQuotaGetCarriesResetCreditsWithoutGrantIds() throws {
+        let sooner = Date(timeIntervalSince1970: 1_800_000_000)
+        let later = sooner.addingTimeInterval(86_400)
+        let quota = AccountQuota(
+            accountId: "web-claude", tool: .claude,
+            buckets: [QuotaBucket(id: "weekly", title: "Weekly", shortLabel: "Wk", usedPercent: 10)],
+            queriedAt: sooner,
+            resetCredits: ResetCredits(
+                availableCount: 2,
+                availableExpirations: [later, sooner],
+                tokens: [
+                    ResetCreditToken(id: "reset-grant-secret", remaining: 1, expiresAt: later,
+                                     clears: ["five_hour", "weekly", "weekly_fable"]),
+                    ResetCreditToken(id: "reset-grant-other", remaining: 1, expiresAt: sooner, clears: ["weekly_fable"])
+                ]
+            )
+        )
+        let dto = MCPQuotaAccountDTO(quota: quota, lastUpdated: sooner, lastAttempted: sooner, inFlight: false, error: nil)
+        let data = try JSONEncoder().encode(dto)
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("reset-grant"))
+
+        let wire = try XCTUnwrap(JSONDecoder().decode(MCPQuotaAccountDTO.self, from: data).resetCredits)
+        XCTAssertEqual(wire.availableCount, 2)
+        XCTAssertEqual(wire.nextExpiresAt, sooner)
+        XCTAssertEqual(wire.credits.map(\.expiresAt), [sooner, later])
+        XCTAssertEqual(wire.credits.map(\.clears), [["weekly_fable"], ["five_hour", "weekly", "weekly_fable"]])
+
+        // No credits reported is absent, not an empty object; none left is zero.
+        var none = quota
+        none.resetCredits = nil
+        XCTAssertNil(MCPQuotaAccountDTO(quota: none, lastUpdated: nil, lastAttempted: nil, inFlight: false, error: nil).resetCredits)
+        none.resetCredits = ResetCredits(availableCount: 0, tokens: [])
+        let spent = MCPQuotaAccountDTO(quota: none, lastUpdated: nil, lastAttempted: nil, inFlight: false, error: nil).resetCredits
+        XCTAssertEqual(spent?.availableCount, 0)
+        XCTAssertEqual(spent?.credits, [])
+    }
 }
