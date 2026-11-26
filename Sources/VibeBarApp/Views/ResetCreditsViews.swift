@@ -41,8 +41,6 @@ struct ResetCreditsRow: View {
     }
 }
 
-/// The available credits' detail: the windows they clear and one line per
-/// credit with its expiry. Draws nothing when no credit is left.
 /// The Overview's view of a SubProvider's reset credits: the title row with
 /// the count, then the inventory — cleared windows and each credit's expiry.
 /// No record lines; those are the provider page's and the Resets page's.
@@ -70,6 +68,8 @@ struct ResetCreditsInventoryRow: View {
     }
 }
 
+/// The available credits' detail: one entry per credit with its expiry and
+/// the windows that credit clears. Draws nothing when no credit is left.
 struct ResetCreditsInventory: View {
     let credits: ResetCredits?
     let buckets: [QuotaBucket]
@@ -78,40 +78,41 @@ struct ResetCreditsInventory: View {
     var body: some View {
         let count = credits?.availableCount ?? 0
         if count > 0 {
-            if let cleared = clearedWindows {
-                Text(cleared)
-                    .font(.system(size: density.resetCountdownFontSize))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-            }
-            let dates = credits?.availableExpirations ?? credits?.nextExpiresAt.map { [$0] } ?? []
-            ForEach(Array(dates.enumerated()), id: \.offset) { index, expiry in
-                HStack(alignment: .firstTextBaseline) {
-                    Text(L10n.Quota.ResetCredits.item(number: index + 1))
-                    Spacer(minLength: 6)
-                    Text(L10n.Quota.ResetCredits.expiresAt(when: expiryText(expiry)))
-                        .monospacedDigit()
+            let items = credits?.spendable ?? []
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(L10n.Quota.ResetCredits.item(number: index + 1))
+                        Spacer(minLength: 6)
+                        Text(L10n.Quota.ResetCredits.expiresAt(when: expiryText(item.expiresAt)))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(.secondary)
+                    if let reach = reach(of: item) {
+                        Text(reach).foregroundStyle(.tertiary).lineLimit(1)
+                    }
                 }
                 .font(.system(size: density.resetCountdownFontSize))
-                .foregroundStyle(.secondary)
                 .padding(.top, 4)
             }
-            if dates.count < count {
-                Text(L10n.Quota.ResetCredits.missingExpiries(count: count - dates.count))
+            if items.count < count {
+                Text(L10n.Quota.ResetCredits.missingExpiries(count: count - items.count))
                     .font(.system(size: density.resetCountdownFontSize)).foregroundStyle(.tertiary)
             }
         }
     }
 
-    /// "5 Hours · Weekly · Fable · Weekly", in the card's own bucket words.
-    private var clearedWindows: String? {
-        let ids = credits?.clearedBucketIDs ?? []
-        let titles = ids.compactMap { id -> String? in
+    /// What one credit clears, in the card's own words: "5 Hours · Weekly ·
+    /// Fable" for a reset of everything, "Fable" for one that only clears
+    /// that model's weekly limit. A grouped bucket is named by its group.
+    private func reach(of item: ResetCredits.Spendable) -> String? {
+        var seen: Set<String> = []
+        let names = item.clears.compactMap { id -> String? in
             guard let bucket = buckets.first(where: { $0.id == id }) else { return nil }
-            let label = [bucket.groupTitle, bucket.title].compactMap { $0 }.joined(separator: " · ")
-            return QuotaGroupLabelLocalizer.displayComposed(label)
+            let name = QuotaGroupLabelLocalizer.displayComposed(bucket.groupTitle ?? bucket.title)
+            return seen.insert(name).inserted ? name : nil
         }
-        return titles.isEmpty ? nil : titles.joined(separator: " · ")
+        return names.isEmpty ? nil : names.joined(separator: " · ")
     }
 
     private func expiryText(_ date: Date) -> String {

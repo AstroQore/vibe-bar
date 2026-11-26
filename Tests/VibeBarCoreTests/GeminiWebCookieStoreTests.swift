@@ -19,6 +19,13 @@ final class GeminiWebCookieStoreTests: XCTestCase {
         XCTAssertFalse(minimized!.contains("pref="))
     }
 
+    func testMinimizedHeaderKeepsGeminiHostSessionCookies() {
+        let minimized = GeminiWebCookieStore.minimizedCookieHeader(
+            from: "__Secure-1PSID=psid; OSID=osid; __Secure-OSID=secure-osid; COMPASS=route; _ga=GA1.example"
+        )
+        XCTAssertEqual(minimized, "__Secure-1PSID=psid; OSID=osid; __Secure-OSID=secure-osid; COMPASS=route")
+    }
+
     func testMinimizedHeaderRequiresPSID() {
         // Without `__Secure-1PSID` the rest of the cookie set is
         // useless for the usage RPCs — the helper must bail out.

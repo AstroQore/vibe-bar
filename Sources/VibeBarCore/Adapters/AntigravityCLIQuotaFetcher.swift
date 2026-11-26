@@ -1,62 +1,35 @@
-import Darwin
 import Foundation
 
-/// Reads AntiGravity's live quota from the installed `agy` CLI when the
-/// desktop language server is absent or exposes only a partial quota summary.
-///
-/// `agy` hosts the same tokenless loopback HTTPS service while its TUI is
-/// alive. Vibe Bar never sends a prompt or scrapes the TUI: it keeps a PTY
-/// drained, probes the local ports, reads the quota RPCs, then terminates only
-/// the process it launched. An already-running user-owned `agy` is reused and
-/// never stopped.
+/// Reads quota from the installed `agy` CLI by running its official `/usage`
+/// command in print mode. The command answers locally with structured JSON
+/// and spends no model turn, so nothing has to be scraped from a terminal.
 enum AntigravityCLIQuotaFetcher {
-    private static let readinessTimeout: TimeInterval = 15
-    private static let pollIntervalNanoseconds: UInt64 = 350_000_000
+    private static let timeout: TimeInterval = 30
 
     static func fetch() async throws -> AntigravityResponseParser.Snapshot {
-        var lastError: Error?
-
-        for pid in await runningAgyPIDs() {
-            do {
-                return try await fetch(pid: pid, deadline: Date().addingTimeInterval(2.5))
-            } catch {
-                lastError = error
-            }
-        }
-
-        guard let binary = resolveBinary() else {
-            throw lastError ?? QuotaError.noCredential
-        }
-        let process = try AntigravityCLIQuotaProcess.launch(binary: binary)
-
-        // Start the readiness window only once the launched process exists, so
-        // probing stale user-owned `agy` processes above never eats into it.
+        guard let binary = resolveBinary() else { throw QuotaError.noCredential }
+        // agy resolves its sign-in and log directory from HOME, which a
+        // launchd-started app does not always carry.
+        var environment = ProcessInfo.processInfo.environment
+        environment["HOME"] = RealHomeDirectory.path
+        let result: ProcessRunner.Result
         do {
-            let snapshot = try await fetch(
-                pid: process.pid,
-                deadline: Date().addingTimeInterval(readinessTimeout),
-                isRunning: { process.isRunning },
-                drainOutput: { process.drainOutput() }
+            result = try await ProcessRunner.run(
+                binary: binary,
+                arguments: ["--print", "/usage", "--output-format", "json"],
+                timeout: timeout,
+                label: "antigravity-agy-usage",
+                environment: environment,
+                currentDirectory: RealHomeDirectory.path
             )
-            await process.stop()
-            return snapshot
-        } catch {
-            await process.stop()
-            throw error
+        } catch let error as ProcessRunner.Error {
+            throw QuotaError.network("agy /usage failed: \(error.localizedDescription)")
         }
-    }
-
-    static func parseAgyPIDs(_ output: String) -> [Int] {
-        output.split(separator: "\n").compactMap { line in
-            let parts = line.split(whereSeparator: \.isWhitespace)
-            guard parts.count >= 2,
-                  let pid = Int(parts[0]),
-                  ["agy", "antigravity-cli", "antigravity_cli"].contains(
-                      URL(fileURLWithPath: String(parts[1])).lastPathComponent.lowercased()
-                  )
-            else { return nil }
-            return pid
+        guard result.terminationStatus == 0 || !result.stdout.isEmpty else {
+            let detail = result.stderr.split(separator: "\n").last.map(String.init) ?? "exit \(result.terminationStatus)"
+            throw QuotaError.network("agy /usage failed: \(SafeLog.sanitize(detail))")
         }
+        return try AntigravityResponseParser.parseCLIUsage(data: Data(result.stdout.utf8))
     }
 
     static func resolveBinary(
@@ -85,159 +58,4 @@ enum AntigravityCLIQuotaFetcher {
             return FileManager.default.isExecutableFile(atPath: candidate)
         }
     }
-
-    private static func runningAgyPIDs() async -> [Int] {
-        guard let result = try? await ProcessRunner.run(
-            binary: "/bin/ps",
-            arguments: ["-ax", "-o", "pid=,comm="],
-            timeout: 2,
-            label: "antigravity-agy-ps"
-        ) else { return [] }
-        return parseAgyPIDs(result.stdout)
-    }
-
-    private static func fetch(
-        pid: Int,
-        deadline: Date,
-        isRunning: () -> Bool = { true },
-        drainOutput: () -> Void = {}
-    ) async throws -> AntigravityResponseParser.Snapshot {
-        let client = AntigravityLanguageServerClient(timeout: 2)
-        var lastError: Error?
-
-        while Date() < deadline, isRunning() {
-            drainOutput()
-            let ports = (try? await client.listeningPorts(pid: pid)) ?? []
-            for port in ports {
-                for scheme in ["https", "http"] {
-                    let endpoint = AntigravityLanguageServerClient.Endpoint(
-                        scheme: scheme,
-                        port: port,
-                        csrfToken: ""
-                    )
-                    do {
-                        return try await AntigravityQuotaAdapter.fetchLocalSnapshot { path, body in
-                            try await client.postLocal(endpoint: endpoint, path: path, body: body)
-                        }
-                    } catch {
-                        lastError = error
-                    }
-                }
-            }
-            try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
-        }
-        throw lastError ?? QuotaError.noCredential
-    }
-}
-
-private final class AntigravityCLIQuotaProcess: @unchecked Sendable {
-    let pid: Int
-    private let process: Process
-    private let primaryFD: Int32
-    private let primaryHandle: FileHandle
-    private let secondaryHandle: FileHandle
-    private let lock = NSLock()
-    private var stopped = false
-
-    private init(
-        process: Process,
-        primaryFD: Int32,
-        primaryHandle: FileHandle,
-        secondaryHandle: FileHandle
-    ) {
-        self.process = process
-        self.pid = Int(process.processIdentifier)
-        self.primaryFD = primaryFD
-        self.primaryHandle = primaryHandle
-        self.secondaryHandle = secondaryHandle
-    }
-
-    static func launch(binary: String) throws -> AntigravityCLIQuotaProcess {
-        var primaryFD: Int32 = -1
-        var secondaryFD: Int32 = -1
-        var window = winsize(ws_row: 50, ws_col: 160, ws_xpixel: 0, ws_ypixel: 0)
-        guard openpty(&primaryFD, &secondaryFD, nil, nil, &window) == 0 else {
-            throw QuotaError.unknown("Could not open a PTY for agy.")
-        }
-        _ = fcntl(primaryFD, F_SETFL, O_NONBLOCK)
-
-        let primaryHandle = FileHandle(fileDescriptor: primaryFD, closeOnDealloc: true)
-        let secondaryHandle = FileHandle(fileDescriptor: secondaryFD, closeOnDealloc: true)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.currentDirectoryURL = URL(
-            fileURLWithPath: RealHomeDirectory.path,
-            isDirectory: true
-        )
-        var environment = ProcessInfo.processInfo.environment
-        environment["PWD"] = RealHomeDirectory.path
-        environment["TERM"] = "xterm-256color"
-        process.environment = environment
-        process.standardInput = secondaryHandle
-        process.standardOutput = secondaryHandle
-        process.standardError = secondaryHandle
-        do {
-            try process.run()
-        } catch {
-            try? primaryHandle.close()
-            try? secondaryHandle.close()
-            throw QuotaError.unknown("Could not launch agy: \(error.localizedDescription)")
-        }
-        return AntigravityCLIQuotaProcess(
-            process: process,
-            primaryFD: primaryFD,
-            primaryHandle: primaryHandle,
-            secondaryHandle: secondaryHandle
-        )
-    }
-
-    var isRunning: Bool { process.isRunning }
-
-    func drainOutput() {
-        var buffer = [UInt8](repeating: 0, count: 8_192)
-        for _ in 0..<32 {
-            let count = read(primaryFD, &buffer, buffer.count)
-            if count <= 0 { break }
-        }
-    }
-
-    func stop() async {
-        guard claimStop() else { return }
-        // `stop()` is normally reached from a cancelled quota task. Run the
-        // grace / kill / reap sequence in an unstructured task so inherited
-        // cancellation cannot turn every sleep into an immediate no-op, then
-        // await that cleanup before releasing the account's single-flight gate.
-        let cleanup = Task.detached(priority: .utility) { [self] in
-            await performStop()
-        }
-        await cleanup.value
-    }
-
-    private func performStop() async {
-        try? primaryHandle.close()
-        try? secondaryHandle.close()
-        if process.isRunning { process.terminate() }
-        try? await Task.sleep(nanoseconds: 500_000_000)
-        if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
-        for _ in 0..<10 where process.isRunning {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
-    }
-
-    private func claimStop() -> Bool {
-        lock.withLock {
-            guard !stopped else { return false }
-            stopped = true
-            return true
-        }
-    }
-
-    private func forceStop() {
-        guard claimStop() else { return }
-        try? primaryHandle.close()
-        try? secondaryHandle.close()
-        if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
-    }
-
-    deinit { forceStop() }
 }

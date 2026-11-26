@@ -18,6 +18,8 @@ public enum GeminiBrowserCookieImporter {
         public let header: String
         public let sourceLabel: String
         public let cookieCount: Int
+        /// On a validated import, nil means the live endpoint returned both windows.
+        public internal(set) var validationError: QuotaError? = nil
     }
 
     public static let cookieDomains = ["gemini.google.com", ".google.com"]
@@ -123,9 +125,8 @@ public enum GeminiBrowserCookieImporter {
     /// still stored so the account exists and surfaces its login error.
     public static func importValidatedAndStoreFromBrowsers(
         allowKeychainPrompt: Bool = false,
-        isSignedOut: @Sendable (String) async -> Bool = { header in
-            await GeminiBrowserCookieImporter.liveEndpointReportsSignedOut(header)
-        },
+        isSignedOut: (@Sendable (String) async -> Bool)? = nil,
+        validate: (@Sendable (String) async -> QuotaError?)? = nil,
         candidates: (@Sendable () -> [Result])? = nil,
         store: @Sendable (String) throws -> Void = { header in
             try GeminiWebCookieStore.writeCookieHeader(header, source: .browser)
@@ -135,11 +136,18 @@ public enum GeminiBrowserCookieImporter {
             ?? importCandidatesFromBrowsers(allowKeychainPrompt: allowKeychainPrompt)
         guard let first = found.first else { return nil }
         var chosen = first
-        for candidate in found {
-            if await !isSignedOut(candidate.header) {
-                chosen = candidate
-                break
+        chosen.validationError = .needsLogin
+        for var candidate in found {
+            if let isSignedOut {
+                candidate.validationError = await isSignedOut(candidate.header) ? .needsLogin : nil
+            } else if let validate {
+                candidate.validationError = await validate(candidate.header)
+            } else {
+                candidate.validationError = await GeminiWebQuotaFetcher.validationError(cookieHeader: candidate.header)
             }
+            if candidate.validationError == .needsLogin { continue }
+            chosen = candidate
+            break
         }
         try store(chosen.header)
         return chosen

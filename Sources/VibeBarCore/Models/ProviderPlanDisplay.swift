@@ -10,8 +10,10 @@ public enum SubscriptionNameFormat: String, Codable, CaseIterable, Identifiable,
 
     public var id: String { rawValue }
 
+    /// The picker's sample. It has to be a plan whose name still carries a
+    /// multiplier, or the five formats render to the same text.
     public var example: String {
-        ProviderPlanDisplay.displayName(for: .codex, rawPlan: "pro", format: self)!
+        ProviderPlanDisplay.displayName(for: .claude, rawPlan: "default_claude_max_20x", format: self)!
     }
 }
 

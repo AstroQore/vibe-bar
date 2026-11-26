@@ -63,6 +63,9 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
         do {
             snapshot = try await fetcher.fetch(cookieHeader: header)
         } catch let initialError {
+            if initialError as? QuotaError == GeminiWebQuotaFetcher.trafficVerificationError {
+                throw initialError
+            }
             // Google rotates the browser session more often than Vibe Bar's
             // persisted Keychain copy. Refresh it directly from an installed
             // browser once before surfacing a login error; this keeps the
@@ -76,7 +79,9 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             // aside for an hour so a dead store costs one request per hour
             // rather than one per refresh.
             let candidates = browserCookieImporter()
+            SafeLog.net("Gemini stored session failed (\((initialError as? QuotaError)?.logSafeMessage ?? "error")); \(candidates.count) browser session(s) to try")
             let currentTime = now()
+            var calibrationLoginError: Error?
             for imported in candidates where imported.header != header {
                 guard !forcedReimportGate.isRejected(
                     imported.header,
@@ -93,9 +98,15 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
                         continue
                     }
                     if shouldCalibrate(error), let webFallback {
-                        let calibrated = try await webFallback(account, imported.header)
-                        storeCookieHeader(imported.header)
-                        return calibrated
+                        do {
+                            let calibrated = try await webFallback(account, imported.header)
+                            storeCookieHeader(imported.header)
+                            return calibrated
+                        } catch QuotaError.needsLogin {
+                            forcedReimportGate.reject(imported.header, now: currentTime)
+                            calibrationLoginError = QuotaError.needsLogin
+                            continue
+                        }
                     }
                     throw error
                 }
@@ -124,9 +135,16 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             if shouldCalibrate(initialError), let webFallback {
                 return try await webFallback(account, header)
             }
-            throw initialError
+            throw calibrationLoginError ?? initialError
         }
         return quota(from: snapshot, for: account)
+    }
+
+    public static func isGoogleSignInURL(_ url: URL) -> Bool {
+        guard url.scheme == "https", url.host?.lowercased() == "accounts.google.com" else { return false }
+        let path = url.path.lowercased().split(separator: "/")
+        return path.contains("signin") || path.contains("servicelogin")
+            || path.contains("accountchooser") || path.contains("interactivelogin")
     }
 
     private func quota(
@@ -137,7 +155,7 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             accountId: account.id,
             tool: .gemini,
             buckets: snapshot.buckets,
-            plan: snapshot.planName,
+            plan: snapshot.planName ?? account.plan,
             email: snapshot.email,
             queriedAt: now(),
             error: nil

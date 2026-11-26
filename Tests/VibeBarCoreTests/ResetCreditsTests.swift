@@ -79,4 +79,45 @@ final class ResetCreditsTests: XCTestCase {
         XCTAssertEqual(decoded.resetCredits?.availableCount, 2)
         XCTAssertEqual(decoded.resetCredits?.nextExpiresAt, expiry)
     }
+
+    func testCarriedForwardDropsGrantsThatHaveLapsed() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let soon = now.addingTimeInterval(3_600)
+        let credits = ResetCredits(
+            availableCount: 3,
+            availableExpirations: [now.addingTimeInterval(-60), soon, soon],
+            tokens: [
+                ResetCreditToken(id: "lapsed", remaining: 1, expiresAt: now.addingTimeInterval(-60)),
+                ResetCreditToken(id: "live", remaining: 2, expiresAt: soon)
+            ]
+        )
+        let carried = credits.carriedForward(now: now)
+        XCTAssertEqual(carried.availableCount, 2)
+        XCTAssertEqual(carried.availableExpirations, [soon, soon])
+        XCTAssertEqual(carried.nextExpiresAt, soon)
+        XCTAssertEqual(carried.tokens, credits.tokens)
+    }
+
+    func testSpendableCreditsKeepTheirOwnReach() {
+        let sooner = Date(timeIntervalSince1970: 1_800_000_000)
+        let later = sooner.addingTimeInterval(86_400)
+        let credits = ResetCredits(
+            availableCount: 3,
+            availableExpirations: [later, sooner, later],
+            tokens: [
+                ResetCreditToken(id: "full", remaining: 2, expiresAt: later,
+                                 clears: ["five_hour", "weekly", "weekly_fable"]),
+                ResetCreditToken(id: "fable", remaining: 1, expiresAt: sooner, clears: ["weekly_fable"]),
+                ResetCreditToken(id: "spent", remaining: 0, expiresAt: sooner, clears: ["five_hour"])
+            ]
+        )
+        XCTAssertEqual(credits.spendable.map(\.expiresAt), [sooner, later, later])
+        XCTAssertEqual(credits.spendable.map(\.clears), [
+            ["weekly_fable"],
+            ["five_hour", "weekly", "weekly_fable"],
+            ["five_hour", "weekly", "weekly_fable"]
+        ])
+        // A provider with no per-credit reach still lists each credit.
+        XCTAssertEqual(ResetCredits(availableCount: 1, availableExpirations: [sooner]).spendable.map(\.clears), [[]])
+    }
 }

@@ -172,6 +172,37 @@ public enum GeminiWebResponseParser {
         return GeminiWebQuotaSnapshot(buckets: buckets, planName: planName, email: email)
     }
 
+    /// The English usage page renders each percentage and reset time in
+    /// its own labelled list item. Accept a snapshot only when both rows
+    /// describe a plausible current window in the page's local time zone.
+    public static func renderedUsage(rows: [String], plan: String?, now: Date, timeZone: TimeZone) -> GeminiWebQuotaSnapshot? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        var buckets: [QuotaBucket] = []
+        for (type, label) in [(1, "Current usage"), (2, "Weekly limit")] {
+            let matches = rows.filter { $0.components(separatedBy: .newlines).first?.trimmingCharacters(in: .whitespaces) == label }
+            guard matches.count == 1, let row = matches.first,
+                  let percent = row.firstMatch(of: #/\b(\d{1,3}(?:\.\d+)?)% used\b/#),
+                  let used = Double(percent.1), (0...100).contains(used),
+                  let reset = row.firstMatch(of: #/Resets (?:([A-Z][a-z]{2}) (\d{1,2}) )?at (\d{1,2}):(\d{2}) (AM|PM)/#),
+                  let hour = Int(reset.3), (1...12).contains(hour),
+                  let minute = Int(reset.4), (0..<60).contains(minute) else { return nil }
+            var parts = DateComponents(hour: hour % 12 + (reset.5 == "PM" ? 12 : 0), minute: minute, second: 0)
+            if let month = reset.1, let day = reset.2 {
+                let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                guard let index = months.firstIndex(of: String(month)), let day = Int(day) else { return nil }
+                parts.month = index + 1
+                parts.day = day
+            }
+            let descriptor = bucketDescriptor(forType: type)
+            guard let date = calendar.nextDate(after: now.addingTimeInterval(-59), matching: parts, matchingPolicy: .strict),
+                  let duration = descriptor.windowSeconds, date.timeIntervalSince(now) <= Double(duration) + 60 else { return nil }
+            buckets.append(QuotaBucket(id: descriptor.id, title: descriptor.title, shortLabel: descriptor.shortLabel,
+                                       usedPercent: used, resetAt: date, rawWindowSeconds: duration))
+        }
+        return GeminiWebQuotaSnapshot(buckets: buckets, planName: plan, email: nil)
+    }
+
     /// Normalize both fresh responses and persisted caches. Older cache files
     /// may retain the server's weekly-first order even after a protocol change
     /// prevents an immediate refresh; every surface should still render the
@@ -187,6 +218,65 @@ public enum GeminiWebResponseParser {
     /// Map Google's `planTier` integer to the user-visible plan label.
     /// `2 = Pro`; the current live Ultra response uses tier id `6`.
     /// Older captures used `3` for Ultra, so retain that alias.
+    /// Parse the `UsagePageQuery` GraphQL answer:
+    /// `[{"data":{"viewer":{"rpcs":{"getUsageInfo":{"subscriptionTier":…,
+    /// "pools":[{"poolType":"GXU_FIVE_HOURLY","percentageUsed":0.0,
+    /// "gxu":{"windowRefreshesAt":"…"}}]}}}}}]`. `percentageUsed` is a
+    /// fraction. A null `viewer`, or an HTML body, is a signed-out session.
+    static func parseUsagePageQuery(data: Data, email: String?) throws -> GeminiWebQuotaSnapshot {
+        let body = stripAntiHijackingPrefix(data)
+        if body.first(where: { ![0x20, 0x09, 0x0A, 0x0D].contains($0) }) == UInt8(ascii: "<") {
+            throw QuotaError.needsLogin
+        }
+        let drift = QuotaError.parseFailure("Gemini usage query response changed.")
+        guard let results = try? JSONSerialization.jsonObject(with: body) as? [[String: Any]],
+              let result = results.compactMap({ $0["data"] as? [String: Any] }).first(where: { $0["viewer"] != nil })
+        else { throw drift }
+        guard let viewer = result["viewer"] as? [String: Any] else {
+            if result["viewer"] is NSNull { throw QuotaError.needsLogin }
+            throw drift
+        }
+        guard let usage = (viewer["rpcs"] as? [String: Any])?["getUsageInfo"] as? [String: Any],
+              let pools = usage["pools"] as? [[String: Any]] else { throw drift }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        var buckets: [QuotaBucket] = []
+        for (poolType, bucketType) in [("GXU_FIVE_HOURLY", 1), ("GXU_WEEKLY", 2)] {
+            guard let pool = pools.first(where: { $0["poolType"] as? String == poolType }),
+                  let used = (pool["percentageUsed"] as? NSNumber)?.doubleValue, used.isFinite, used >= 0
+            else { continue }
+            let descriptor = bucketDescriptor(forType: bucketType)
+            let rawReset = (pool["gxu"] as? [String: Any])?["windowRefreshesAt"] as? String
+            buckets.append(QuotaBucket(
+                id: descriptor.id,
+                title: descriptor.title,
+                shortLabel: descriptor.shortLabel,
+                usedPercent: min(100, used * 100),
+                resetAt: rawReset.flatMap { formatter.date(from: $0) ?? plain.date(from: $0) },
+                rawWindowSeconds: descriptor.windowSeconds,
+                groupTitle: nil
+            ))
+        }
+        guard !buckets.isEmpty else {
+            throw QuotaError.parseFailure("Gemini usage query returned no usage windows.")
+        }
+        return GeminiWebQuotaSnapshot(
+            buckets: buckets,
+            planName: planLabel(forSubscriptionTier: usage["subscriptionTier"] as? String),
+            email: email
+        )
+    }
+
+    static func planLabel(forSubscriptionTier tier: String?) -> String? {
+        switch tier {
+        case "TIER1": return "Pro"
+        case "TIER_NEON": return "Ultra"
+        default: return nil
+        }
+    }
+
     static func planLabel(forTierId id: Int) -> String? {
         switch id {
         case 1: return "Free"

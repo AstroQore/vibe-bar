@@ -7,6 +7,7 @@ import XCTest
 final class GeminiDualFetchTests: XCTestCase {
     override func tearDown() {
         GeminiAdapterStubURLProtocol.handler = nil
+        GeminiAdapterStubURLProtocol.usageQueryAnswer = nil
         super.tearDown()
     }
 
@@ -36,6 +37,102 @@ final class GeminiDualFetchTests: XCTestCase {
             createdAt: Date(),
             updatedAt: Date()
         )
+    }
+
+    func testCalibrationDistinguishesGoogleSignInFromUsageAndOtherHosts() throws {
+        for path in ["/v3/signin/identifier", "/ServiceLogin", "/AccountChooser"] {
+            XCTAssertTrue(GeminiQuotaAdapter.isGoogleSignInURL(try XCTUnwrap(URL(string: "https://accounts.google.com" + path))))
+        }
+        for url in ["https://gemini.google.com/usage", "https://accounts.google.com/ListAccounts",
+                    "https://example.org/signin", "http://accounts.google.com/signin"] {
+            XCTAssertFalse(GeminiQuotaAdapter.isGoogleSignInURL(try XCTUnwrap(URL(string: url))))
+        }
+    }
+
+    func testBootstrapCanUpdateFirstPartyCookiesBeforePostingQuota() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let posted = LockedStrings()
+        GeminiAdapterStubURLProtocol.handler = { request in
+            let url = try XCTUnwrap(request.url)
+            if request.httpMethod == "GET" {
+                let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                    headerFields: ["Set-Cookie": "fixture=updated; Path=/; Secure; HttpOnly"]))
+                return (response, Data(#"<script>{"SNlM0e":"fixture"}</script>"#.utf8))
+            }
+            posted.append(request.value(forHTTPHeaderField: "Cookie") ?? "")
+            let row: [Any] = ["wrb.fr", GeminiWebUsageRecipe.fallback.rpcID, "[2,[[1,0.25,1,[[1800000000]]],[1,0.1,2,[[1800003000]]]],false]", NSNull()]
+            let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (response, try JSONSerialization.data(withJSONObject: [row]))
+        }
+        let fetcher = GeminiWebQuotaFetcher(session: URLSession(configuration: config), recipeProvider: { .fallback })
+        let quota = try await fetcher.fetch(cookieHeader: "fixture=original")
+        XCTAssertEqual(quota.buckets.count, 2)
+        XCTAssertEqual(posted.values, ["fixture=updated"])
+    }
+
+    func testUsagePageQueryAnswersWithoutTouchingTheLegacyRoute() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let cookies = LockedStrings()
+        GeminiAdapterStubURLProtocol.usageQueryAnswer = { request in
+            cookies.append(request.value(forHTTPHeaderField: "Cookie") ?? "")
+            return (200, #"[{"data":{"viewer":{"rpcs":{"getUsageInfo":{"subscriptionTier":"TIER1","pools":["#
+                + #"{"poolType":"GXU_FIVE_HOURLY","percentageUsed":0.5,"gxu":{"windowRefreshesAt":"2026-11-26T10:05:11Z"}},"#
+                + #"{"poolType":"GXU_WEEKLY","percentageUsed":0.1,"gxu":{"windowRefreshesAt":"2026-12-01T19:05:11Z"}}]}}}}}]"#)
+        }
+        let fetcher = GeminiWebQuotaFetcher(session: URLSession(configuration: config), recipeProvider: { .fallback })
+        let quota = try await fetcher.fetch(cookieHeader: "__Secure-1PSID=synthetic")
+        XCTAssertEqual(quota.buckets.map(\.usedPercent), [50, 10])
+        XCTAssertEqual(quota.planName, "Pro")
+        XCTAssertEqual(cookies.values, ["__Secure-1PSID=synthetic"])
+
+        // A signed-out answer is final: the legacy route (no handler here,
+        // so it would fail as a network error) is never consulted.
+        GeminiAdapterStubURLProtocol.usageQueryAnswer = { _ in (200, #"[{"data":{"viewer":null}}]"#) }
+        do {
+            _ = try await fetcher.fetch(cookieHeader: "__Secure-1PSID=synthetic")
+            XCTFail("expected needsLogin")
+        } catch {
+            XCTAssertEqual(error as? QuotaError, .needsLogin)
+        }
+    }
+
+    func testSignInBootstrapTokenCannotValidateAnImportedSession() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let methods = LockedStrings()
+        GeminiAdapterStubURLProtocol.handler = { request in
+            methods.append(request.httpMethod ?? "")
+            let login = try XCTUnwrap(URL(string: "https://accounts.google.com/v3/signin/identifier"))
+            let response = try XCTUnwrap(HTTPURLResponse(url: login, statusCode: 200, httpVersion: nil, headerFields: nil))
+            return (response, Data(#"<script>{"SNlM0e":"synthetic-login-token"}</script>"#.utf8))
+        }
+        let signedOut = await GeminiWebQuotaFetcher.isSignedOut(cookieHeader: "SID=synthetic", session: session)
+        XCTAssertTrue(signedOut)
+        XCTAssertEqual(methods.values, ["GET"])
+    }
+
+    func testTrafficCheckDefersToUserWithoutTryingOtherProfiles() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let methods = LockedStrings()
+        GeminiAdapterStubURLProtocol.handler = { request in
+            methods.append(request.httpMethod ?? "")
+            let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 302,
+                                                          httpVersion: nil, headerFields: ["Location": "https://www.google.com/sorry/index"]))
+            return (response, Data())
+        }
+        let adapter = GeminiQuotaAdapter(session: URLSession(configuration: config), cookieHeader: { "SID=synthetic" },
+                                         browserCookieImporter: { XCTFail("Do not retry a traffic check with another profile"); return [] })
+        do {
+            _ = try await adapter.fetch(for: account(source: .webCookie))
+            XCTFail("Expected verification requirement")
+        } catch let error as QuotaError {
+            XCTAssertEqual(error, GeminiWebQuotaFetcher.trafficVerificationError)
+        }
+        XCTAssertEqual(methods.values, ["GET"])
     }
 
     func testOAuthAccountThrowsUnknownBecauseCLIQuotaIsRemoved() async throws {
@@ -111,8 +208,8 @@ final class GeminiDualFetchTests: XCTestCase {
             let cookie = request.value(forHTTPHeaderField: "Cookie") ?? ""
             if request.httpMethod == "GET" {
                 getCookies.append(cookie)
-                // Only the live session's page carries the XSRF token.
-                let body = cookie.contains("live")
+                // A session can also make it past bootstrap before calibration redirects to sign-in.
+                let body = cookie.contains("live") || cookie.contains("redirect")
                     ? #"<script>window.WIZ_global_data={"SNlM0e":"synthetic-xsrf"};</script>"#
                     : "<html>signed out</html>"
                 return (response, Data(body.utf8))
@@ -128,12 +225,14 @@ final class GeminiDualFetchTests: XCTestCase {
             browserCookieImporter: {
                 [
                     .init(header: "__Secure-1PSID=synthetic-stale", sourceLabel: "Safari", cookieCount: 1),
+                    .init(header: "__Secure-1PSID=synthetic-redirect", sourceLabel: "Chrome (Old)", cookieCount: 1),
                     .init(header: "__Secure-1PSID=synthetic-live", sourceLabel: "Chrome (Default)", cookieCount: 1)
                 ]
             },
             storeCookieHeader: { stored.append($0) },
             webFallback: { account, header in
                 fallbackHeaders.append(header)
+                if header.contains("redirect") { throw QuotaError.needsLogin }
                 return AccountQuota(
                     accountId: account.id,
                     tool: .gemini,
@@ -158,7 +257,8 @@ final class GeminiDualFetchTests: XCTestCase {
         )
 
         _ = try await adapter.fetch(for: account)
-        XCTAssertEqual(fallbackHeaders.values, ["__Secure-1PSID=synthetic-live"])
+        XCTAssertEqual(fallbackHeaders.values, ["__Secure-1PSID=synthetic-redirect", "__Secure-1PSID=synthetic-live"])
+        XCTAssertEqual(getCookies.values.filter { $0.contains("redirect") }.count, 1)
         XCTAssertEqual(stored.values, ["__Secure-1PSID=synthetic-live"])
 
         // The stale store was answered once and is set aside: a second
@@ -184,6 +284,18 @@ final class GeminiDualFetchTests: XCTestCase {
         )
         XCTAssertEqual(result?.sourceLabel, "Chrome (Default)")
         XCTAssertEqual(stored.values, ["live"])
+    }
+
+    func testImportReportsTrafficCheckSeparatelyFromSavingCookies() async throws {
+        let checked = LockedStrings()
+        let stored = LockedStrings()
+        let result = try await GeminiBrowserCookieImporter.importValidatedAndStoreFromBrowsers(
+            validate: { header in checked.append(header); return GeminiWebQuotaFetcher.trafficVerificationError },
+            candidates: { [.init(header: "first", sourceLabel: "A", cookieCount: 1), .init(header: "second", sourceLabel: "B", cookieCount: 1)] },
+            store: { stored.append($0) })
+        XCTAssertEqual(result?.validationError, GeminiWebQuotaFetcher.trafficVerificationError)
+        XCTAssertEqual(checked.values, ["first"])
+        XCTAssertEqual(stored.values, ["first"])
     }
 
     func testValidatedImportKeepsFirstCandidateWhenAllAreSignedOut() async throws {
@@ -264,7 +376,29 @@ private final class GeminiAdapterStubURLProtocol: URLProtocol {
     override class func canInit(with _: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
+    /// Set to answer the usage-page query; nil reports it as drifted.
+    nonisolated(unsafe) static var usageQueryAnswer: (@Sendable (URLRequest) -> (Int, String))?
+
     override func startLoading() {
+        if let answer = Self.usageQueryAnswer, request.url?.path.hasSuffix("/executeQuery") == true,
+           let url = request.url {
+            let (status, body) = answer(request)
+            if let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil) {
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: Data(body.utf8))
+                client?.urlProtocolDidFinishLoading(self)
+                return
+            }
+        }
+        // These suites cover the batchexecute route, which the fetcher only
+        // reaches once the usage-page query has drifted.
+        if Self.usageQueryAnswer == nil, request.url?.path.hasSuffix("/executeQuery") == true, let url = request.url,
+           let response = HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil) {
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data())
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         guard let handler = Self.handler else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return

@@ -1146,7 +1146,11 @@ final class AppEnvironment: ObservableObject {
                 return
             }
             if userInitiated {
-                self.geminiBrowserCookieImportStatus = "Imported from \(result.sourceLabel)."
+                if let error = result.validationError {
+                    self.geminiBrowserCookieImportStatus = "Cookies saved from \(result.sourceLabel). \(error.userFacingMessage)"
+                } else {
+                    self.geminiBrowserCookieImportStatus = "Quota verified with cookies from \(result.sourceLabel)."
+                }
             }
             self.reloadAccounts { [weak self] in
                 self?.scheduler.triggerRefresh()

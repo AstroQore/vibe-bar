@@ -118,8 +118,19 @@ public enum ClaudeWebCookieStore {
         return nil
     }
 
+    /// Cookies that accompany a device-bound Chrome session. They live a few
+    /// minutes and only Chrome can renew them, so a header carrying them is
+    /// good for one refresh and is re-imported for the next.
+    public static let sessionBindingCookieNames = ["__Host-sessionBinding", "__Host-sessionBindingGrace"]
+
     public static func minimizedCookieHeader(from raw: String) -> String? {
-        sessionKeyHeader(from: raw)
+        guard var header = sessionKeyHeader(from: raw) else { return nil }
+        let pairs = cookiePairs(from: raw)
+        for name in sessionBindingCookieNames {
+            guard let value = pairs.first(where: { $0.name == name })?.value, !value.isEmpty else { continue }
+            header += "; \(name)=\(value)"
+        }
+        return header
     }
 
     public static func normalizedCookieHeader(from raw: String) -> String {

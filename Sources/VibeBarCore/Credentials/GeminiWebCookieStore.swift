@@ -45,7 +45,13 @@ public enum GeminiWebCookieStore {
         "HSID",
         "SSID",
         "APISID",
-        "SAPISID"
+        "SAPISID",
+        // Host-scoped to gemini.google.com. Since November 2026 Google
+        // answers a request that has the account cookies but not these with
+        // a redirect to sign-in, even while the browser is signed in.
+        "OSID",
+        "__Secure-OSID",
+        "COMPASS"
     ]
 
     public static func readCookieHeader() throws -> String {

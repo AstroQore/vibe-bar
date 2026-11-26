@@ -234,7 +234,14 @@ public final class QuotaService: ObservableObject {
             }
         }
         switch outcome {
-        case let .completed(.success(quota)):
+        case .completed(.success(var quota)):
+            // Claude serves reset credits to the web session only. A refresh
+            // answered by the Claude Code login cannot see them, which is not
+            // the same as there being none.
+            if quota.tool == .claude, quota.resetCredits == nil,
+               let known = lastSuccessByAccount[account.id]?.resetCredits {
+                quota.resetCredits = known.carriedForward(now: Date())
+            }
             store(success: quota)
             return quota
         case let .completed(.failure(qe)):

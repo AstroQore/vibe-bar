@@ -8,6 +8,20 @@ import XCTest
 /// JSON payload) against fixtures captured from a live PRO session
 /// with the numbers scrubbed to synthetic values.
 final class GeminiWebResponseParserTests: XCTestCase {
+    func testRenderedUsageMatchesEachLabelAndRollsMidnightAndNewYear() throws {
+        let clock = ISO8601DateFormatter()
+        let now = try XCTUnwrap(clock.date(from: "2026-12-31T22:15:13Z"))
+        let zone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let rows = ["Weekly limit\nResets Jan 4 at 3:05 AM\n9% used", "Current usage\ninfo\n1% used\nResets at 1:05 AM"]
+        let quota = try XCTUnwrap(GeminiWebResponseParser.renderedUsage(rows: rows, plan: "Ultra", now: now, timeZone: zone))
+        XCTAssertEqual(quota.buckets.map(\.id), ["five_hour", "weekly"])
+        XCTAssertEqual(quota.buckets.map(\.usedPercent), [1, 9])
+        XCTAssertEqual(quota.buckets.map(\.resetAt), [clock.date(from: "2027-01-01T01:05:00Z"), clock.date(from: "2027-01-04T03:05:00Z")])
+        XCTAssertNil(GeminiWebResponseParser.renderedUsage(rows: [rows[0]], plan: nil, now: now, timeZone: zone))
+        XCTAssertNil(GeminiWebResponseParser.renderedUsage(rows: rows + [rows[0]], plan: nil, now: now, timeZone: zone))
+        XCTAssertNil(GeminiWebResponseParser.renderedUsage(rows: [rows[1], rows[0].replacingOccurrences(of: "Jan 4", with: "Jan 25")], plan: nil, now: now, timeZone: zone))
+    }
+
     // MARK: - stripAntiHijackingPrefix
 
     func testStripAntiHijackingPrefixRemovesProperPrefix() {
@@ -224,6 +238,40 @@ final class GeminiWebResponseParserTests: XCTestCase {
         let inner = "[3,[[1,0,1,[[1779469511,884512000]]]],false]"
         let snapshot = try GeminiWebResponseParser.parse(data: Self.wireFormat(inner: inner))
         XCTAssertEqual(snapshot.planName, "Ultra")
+    }
+
+    // MARK: - UsagePageQuery
+
+    func testUsagePageQueryMapsBothWindowsAndTier() throws {
+        let body = """
+        )]}'
+        [{"data":{"viewer":{"rpcs":{"getUserStatus":{"featureGates":[]},"getUsageInfo":{
+          "subscriptionTier":"TIER_NEON","pools":[
+            {"poolType":"GXU_WEEKLY","percentageUsed":0.00155414,"gxu":{"windowRefreshesAt":"2026-12-01T19:05:11.884621Z"}},
+            {"poolType":"GXU_FIVE_HOURLY","percentageUsed":0.25,"gxu":{"windowRefreshesAt":"2026-11-26T10:05:11Z"}},
+            {"poolType":"GXU_FUTURE","percentageUsed":0.9}]}}}}}]
+        """
+        let snapshot = try GeminiWebResponseParser.parseUsagePageQuery(data: Data(body.utf8), email: nil)
+        XCTAssertEqual(snapshot.buckets.map(\.id), ["five_hour", "weekly"])
+        XCTAssertEqual(snapshot.buckets[0].usedPercent, 25, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.buckets[1].usedPercent, 0.155414, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.buckets[0].resetAt, ISO8601DateFormatter().date(from: "2026-11-26T10:05:11Z"))
+        XCTAssertNotNil(snapshot.buckets[1].resetAt)
+        XCTAssertEqual(snapshot.planName, "Ultra")
+    }
+
+    func testUsagePageQueryTellsSignedOutFromContractDrift() {
+        func error(_ body: String) -> QuotaError? {
+            do {
+                _ = try GeminiWebResponseParser.parseUsagePageQuery(data: Data(body.utf8), email: nil)
+                return nil
+            } catch { return error as? QuotaError }
+        }
+        XCTAssertEqual(error(#"[{"data":{"viewer":null}}]"#), .needsLogin)
+        XCTAssertEqual(error("\n<!doctype html><html>Sign in</html>"), .needsLogin)
+        for drifted in [#"{"error":"unknown query"}"#, #"[{"data":{"viewer":{"rpcs":{}}}}]"#] {
+            guard case .parseFailure = error(drifted) else { return XCTFail(drifted) }
+        }
     }
 
     // MARK: - Helpers
