@@ -97,4 +97,27 @@ final class ResetCreditsTests: XCTestCase {
         XCTAssertEqual(carried.nextExpiresAt, soon)
         XCTAssertEqual(carried.tokens, credits.tokens)
     }
+
+    func testSpendableCreditsKeepTheirOwnReach() {
+        let sooner = Date(timeIntervalSince1970: 1_800_000_000)
+        let later = sooner.addingTimeInterval(86_400)
+        let credits = ResetCredits(
+            availableCount: 3,
+            availableExpirations: [later, sooner, later],
+            tokens: [
+                ResetCreditToken(id: "full", remaining: 2, expiresAt: later,
+                                 clears: ["five_hour", "weekly", "weekly_fable"]),
+                ResetCreditToken(id: "fable", remaining: 1, expiresAt: sooner, clears: ["weekly_fable"]),
+                ResetCreditToken(id: "spent", remaining: 0, expiresAt: sooner, clears: ["five_hour"])
+            ]
+        )
+        XCTAssertEqual(credits.spendable.map(\.expiresAt), [sooner, later, later])
+        XCTAssertEqual(credits.spendable.map(\.clears), [
+            ["weekly_fable"],
+            ["five_hour", "weekly", "weekly_fable"],
+            ["five_hour", "weekly", "weekly_fable"]
+        ])
+        // A provider with no per-credit reach still lists each credit.
+        XCTAssertEqual(ResetCredits(availableCount: 1, availableExpirations: [sooner]).spendable.map(\.clears), [[]])
+    }
 }

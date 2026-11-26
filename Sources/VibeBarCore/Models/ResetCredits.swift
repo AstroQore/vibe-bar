@@ -65,6 +65,31 @@ public struct ResetCredits: Codable, Hashable, Sendable {
         return copy
     }
 
+    /// One spendable credit: when it lapses and the bucket ids it clears.
+    /// Providers hand out credits of different reach — Claude grants both a
+    /// reset of every window and one that only clears a single model's weekly
+    /// limit — so the reach belongs to the credit, not to the whole section.
+    public struct Spendable: Hashable, Sendable {
+        public let expiresAt: Date
+        public let clears: [String]
+    }
+
+    /// The credits with a known expiry, soonest first, each matched to the
+    /// grant it came from. A provider that reports no per-credit reach yields
+    /// entries with empty `clears`.
+    public var spendable: [Spendable] {
+        var grants = (tokens ?? []).filter { $0.remaining > 0 }
+        return (availableExpirations ?? nextExpiresAt.map { [$0] } ?? []).map { expiry in
+            guard let index = grants.firstIndex(where: { $0.expiresAt == expiry }) else {
+                return Spendable(expiresAt: expiry, clears: [])
+            }
+            let clears = grants[index].clears ?? []
+            grants[index].remaining -= 1
+            if grants[index].remaining == 0 { grants.remove(at: index) }
+            return Spendable(expiresAt: expiry, clears: clears)
+        }
+    }
+
     /// Bucket ids the available credits clear, in first-seen order. Empty
     /// when the provider does not say (Codex, Grok).
     public var clearedBucketIDs: [String] {

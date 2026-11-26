@@ -1129,8 +1129,11 @@ final class AppSettingsTests: XCTestCase {
             settings.subscriptionNameFormat = format
             let restored = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
             XCTAssertEqual(restored.subscriptionNameFormat, format)
-            XCTAssertEqual(restored.planBadgeLabel(for: .codex, quotaPlan: "pro"), format.example)
+            XCTAssertEqual(restored.planBadgeLabel(for: .claude, quotaPlan: "default_claude_max_20x"), format.example)
         }
+        // The settings picker lists the samples; two that read the same
+        // cannot be told apart.
+        XCTAssertEqual(Set(SubscriptionNameFormat.allCases.map(\.example)).count, SubscriptionNameFormat.allCases.count)
     }
 
     func testSubscriptionFormatKeepsCustomLabelAndQuotaPlanPrecedence() {
