@@ -196,6 +196,15 @@ private final class GeminiWebStubURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        // These suites cover the batchexecute route, which the fetcher only
+        // reaches once the usage-page query has drifted.
+        if request.url?.path.hasSuffix("/executeQuery") == true, let url = request.url,
+           let response = HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil) {
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data())
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         guard let handler = Self.handler else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return

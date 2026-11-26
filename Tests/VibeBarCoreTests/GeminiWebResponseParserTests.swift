@@ -240,6 +240,40 @@ final class GeminiWebResponseParserTests: XCTestCase {
         XCTAssertEqual(snapshot.planName, "Ultra")
     }
 
+    // MARK: - UsagePageQuery
+
+    func testUsagePageQueryMapsBothWindowsAndTier() throws {
+        let body = """
+        )]}'
+        [{"data":{"viewer":{"rpcs":{"getUserStatus":{"featureGates":[]},"getUsageInfo":{
+          "subscriptionTier":"TIER_NEON","pools":[
+            {"poolType":"GXU_WEEKLY","percentageUsed":0.00155414,"gxu":{"windowRefreshesAt":"2026-12-01T19:05:11.884621Z"}},
+            {"poolType":"GXU_FIVE_HOURLY","percentageUsed":0.25,"gxu":{"windowRefreshesAt":"2026-11-26T10:05:11Z"}},
+            {"poolType":"GXU_FUTURE","percentageUsed":0.9}]}}}}}]
+        """
+        let snapshot = try GeminiWebResponseParser.parseUsagePageQuery(data: Data(body.utf8), email: nil)
+        XCTAssertEqual(snapshot.buckets.map(\.id), ["five_hour", "weekly"])
+        XCTAssertEqual(snapshot.buckets[0].usedPercent, 25, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.buckets[1].usedPercent, 0.155414, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.buckets[0].resetAt, ISO8601DateFormatter().date(from: "2026-11-26T10:05:11Z"))
+        XCTAssertNotNil(snapshot.buckets[1].resetAt)
+        XCTAssertEqual(snapshot.planName, "Ultra")
+    }
+
+    func testUsagePageQueryTellsSignedOutFromContractDrift() {
+        func error(_ body: String) -> QuotaError? {
+            do {
+                _ = try GeminiWebResponseParser.parseUsagePageQuery(data: Data(body.utf8), email: nil)
+                return nil
+            } catch { return error as? QuotaError }
+        }
+        XCTAssertEqual(error(#"[{"data":{"viewer":null}}]"#), .needsLogin)
+        XCTAssertEqual(error("\n<!doctype html><html>Sign in</html>"), .needsLogin)
+        for drifted in [#"{"error":"unknown query"}"#, #"[{"data":{"viewer":{"rpcs":{}}}}]"#] {
+            guard case .parseFailure = error(drifted) else { return XCTFail(drifted) }
+        }
+    }
+
     // MARK: - Helpers
 
     /// Build the exact JSONP-prefixed chunked wire format Google ships:

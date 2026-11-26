@@ -41,7 +41,8 @@ public enum ProcessRunner {
         arguments: [String],
         timeout: TimeInterval = 5,
         label: String = "process",
-        environment: [String: String]? = nil
+        environment: [String: String]? = nil,
+        currentDirectory: String? = nil
     ) async throws -> Result {
         guard FileManager.default.isExecutableFile(atPath: binary) else {
             throw Error.binaryNotFound(binary)
@@ -51,6 +52,9 @@ public enum ProcessRunner {
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = arguments
         process.environment = environment
+        if let currentDirectory {
+            process.currentDirectoryURL = URL(fileURLWithPath: currentDirectory, isDirectory: true)
+        }
 
         let stdout = Pipe()
         let stderr = Pipe()

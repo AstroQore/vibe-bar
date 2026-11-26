@@ -107,13 +107,15 @@ public struct AntigravityQuotaAdapter: QuotaAdapter {
     }
 
     /// A missing desktop process is expected and must not hide an actionable
-    /// error from the installed CLI. A specific desktop failure still wins
-    /// because it came from the preferred source.
+    /// error from the installed CLI. Neither may a desktop build that keeps
+    /// its token private, unless there is no CLI to ask instead. Any other
+    /// desktop failure still wins because it came from the preferred source.
     static func preferredLocalSourceError(
         desktopError: QuotaError?,
         cliError: QuotaError
     ) -> QuotaError {
-        guard let desktopError, desktopError != .noCredential else {
+        guard let desktopError, desktopError != .noCredential else { return cliError }
+        if desktopError == AntigravityLanguageServerClient.tokenUnavailableError, cliError != .noCredential {
             return cliError
         }
         return desktopError
@@ -294,46 +296,51 @@ enum AntigravityResponseParser {
         return Snapshot(buckets: buckets, planName: nil, email: nil)
     }
 
-    /// Current agy releases expose these rows through the official /usage
-    /// command. Only accept a complete panel with explicit remaining values.
-    static func parseUsagePanel(_ output: String, now: Date) -> Snapshot? {
-        let screen = output.replacingOccurrences(
-            of: #"\x1B\[[0-?]*[ -/]*[@-~]"#, with: "", options: .regularExpression
-        )
-        guard screen.contains("Models & Quota") else { return nil }
-        let lines = screen.components(separatedBy: .newlines).map {
-            $0.trimmingCharacters(in: .whitespaces)
+    /// Parse the JSON `agy --print /usage --output-format json` writes. A
+    /// signed-out or failing CLI answers with a non-success status and no
+    /// usage payload.
+    static func parseCLIUsage(data: Data) throws -> Snapshot {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let output = try? decoder.decode(AntigravityCLIUsageOutput.self, from: data) else {
+            throw QuotaError.parseFailure("agy /usage output was not the expected JSON.")
         }
-        var group: QuotaSummaryGroupKind?
-        var buckets: [QuotaSummarySlot: QuotaBucket] = [:]
-        for (index, line) in lines.enumerated() {
-            switch line {
-            case "GEMINI MODELS": group = .gemini
-            case "CLAUDE AND GPT MODELS": group = .claudeGPT
-            case "Weekly Limit Remaining", "Five Hour Limit Remaining":
-                guard let group, index + 2 < lines.count,
-                      let value = lines[index + 1].split(separator: "]").last,
-                      value.hasSuffix("%"),
-                      let percent = Double(value.dropLast().trimmingCharacters(in: .whitespaces)),
-                      (0...100).contains(percent) else { continue }
-                let reset = lines[index + 2]
-                var resetAt: Date?
-                if let duration = reset.wholeMatch(of: #/Refreshes in (?:(\d+)h\s*)?(?:(\d+)m)?/#),
-                   duration.1 != nil || duration.2 != nil {
-                    let hours = Double(duration.1 ?? "") ?? 0
-                    let minutes = Double(duration.2 ?? "") ?? 0
-                    resetAt = now.addingTimeInterval(3600 * hours + 60 * minutes)
-                } else if reset != "Quota available" {
-                    continue
+        guard let groups = output.command?.data?.groups else {
+            if let status = output.status, status != "SUCCESS" {
+                let detail = output.error ?? output.response ?? status
+                if detail.localizedCaseInsensitiveContains("sign") || detail.localizedCaseInsensitiveContains("auth") {
+                    throw QuotaError.needsLogin
                 }
-                let slot = QuotaSummarySlot(group: group, cadence: line.hasPrefix("Weekly") ? .weekly : .fiveHour)
-                buckets[slot] = quotaBucket(slot: slot, remainingFraction: percent / 100, resetAt: resetAt)
-            default: continue
+                throw QuotaError.network("agy /usage: \(SafeLog.sanitize(detail))")
+            }
+            throw QuotaError.parseFailure("agy /usage returned no quota groups.")
+        }
+
+        var bucketsBySlot: [QuotaSummarySlot: QuotaBucket] = [:]
+        for group in groups {
+            for bucket in group.buckets ?? [] {
+                guard let groupKind = quotaGroupKind(groupName: group.name, bucketId: bucket.id),
+                      let remainingFraction = bucket.remainingFraction, remainingFraction.isFinite
+                else { continue }
+                let cadence: QuotaSummaryCadence
+                switch bucket.window {
+                case "5h": cadence = .fiveHour
+                case "weekly": cadence = .weekly
+                default: continue
+                }
+                let slot = QuotaSummarySlot(group: groupKind, cadence: cadence)
+                // An untouched pool reports the Unix epoch as its reset time.
+                let resetAt = bucket.resetTime.flatMap(parseDate).flatMap {
+                    $0.timeIntervalSince1970 > 0 ? $0 : nil
+                }
+                bucketsBySlot[slot] = quotaBucket(slot: slot, remainingFraction: remainingFraction, resetAt: resetAt)
             }
         }
-        guard buckets.count == QuotaSummarySlot.displayOrder.count else { return nil }
-        return Snapshot(buckets: QuotaSummarySlot.displayOrder.compactMap { buckets[$0] },
-                        planName: nil, email: nil)
+        let buckets = QuotaSummarySlot.displayOrder.compactMap { bucketsBySlot[$0] }
+        guard !buckets.isEmpty else {
+            throw QuotaError.parseFailure("agy /usage had no usable 5-hour or weekly buckets.")
+        }
+        return Snapshot(buckets: buckets, planName: nil, email: nil)
     }
 
     static func parseUserStatus(data: Data) throws -> Snapshot {
@@ -513,6 +520,33 @@ private struct QuotaSummarySlot: Hashable {
 }
 
 // MARK: - Wire types
+
+private struct AntigravityCLIUsageOutput: Decodable {
+    let status: String?
+    let response: String?
+    let error: String?
+    let command: Command?
+
+    struct Command: Decodable {
+        let data: Payload?
+    }
+
+    struct Payload: Decodable {
+        let groups: [Group]?
+    }
+
+    struct Group: Decodable {
+        let name: String?
+        let buckets: [Bucket]?
+    }
+
+    struct Bucket: Decodable {
+        let id: String?
+        let window: String?
+        let remainingFraction: Double?
+        let resetTime: String?
+    }
+}
 
 private struct AntigravityQuotaSummaryResponse: Decodable {
     let code: AntigravityCodeValue?

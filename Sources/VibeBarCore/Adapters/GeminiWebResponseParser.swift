@@ -218,6 +218,65 @@ public enum GeminiWebResponseParser {
     /// Map Google's `planTier` integer to the user-visible plan label.
     /// `2 = Pro`; the current live Ultra response uses tier id `6`.
     /// Older captures used `3` for Ultra, so retain that alias.
+    /// Parse the `UsagePageQuery` GraphQL answer:
+    /// `[{"data":{"viewer":{"rpcs":{"getUsageInfo":{"subscriptionTier":…,
+    /// "pools":[{"poolType":"GXU_FIVE_HOURLY","percentageUsed":0.0,
+    /// "gxu":{"windowRefreshesAt":"…"}}]}}}}}]`. `percentageUsed` is a
+    /// fraction. A null `viewer`, or an HTML body, is a signed-out session.
+    static func parseUsagePageQuery(data: Data, email: String?) throws -> GeminiWebQuotaSnapshot {
+        let body = stripAntiHijackingPrefix(data)
+        if body.first(where: { ![0x20, 0x09, 0x0A, 0x0D].contains($0) }) == UInt8(ascii: "<") {
+            throw QuotaError.needsLogin
+        }
+        let drift = QuotaError.parseFailure("Gemini usage query response changed.")
+        guard let results = try? JSONSerialization.jsonObject(with: body) as? [[String: Any]],
+              let result = results.compactMap({ $0["data"] as? [String: Any] }).first(where: { $0["viewer"] != nil })
+        else { throw drift }
+        guard let viewer = result["viewer"] as? [String: Any] else {
+            if result["viewer"] is NSNull { throw QuotaError.needsLogin }
+            throw drift
+        }
+        guard let usage = (viewer["rpcs"] as? [String: Any])?["getUsageInfo"] as? [String: Any],
+              let pools = usage["pools"] as? [[String: Any]] else { throw drift }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        var buckets: [QuotaBucket] = []
+        for (poolType, bucketType) in [("GXU_FIVE_HOURLY", 1), ("GXU_WEEKLY", 2)] {
+            guard let pool = pools.first(where: { $0["poolType"] as? String == poolType }),
+                  let used = (pool["percentageUsed"] as? NSNumber)?.doubleValue, used.isFinite, used >= 0
+            else { continue }
+            let descriptor = bucketDescriptor(forType: bucketType)
+            let rawReset = (pool["gxu"] as? [String: Any])?["windowRefreshesAt"] as? String
+            buckets.append(QuotaBucket(
+                id: descriptor.id,
+                title: descriptor.title,
+                shortLabel: descriptor.shortLabel,
+                usedPercent: min(100, used * 100),
+                resetAt: rawReset.flatMap { formatter.date(from: $0) ?? plain.date(from: $0) },
+                rawWindowSeconds: descriptor.windowSeconds,
+                groupTitle: nil
+            ))
+        }
+        guard !buckets.isEmpty else {
+            throw QuotaError.parseFailure("Gemini usage query returned no usage windows.")
+        }
+        return GeminiWebQuotaSnapshot(
+            buckets: buckets,
+            planName: planLabel(forSubscriptionTier: usage["subscriptionTier"] as? String),
+            email: email
+        )
+    }
+
+    static func planLabel(forSubscriptionTier tier: String?) -> String? {
+        switch tier {
+        case "TIER1": return "Pro"
+        case "TIER_NEON": return "Ultra"
+        default: return nil
+        }
+    }
+
     static func planLabel(forTierId id: Int) -> String? {
         switch id {
         case 1: return "Free"

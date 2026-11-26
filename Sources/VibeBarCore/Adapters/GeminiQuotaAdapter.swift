@@ -154,7 +154,7 @@ public struct GeminiQuotaAdapter: QuotaAdapter {
             accountId: account.id,
             tool: .gemini,
             buckets: snapshot.buckets,
-            plan: snapshot.planName,
+            plan: snapshot.planName ?? account.plan,
             email: snapshot.email,
             queriedAt: now(),
             error: nil

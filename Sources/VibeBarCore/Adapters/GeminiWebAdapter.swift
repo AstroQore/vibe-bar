@@ -81,6 +81,18 @@ struct GeminiWebQuotaFetcher: Sendable {
     func fetch(cookieHeader: String, email: String? = nil) async throws -> GeminiWebQuotaSnapshot {
         let trimmed = cookieHeader.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw QuotaError.noCredential }
+        // The usage page's own query is one cookie-authenticated GET with a
+        // JSON answer. Only a drifted contract falls through to the older
+        // batchexecute route; a signed-out, throttled or challenged session
+        // would fail there the same way.
+        do {
+            return try await fetchUsagePageQuery(cookieHeader: trimmed, email: email)
+        } catch let error as QuotaError {
+            switch error {
+            case .parseFailure, .unknown: break
+            default: throw error
+            }
+        }
         // Isolate each imported profile. Let the official Gemini origin
         // update its own cookies during this one refresh. The jar is never
         // persisted, shared with another profile or sent to a sibling origin.
@@ -123,6 +135,65 @@ struct GeminiWebQuotaFetcher: Sendable {
                 email: email
             )
         }
+    }
+
+    /// `UsagePageQuery`, the persisted GraphQL query behind
+    /// `gemini.google.com/usage`. The signature identifies the query in
+    /// Google's public `UsagePageSurface` bundle.
+    static let usagePageQueryURL: URL = {
+        var components = URLComponents(
+            string: "https://gemini.google.com/_/BardChatUi/graphql/schemas/GEMINI_WEB_GRAPHQL/executeQuery"
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "query_signature", value: "2/dWbCvkVB0X16r9NPnxifeOAAqdCqMf0xeWvau9yPy7g="),
+            URLQueryItem(
+                name: "variables",
+                value: #"{"g1Request":{"entrypoints":["GEMINI_USAGE_SETTINGS_UPGRADE_BANNER"]},"#
+                    + #""workspaceRequest":{"recommendationsForSurfaceRequests":[]}}"#
+            )
+        ]
+        // `+` and `/` in the signature must not reach Google as a space or a
+        // path separator.
+        components.percentEncodedQuery = components.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
+            .replacingOccurrences(of: "/", with: "%2F")
+        return components.url!
+    }()
+
+    private func fetchUsagePageQuery(cookieHeader: String, email: String?) async throws -> GeminiWebQuotaSnapshot {
+        let config = session.configuration
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
+        config.urlCache = nil
+        let client = URLSession(configuration: config)
+        defer { client.finishTasksAndInvalidate() }
+
+        var request = URLRequest(url: Self.usagePageQueryURL)
+        request.httpMethod = "GET"
+        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://gemini.google.com/usage", forHTTPHeaderField: "Referer")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await client.data(for: request, delegate: GeminiWebRedirectDelegate())
+        } catch {
+            throw QuotaError.network(error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw QuotaError.network("Gemini usage query returned no HTTP response.")
+        }
+        if GeminiWebRedirectDelegate.requiresVerification(http) { throw Self.trafficVerificationError }
+        if GeminiWebRedirectDelegate.redirectTarget(http) != nil { throw QuotaError.needsLogin }
+        switch http.statusCode {
+        case 200: break
+        case 401, 403: throw QuotaError.needsLogin
+        case 429: throw QuotaError.rateLimited
+        case 500...: throw QuotaError.network("Gemini usage query HTTP \(http.statusCode).")
+        default: throw QuotaError.unknown("Gemini usage query HTTP \(http.statusCode).")
+        }
+        return try GeminiWebResponseParser.parseUsagePageQuery(data: data, email: email)
     }
 
     private func fetch(

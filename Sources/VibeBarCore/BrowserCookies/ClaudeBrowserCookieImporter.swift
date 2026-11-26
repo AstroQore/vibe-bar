@@ -68,6 +68,10 @@ public enum ClaudeBrowserCookieImporter {
                 let pairs = store.records.map { record in
                     (name: record.name, value: record.value)
                 }
+                guard !isDeviceBound(cookieNames: pairs.map(\.name)) else {
+                    logger?("\(browser.displayName) (\(store.store.profile.name)) Claude session is device-bound; skipping")
+                    continue
+                }
                 guard let header = sessionHeader(from: pairs) else { continue }
                 let label = "\(browser.displayName) (\(store.store.profile.name))"
                 return Result(
@@ -79,6 +83,15 @@ public enum ClaudeBrowserCookieImporter {
         }
 
         return nil
+    }
+
+    /// claude.ai binds a Chrome session to the device (Device Bound Session
+    /// Credentials): the session key is only honoured next to a
+    /// `__Host-sessionBinding` cookie that Chrome re-signs every few minutes
+    /// with a key that never leaves the browser. A session key copied out of
+    /// such a store is rejected, so the store is not an import source.
+    public static func isDeviceBound(cookieNames: [String]) -> Bool {
+        cookieNames.contains { $0.hasPrefix("__Host-sessionBinding") }
     }
 
     public static func sessionHeader(from cookies: [(name: String, value: String)]) -> String? {

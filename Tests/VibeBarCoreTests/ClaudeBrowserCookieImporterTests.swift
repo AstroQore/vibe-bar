@@ -23,4 +23,11 @@ final class ClaudeBrowserCookieImporterTests: XCTestCase {
             (name: "sessionKey", value: "not-a-claude-session")
         ]))
     }
+
+    func testChromeDeviceBoundSessionIsNotAnImportSource() {
+        XCTAssertTrue(ClaudeBrowserCookieImporter.isDeviceBound(
+            cookieNames: ["sessionKey", "sessionKeyV3", "__Host-sessionBinding", "__Host-sessionBindingGrace"]
+        ))
+        XCTAssertFalse(ClaudeBrowserCookieImporter.isDeviceBound(cookieNames: ["sessionKey", "sessionKeyV3", "cf_clearance"]))
+    }
 }

@@ -2,42 +2,38 @@ import XCTest
 @testable import VibeBarCore
 
 final class AntigravityCLIQuotaFetcherTests: XCTestCase {
-    func testOfficialUsagePanelPreservesGroupAndResetState() throws {
-        let panel = """
-        Models & Quota
-        GEMINI MODELS
-        Weekly Limit Remaining
-        [██] 75.25%
-        Refreshes in 100h 12m
-        Five Hour Limit Remaining
-        [██] 82.5%
-        Refreshes in 30m
-        CLAUDE AND GPT MODELS
-        Weekly Limit Remaining
-        [██] 99%
-        Refreshes in 3h
-        Five Hour Limit Remaining
-        [██] 100%
-        Quota available
+    func testPrintModeUsagePreservesGroupAndResetState() throws {
+        let output = """
+        {"conversation_id":"","status":"SUCCESS","response":"text","num_turns":0,
+         "command":{"name":"usage","data":{"description":"d","groups":[
+          {"name":"Gemini Models","buckets":[
+            {"id":"gemini-weekly","name":"Weekly Limit Remaining","window":"weekly",
+             "remaining_fraction":0.7525,"reset_time":"2026-11-30T20:05:33Z"},
+            {"id":"gemini-5h","name":"Five Hour Limit Remaining","window":"5h",
+             "remaining_fraction":0.825,"reset_time":"2026-11-26T08:05:33Z"}]},
+          {"name":"Claude and GPT models","buckets":[
+            {"id":"3p-weekly","name":"Weekly Limit Remaining","window":"weekly",
+             "remaining_fraction":1,"reset_time":"1970-01-01T00:00:00Z"},
+            {"id":"3p-5h","name":"Five Hour Limit Remaining","window":"5h",
+             "remaining_fraction":1,"reset_time":"1970-01-01T00:00:00Z"},
+            {"id":"3p-monthly","name":"Unknown","window":"monthly","remaining_fraction":0.5}]}]}}}
         """
-        let now = Date(timeIntervalSince1970: 1_000)
-        let snapshot = try XCTUnwrap(AntigravityResponseParser.parseUsagePanel(panel, now: now))
+        let snapshot = try AntigravityResponseParser.parseCLIUsage(data: Data(output.utf8))
         XCTAssertEqual(snapshot.buckets.map(\.id), ["gemini_five_hour", "gemini_weekly", "claude_gpt_five_hour", "claude_gpt_weekly"])
         XCTAssertEqual(snapshot.buckets[0].usedPercent, 17.5, accuracy: 0.001)
-        XCTAssertEqual(snapshot.buckets[1].resetAt, now.addingTimeInterval(360_720))
+        XCTAssertEqual(snapshot.buckets[1].usedPercent, 24.75, accuracy: 0.001)
+        XCTAssertEqual(snapshot.buckets[1].resetAt, ISO8601DateFormatter().date(from: "2026-11-30T20:05:33Z"))
         XCTAssertNil(snapshot.buckets[2].resetAt)
-        XCTAssertNil(AntigravityResponseParser.parseUsagePanel(panel.replacingOccurrences(of: "75.25%", with: "pending"), now: now))
+        XCTAssertNil(snapshot.buckets[3].resetAt)
     }
 
-    func testParsesOnlyExactAgyProcessNames() {
-        let output = """
-          101 /Users/example/.local/bin/agy
-          102 /opt/homebrew/bin/antigravity-cli
-          103 /usr/local/bin/antigravity_cli
-          104 /Users/example/bin/agy-helper
-          105 /Applications/Antigravity.app/Contents/MacOS/Antigravity
-        """
-        XCTAssertEqual(AntigravityCLIQuotaFetcher.parseAgyPIDs(output), [101, 102, 103])
+    func testPrintModeUsageSurfacesFailureInsteadOfEmptyQuota() {
+        XCTAssertThrowsError(try AntigravityResponseParser.parseCLIUsage(
+            data: Data(#"{"status":"ERROR","error":"You are not signed in."}"#.utf8)
+        )) { XCTAssertEqual($0 as? QuotaError, .needsLogin) }
+        XCTAssertThrowsError(try AntigravityResponseParser.parseCLIUsage(data: Data("Welcome".utf8))) {
+            guard case .parseFailure = $0 as? QuotaError else { return XCTFail("\($0)") }
+        }
     }
 
     func testResolvesExecutableFromOverrideBeforeKnownPaths() throws {
@@ -91,6 +87,19 @@ final class AntigravityCLIQuotaFetcherTests: XCTestCase {
                 cliError: .network("loopback unavailable")
             ),
             .network("loopback unavailable")
+        )
+    }
+
+    func testAgyErrorWinsWhenDesktopKeepsItsTokenPrivate() {
+        let hidden = AntigravityLanguageServerClient.tokenUnavailableError
+        XCTAssertEqual(
+            AntigravityQuotaAdapter.preferredLocalSourceError(desktopError: hidden, cliError: .needsLogin),
+            .needsLogin
+        )
+        // With no CLI installed the desktop hint is the actionable one.
+        XCTAssertEqual(
+            AntigravityQuotaAdapter.preferredLocalSourceError(desktopError: hidden, cliError: .noCredential),
+            hidden
         )
     }
 

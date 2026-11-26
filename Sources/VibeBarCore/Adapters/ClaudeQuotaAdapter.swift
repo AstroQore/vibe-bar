@@ -10,12 +10,15 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
     /// browser, used to self-heal an expired sessionKey on the web path.
     /// Returns true when a fresh cookie was imported. Injectable for tests.
     private let reimportWebCookieOnStale: @Sendable () async -> Bool
+    private let storedWebCookieHeaders: @Sendable () -> [String]
 
     public init(
         session: URLSession = .shared,
         credentialResolver: (@Sendable (CredentialSource, AccountIdentity) throws -> ClaudeCredential)? = nil,
-        reimportWebCookieOnStale: (@Sendable () async -> Bool)? = nil
+        reimportWebCookieOnStale: (@Sendable () async -> Bool)? = nil,
+        storedWebCookieHeaders: @escaping @Sendable () -> [String] = { ClaudeWebCookieStore.candidateCookieHeaders() }
     ) {
+        self.storedWebCookieHeaders = storedWebCookieHeaders
         self.session = session
         self.credentialResolver = credentialResolver ?? Self.defaultResolver
         self.reimportWebCookieOnStale = reimportWebCookieOnStale ?? Self.defaultWebCookieReimporter
@@ -143,21 +146,28 @@ public struct ClaudeQuotaAdapter: QuotaAdapter {
         buckets.append(bucket)
     }
 
-    /// Preferred Claude path. On `needsLogin` (a stale / expired sessionKey) we
+    /// Preferred Claude path. Every stored session is a candidate: the
+    /// browser import and the in-app sign-in are kept separately, and one
+    /// going stale must not hide the other. When all are turned away we
     /// re-import a fresh cookie from the browser once and retry, so the web
-    /// path self-heals instead of silently falling through to the
-    /// rate-limited OAuth endpoint and pinning stale data.
+    /// path self-heals before the caller falls back to OAuth.
     private func fetchWithWebCookies(for account: AccountIdentity) async throws -> AccountQuota {
-        do {
-            return try await fetchWithWebCookiesOnce(for: account)
-        } catch QuotaError.needsLogin {
-            guard await reimportWebCookieOnStale() else { throw QuotaError.needsLogin }
-            return try await fetchWithWebCookiesOnce(for: account)
+        let headers = storedWebCookieHeaders()
+        guard !headers.isEmpty else { throw QuotaError.noCredential }
+        for header in headers {
+            do {
+                return try await fetchWithWebCookiesOnce(for: account, cookieHeader: header)
+            } catch QuotaError.needsLogin {
+                continue
+            }
         }
+        guard await reimportWebCookieOnStale(),
+              let fresh = storedWebCookieHeaders().first, !headers.contains(fresh)
+        else { throw QuotaError.needsLogin }
+        return try await fetchWithWebCookiesOnce(for: account, cookieHeader: fresh)
     }
 
-    private func fetchWithWebCookiesOnce(for account: AccountIdentity) async throws -> AccountQuota {
-        let cookieHeader = try ClaudeWebCookieStore.readCookieHeader()
+    private func fetchWithWebCookiesOnce(for account: AccountIdentity, cookieHeader: String) async throws -> AccountQuota {
         let organization = try await organizationID(cookieHeader: cookieHeader)
         let webAccount = await webAccountInfo(organizationID: organization.id, cookieHeader: cookieHeader)
 

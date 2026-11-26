@@ -7,6 +7,7 @@ import XCTest
 final class GeminiDualFetchTests: XCTestCase {
     override func tearDown() {
         GeminiAdapterStubURLProtocol.handler = nil
+        GeminiAdapterStubURLProtocol.usageQueryAnswer = nil
         super.tearDown()
     }
 
@@ -68,6 +69,33 @@ final class GeminiDualFetchTests: XCTestCase {
         let quota = try await fetcher.fetch(cookieHeader: "fixture=original")
         XCTAssertEqual(quota.buckets.count, 2)
         XCTAssertEqual(posted.values, ["fixture=updated"])
+    }
+
+    func testUsagePageQueryAnswersWithoutTouchingTheLegacyRoute() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [GeminiAdapterStubURLProtocol.self]
+        let cookies = LockedStrings()
+        GeminiAdapterStubURLProtocol.usageQueryAnswer = { request in
+            cookies.append(request.value(forHTTPHeaderField: "Cookie") ?? "")
+            return (200, #"[{"data":{"viewer":{"rpcs":{"getUsageInfo":{"subscriptionTier":"TIER1","pools":["#
+                + #"{"poolType":"GXU_FIVE_HOURLY","percentageUsed":0.5,"gxu":{"windowRefreshesAt":"2026-11-26T10:05:11Z"}},"#
+                + #"{"poolType":"GXU_WEEKLY","percentageUsed":0.1,"gxu":{"windowRefreshesAt":"2026-12-01T19:05:11Z"}}]}}}}}]"#)
+        }
+        let fetcher = GeminiWebQuotaFetcher(session: URLSession(configuration: config), recipeProvider: { .fallback })
+        let quota = try await fetcher.fetch(cookieHeader: "__Secure-1PSID=synthetic")
+        XCTAssertEqual(quota.buckets.map(\.usedPercent), [50, 10])
+        XCTAssertEqual(quota.planName, "Pro")
+        XCTAssertEqual(cookies.values, ["__Secure-1PSID=synthetic"])
+
+        // A signed-out answer is final: the legacy route (no handler here,
+        // so it would fail as a network error) is never consulted.
+        GeminiAdapterStubURLProtocol.usageQueryAnswer = { _ in (200, #"[{"data":{"viewer":null}}]"#) }
+        do {
+            _ = try await fetcher.fetch(cookieHeader: "__Secure-1PSID=synthetic")
+            XCTFail("expected needsLogin")
+        } catch {
+            XCTAssertEqual(error as? QuotaError, .needsLogin)
+        }
     }
 
     func testSignInBootstrapTokenCannotValidateAnImportedSession() async throws {
@@ -348,7 +376,29 @@ private final class GeminiAdapterStubURLProtocol: URLProtocol {
     override class func canInit(with _: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
+    /// Set to answer the usage-page query; nil reports it as drifted.
+    nonisolated(unsafe) static var usageQueryAnswer: (@Sendable (URLRequest) -> (Int, String))?
+
     override func startLoading() {
+        if let answer = Self.usageQueryAnswer, request.url?.path.hasSuffix("/executeQuery") == true,
+           let url = request.url {
+            let (status, body) = answer(request)
+            if let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil) {
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: Data(body.utf8))
+                client?.urlProtocolDidFinishLoading(self)
+                return
+            }
+        }
+        // These suites cover the batchexecute route, which the fetcher only
+        // reaches once the usage-page query has drifted.
+        if Self.usageQueryAnswer == nil, request.url?.path.hasSuffix("/executeQuery") == true, let url = request.url,
+           let response = HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil) {
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data())
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         guard let handler = Self.handler else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return

@@ -47,6 +47,13 @@ struct AntigravityLanguageServerClient {
     /// process when other vendors ship a `language_server` of their own.
     private static let processNameSubstring = "language_server"
 
+    /// Antigravity 2.34+ hands its language server the local token over
+    /// stdin instead of the command line, so the desktop probe cannot
+    /// authenticate. Quota for those builds comes from the `agy` CLI.
+    static let tokenUnavailableError = QuotaError.parseFailure(
+        "This Antigravity version keeps its local token private. Install the agy CLI and sign in to read quota."
+    )
+
     // MARK: - High-level
 
     /// Detect ALL running AntiGravity language servers and return every
@@ -87,7 +94,7 @@ struct AntigravityLanguageServerClient {
         let infos = Self.parseProcessInfos(psOutput: result.stdout)
         if infos.isEmpty {
             if Self.sawAntigravityProcess(psOutput: result.stdout) {
-                throw QuotaError.parseFailure("Antigravity is running but its CSRF token is missing — restart Antigravity and retry.")
+                throw Self.tokenUnavailableError
             }
             throw QuotaError.noCredential
         }
