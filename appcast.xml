@@ -3,22 +3,22 @@
     <channel>
         <title>Vibe Bar</title>
         <item>
-            <title>1.9.3</title>
-            <pubDate>Fri, 13 Nov 2026 17:06:41 +0000</pubDate>
-            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.3</link>
-            <sparkle:version>105</sparkle:version>
-            <sparkle:shortVersionString>1.9.3</sparkle:shortVersionString>
+            <title>1.9.4</title>
+            <pubDate>Thu, 26 Nov 2026 07:52:36 +0000</pubDate>
+            <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.4</link>
+            <sparkle:version>106</sparkle:version>
+            <sparkle:shortVersionString>1.9.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.9.3 (main)
+            <description sparkle:format="markdown"><![CDATA[# Vibe Bar 1.9.4 (main)
 
-See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.3).
+See the [full release notes](https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.4).
 ]]></description>
-            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.9.3/Vibe-Bar-1.9.3-macOS-arm64.zip" length="21185527" type="application/octet-stream" sparkle:edSignature="u4BlH7gcuaJWTqDmCs1NlAdzwZpNnSVJig8q9BjwE4oAONLa1FNm0GCp6Fq4XaO9GC8+VOIl6bLDzBy4wzOWBA=="/>
+            <enclosure url="https://github.com/AstroQore/vibe-bar/releases/download/v1.9.4/Vibe-Bar-1.9.4-macOS-arm64.zip" length="21228711" type="application/octet-stream" sparkle:edSignature="eUbUsOXN72wPhxJQPT/qFS5ozuJ/O4Ay0jvAJU36VHQLQIFSMMphx85l6zx2WHygxowBbTwe+eScRV5+rBb9AQ=="/>
         </item>
         <item>
             <title>1.9.1</title>
-            <pubDate>Fri, 13 Nov 2026 17:06:42 +0000</pubDate>
+            <pubDate>Thu, 26 Nov 2026 07:52:38 +0000</pubDate>
             <link>https://github.com/AstroQore/vibe-bar/releases/tag/v1.9.1-dev.102</link>
             <sparkle:channel>dev</sparkle:channel>
             <sparkle:version>102</sparkle:version>
