@@ -51,3 +51,16 @@ final class ClaudeBrowserCookieImporterTests: XCTestCase {
         ))
     }
 }
+
+final class BrowserRequestHeadersTests: XCTestCase {
+    func testCookieSessionRequestsCarryABrowserIdentity() {
+        var request = URLRequest(url: URL(string: "https://claude.ai/api/organizations")!)
+        BrowserRequestHeaders.applySameOriginFetch(to: &request, referer: "https://claude.ai/")
+        let agent = request.value(forHTTPHeaderField: "User-Agent") ?? ""
+        XCTAssertNotNil(agent.range(of: #"Chrome/\d+\.0\.0\.0 Safari/537\.36$"#, options: .regularExpression))
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Sec-Fetch-Site"), "same-origin")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Referer"), "https://claude.ai/")
+        XCTAssertEqual(BrowserRequestHeaders.chromeUserAgent(major: "158"),
+                       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36")
+    }
+}

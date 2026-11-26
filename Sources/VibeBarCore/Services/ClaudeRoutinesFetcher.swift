@@ -72,16 +72,7 @@ public enum ClaudeRoutinesFetcher {
         request.setValue(header, forHTTPHeaderField: "Cookie")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
-        request.setValue("https://claude.ai/code", forHTTPHeaderField: "Referer")
-        request.setValue("claude.ai", forHTTPHeaderField: "Origin")
-        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
-        request.setValue("empty", forHTTPHeaderField: "Sec-Fetch-Dest")
-        request.setValue("cors", forHTTPHeaderField: "Sec-Fetch-Mode")
-        request.setValue("same-origin", forHTTPHeaderField: "Sec-Fetch-Site")
-        request.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-            forHTTPHeaderField: "User-Agent"
-        )
+        BrowserRequestHeaders.applySameOriginFetch(to: &request, referer: "https://claude.ai/code")
         request.timeoutInterval = 10
 
         let data: Data

@@ -40,8 +40,7 @@ public enum ClaudeOrganizationIDFetcher {
     private static func configureClaudeWebHeaders(_ request: inout URLRequest, cookieHeader: String) {
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("https://claude.ai/", forHTTPHeaderField: "Referer")
-        request.setValue("claude.ai", forHTTPHeaderField: "Origin")
+        BrowserRequestHeaders.applySameOriginFetch(to: &request, referer: "https://claude.ai/")
     }
 
     private static func validateClaudeWebResponse(_ response: URLResponse) throws {

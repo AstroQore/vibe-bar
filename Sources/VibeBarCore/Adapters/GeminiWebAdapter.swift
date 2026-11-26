@@ -172,7 +172,7 @@ struct GeminiWebQuotaFetcher: Sendable {
         request.httpMethod = "GET"
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("https://gemini.google.com/usage", forHTTPHeaderField: "Referer")
+        BrowserRequestHeaders.applySameOriginFetch(to: &request, referer: "https://gemini.google.com/usage")
 
         let data: Data
         let response: URLResponse
@@ -224,7 +224,7 @@ struct GeminiWebQuotaFetcher: Sendable {
         if let cookies = client.configuration.httpCookieStorage?.cookies(for: url) {
             request.setValue(HTTPCookie.requestHeaderFields(with: cookies)["Cookie"], forHTTPHeaderField: "Cookie")
         }
-        request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
+        request.setValue(BrowserRequestHeaders.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(
             "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             forHTTPHeaderField: "Accept"
@@ -301,7 +301,7 @@ struct GeminiWebQuotaFetcher: Sendable {
         request.setValue("1", forHTTPHeaderField: "X-Same-Domain")
         request.setValue("https://gemini.google.com", forHTTPHeaderField: "Origin")
         request.setValue("https://gemini.google.com/usage?pli=1", forHTTPHeaderField: "Referer")
-        request.setValue(Self.safariUA, forHTTPHeaderField: "User-Agent")
+        request.setValue(BrowserRequestHeaders.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         request.mainDocumentURL = URL(string: "https://gemini.google.com/usage")
 
         let requestEnvelope: [Any] = [[[recipe.rpcID, recipe.argument, NSNull(), "generic"]]]
@@ -361,9 +361,6 @@ struct GeminiWebQuotaFetcher: Sendable {
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
-    nonisolated private static var safariUA: String {
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
-    }
 }
 
 /// Leave a Google traffic check for the visible usage page. Following
