@@ -100,6 +100,8 @@ final class SharedSessionIndex {
         private let store: SessionIndexStore
         private let service: SessionIndexService
         private var recentQueue: (candidates: [SessionIndexCandidate], offset: Int)?
+        /// The desktop-title generation the last title sync ran against.
+        private var syncedTitleGeneration: UInt64?
 
         init(store: SessionIndexStore, service: SessionIndexService) {
             self.store = store
@@ -130,12 +132,24 @@ final class SharedSessionIndex {
                 result = await service.refreshIndexFully(progress: progress)
             }
             let succeeded = !result.failed && !result.cancelled && !result.busy
+            let retitled = syncTitles(force: result.written > 0 || pass == .rebuild)
             return SessionIndexRefreshCoordinator.Report(
-                changed: pass == .rebuild || result.written > 0 || result.pruned > 0 || result.modeChanged,
+                changed: pass == .rebuild || result.written > 0 || result.pruned > 0 || result.modeChanged
+                    || retitled > 0,
                 completedDiscovery: result.completedDiscovery,
                 hasMore: result.hasMore && succeeded,
                 succeeded: succeeded
             )
+        }
+
+        /// Claude rows take the desktop app's titles, including names it
+        /// gave or the user changed after the transcript was last read.
+        /// Skipped while neither the titles nor the index moved.
+        private func syncTitles(force: Bool) -> Int {
+            let snapshot = ClaudeDesktopTitleLookup.shared.snapshot()
+            guard force || snapshot.generation != syncedTitleGeneration else { return 0 }
+            syncedTitleGeneration = snapshot.generation
+            return ClaudeTitleSync.run(titles: snapshot.titles)
         }
 
         private func recentCandidates() async -> (candidates: [SessionIndexCandidate], offset: Int)? {

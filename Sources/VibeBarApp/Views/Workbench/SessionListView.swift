@@ -181,9 +181,39 @@ struct SessionListView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 260)
+            hiddenRunsHint
         }
         .padding(density.popoverPaddingH)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    /// "No sessions match" over a page whose every row the Threads switches
+    /// are hiding is the wrong verdict: say how many are hidden, and offer
+    /// the switch for headless runs right here — the menu can sit off the
+    /// edge of a narrow toolbar.
+    @ViewBuilder
+    private var hiddenRunsHint: some View {
+        let hidden = list.hiddenCounts.filter { $0.key != .guardian }.values.reduce(0, +)
+        let exec = list.hiddenCounts[.exec] ?? 0
+        let automation = list.hiddenCounts[.automation] ?? 0
+        if model.isIndexAvailable, !hasNoHarnessSelected, hidden > 0 {
+            Text(L10n.Workbench.Sessions.Threads.hidden(count: AppLocale.number(hidden)))
+                .font(.system(size: density.subtitleFontSize))
+                .foregroundStyle(.tertiary)
+            HStack(spacing: 6) {
+                if exec > 0 {
+                    Button(L10n.Workbench.Sessions.Threads.showExec(count: AppLocale.number(exec))) {
+                        list.showsExec = true
+                    }
+                }
+                if automation > 0 {
+                    Button(L10n.Workbench.Sessions.Threads.showAutomation(count: AppLocale.number(automation))) {
+                        list.showsAutomation = true
+                    }
+                }
+            }
+            .buttonStyle(WorkbenchPillButtonStyle())
+        }
     }
 
     private var hasNoHarnessSelected: Bool {

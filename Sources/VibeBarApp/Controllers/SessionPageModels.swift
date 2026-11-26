@@ -88,6 +88,11 @@ final class SessionsPageController {
         manager.$rows
             .sink { [weak self] rows in self?.list.ingest(rows) }
             .store(in: &cancellables)
+        manager.$searchText
+            .map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .removeDuplicates()
+            .sink { [weak self] searching in self?.list.setSearching(searching) }
+            .store(in: &cancellables)
         manager.$groupByProject
             .removeDuplicates()
             .sink { [weak self] grouped in self?.list.setGrouped(grouped) }
@@ -392,6 +397,18 @@ final class SessionListModel {
     var showsAutomation = false {
         didSet { if showsAutomation != oldValue { rebuild() } }
     }
+    /// While a search is on, headless and automated runs are listed with
+    /// everything else. The Threads switches tidy the browsing list; a
+    /// search is the user asking for something specific, and a hit that is
+    /// found and then hidden reads as "No sessions match" — the opposite of
+    /// what the index answered (and of what `sessions.search` returns).
+    private(set) var isSearching = false
+
+    func setSearching(_ searching: Bool) {
+        guard searching != isSearching else { return }
+        isSearching = searching
+        rebuild()
+    }
 
     @ObservationIgnored var onListingsChanged: (() -> Void)?
     @ObservationIgnored var onRowsChanged: (([DisplayRow]) -> Void)?
@@ -576,8 +593,8 @@ final class SessionListModel {
 
     private func rebuild() {
         var showing: Set<SessionStructureKind> = []
-        if showsExec { showing.insert(.exec) }
-        if showsAutomation { showing.insert(.automation) }
+        if showsExec || isSearching { showing.insert(.exec) }
+        if showsAutomation || isSearching { showing.insert(.automation) }
         let input = BuildInput(
             rows: source,
             listings: listings,
